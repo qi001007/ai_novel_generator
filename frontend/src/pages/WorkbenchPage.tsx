@@ -5,6 +5,7 @@ import FeedbackPanel from "../components/FeedbackPanel";
 import PlanningPanel from "../components/PlanningPanel";
 import SettingsPanel from "../components/SettingsPanel";
 import StatusBadge from "../components/StatusBadge";
+import TreePane from "../components/TreePane";
 import { useWorkbench } from "../store/workbench";
 
 export default function WorkbenchPage() {
@@ -71,39 +72,14 @@ export default function WorkbenchPage() {
             <p>{chapters.length} 章 · {briefs.length} 份简报</p>
           </section>
           <section className="panel">
-            <h2>D 层简报</h2>
-            <ul className="item-list">
-              {briefs.map((brief) => (
-                <li key={brief.id}>
-                  <button
-                    type="button"
-                    className={brief.id === selectedBriefId ? "selected" : ""}
-                    onClick={() => state.selectBrief(brief.id)}
-                  >
-                    第 {brief.chapter_number} 章
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <TreePane
+              chapters={chapters}
+              selectedChapterId={selectedChapterId}
+              onSelectChapter={(chapterId) => state.selectChapter(chapterId)}
+            />
             <button type="button" className="primary" disabled={busy || !selectedBrief} onClick={() => state.generateDraft()}>
               生成草稿
             </button>
-          </section>
-          <section className="panel">
-            <h2>章节</h2>
-            <ul className="item-list">
-              {chapters.map((chapter) => (
-                <li key={chapter.id}>
-                  <button
-                    type="button"
-                    className={chapter.id === selectedChapterId ? "selected" : ""}
-                    onClick={() => state.selectChapter(chapter.id)}
-                  >
-                    第 {chapter.chapter_number} 章 <StatusBadge status={chapter.status} />
-                  </button>
-                </li>
-              ))}
-            </ul>
           </section>
         </aside>
 
