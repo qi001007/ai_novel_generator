@@ -440,6 +440,35 @@ select:focus-visible {
   display: grid;
 }
 
+.chat-message {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chat-avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin-top: 2px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.chat-avatar.user {
+  background: var(--surface-alt);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+}
+
+.chat-avatar.agent {
+  background: var(--accent);
+  color: #fff;
+}
+
 .chat-row.user {
   justify-items: end;
 }
@@ -455,6 +484,7 @@ select:focus-visible {
 
 .chat-card {
   max-width: 92%;
+  min-width: 0;
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-left: 2px solid var(--accent);
@@ -541,6 +571,56 @@ select:focus-visible {
   padding: 8px 16px 10px;
   border-top: 1px solid var(--border);
   background: var(--surface);
+}
+
+.chat-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.chat-toolbar .spacer {
+  flex: 1;
+}
+
+.mode-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+}
+
+.mode-switch button {
+  min-height: 22px;
+  padding: 1px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.mode-switch button.selected {
+  background: var(--surface);
+  color: var(--text-1);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+}
+
+.model-pill {
+  max-width: 180px;
+  min-height: 26px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
 }
 
 .chat-hints {
@@ -680,9 +760,48 @@ select:focus-visible {
 }
 
 .editor-body {
+  display: flex;
   min-height: 0;
-  overflow-y: auto;
   background: var(--bg);
+}
+
+.editor-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.minimap {
+  position: relative;
+  flex: none;
+  width: 56px;
+  padding: 8px 4px;
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.minimap-lines {
+  display: grid;
+  gap: 2px;
+}
+
+.minimap-lines span {
+  display: block;
+  height: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--text-2) 40%, transparent);
+}
+
+.minimap-thumb {
+  position: absolute;
+  right: 0;
+  width: 100%;
+  height: 48px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-top: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+  transition: top 60ms linear;
 }
 
 .editor-body textarea {
@@ -703,6 +822,116 @@ select:focus-visible {
   outline: none;
   box-shadow: inset 2px 0 0 var(--accent);
   caret-color: var(--accent);
+}
+
+/* ---------- 规划文档编辑 ---------- */
+
+.version-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  min-height: 26px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+}
+
+.chip.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.doc-editor {
+  display: grid;
+  gap: 20px;
+}
+
+.doc-section {
+  display: grid;
+  gap: 6px;
+}
+
+.doc-section h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.doc-section textarea {
+  min-height: 72px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  font-family: "Noto Serif SC", serif;
+  font-size: 15px;
+  line-height: 1.8;
+  resize: vertical;
+}
+
+/* ---------- 目录树 ---------- */
+
+.toc-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.toc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+}
+
+.toc-row:hover {
+  background: var(--surface-alt);
+}
+
+.toc-tree li.open .toc-row {
+  background: var(--accent-soft);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.toc-number {
+  flex: none;
+  min-width: 28px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.toc-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 28px;
+  border-color: transparent;
+  background: transparent;
+}
+
+.toc-row input:hover,
+.toc-row input:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+
+.toc-detail-head {
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-2);
 }
 
 .editor-footer {
@@ -934,6 +1163,14 @@ select:focus-visible {
   background: var(--surface);
   text-align: left;
   transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.card-name {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .character-card:hover {

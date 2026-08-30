@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CornerDownLeft, Square } from "lucide-react";
+import { CornerDownLeft, Paperclip, Square } from "lucide-react";
 
 import { useWorkbench } from "../store/workbench";
 
@@ -39,6 +39,7 @@ export default function ChatPane() {
     },
   ]);
   const [input, setInput] = useState("");
+  const [mode, setMode] = useState<"plan" | "write">("write");
   const [elapsed, setElapsed] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -177,23 +178,31 @@ export default function ChatPane() {
           if (message.kind === "user") {
             return (
               <div key={message.id} className="chat-row user">
-                <div className="chat-bubble">{message.text}</div>
+                <div className="chat-message">
+                  <span className="chat-avatar user" aria-hidden="true">我</span>
+                  <div className="chat-bubble">{message.text}</div>
+                </div>
               </div>
             );
           }
           if (message.kind === "assistant") {
             return (
               <div key={message.id} className="chat-row assistant">
+              <div className="chat-message">
+                <span className="chat-avatar agent" aria-hidden="true">墨</span>
                 <div className="chat-card agent">
-                  <span className="chat-who">Agent</span>
+                  <span className="chat-who">Agent · {mode === "plan" ? "计划模式" : "写作模式"}</span>
                   <p>{message.text}</p>
                 </div>
+              </div>
               </div>
             );
           }
           const seconds = message.status === "running" ? elapsed : null;
           return (
             <div key={message.id} className="chat-row assistant">
+            <div className="chat-message">
+              <span className="chat-avatar agent" aria-hidden="true">墨</span>
               <div className={`chat-card command ${message.status}`}>
                 <header>
                   <code>{message.command}</code>
@@ -210,6 +219,7 @@ export default function ChatPane() {
                 </header>
                 <p>{message.detail}</p>
               </div>
+            </div>
             </div>
           );
         })}
@@ -232,6 +242,35 @@ export default function ChatPane() {
             ))}
           </ul>
         )}
+        <div className="chat-toolbar">
+          <div className="mode-switch" role="radiogroup" aria-label="对话模式">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === "plan"}
+              className={mode === "plan" ? "selected" : ""}
+              onClick={() => setMode("plan")}
+            >
+              计划
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === "write"}
+              className={mode === "write" ? "selected" : ""}
+              onClick={() => setMode("write")}
+            >
+              写作
+            </button>
+          </div>
+          <button type="button" className="icon-button" aria-label="添加参考资料（C5 接入）" disabled>
+            <Paperclip size={15} />
+          </button>
+          <span className="spacer" />
+          <button type="button" className="model-pill" disabled title="模型切换在 C5 接入">
+            {llmStatus?.provider ?? "未配置模型"}
+          </button>
+        </div>
         <div className="chat-input">
           <textarea
             value={input}

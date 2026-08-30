@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import StatusBadge from "./StatusBadge";
 import { useWorkbench } from "../store/workbench";
@@ -20,6 +20,8 @@ export default function EditorPane() {
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
   const brief = briefs.find((item) => item.id === chapter?.brief_id) ?? null;
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [thumbTop, setThumbTop] = useState(0);
   const dirty = chapter ? draftContent !== (chapter.content ?? "") : false;
 
   useEffect(() => {
@@ -62,6 +64,15 @@ export default function EditorPane() {
   }
 
   const liveCount = draftContent.replace(/\s/g, "").length;
+  const minimapLines = draftContent.split("\n").slice(0, 400);
+
+  function jumpMinimap(event: React.MouseEvent<HTMLDivElement>) {
+    const node = scrollRef.current;
+    if (!node) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = (event.clientY - rect.top) / rect.height;
+    node.scrollTop = ratio * node.scrollHeight;
+  }
 
   return (
     <section className="editor-pane" aria-label="章节编辑">
@@ -96,12 +107,33 @@ export default function EditorPane() {
         </div>
       </header>
       <div className="editor-body">
-        <textarea
-          value={draftContent}
-          onChange={(event) => state.setDraftContent(event.target.value)}
-          aria-label="章节正文"
-          spellCheck={false}
-        />
+        <div
+          className="editor-scroll"
+          ref={scrollRef}
+          onScroll={(event) => {
+            const node = event.currentTarget;
+            const max = node.scrollHeight - node.clientHeight;
+            setThumbTop(max > 0 ? (node.scrollTop / max) * 100 : 0);
+          }}
+        >
+          <textarea
+            value={draftContent}
+            onChange={(event) => state.setDraftContent(event.target.value)}
+            aria-label="章节正文"
+            spellCheck={false}
+          />
+        </div>
+        <div className="minimap" aria-hidden="true" onClick={jumpMinimap}>
+          <div className="minimap-lines">
+            {minimapLines.map((line, index) => (
+              <span
+                key={index}
+                style={{ width: `${Math.min(100, (line.trim().length / 60) * 100)}%` }}
+              />
+            ))}
+          </div>
+          <i className="minimap-thumb" style={{ top: `${thumbTop}%` }} />
+        </div>
       </div>
       <div className="editor-footer" aria-live="polite">
         <span className="save-state">

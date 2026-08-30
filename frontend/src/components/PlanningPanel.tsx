@@ -283,56 +283,109 @@ export default function PlanningPanel({
 
       {layer === "A" ? (
         <>
-          <ul className="item-list">
+          <div className="version-chips">
             {blueprints.map((item) => (
-              <li key={item.id}>
-                <button type="button" onClick={() => setBlueprintForm({...item})}>
-                  v{item.version} {item.main_line || "未命名"}
-                </button>
-              </li>
+              <button
+                key={item.id}
+                type="button"
+                className={`chip ${blueprintForm.id === item.id ? "selected" : ""}`}
+                onClick={() => setBlueprintForm({...item})}
+              >
+                v{item.version}
+              </button>
             ))}
-          </ul>
-          <div className="form-grid">
-            <textarea
-              value={blueprintForm.main_line}
-              onChange={(event) => setBlueprintForm({...blueprintForm, main_line: event.target.value})}
-              placeholder="主线"
-            />
-            <textarea
-              value={blueprintForm.ending}
-              onChange={(event) => setBlueprintForm({...blueprintForm, ending: event.target.value})}
-              placeholder="终局"
-            />
-            <textarea
-              value={blueprintForm.core_conflicts}
-              onChange={(event) => setBlueprintForm({...blueprintForm, core_conflicts: event.target.value})}
-              placeholder="核心冲突"
-            />
-            <textarea
-              value={blueprintForm.themes}
-              onChange={(event) => setBlueprintForm({...blueprintForm, themes: event.target.value})}
-              placeholder="主题"
-            />
-            <textarea
-              value={blueprintForm.constraints}
-              onChange={(event) => setBlueprintForm({...blueprintForm, constraints: event.target.value})}
-              placeholder="约束"
-            />
+            <button type="button" className="chip" onClick={() => setBlueprintForm(emptyBlueprint)}>
+              新版本
+            </button>
+          </div>
+          <div className="doc-editor">
+            <label className="doc-section">
+              <h3>主线</h3>
+              <textarea
+                value={blueprintForm.main_line}
+                onChange={(event) => setBlueprintForm({...blueprintForm, main_line: event.target.value})}
+                placeholder="整条故事的主线走向…"
+              />
+            </label>
+            <label className="doc-section">
+              <h3>终局</h3>
+              <textarea
+                value={blueprintForm.ending}
+                onChange={(event) => setBlueprintForm({...blueprintForm, ending: event.target.value})}
+                placeholder="全书结局…"
+              />
+            </label>
+            <label className="doc-section">
+              <h3>核心冲突</h3>
+              <textarea
+                value={blueprintForm.core_conflicts}
+                onChange={(event) => setBlueprintForm({...blueprintForm, core_conflicts: event.target.value})}
+                placeholder="推动全书的核心矛盾…"
+              />
+            </label>
+            <label className="doc-section">
+              <h3>主题</h3>
+              <textarea
+                value={blueprintForm.themes}
+                onChange={(event) => setBlueprintForm({...blueprintForm, themes: event.target.value})}
+                placeholder="想表达的主题…"
+              />
+            </label>
+            <label className="doc-section">
+              <h3>约束</h3>
+              <textarea
+                value={blueprintForm.constraints}
+                onChange={(event) => setBlueprintForm({...blueprintForm, constraints: event.target.value})}
+                placeholder="力量体系、禁忌、世界规则…"
+              />
+            </label>
           </div>
         </>
       ) : null}
 
       {layer === "B" ? (
         <>
-          <ul className="item-list">
+          <ul className="toc-tree" aria-label="目录树">
             {toc.map((item) => (
-              <li key={item.id}>
-                <button type="button" onClick={() => setTocForm({...item})}>
-                  第 {item.chapter_number} 章 {item.title || "未命名"}
+              <li key={item.id} className={tocForm.id === item.id ? "open" : ""}>
+                <button
+                  type="button"
+                  className="toc-row"
+                  onClick={() => setTocForm({...item})}
+                >
+                  <span className="toc-number tabular">{item.chapter_number}</span>
+                  <input
+                    value={item.title}
+                    aria-label={`第 ${item.chapter_number} 章名`}
+                    onClick={(event) => event.stopPropagation()}
+                    onChange={(event) => {
+                      const title = event.target.value;
+                      setToc((prev) => prev.map((row) => (row.id === item.id ? {...row, title} : row)));
+                    }}
+                    onBlur={() => {
+                      if (!novelId || item.title === toc.find((row) => row.id === item.id)?.title) return;
+                      void api.put(`/api/novels/${novelId}/planning/toc/${item.id}`, {
+                        chapter_number: item.chapter_number,
+                        title: item.title,
+                        plot_function: item.plot_function,
+                        notes: item.notes,
+                        is_active: item.is_active,
+                      }).then(() => {
+                        if (novelId) return reload(novelId);
+                      }).catch(() => undefined);
+                    }}
+                  />
                 </button>
               </li>
             ))}
           </ul>
+          <div className="toc-detail-head">
+            {tocForm.id ? (
+              <span>第 {tocForm.chapter_number} 章 · 详情</span>
+            ) : (
+              <span>点上方章节查看详情，或直接新增</span>
+            )}
+          </div>
           <div className="form-grid">
             <input
               type="number"
