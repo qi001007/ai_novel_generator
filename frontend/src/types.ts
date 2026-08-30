@@ -64,3 +64,14 @@ export type ChapterGenerationResponse = {
   generation_run: GenerationRun;
   machine_check: MachineCheckResult;
 };
+
+export type Review = {
+  id: number;
+  chapter_id: number;
+  reviewer: string;
+  decision: string;
+  comments: string;
+  scores: Record<string, number>;
+  evidence: Record<string, string[]>;
+  created_at: string;
+};

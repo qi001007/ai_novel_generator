@@ -7,6 +7,8 @@ import type {
   ChapterGenerationResponse,
   MachineCheckResult,
   Novel,
+  Review,
+  GenerationRun,
 } from "./types";
 
 type HealthState = "loading" | "ok" | "error";
@@ -21,6 +23,9 @@ export default function App() {
   const [selectedChapterId, setSelectedChapterId] = useState<number | null>(null);
   const [draftContent, setDraftContent] = useState("");
   const [machineCheck, setMachineCheck] = useState<MachineCheckResult | null>(null);
+  const [generationRuns, setGenerationRuns] = useState<GenerationRun[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [recordVersion, setRecordVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -84,6 +89,35 @@ export default function App() {
     setDraftContent(selectedChapter?.content ?? "");
   }, [selectedChapter?.id]);
 
+  useEffect(() => {
+    if (!selectedNovelId || !selectedChapterId) {
+      setGenerationRuns([]);
+      setReviews([]);
+      return;
+    }
+
+    let active = true;
+
+    Promise.all([
+      api.get<GenerationRun[]>(
+        `/api/novels/${selectedNovelId}/chapters/${selectedChapterId}/generation-runs`,
+      ),
+      api.get<Review[]>(
+        `/api/novels/${selectedNovelId}/chapters/${selectedChapterId}/reviews`,
+      ),
+    ]).then(([runs, reviewData]) => {
+      if (!active) return;
+      setGenerationRuns(runs);
+      setReviews(reviewData);
+    }).catch((cause: Error) => {
+      if (active) setError(cause.message);
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedNovelId, selectedChapterId, recordVersion]);
+
   async function refreshChapters(novelId: number) {
     const data = await api.get<Chapter[]>(`/api/novels/${novelId}/chapters`);
     setChapters(data);
@@ -101,6 +135,7 @@ export default function App() {
       await refreshChapters(selectedNovelId);
       setSelectedChapterId(result.chapter.id);
       setMachineCheck(result.machine_check);
+      setRecordVersion((version) => version + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "生成失败");
     } finally {
@@ -164,6 +199,7 @@ export default function App() {
         { decision, comments: "" },
       );
       await refreshChapters(selectedNovelId);
+      setRecordVersion((version) => version + 1);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "终审失败");
     } finally {
@@ -265,6 +301,34 @@ export default function App() {
                 </ul>
               </section>
             ) : null}
+            <div className="record-grid">
+              <section className="panel">
+                <h2>生成记录</h2>
+                <ul className="record-list">
+                  {generationRuns.map((run) => (
+                    <li key={run.id}>
+                      <strong>{run.model}</strong>
+                      <span>{run.task_type}</span>
+                      <span>
+                        {run.token_input} / {run.token_output}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+              <section className="panel">
+                <h2>审稿记录</h2>
+                <ul className="record-list">
+                  {reviews.map((review) => (
+                    <li key={review.id}>
+                      <strong>{review.reviewer}</strong>
+                      <span>{review.decision}</span>
+                      {review.comments ? <p>{review.comments}</p> : null}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            </div>
           </>
         ) : (
           <section className="panel empty-state">

@@ -11,6 +11,23 @@ const chapter = {
   content: "旧正文。",
   status: "draft",
 };
+const generationRun = {
+  id: 3,
+  chapter_id: 2,
+  task_type: "draft",
+  model: "test-model",
+  status: "completed",
+  token_input: 120,
+  token_output: 80,
+};
+const review = {
+  id: 4,
+  chapter_id: 2,
+  reviewer: "ai",
+  decision: "passed",
+  comments: "整体合格。",
+  scores: { consistency: 8 },
+};
 
 describe("App", () => {
   it("opens the chapter editor", async () => {
@@ -24,6 +41,8 @@ describe("App", () => {
       if (url.endsWith("/api/health")) return response({ status: "ok" });
       if (url.endsWith("/api/novels")) return response([novel]);
       if (url.includes("/planning/briefs")) return response([]);
+      if (url.includes("/generation-runs")) return response([generationRun]);
+      if (url.includes("/reviews")) return response([review]);
       if (url.includes("/chapters")) return response([chapter]);
       return Promise.reject(new Error(`unexpected url: ${url}`));
     }));
@@ -35,5 +54,10 @@ describe("App", () => {
     });
     const textarea = screen.getByLabelText("章节正文") as HTMLTextAreaElement;
     expect(textarea.value).toBe("旧正文。");
+
+    await waitFor(() => {
+      expect(screen.getByText("test-model")).toBeTruthy();
+      expect(screen.getByText("整体合格。")).toBeTruthy();
+    });
   });
 });
