@@ -3,6 +3,7 @@ import os
 from alembic import command
 from alembic.config import Config
 from sqlalchemy import create_engine, inspect
+from app import db as app_db
 
 
 EXPECTED_TABLES = {
@@ -26,7 +27,7 @@ EXPECTED_TABLES = {
 def test_migrations_create_core_schema(tmp_path, monkeypatch) -> None:
     database_path = tmp_path / "novel_generator.db"
     database_url = f"sqlite:///{database_path.as_posix()}"
-    monkeypatch.setenv("NOVEL_GENERATOR_DATABASE_URL", database_url)
+    monkeypatch.setattr(app_db, "DATABASE_URL", database_url)
 
     alembic_config = Config("alembic.ini")
     command.upgrade(alembic_config, "head")

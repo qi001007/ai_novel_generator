@@ -1,7 +1,7 @@
 import os
 
 from sqlalchemy import Engine
-from sqlmodel import create_engine
+from sqlmodel import Session, create_engine
 
 
 DATABASE_URL = os.getenv(
@@ -14,3 +14,8 @@ engine = create_engine(
     DATABASE_URL,
     connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
 )
+
+
+def get_session():
+    with Session(engine) as session:
+        yield session
