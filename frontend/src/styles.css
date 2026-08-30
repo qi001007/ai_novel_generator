@@ -97,6 +97,19 @@ body {
   background: #34d399;
 }
 
+.model-status {
+  font-size: 12px;
+  color: #a5b0c8;
+}
+
+.model-status.ok {
+  color: #7ee2b8;
+}
+
+.model-status.warn {
+  color: #fbbf24;
+}
+
 .service-status.error span {
   background: #f87171;
 }

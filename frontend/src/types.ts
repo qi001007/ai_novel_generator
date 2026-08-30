@@ -98,6 +98,12 @@ export type Character = {
   expected_end_chapter: number | null;
 };
 
+export type LLMStatus = {
+  provider: string;
+  configured: boolean;
+  models: Record<string, boolean>;
+};
+
 export type PlanningBlueprint = {
   id: number;
   version: number;

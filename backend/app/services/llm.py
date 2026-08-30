@@ -17,6 +17,7 @@ class LLMUnavailableError(LLMError):
 
 @dataclass(frozen=True)
 class LLMSettings:
+    provider: str
     api_base_url: str
     api_key: str | None
     timeout: float
@@ -25,6 +26,7 @@ class LLMSettings:
     @classmethod
     def from_env(cls) -> "LLMSettings":
         return cls(
+            provider=os.getenv("NOVEL_LLM_PROVIDER", "openai_compatible"),
             api_base_url=os.getenv(
                 "NOVEL_LLM_API_BASE_URL",
                 "https://api.openai.com/v1",

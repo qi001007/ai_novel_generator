@@ -5,6 +5,7 @@ from app.routers import (
     characters,
     feedback,
     generation_runs,
+    llm,
     novels,
     planning,
     reviews,
@@ -21,6 +22,7 @@ app.include_router(summaries.router, prefix="/api")
 app.include_router(feedback.router, prefix="/api")
 app.include_router(reviews.router, prefix="/api")
 app.include_router(generation_runs.router, prefix="/api")
+app.include_router(llm.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(characters.router, prefix="/api")
 

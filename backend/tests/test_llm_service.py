@@ -20,6 +20,7 @@ def test_openai_compatible_client_parses_chat_response() -> None:
 
     client = OpenAICompatibleClient(
         LLMSettings(
+            provider="openai_compatible",
             api_base_url="https://llm.test/v1",
             api_key="test-key",
             timeout=1,

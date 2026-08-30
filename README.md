@@ -33,9 +33,11 @@ npm run dev
 
 ## LLM 配置
 
-后端使用 OpenAI-compatible `/chat/completions` 接口。可以在 `backend/.env` 中配置：
+后端使用 OpenAI-compatible `/chat/completions` 接口，所以任何提供这个协议的模型网关都可以接入。
+如果你用的是 OpenCode 或类似套餐，把它的 OpenAI-compatible 地址、API Key 和可用模型名填进去即可：
 
 ```bash
+NOVEL_LLM_PROVIDER=opencode
 NOVEL_LLM_API_BASE_URL=https://api.openai.com/v1
 NOVEL_LLM_API_KEY=your-key
 NOVEL_LLM_DRAFT_MODEL=gpt-4o-mini

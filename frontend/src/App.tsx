@@ -9,6 +9,7 @@ import type {
   Novel,
   Review,
   GenerationRun,
+  LLMStatus,
 } from "./types";
 
 import CharactersPanel from "./components/CharactersPanel";
@@ -32,6 +33,7 @@ export default function App() {
   const [generationRuns, setGenerationRuns] = useState<GenerationRun[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [recordVersion, setRecordVersion] = useState(0);
+  const [llmStatus, setLlmStatus] = useState<LLMStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -44,6 +46,20 @@ export default function App() {
       if (active) setHealth("ok");
     }).catch(() => {
       if (active) setHealth("error");
+    });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    api.get<LLMStatus>("/api/llm/status").then((data) => {
+      if (active) setLlmStatus(data);
+    }).catch(() => {
+      if (active) setLlmStatus(null);
     });
 
     return () => {
@@ -287,6 +303,11 @@ export default function App() {
         <div className={`service-status ${health === "ok" ? "ok" : "error"}`}>
           <span />
           后端 {health === "loading" ? "检查中" : health === "ok" ? "已连接" : "未连接"}
+        </div>
+        <div className={`model-status ${llmStatus?.configured ? "ok" : "warn"}`}>
+          {llmStatus
+            ? `${llmStatus.provider} · ${llmStatus.configured ? "模型已配置" : "模型未配置"}`
+            : "模型状态未知"}
         </div>
       </header>
 
