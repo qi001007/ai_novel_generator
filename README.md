@@ -48,6 +48,8 @@ NOVEL_LLM_TIMEOUT=120
 
 未配置 API Key 时，章节生成会退回模板草稿；AI 自检和事实落库会返回未配置提示。
 
+`backend/.env` 会在后端启动/读取配置时自动加载。接口 `GET /api/llm/status` 只返回供应商、地址和模型配置状态，不会返回密钥。
+
 ## 验证
 
 ```bash

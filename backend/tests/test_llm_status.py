@@ -23,3 +23,26 @@ def test_llm_status_reports_provider_and_model_configuration(
         "review": True,
         "summary": False,
     }
+
+
+def test_llm_status_is_not_configured_without_models(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("NOVEL_LLM_PROVIDER", "opencode")
+    monkeypatch.setenv("NOVEL_LLM_API_BASE_URL", "https://llm.example.com/v1")
+    monkeypatch.setenv("NOVEL_LLM_API_KEY", "test-key")
+    monkeypatch.setenv("NOVEL_LLM_DRAFT_MODEL", "")
+    monkeypatch.setenv("NOVEL_LLM_REVIEW_MODEL", "")
+    monkeypatch.setenv("NOVEL_LLM_SUMMARY_MODEL", "")
+
+    response = client.get("/api/llm/status")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["configured"] is False
+    assert data["models"] == {
+        "draft": False,
+        "review": False,
+        "summary": False,
+    }

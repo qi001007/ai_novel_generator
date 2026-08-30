@@ -9,6 +9,7 @@ dependencies = [
   "sqlmodel==0.0.22",
   "alembic==1.14.0",
   "uvicorn[standard]==0.30.6",
+  "python-dotenv==1.2.3",
 ]
 
 [project.optional-dependencies]

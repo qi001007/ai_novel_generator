@@ -1,14 +1,19 @@
 import os
 import json
 import re
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 import httpx
+from dotenv import load_dotenv
 
 
 class LLMError(RuntimeError):
     pass
+
+
+DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 
 
 class LLMUnavailableError(LLMError):
@@ -25,6 +30,7 @@ class LLMSettings:
 
     @classmethod
     def from_env(cls) -> "LLMSettings":
+        load_dotenv(DOTENV_PATH)
         return cls(
             provider=os.getenv("NOVEL_LLM_PROVIDER", "openai_compatible"),
             api_base_url=os.getenv(
@@ -42,7 +48,11 @@ class LLMSettings:
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.api_key and self.api_base_url)
+        return bool(
+            self.api_key
+            and self.api_base_url
+            and any(model.strip() for model in self.models.values())
+        )
 
 
 @dataclass(frozen=True)
