@@ -215,28 +215,49 @@ export default function App() {
   }
 
   return (
-    <main className="workspace">
-      <aside className="sidebar">
-        <section className="panel">
-          <h1>AI 小说工作台</h1>
-          <p className={`status-text ${health === "ok" ? "status-ok" : "status-error"}`}>
-            后端 {health === "loading" ? "检查中" : health === "ok" ? "正常" : "未连接"}
-          </p>
-          <ul className="item-list">
-            {novels.map((novel) => (
-              <li key={novel.id}>
-                <button
-                  type="button"
-                  className={novel.id === selectedNovelId ? "selected" : ""}
-                  onClick={() => setSelectedNovelId(novel.id)}
-                >
-                  {novel.title}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand">
+          <strong>墨阁</strong>
+          <span>AI 长篇连载工作台</span>
+        </div>
+        <nav className="primary-nav">
+          <button
+            type="button"
+            className={tab === "write" ? "selected" : ""}
+            onClick={() => setTab("write")}
+          >
+            写作
+          </button>
+          <button
+            type="button"
+            className={tab === "plan" ? "selected" : ""}
+            onClick={() => setTab("plan")}
+          >
+            规划
+          </button>
+          <button
+            type="button"
+            className={tab === "feedback" ? "selected" : ""}
+            onClick={() => setTab("feedback")}
+          >
+            反馈
+          </button>
+        </nav>
+        <div className={`service-status ${health === "ok" ? "ok" : "error"}`}>
+          <span />
+          后端 {health === "loading" ? "检查中" : health === "ok" ? "已连接" : "未连接"}
+        </div>
+      </header>
 
+      <main className="workspace">
+        <aside className="sidebar">
+          <section className="panel novel-summary">
+            <h1>{novels.find((item) => item.id === selectedNovelId)?.title ?? "未选择作品"}</h1>
+            <p>
+              {chapters.length} 章 · {briefs.length} 份简报
+            </p>
+          </section>
         <section className="panel">
           <h2>D 层简报</h2>
           <ul className="item-list">
@@ -281,29 +302,6 @@ export default function App() {
       </aside>
 
       <section className="editor">
-        <div className="segmented">
-          <button
-            type="button"
-            className={tab === "write" ? "selected" : ""}
-            onClick={() => setTab("write")}
-          >
-            写作
-          </button>
-          <button
-            type="button"
-            className={tab === "plan" ? "selected" : ""}
-            onClick={() => setTab("plan")}
-          >
-            规划
-          </button>
-          <button
-            type="button"
-            className={tab === "feedback" ? "selected" : ""}
-            onClick={() => setTab("feedback")}
-          >
-            反馈
-          </button>
-        </div>
         {tab === "plan" ? (
           <PlanningPanel novelId={selectedNovelId} />
         ) : tab === "feedback" ? (
@@ -311,7 +309,14 @@ export default function App() {
         ) : selectedChapter ? (
           <>
             <header className="editor-header">
-              <h2>第 {selectedChapter.chapter_number} 章</h2>
+              <div>
+                <h2>
+                  第 {selectedChapter.chapter_number} 章 {selectedChapter.title}
+                </h2>
+                <p className="editor-meta">
+                  D 简报 · 视角 {selectedBrief?.pov || "未设置"} · {selectedChapter.word_count} 字
+                </p>
+              </div>
               <span>{selectedChapter.status}</span>
             </header>
             <textarea
@@ -335,34 +340,6 @@ export default function App() {
                 </ul>
               </section>
             ) : null}
-            <div className="record-grid">
-              <section className="panel">
-                <h2>生成记录</h2>
-                <ul className="record-list">
-                  {generationRuns.map((run) => (
-                    <li key={run.id}>
-                      <strong>{run.model}</strong>
-                      <span>{run.task_type}</span>
-                      <span>
-                        {run.token_input} / {run.token_output}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-              <section className="panel">
-                <h2>审稿记录</h2>
-                <ul className="record-list">
-                  {reviews.map((review) => (
-                    <li key={review.id}>
-                      <strong>{review.reviewer}</strong>
-                      <span>{review.decision}</span>
-                      {review.comments ? <p>{review.comments}</p> : null}
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            </div>
           </>
         ) : (
           <section className="panel empty-state">
@@ -372,10 +349,32 @@ export default function App() {
         )}
       </section>
       <section className="library">
+        <section className="panel">
+          <h2>生成与审稿记录</h2>
+          <ul className="record-list">
+            {generationRuns.map((run) => (
+              <li key={`run-${run.id}`}>
+                <strong>{run.model}</strong>
+                <span>{run.task_type}</span>
+                <span>
+                  {run.token_input} / {run.token_output}
+                </span>
+              </li>
+            ))}
+            {reviews.map((review) => (
+              <li key={`review-${review.id}`}>
+                <strong>{review.reviewer}</strong>
+                <span>{review.decision}</span>
+                {review.comments ? <p>{review.comments}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
         <SettingsPanel novelId={selectedNovelId} />
         <CharactersPanel novelId={selectedNovelId} />
       </section>
       {error ? <p className="status-error global-error">{error}</p> : null}
-    </main>
+      </main>
+    </div>
   );
 }
