@@ -33,6 +33,7 @@ export default function App() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [recordVersion, setRecordVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<WorkspaceTab>("write");
 
@@ -214,6 +215,45 @@ export default function App() {
     }
   }
 
+  async function runAiReview() {
+    if (!selectedNovelId || !selectedChapter) return;
+
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await api.post(
+        `/api/novels/${selectedNovelId}/chapters/${selectedChapter.id}/auto-ai-review`,
+      );
+      await refreshChapters(selectedNovelId);
+      setRecordVersion((version) => version + 1);
+      setNotice("AI 七维自检完成");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "AI 自检失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function extractChapterFacts() {
+    if (!selectedNovelId || !selectedChapter) return;
+
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await api.post(
+        `/api/novels/${selectedNovelId}/chapters/${selectedChapter.id}/auto-summary`,
+      );
+      setRecordVersion((version) => version + 1);
+      setNotice("章摘要与事实已落库");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "事实提取失败");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -326,10 +366,20 @@ export default function App() {
             />
             <div className="toolbar">
               <button type="button" disabled={busy} onClick={() => saveChapter()}>保存</button>
+              <button type="button" disabled={busy} onClick={() => runAiReview()}>AI 自检</button>
               <button type="button" disabled={busy} onClick={() => runMachineCheck()}>机械校验</button>
               <button type="button" disabled={busy} onClick={() => reviewChapter("accept")}>通过终审</button>
               <button type="button" disabled={busy} onClick={() => reviewChapter("reject")}>打回重写</button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || selectedChapter.status !== "final"}
+                onClick={() => extractChapterFacts()}
+              >
+                事实落库
+              </button>
             </div>
+            {notice ? <p className="notice">{notice}</p> : null}
             {machineCheck ? (
               <section className={machineCheck.passed ? "check-result passed" : "check-result failed"}>
                 <strong>{machineCheck.passed ? "校验通过" : "校验未通过"}</strong>

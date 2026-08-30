@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, SQLModel, select
 
 from app.db import get_session
-from app.models import Chapter, ChapterBrief, GenerationRun
+from app.models import ArcPlan, Chapter, ChapterBrief, GenerationRun, PlanningBlueprint
 from app.routers.planning import get_novel_or_404
 from app.services.draft import build_template_draft
+from app.services.llm import LLMClient, LLMError, get_llm_client
+from app.services.prompts import build_draft_user_prompt
 
 
 router = APIRouter(prefix="/novels", tags=["chapters"])
@@ -117,11 +119,13 @@ def generate_chapter_from_brief(
     novel_id: int,
     brief_id: int,
     session: Session = Depends(get_session),
+    llm: LLMClient = Depends(get_llm_client),
 ) -> dict:
     get_novel_or_404(novel_id, session)
     brief = session.get(ChapterBrief, brief_id)
     if brief is None or brief.novel_id != novel_id:
         raise HTTPException(status_code=404, detail="Chapter brief not found")
+    novel = get_novel_or_404(novel_id, session)
 
     existing = session.exec(
         select(Chapter).where(
@@ -132,7 +136,35 @@ def generate_chapter_from_brief(
     if existing is not None:
         raise HTTPException(status_code=409, detail="This chapter already exists")
 
-    content = build_template_draft(brief)
+    blueprint = session.exec(
+        select(PlanningBlueprint)
+        .where(PlanningBlueprint.novel_id == novel_id)
+        .order_by(PlanningBlueprint.version)
+    ).first()
+    arc = session.get(ArcPlan, brief.arc_plan_id) if brief.arc_plan_id else None
+    generation_model = "template-v1"
+    token_input = 0
+    token_output = 0
+
+    if llm.settings.is_configured:
+        try:
+            result = llm.complete(
+                task_type="draft",
+                system=(
+                    "你是中文网文长篇连载作者。严格遵守 A 层约束、C 层剧情弧和 D 层简报，"
+                    "写出完整章节正文，只输出正文。"
+                ),
+                user=build_draft_user_prompt(novel, blueprint, arc, brief),
+            )
+        except LLMError as cause:
+            raise HTTPException(status_code=503, detail=str(cause)) from cause
+        content = result.content
+        generation_model = result.model
+        token_input = result.token_input
+        token_output = result.token_output
+    else:
+        content = build_template_draft(brief)
+
     chapter = Chapter(
         novel_id=novel_id,
         brief_id=brief.id,
@@ -149,9 +181,12 @@ def generate_chapter_from_brief(
         novel_id=novel_id,
         chapter_id=chapter.id,
         task_type="draft",
-        model="template-v1",
+        model=generation_model,
         input_summary=f"ChapterBrief:{brief.id}",
         output=content,
+        token_input=token_input,
+        token_output=token_output,
+        cost_estimate=0.0,
     )
     session.add(generation_run)
     session.commit()

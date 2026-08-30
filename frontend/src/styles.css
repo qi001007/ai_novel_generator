@@ -365,6 +365,12 @@ button:disabled {
   color: var(--danger);
 }
 
+.notice {
+  margin: 0;
+  color: var(--success);
+  font-weight: 600;
+}
+
 .empty-state {
   width: 100%;
 }

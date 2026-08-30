@@ -31,6 +31,21 @@ npm run dev
 
 启动后访问 `http://localhost:5173`。开发环境下 Vite 会把 `/api` 请求代理到后端 `http://localhost:8000`。
 
+## LLM 配置
+
+后端使用 OpenAI-compatible `/chat/completions` 接口。可以在 `backend/.env` 中配置：
+
+```bash
+NOVEL_LLM_API_BASE_URL=https://api.openai.com/v1
+NOVEL_LLM_API_KEY=your-key
+NOVEL_LLM_DRAFT_MODEL=gpt-4o-mini
+NOVEL_LLM_REVIEW_MODEL=gpt-4o-mini
+NOVEL_LLM_SUMMARY_MODEL=gpt-4o-mini
+NOVEL_LLM_TIMEOUT=120
+```
+
+未配置 API Key 时，章节生成会退回模板草稿；AI 自检和事实落库会返回未配置提示。
+
 ## 验证
 
 ```bash
