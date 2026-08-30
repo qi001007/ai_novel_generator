@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, SQLModel
+from sqlmodel import Session, SQLModel, select
 
 from app.db import get_session
 from app.models import Chapter, Review
@@ -86,6 +86,32 @@ def create_ai_review(
     session.commit()
     session.refresh(review)
     return review
+
+
+@router.get(
+    "/{novel_id}/chapters/{chapter_id}/reviews",
+    response_model=list[Review],
+)
+def list_chapter_reviews(
+    novel_id: int,
+    chapter_id: int,
+    session: Session = Depends(get_session),
+) -> list[Review]:
+    get_novel_or_404(novel_id, session)
+    chapter = session.get(Chapter, chapter_id)
+    if chapter is None or chapter.novel_id != novel_id:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    return list(
+        session.exec(
+            select(Review)
+            .where(
+                Review.novel_id == novel_id,
+                Review.chapter_id == chapter_id,
+            )
+            .order_by(Review.created_at)
+        ).all()
+    )
 
 
 @router.post(

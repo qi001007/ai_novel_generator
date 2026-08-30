@@ -21,6 +21,13 @@ class GenerationRunCreate(SQLModel):
     cost_estimate: float = 0.0
 
 
+def get_chapter_or_404(novel_id: int, chapter_id: int, session: Session) -> Chapter:
+    chapter = session.get(Chapter, chapter_id)
+    if chapter is None or chapter.novel_id != novel_id:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+    return chapter
+
+
 @router.get("/{novel_id}/generation-runs", response_model=list[GenerationRun])
 def list_generation_runs(
     novel_id: int,
@@ -31,6 +38,29 @@ def list_generation_runs(
         session.exec(
             select(GenerationRun)
             .where(GenerationRun.novel_id == novel_id)
+            .order_by(GenerationRun.created_at)
+        ).all()
+    )
+
+
+@router.get(
+    "/{novel_id}/chapters/{chapter_id}/generation-runs",
+    response_model=list[GenerationRun],
+)
+def list_chapter_generation_runs(
+    novel_id: int,
+    chapter_id: int,
+    session: Session = Depends(get_session),
+) -> list[GenerationRun]:
+    get_novel_or_404(novel_id, session)
+    get_chapter_or_404(novel_id, chapter_id, session)
+    return list(
+        session.exec(
+            select(GenerationRun)
+            .where(
+                GenerationRun.novel_id == novel_id,
+                GenerationRun.chapter_id == chapter_id,
+            )
             .order_by(GenerationRun.created_at)
         ).all()
     )
