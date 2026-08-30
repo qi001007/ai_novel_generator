@@ -214,6 +214,21 @@ button.primary {
   gap: 8px;
 }
 
+.segmented {
+  display: flex;
+  gap: 8px;
+}
+
+.segmented button.selected {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.level-row {
+  display: flex;
+  gap: 12px;
+}
+
 .global-error {
   margin: 0;
   padding: 0 24px 24px;

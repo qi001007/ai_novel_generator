@@ -13,8 +13,11 @@ import type {
 
 import CharactersPanel from "./components/CharactersPanel";
 import SettingsPanel from "./components/SettingsPanel";
+import PlanningPanel from "./components/PlanningPanel";
+import FeedbackPanel from "./components/FeedbackPanel";
 
 type HealthState = "loading" | "ok" | "error";
+type WorkspaceTab = "write" | "plan" | "feedback";
 
 export default function App() {
   const [health, setHealth] = useState<HealthState>("loading");
@@ -31,6 +34,7 @@ export default function App() {
   const [recordVersion, setRecordVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<WorkspaceTab>("write");
 
   useEffect(() => {
     let active = true;
@@ -277,7 +281,34 @@ export default function App() {
       </aside>
 
       <section className="editor">
-        {selectedChapter ? (
+        <div className="segmented">
+          <button
+            type="button"
+            className={tab === "write" ? "selected" : ""}
+            onClick={() => setTab("write")}
+          >
+            写作
+          </button>
+          <button
+            type="button"
+            className={tab === "plan" ? "selected" : ""}
+            onClick={() => setTab("plan")}
+          >
+            规划
+          </button>
+          <button
+            type="button"
+            className={tab === "feedback" ? "selected" : ""}
+            onClick={() => setTab("feedback")}
+          >
+            反馈
+          </button>
+        </div>
+        {tab === "plan" ? (
+          <PlanningPanel novelId={selectedNovelId} />
+        ) : tab === "feedback" ? (
+          <FeedbackPanel novelId={selectedNovelId} />
+        ) : selectedChapter ? (
           <>
             <header className="editor-header">
               <h2>第 {selectedChapter.chapter_number} 章</h2>

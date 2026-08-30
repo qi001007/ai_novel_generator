@@ -97,3 +97,45 @@ export type Character = {
   expected_start_chapter: number | null;
   expected_end_chapter: number | null;
 };
+
+export type PlanningBlueprint = {
+  id: number;
+  version: number;
+  is_active: boolean;
+  main_line: string;
+  ending: string;
+  core_conflicts: string;
+  themes: string;
+  constraints: string;
+};
+
+export type TocEntry = {
+  id: number;
+  chapter_number: number;
+  title: string;
+  plot_function: string;
+  notes: string;
+  is_active: boolean;
+};
+
+export type ArcPlan = {
+  id: number;
+  title: string;
+  start_chapter: number;
+  end_chapter: number;
+  objective: string;
+  conflict: string;
+  resolution: string;
+  status: string;
+  planned_chapters: Record<string, unknown>;
+};
+
+export type PlotFeedback = {
+  id: number;
+  content: string;
+  impact_levels: string[];
+  suggestions: Record<string, unknown>;
+  status: string;
+  applied_at: string | null;
+  created_at: string;
+};
