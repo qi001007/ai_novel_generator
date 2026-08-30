@@ -75,3 +75,25 @@ export type Review = {
   evidence: Record<string, string[]>;
   created_at: string;
 };
+
+export type Setting = {
+  id: number;
+  category: string;
+  name: string;
+  content: string;
+  current_state: string;
+  is_confirmed: boolean;
+  source_chapter: number | null;
+};
+
+export type Character = {
+  id: number;
+  name: string;
+  level: string;
+  identity: string;
+  goals: string;
+  behavior_constraints: string;
+  current_status: string;
+  expected_start_chapter: number | null;
+  expected_end_chapter: number | null;
+};

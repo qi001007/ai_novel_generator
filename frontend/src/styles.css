@@ -12,7 +12,7 @@ body {
 
 .workspace {
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 300px minmax(0, 1fr) minmax(280px, 360px);
   gap: 24px;
   align-items: start;
   min-height: 100vh;
@@ -152,6 +152,66 @@ button.primary {
 .record-list p {
   margin: 0;
   color: #4b5563;
+}
+
+.library {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.card-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.card-list button {
+  width: 100%;
+  text-align: left;
+}
+
+.card-list button.selected,
+.card-list button:hover {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.card-list span {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.card-list p {
+  margin: 4px 0 0;
+  color: #374151;
+}
+
+.form-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.form-grid input,
+.form-grid textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+
+.form-grid textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.number-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .global-error {

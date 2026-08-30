@@ -11,6 +11,9 @@ import type {
   GenerationRun,
 } from "./types";
 
+import CharactersPanel from "./components/CharactersPanel";
+import SettingsPanel from "./components/SettingsPanel";
+
 type HealthState = "loading" | "ok" | "error";
 
 export default function App() {
@@ -336,6 +339,10 @@ export default function App() {
             <p>还没有章节。</p>
           </section>
         )}
+      </section>
+      <section className="library">
+        <SettingsPanel novelId={selectedNovelId} />
+        <CharactersPanel novelId={selectedNovelId} />
       </section>
       {error ? <p className="status-error global-error">{error}</p> : null}
     </main>
