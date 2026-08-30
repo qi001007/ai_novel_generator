@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useWorkbench } from "../store/workbench";
 
@@ -9,7 +10,7 @@ export default function BookshelfPage() {
   const theme = useWorkbench((state) => state.theme);
   const toggleTheme = useWorkbench((state) => state.toggleTheme);
   const selectNovel = useWorkbench((state) => state.selectNovel);
-  const setView = useWorkbench((state) => state.setView);
+  const navigate = useNavigate();
   const createNovel = useWorkbench((state) => state.createNovel);
 
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -40,7 +41,7 @@ export default function BookshelfPage() {
       });
       setWizardOpen(false);
       await selectNovel(novel.id);
-      setView("workbench");
+      navigate(`/novels/${novel.id}`);
     } finally {
       setBusy(false);
     }
@@ -81,7 +82,7 @@ export default function BookshelfPage() {
                 className="book-card"
                 onClick={async () => {
                   await selectNovel(novel.id);
-                  setView("workbench");
+                  navigate(`/novels/${novel.id}`);
                 }}
               >
                 <div className="book-cover">

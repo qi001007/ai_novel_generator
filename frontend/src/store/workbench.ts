@@ -14,11 +14,9 @@ import type {
 
 export type HealthState = "loading" | "ok" | "error";
 export type WorkspaceTab = "write" | "plan" | "feedback";
-export type AppView = "bookshelf" | "workbench";
 export type ThemeState = "light" | "dark";
 
 type WorkbenchState = {
-  view: AppView;
   tab: WorkspaceTab;
   health: HealthState;
   llmStatus: LLMStatus | null;
@@ -40,7 +38,6 @@ type WorkbenchState = {
   init: () => Promise<void>;
   toggleTheme: () => void;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
-  setView: (view: AppView) => void;
   setTab: (tab: WorkspaceTab) => void;
   selectNovel: (novelId: number) => Promise<void>;
   selectBrief: (briefId: number) => void;
@@ -56,7 +53,6 @@ type WorkbenchState = {
 };
 
 export const useWorkbench = create<WorkbenchState>((set, get) => ({
-  view: "workbench",
   tab: "write",
   health: "loading",
   llmStatus: null,
@@ -116,10 +112,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "加载失败" });
     }
-  },
-
-  setView(view) {
-    set({ view });
   },
 
   setTab(tab) {

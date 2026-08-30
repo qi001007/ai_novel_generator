@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import CharactersPanel from "../components/CharactersPanel";
 import FeedbackPanel from "../components/FeedbackPanel";
@@ -9,6 +10,8 @@ import TreePane from "../components/TreePane";
 import { useWorkbench } from "../store/workbench";
 
 export default function WorkbenchPage() {
+  const navigate = useNavigate();
+  const { novelId: novelIdParam } = useParams();
   const state = useWorkbench();
   const {
     health,
@@ -33,6 +36,13 @@ export default function WorkbenchPage() {
   const selectedBrief = briefs.find((brief) => brief.id === selectedBriefId) ?? null;
 
   useEffect(() => {
+    const novelId = Number(novelIdParam);
+    if (Number.isFinite(novelId) && novelId !== state.selectedNovelId) {
+      state.selectNovel(novelId);
+    }
+  }, [novelIdParam, state.selectedNovelId]);
+
+  useEffect(() => {
     state.loadChapterRecords();
   }, [selectedNovelId, selectedChapterId, state.recordVersion]);
 
@@ -48,7 +58,7 @@ export default function WorkbenchPage() {
           <span>AI 长篇连载工作台</span>
         </div>
         <nav className="primary-nav">
-          <button type="button" onClick={() => state.setView("bookshelf")}>书架</button>
+          <button type="button" onClick={() => navigate("/")}>书架</button>
           <button type="button" className={tab === "write" ? "selected" : ""} onClick={() => state.setTab("write")}>写作</button>
           <button type="button" className={tab === "plan" ? "selected" : ""} onClick={() => state.setTab("plan")}>规划</button>
           <button type="button" className={tab === "feedback" ? "selected" : ""} onClick={() => state.setTab("feedback")}>反馈</button>
