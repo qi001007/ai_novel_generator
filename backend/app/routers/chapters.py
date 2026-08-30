@@ -17,6 +17,14 @@ class ChapterCreate(SQLModel):
     status: str = "draft"
 
 
+class MachineCheckRequest(SQLModel):
+    min_word_count: int = 0
+    max_word_count: int = 0
+    forbidden_words: list[str] = []
+    blacklist: list[str] = []
+    required_facts: list[str] = []
+
+
 @router.get("/{novel_id}/chapters", response_model=list[Chapter])
 def list_chapters(
     novel_id: int,
@@ -57,6 +65,50 @@ def create_chapter(
     session.commit()
     session.refresh(chapter)
     return chapter
+
+
+@router.post("/{novel_id}/chapters/{chapter_id}/machine-check")
+def run_machine_check(
+    novel_id: int,
+    chapter_id: int,
+    payload: MachineCheckRequest,
+    session: Session = Depends(get_session),
+) -> dict:
+    get_novel_or_404(novel_id, session)
+    chapter = session.get(Chapter, chapter_id)
+    if chapter is None or chapter.novel_id != novel_id:
+        raise HTTPException(status_code=404, detail="Chapter not found")
+
+    issues: list[dict[str, str]] = []
+    if payload.min_word_count and chapter.word_count < payload.min_word_count:
+        issues.append(
+            {
+                "type": "word_count",
+                "message": f"字数少于下限 {payload.min_word_count}",
+            }
+        )
+    if payload.max_word_count and chapter.word_count > payload.max_word_count:
+        issues.append(
+            {
+                "type": "word_count",
+                "message": f"字数超过上限 {payload.max_word_count}",
+            }
+        )
+    for word in payload.forbidden_words:
+        if word and word in chapter.content:
+            issues.append({"type": "forbidden_word", "message": f"命中禁用词：{word}"})
+    for phrase in payload.blacklist:
+        if phrase and phrase in chapter.content:
+            issues.append({"type": "blacklist", "message": f"命中黑名单：{phrase}"})
+    for fact in payload.required_facts:
+        if fact and fact not in chapter.content:
+            issues.append({"type": "missing_fact", "message": f"缺少必要事实：{fact}"})
+
+    return {
+        "passed": not issues,
+        "word_count": chapter.word_count,
+        "issues": issues,
+    }
 
 
 @router.get("/{novel_id}/chapters/{chapter_id}", response_model=Chapter)
