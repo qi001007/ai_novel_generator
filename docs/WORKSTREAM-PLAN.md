@@ -18,7 +18,7 @@
 - [x] 调研 Codex / VSCode 交互范式与可复用开源组件（命令面板、树、Diff、编辑器）
 - [x] 调研同类 AI 写作产品 UI（show-me-the-story、goink、SillyTavern 等）
 - [x] 调研结论写入 REQUIREMENTS.md（组件库选型）与 UI-DESIGN.md（交互细节与参考）
-- [ ] Figma 新建设计文件，按 UI 清单逐页生成设计，每页记录链接
+- [ ] Figma 新建设计文件，按 UI 清单逐页生成设计，每页记录链接（部分完成：书架首页完成并验收；工作台三栏骨架 + 顶栏 + 规划树完成；受 Starter 计划 20 次/月 MCP 限额阻塞，剩余：设定库树行、对话流、编辑器细节、人物卡片页）
 - [ ] commit + push
 
 ## C2 架构评审与框架适配（improve-codebase-architecture）
