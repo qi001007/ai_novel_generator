@@ -104,8 +104,18 @@ const layerLabels: Record<Layer, string> = {
   D: "D 单章简报",
 };
 
-export default function PlanningPanel({ novelId }: { novelId: number | null }) {
-  const [layer, setLayer] = useState<Layer>("A");
+export default function PlanningPanel({
+  novelId,
+  initialLayer,
+}: {
+  novelId: number | null;
+  initialLayer?: "A" | "B" | "C" | "D";
+}) {
+  const [layer, setLayer] = useState<Layer>(initialLayer ?? "A");
+
+  useEffect(() => {
+    if (initialLayer) setLayer(initialLayer);
+  }, [initialLayer]);
   const [blueprints, setBlueprints] = useState<PlanningBlueprint[]>([]);
   const [toc, setToc] = useState<TocEntry[]>([]);
   const [arcs, setArcs] = useState<ArcPlan[]>([]);

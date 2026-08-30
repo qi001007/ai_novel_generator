@@ -18,6 +18,7 @@ backend/novel_generator_backend.egg-info/
 
 # Node
 node_modules/
+.npm-cache/
 dist/
 coverage/
 npm-debug.log*

@@ -53,6 +53,20 @@
 - [ ] 版本历史侧栏
 - [ ] 测试 + 构建 + 截图验收 + 推送
 
+## C4a 工作台框架重写（主人裁定：对齐 VSCode / Codex）
+
+- [x] UI-DESIGN.md 升级 v2.1：默认布局（280px 树 + minmax(400px,34%) 对话 + 自适应右栏）、树节点打开规则、人物卡片库页面级视图写入绑定决策
+- [x] WorkbenchPage 重写：48px 顶栏（返回/书名/Ctrl+K 占位/模型状态/设置/主题）+ 三栏工作区 + 24px 状态栏，面板间 1px 分隔、内部滚动
+- [x] TreePane v2：双根折叠树（规划 A/B/C 前缀徽标 + 章节列表 + 设定库），A/B/C → 右栏规划编辑器，D → 编辑器，人物 → 中+右栏合并卡片库
+- [x] ChatPane：Codex 式消息流（用户气泡 / Agent 卡 / 命令卡），斜杠命令 /generate /review /check /summary /save 直连真实后端流水线，运行中 spinner + 秒数，LLM 未配置提示条
+- [x] EditorPane：章节页签（未保存实心点）+ 工具栏（状态徽章/六操作）+ 衬线 17px/1.9 正文（页宽 720）+ 保存状态行（aria-live）+ 机械校验卡 + 生成/审稿记录；Ctrl+S 保存、dirty 时 beforeunload 拦截
+- [x] CharacterLibrary：分级 Tab（全部/主角团/重要配角/小 Boss/龙套）+ 搜索 + 卡片墙（头像色块/级别色带/活跃章节/一句话身份）+ 900px 详情弹层（左档案右字段，保存/两步删除/Esc 关闭）
+- [x] 三道设计检查：ui-ux-pro-max（焦点环规则核对通过）；make-interfaces-feel-better（0.96 按压、tabular-nums、无 transition:all、reduced-motion、图标按钮 40px）；vercel web-guidelines 全量对照并修复（焦点替代、overscroll-behavior、aria-live、beforeunload、占位符 …、autoComplete）
+- [x] 前端测试 5/5 + vite build 通过 + 运行时截图验收（workbench-new.png）
+- [ ] Figma 重绘工作台与人物卡片库两帧（MCP Starter 限额阻塞，额度恢复后按 v2.1 补齐并与实现比对）
+- [ ] 编辑器后续（归入 C4 剩余）：TipTap、Ctrl+F、双栏对照、选区 Diff、审稿抽屉、版本历史
+- [ ] 对话 Agent 后续（归入 C5）：真实 LLM 流式、@引用、Ctrl+K 命令面板
+
 ## C5 Phase 1 对话 Agent
 
 - [ ] 后端对话 Agent 接口（独立模型配置 `NOVEL_LLM_CHAT_MODEL`）
@@ -64,8 +78,8 @@
 
 ## C6 Phase 1 设定库与用量收尾
 
-- [ ] 人物分类标签页 + 搜索 + 卡片墙
-- [ ] 人物详情弹层（活跃章节、弧线、关系）
+- [x] 人物分类标签页 + 搜索 + 卡片墙（C4a 提前完成）
+- [x] 人物详情弹层（活跃章节、档案字段；关系/弧线页签随 C6 继续）
 - [ ] 活跃章节与规划联动展示
 - [ ] Token 用量明细记录（后端）核对
 - [ ] 测试 + 构建 + 截图验收 + 推送

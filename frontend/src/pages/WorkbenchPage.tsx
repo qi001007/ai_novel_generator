@@ -1,39 +1,25 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, Moon, Settings, Sun } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
-import CharactersPanel from "../components/CharactersPanel";
+import CharacterLibrary from "../components/CharacterLibrary";
+import ChatPane from "../components/ChatPane";
+import EditorPane from "../components/EditorPane";
 import FeedbackPanel from "../components/FeedbackPanel";
 import PlanningPanel from "../components/PlanningPanel";
 import SettingsPanel from "../components/SettingsPanel";
-import StatusBadge from "../components/StatusBadge";
-import TreePane from "../components/TreePane";
+import TreePane, { type PlanningLayer } from "../components/TreePane";
 import { useWorkbench } from "../store/workbench";
+
+type RightView = "editor" | "planning" | "feedback" | "settings";
 
 export default function WorkbenchPage() {
   const navigate = useNavigate();
   const { novelId: novelIdParam } = useParams();
   const state = useWorkbench();
-  const {
-    health,
-    llmStatus,
-    novels,
-    selectedNovelId,
-    briefs,
-    selectedBriefId,
-    chapters,
-    selectedChapterId,
-    draftContent,
-    machineCheck,
-    generationRuns,
-    reviews,
-    error,
-    notice,
-    busy,
-    tab,
-  } = state;
-
-  const selectedChapter = chapters.find((chapter) => chapter.id === selectedChapterId) ?? null;
-  const selectedBrief = briefs.find((brief) => brief.id === selectedBriefId) ?? null;
+  const [rightView, setRightView] = useState<RightView>("editor");
+  const [planningLayer, setPlanningLayer] = useState<PlanningLayer>("A");
+  const [charactersOpen, setCharactersOpen] = useState(false);
 
   useEffect(() => {
     const novelId = Number(novelIdParam);
@@ -44,145 +30,106 @@ export default function WorkbenchPage() {
 
   useEffect(() => {
     state.loadChapterRecords();
-  }, [selectedNovelId, selectedChapterId, state.recordVersion]);
+  }, [state.selectedNovelId, state.selectedChapterId, state.recordVersion]);
+
+  const chapter = state.chapters.find((item) => item.id === state.selectedChapterId) ?? null;
 
   useEffect(() => {
-    state.setDraftContent(selectedChapter?.content ?? "");
-  }, [selectedChapter?.id]);
+    state.setDraftContent(chapter?.content ?? "");
+  }, [chapter?.id]);
+
+  const novel = state.novels.find((item) => item.id === state.selectedNovelId);
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">
-          <strong>墨阁</strong>
-          <span>AI 长篇连载工作台</span>
+        <div className="topbar-left">
+          <button type="button" className="icon-button" aria-label="返回书架" onClick={() => navigate("/")}>
+            <ArrowLeft size={16} />
+          </button>
+          <strong className="topbar-title">{novel?.title ?? "未选择作品"}</strong>
         </div>
-        <nav className="primary-nav">
-          <button type="button" onClick={() => navigate("/")}>书架</button>
-          <button type="button" className={tab === "write" ? "selected" : ""} onClick={() => state.setTab("write")}>写作</button>
-          <button type="button" className={tab === "plan" ? "selected" : ""} onClick={() => state.setTab("plan")}>规划</button>
-          <button type="button" className={tab === "feedback" ? "selected" : ""} onClick={() => state.setTab("feedback")}>反馈</button>
-          <button type="button" onClick={() => state.toggleTheme()}>{state.theme === "dark" ? "浅色" : "深色"}</button>
-        </nav>
-        <div className={`service-status ${health === "ok" ? "ok" : "error"}`}>
-          <span />
-          后端 {health === "loading" ? "检查中" : health === "ok" ? "已连接" : "未连接"}
+        <div className="topbar-center" aria-hidden="true">
+          <kbd>Ctrl</kbd>+<kbd>K</kbd> 命令面板（C5 接入）
         </div>
-        <div className={`model-status ${llmStatus?.configured ? "ok" : "warn"}`}>
-          {llmStatus
-            ? `${llmStatus.provider} · ${llmStatus.configured ? "模型已配置" : "模型未配置"}`
-            : "模型状态未知"}
+        <div className="topbar-right">
+          <span className={`model-chip ${state.llmStatus?.configured ? "ok" : "warn"}`}>
+            <i aria-hidden="true" />
+            {state.llmStatus
+              ? `${state.llmStatus.provider} · ${state.llmStatus.configured ? "模型已配置" : "模型未配置"}`
+              : "模型状态未知"}
+          </span>
+          <button
+            type="button"
+            className={`icon-button ${rightView === "settings" ? "active" : ""}`}
+            aria-label="设置"
+            onClick={() => {
+              setCharactersOpen(false);
+              setRightView(rightView === "settings" ? "editor" : "settings");
+            }}
+          >
+            <Settings size={16} />
+          </button>
+          <button type="button" className="icon-button" aria-label="切换主题" onClick={() => state.toggleTheme()}>
+            {state.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
         </div>
       </header>
 
-      <main className="workspace">
-        <aside className="sidebar">
-          <section className="panel novel-summary">
-            <h1>{novels.find((item) => item.id === selectedNovelId)?.title ?? "未选择作品"}</h1>
-            <p>{chapters.length} 章 · {briefs.length} 份简报</p>
-          </section>
-          <section className="panel">
-            <TreePane
-              chapters={chapters}
-              selectedChapterId={selectedChapterId}
-              onSelectChapter={(chapterId) => state.selectChapter(chapterId)}
-            />
-            <button type="button" className="primary" disabled={busy || !selectedBrief} onClick={() => state.generateDraft()}>
-              生成草稿
-            </button>
-          </section>
+      <main className={`workspace ${charactersOpen ? "library-open" : ""}`}>
+        <aside className="sidebar" aria-label="结构栏">
+          <TreePane
+            chapters={state.chapters}
+            selectedChapterId={state.selectedChapterId}
+            activePlanningLayer={rightView === "planning" ? planningLayer : null}
+            charactersOpen={charactersOpen}
+            feedbackOpen={rightView === "feedback"}
+            onOpenPlanning={(layer) => {
+              setPlanningLayer(layer);
+              setCharactersOpen(false);
+              setRightView("planning");
+            }}
+            onSelectChapter={(chapterId) => {
+              setCharactersOpen(false);
+              setRightView("editor");
+              state.selectChapter(chapterId);
+            }}
+            onOpenCharacters={() => setCharactersOpen(true)}
+            onOpenFeedback={() => {
+              setCharactersOpen(false);
+              setRightView("feedback");
+            }}
+          />
         </aside>
 
-        <section className="editor">
-          {tab === "plan" ? (
-            <PlanningPanel novelId={selectedNovelId} />
-          ) : tab === "feedback" ? (
-            <FeedbackPanel novelId={selectedNovelId} />
-          ) : selectedChapter ? (
-            <>
-              <header className="editor-header">
-                <div>
-                  <h2>第 {selectedChapter.chapter_number} 章 {selectedChapter.title}</h2>
-                  <p className="editor-meta">
-                    D 简报 · 视角 {selectedBrief?.pov || "未设置"} · {selectedChapter.word_count} 字
-                  </p>
-                </div>
-                <span><StatusBadge status={selectedChapter.status} /></span>
-              </header>
-              <textarea
-                value={draftContent}
-                onChange={(event) => state.setDraftContent(event.target.value)}
-                aria-label="章节正文"
-              />
-              <div className="toolbar">
-                <button type="button" disabled={busy} onClick={() => state.saveChapter()}>保存</button>
-                <button type="button" disabled={busy} onClick={() => state.runAiReview()}>AI 自检</button>
-                <button type="button" disabled={busy} onClick={() => state.runMachineCheck()}>机械校验</button>
-                <button type="button" disabled={busy} onClick={() => state.reviewChapter("accept")}>通过终审</button>
-                <button type="button" disabled={busy} onClick={() => state.reviewChapter("reject")}>打回重写</button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={busy || selectedChapter.status !== "final"}
-                  onClick={() => state.extractChapterFacts()}
-                >
-                  事实落库
-                </button>
-              </div>
-              {notice ? <p className="notice">{notice}</p> : null}
-              {machineCheck ? (
-                <section className={machineCheck.passed ? "check-result passed" : "check-result failed"}>
-                  <strong>{machineCheck.passed ? "校验通过" : "校验未通过"}</strong>
-                  <ul>
-                    {machineCheck.issues.map((issue, index) => (
-                      <li key={`${issue.type}-${index}`}>{issue.message}</li>
-                    ))}
-                  </ul>
-                </section>
-              ) : null}
-            </>
-          ) : (
-            <section className="panel empty-state">
-              <h2>章节编辑</h2>
-              <p>还没有章节。</p>
-            </section>
-          )}
-        </section>
-
-        <section className="library">
-          <section className="panel">
-            <h2>生成与审稿记录</h2>
-            <ul className="record-list">
-              {generationRuns.map((run) => (
-                <li key={`run-${run.id}`}>
-                  <strong>{run.model}</strong>
-                  <span>{run.task_type}</span>
-                  <span>{run.token_input} / {run.token_output}</span>
-                </li>
-              ))}
-              {reviews.map((review) => (
-                <li key={`review-${review.id}`}>
-                  <strong>{review.reviewer}</strong>
-                  <span>{review.decision}</span>
-                  {review.comments ? <p>{review.comments}</p> : null}
-                </li>
-              ))}
-            </ul>
-          </section>
-          <SettingsPanel novelId={selectedNovelId} />
-          <CharactersPanel novelId={selectedNovelId} />
-        </section>
+        {charactersOpen ? (
+          <CharacterLibrary novelId={state.selectedNovelId} />
+        ) : (
+          <>
+            <ChatPane />
+            <div className="right-column">
+              {rightView === "planning" && (
+                <PlanningPanel novelId={state.selectedNovelId} initialLayer={planningLayer} />
+              )}
+              {rightView === "feedback" && <FeedbackPanel novelId={state.selectedNovelId} />}
+              {rightView === "settings" && <SettingsPanel novelId={state.selectedNovelId} />}
+              {rightView === "editor" && <EditorPane />}
+            </div>
+          </>
+        )}
       </main>
+
       <footer className="statusbar">
         <span>
-          <span className={`dot ${health === "ok" ? "ok" : ""}`} />
-          后端 {health === "ok" ? "已连接" : "未连接"}
+          <i className={`dot ${state.health === "ok" ? "ok" : ""}`} aria-hidden="true" />
+          后端 {state.health === "ok" ? "已连接" : state.health === "loading" ? "检查中" : "未连接"}
         </span>
-        <span>
-          {selectedChapter ? `本章 ${selectedChapter.word_count} 字` : "未选章节"}
+        <span>{chapter ? `第 ${chapter.chapter_number} 章 ${chapter.title || "未命名"}` : "未选章节"}</span>
+        <span className="tabular">
+          {chapter ? `${chapter.word_count} 字` : ""}
         </span>
       </footer>
-      {error ? <p className="status-error global-error">{error}</p> : null}
+      {state.error && !chapter ? <p className="status-error global-error">{state.error}</p> : null}
     </div>
   );
 }

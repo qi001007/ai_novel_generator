@@ -55,7 +55,7 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "第 1 章" })).toBeTruthy();
+      expect(screen.getByRole("heading", { name: "第 1 章 未命名" })).toBeTruthy();
     });
     const textarea = screen.getByLabelText("章节正文") as HTMLTextAreaElement;
     expect(textarea.value).toBe("旧正文。");
