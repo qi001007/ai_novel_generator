@@ -9,6 +9,14 @@ from app.models import (
     PlanningBlueprint,
     TocEntry,
 )
+from app.services.planning import (
+    PlanningDomainError,
+    apply_payload,
+    ensure_chapter_number_unique,
+    get_owned_or_error,
+    save,
+    validate_arc_range,
+)
 
 
 router = APIRouter(prefix="/novels", tags=["planning"])
@@ -63,9 +71,8 @@ def get_novel_or_404(novel_id: int, session: Session) -> Novel:
     return novel
 
 
-def apply_payload(instance, payload: SQLModel) -> None:
-    for field, value in payload.model_dump().items():
-        setattr(instance, field, value)
+def _to_http(cause: PlanningDomainError) -> HTTPException:
+    return HTTPException(status_code=cause.status_code, detail=cause.detail)
 
 
 @router.get("/{novel_id}/planning/blueprints", response_model=list[PlanningBlueprint])
@@ -94,11 +101,7 @@ def create_blueprint(
     session: Session = Depends(get_session),
 ) -> PlanningBlueprint:
     get_novel_or_404(novel_id, session)
-    blueprint = PlanningBlueprint(novel_id=novel_id, **payload.model_dump())
-    session.add(blueprint)
-    session.commit()
-    session.refresh(blueprint)
-    return blueprint
+    return save(session, PlanningBlueprint(novel_id=novel_id, **payload.model_dump()))
 
 
 @router.put(
@@ -112,15 +115,14 @@ def update_blueprint(
     session: Session = Depends(get_session),
 ) -> PlanningBlueprint:
     get_novel_or_404(novel_id, session)
-    blueprint = session.get(PlanningBlueprint, blueprint_id)
-    if blueprint is None or blueprint.novel_id != novel_id:
-        raise HTTPException(status_code=404, detail="Planning blueprint not found")
-
-    apply_payload(blueprint, payload)
-    session.add(blueprint)
-    session.commit()
-    session.refresh(blueprint)
-    return blueprint
+    try:
+        blueprint = get_owned_or_error(
+            session, PlanningBlueprint, novel_id, blueprint_id, "Planning blueprint"
+        )
+        apply_payload(blueprint, payload)
+        return save(session, blueprint)
+    except PlanningDomainError as cause:
+        raise _to_http(cause) from cause
 
 
 @router.get("/{novel_id}/planning/toc", response_model=list[TocEntry])
@@ -145,20 +147,11 @@ def create_toc_entry(
     session: Session = Depends(get_session),
 ) -> TocEntry:
     get_novel_or_404(novel_id, session)
-    existing = session.exec(
-        select(TocEntry).where(
-            TocEntry.novel_id == novel_id,
-            TocEntry.chapter_number == payload.chapter_number,
-        )
-    ).first()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="This TOC chapter already exists")
-
-    toc_entry = TocEntry(novel_id=novel_id, **payload.model_dump())
-    session.add(toc_entry)
-    session.commit()
-    session.refresh(toc_entry)
-    return toc_entry
+    try:
+        ensure_chapter_number_unique(session, TocEntry, novel_id, payload.chapter_number, "TOC chapter")
+        return save(session, TocEntry(novel_id=novel_id, **payload.model_dump()))
+    except PlanningDomainError as cause:
+        raise _to_http(cause) from cause
 
 
 @router.put("/{novel_id}/planning/toc/{toc_entry_id}", response_model=TocEntry)
@@ -169,25 +162,15 @@ def update_toc_entry(
     session: Session = Depends(get_session),
 ) -> TocEntry:
     get_novel_or_404(novel_id, session)
-    toc_entry = session.get(TocEntry, toc_entry_id)
-    if toc_entry is None or toc_entry.novel_id != novel_id:
-        raise HTTPException(status_code=404, detail="TOC entry not found")
-
-    duplicate = session.exec(
-        select(TocEntry).where(
-            TocEntry.novel_id == novel_id,
-            TocEntry.chapter_number == payload.chapter_number,
-            TocEntry.id != toc_entry_id,
+    try:
+        toc_entry = get_owned_or_error(session, TocEntry, novel_id, toc_entry_id, "TOC entry")
+        ensure_chapter_number_unique(
+            session, TocEntry, novel_id, payload.chapter_number, "TOC chapter", exclude_id=toc_entry_id
         )
-    ).first()
-    if duplicate is not None:
-        raise HTTPException(status_code=409, detail="This TOC chapter already exists")
-
-    apply_payload(toc_entry, payload)
-    session.add(toc_entry)
-    session.commit()
-    session.refresh(toc_entry)
-    return toc_entry
+        apply_payload(toc_entry, payload)
+        return save(session, toc_entry)
+    except PlanningDomainError as cause:
+        raise _to_http(cause) from cause
 
 
 @router.get("/{novel_id}/planning/arcs", response_model=list[ArcPlan])
@@ -212,14 +195,11 @@ def create_arc(
     session: Session = Depends(get_session),
 ) -> ArcPlan:
     get_novel_or_404(novel_id, session)
-    if payload.end_chapter < payload.start_chapter:
-        raise HTTPException(status_code=422, detail="Arc end chapter is before start chapter")
-
-    arc = ArcPlan(novel_id=novel_id, **payload.model_dump())
-    session.add(arc)
-    session.commit()
-    session.refresh(arc)
-    return arc
+    try:
+        validate_arc_range(payload.start_chapter, payload.end_chapter)
+        return save(session, ArcPlan(novel_id=novel_id, **payload.model_dump()))
+    except PlanningDomainError as cause:
+        raise _to_http(cause) from cause
 
 
 @router.put("/{novel_id}/planning/arcs/{arc_id}", response_model=ArcPlan)
@@ -230,17 +210,13 @@ def update_arc(
     session: Session = Depends(get_session),
 ) -> ArcPlan:
     get_novel_or_404(novel_id, session)
-    arc = session.get(ArcPlan, arc_id)
-    if arc is None or arc.novel_id != novel_id:
-        raise HTTPException(status_code=404, detail="Arc plan not found")
-    if payload.end_chapter < payload.start_chapter:
-        raise HTTPException(status_code=422, detail="Arc end chapter is before start chapter")
-
-    apply_payload(arc, payload)
-    session.add(arc)
-    session.commit()
-    session.refresh(arc)
-    return arc
+    try:
+        arc = get_owned_or_error(session, ArcPlan, novel_id, arc_id, "Arc plan")
+        validate_arc_range(payload.start_chapter, payload.end_chapter)
+        apply_payload(arc, payload)
+        return save(session, arc)
+    except PlanningDomainError as cause:
+        raise _to_http(cause) from cause
 
 
 @router.get("/{novel_id}/planning/briefs", response_model=list[ChapterBrief])
@@ -265,20 +241,13 @@ def create_brief(
     session: Session = Depends(get_session),
 ) -> ChapterBrief:
     get_novel_or_404(novel_id, session)
-    existing = session.exec(
-        select(ChapterBrief).where(
-            ChapterBrief.novel_id == novel_id,
-            ChapterBrief.chapter_number == payload.chapter_number,
+    try:
+        ensure_chapter_number_unique(
+            session, ChapterBrief, novel_id, payload.chapter_number, "chapter brief"
         )
-    ).first()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="This chapter brief already exists")
-
-    brief = ChapterBrief(novel_id=novel_id, **payload.model_dump())
-    session.add(brief)
-    session.commit()
-    session.refresh(brief)
-    return brief
+        return save(session, ChapterBrief(novel_id=novel_id, **payload.model_dump()))
+    except PlanningDomainError as cause:
+        raise _to_http(cause) from cause
 
 
 @router.put("/{novel_id}/planning/briefs/{brief_id}", response_model=ChapterBrief)
@@ -289,22 +258,12 @@ def update_brief(
     session: Session = Depends(get_session),
 ) -> ChapterBrief:
     get_novel_or_404(novel_id, session)
-    brief = session.get(ChapterBrief, brief_id)
-    if brief is None or brief.novel_id != novel_id:
-        raise HTTPException(status_code=404, detail="Chapter brief not found")
-
-    duplicate = session.exec(
-        select(ChapterBrief).where(
-            ChapterBrief.novel_id == novel_id,
-            ChapterBrief.chapter_number == payload.chapter_number,
-            ChapterBrief.id != brief_id,
+    try:
+        brief = get_owned_or_error(session, ChapterBrief, novel_id, brief_id, "Chapter brief")
+        ensure_chapter_number_unique(
+            session, ChapterBrief, novel_id, payload.chapter_number, "chapter brief", exclude_id=brief_id
         )
-    ).first()
-    if duplicate is not None:
-        raise HTTPException(status_code=409, detail="This chapter brief already exists")
-
-    apply_payload(brief, payload)
-    session.add(brief)
-    session.commit()
-    session.refresh(brief)
-    return brief
+        apply_payload(brief, payload)
+        return save(session, brief)
+    except PlanningDomainError as cause:
+        raise _to_http(cause) from cause
