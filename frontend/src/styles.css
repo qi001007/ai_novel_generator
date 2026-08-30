@@ -10,28 +10,143 @@ body {
   color: #111827;
 }
 
-.page {
+.workspace {
   display: grid;
-  place-items: center;
+  grid-template-columns: 300px 1fr;
+  gap: 24px;
+  align-items: start;
   min-height: 100vh;
   padding: 24px;
 }
 
 .panel {
-  width: min(560px, 100%);
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
-  padding: 32px;
+  padding: 16px;
 }
 
 h1 {
-  font-size: 24px;
+  font-size: 20px;
+  margin: 0 0 8px;
+}
+
+.sidebar {
+  display: grid;
+  gap: 16px;
+}
+
+.item-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.item-list button {
+  width: 100%;
+  text-align: left;
+}
+
+.item-list button.selected,
+.item-list button:hover {
+  border-color: #2563eb;
+  color: #1d4ed8;
+}
+
+.editor {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.editor-header h2 {
+  margin: 0;
+}
+
+.editor textarea {
+  width: 100%;
+  min-height: 520px;
+  padding: 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+button {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: white;
+  color: #111827;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button.primary {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: white;
+}
+
+.check-result {
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.check-result.passed {
+  border-color: #047857;
+  color: #047857;
+}
+
+.check-result.failed {
+  border-color: #b91c1c;
+  color: #b91c1c;
+}
+
+.check-result ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.global-error {
+  margin: 0;
+  padding: 0 24px 24px;
+}
+
+.status-text {
   margin: 0 0 12px;
 }
 
-p {
-  margin: 8px 0;
+.status-ok {
+  color: #047857;
+}
+
+.status-error {
+  color: #b91c1c;
+}
+
+.empty-state {
+  width: 100%;
 }
 
 .status-ok {
