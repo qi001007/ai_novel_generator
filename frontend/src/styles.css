@@ -1,21 +1,40 @@
 :root {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #f8f8f7;
   --surface: #ffffff;
-  --surface-muted: #f7f8fb;
-  --border: #e7eaf1;
-  --border-strong: #d9deea;
-  --ink: #141824;
-  --ink-muted: #6b7280;
-  --ink-soft: #8b93a5;
-  --primary: #2f63eb;
-  --primary-strong: #1d4ed8;
-  --success: #047857;
-  --danger: #b91c1c;
-  --radius-lg: 20px;
-  --radius-md: 14px;
-  --radius-sm: 10px;
-  font-family: Inter, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --surface-muted: #f1f1ef;
+  --border: #e4e4e1;
+  --border-strong: #d6d6d2;
+  --ink: #1c1b1a;
+  --ink-muted: #73716c;
+  --ink-soft: #9d9b96;
+  --primary: #c2492f;
+  --primary-strong: #a83a24;
+  --success: #2f7d46;
+  --warning: #a8811f;
+  --danger: #dc2626;
+  --radius-lg: 10px;
+  --radius-md: 8px;
+  --radius-sm: 6px;
+  font-family: "Noto Sans SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #131314;
+  --surface: #1c1c1e;
+  --surface-muted: #26262a;
+  --border: #313134;
+  --border-strong: #3e3e42;
+  --ink: #ecebe9;
+  --ink-muted: #9d9b96;
+  --ink-soft: #6e6c68;
+  --primary: #e06a4e;
+  --primary-strong: #e97f65;
+  --success: #5cb176;
+  --warning: #c9a227;
+  --danger: #f87171;
 }
 
 * {
@@ -42,8 +61,9 @@ body {
   align-items: center;
   gap: 32px;
   padding: 0 32px;
-  background: #141824;
-  color: white;
+  background: var(--surface);
+  color: var(--ink);
+  border-bottom: 1px solid var(--border);
 }
 
 .brand {
@@ -58,7 +78,7 @@ body {
 
 .brand span {
   font-size: 12px;
-  color: #a5b0c8;
+  color: var(--ink-muted);
 }
 
 .primary-nav {
@@ -72,7 +92,7 @@ body {
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: #bfcbdF;
+  color: var(--ink-muted);
   font-weight: 600;
 }
 
@@ -297,6 +317,128 @@ button.primary:hover:not(:disabled) {
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.bookshelf-main {
+  width: min(1280px, 100% - 48px);
+  margin: 0 auto;
+  padding: 40px 0 64px;
+}
+
+.bookshelf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.bookshelf-header h1 {
+  font-size: 22px;
+  font-weight: 500;
+  margin: 0;
+}
+
+.bookshelf-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 24px;
+}
+
+.book-card {
+  position: relative;
+  display: grid;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.book-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+}
+
+.book-cover {
+  height: 150px;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+}
+
+.book-cover span {
+  font-family: "Noto Serif SC", serif;
+  font-size: 52px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.book-card-body {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px 16px;
+}
+
+.book-card-body h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.book-card-body p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  background: var(--surface-muted);
+  color: var(--ink-muted);
+}
+
+.badge.success {
+  background: color-mix(in srgb, var(--success) 14%, var(--surface));
+  color: var(--success);
+}
+
+.badge.warning {
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface));
+  color: var(--warning);
+}
+
+.badge.filled {
+  background: var(--success);
+  color: var(--surface);
+}
+
+.wizard-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.4);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+}
+
+.wizard {
+  width: min(560px, 100% - 32px);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.12);
+  padding: 24px;
+  display: grid;
+  gap: 16px;
 }
 
 .check-result {

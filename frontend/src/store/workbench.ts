@@ -15,6 +15,7 @@ import type {
 export type HealthState = "loading" | "ok" | "error";
 export type WorkspaceTab = "write" | "plan" | "feedback";
 export type AppView = "bookshelf" | "workbench";
+export type ThemeState = "light" | "dark";
 
 type WorkbenchState = {
   view: AppView;
@@ -35,7 +36,10 @@ type WorkbenchState = {
   error: string | null;
   notice: string | null;
   busy: boolean;
+  theme: ThemeState;
   init: () => Promise<void>;
+  toggleTheme: () => void;
+  createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
   setView: (view: AppView) => void;
   setTab: (tab: WorkspaceTab) => void;
   selectNovel: (novelId: number) => Promise<void>;
@@ -70,8 +74,29 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   error: null,
   notice: null,
   busy: false,
+  theme: ((): ThemeState => {
+    const stored = localStorage.getItem("theme");
+    if (stored === "light" || stored === "dark") return stored;
+    return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "dark"
+      : "light";
+  })(),
+
+  toggleTheme() {
+    const theme: ThemeState = get().theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem("theme", theme);
+    set({ theme });
+  },
+
+  async createNovel(payload) {
+    const novel = await api.post<Novel>("/api/novels", payload);
+    set({ novels: [...get().novels, novel] });
+    return novel;
+  },
 
   async init() {
+    document.documentElement.dataset.theme = get().theme;
     const state = get();
     try {
       await api.get<{ status: string }>("/api/health");

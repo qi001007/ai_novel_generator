@@ -4,6 +4,7 @@ import CharactersPanel from "../components/CharactersPanel";
 import FeedbackPanel from "../components/FeedbackPanel";
 import PlanningPanel from "../components/PlanningPanel";
 import SettingsPanel from "../components/SettingsPanel";
+import StatusBadge from "../components/StatusBadge";
 import { useWorkbench } from "../store/workbench";
 
 export default function WorkbenchPage() {
@@ -50,6 +51,7 @@ export default function WorkbenchPage() {
           <button type="button" className={tab === "write" ? "selected" : ""} onClick={() => state.setTab("write")}>写作</button>
           <button type="button" className={tab === "plan" ? "selected" : ""} onClick={() => state.setTab("plan")}>规划</button>
           <button type="button" className={tab === "feedback" ? "selected" : ""} onClick={() => state.setTab("feedback")}>反馈</button>
+          <button type="button" onClick={() => state.toggleTheme()}>{state.theme === "dark" ? "浅色" : "深色"}</button>
         </nav>
         <div className={`service-status ${health === "ok" ? "ok" : "error"}`}>
           <span />
@@ -97,7 +99,7 @@ export default function WorkbenchPage() {
                     className={chapter.id === selectedChapterId ? "selected" : ""}
                     onClick={() => state.selectChapter(chapter.id)}
                   >
-                    第 {chapter.chapter_number} 章 {chapter.status}
+                    第 {chapter.chapter_number} 章 <StatusBadge status={chapter.status} />
                   </button>
                 </li>
               ))}
@@ -119,7 +121,7 @@ export default function WorkbenchPage() {
                     D 简报 · 视角 {selectedBrief?.pov || "未设置"} · {selectedChapter.word_count} 字
                   </p>
                 </div>
-                <span>{selectedChapter.status}</span>
+                <span><StatusBadge status={selectedChapter.status} /></span>
               </header>
               <textarea
                 value={draftContent}
