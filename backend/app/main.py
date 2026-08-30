@@ -2,11 +2,13 @@ from fastapi import FastAPI
 
 from app.routers import (
     chapters,
+    characters,
     feedback,
     generation_runs,
     novels,
     planning,
     reviews,
+    settings,
     summaries,
 )
 
@@ -19,6 +21,8 @@ app.include_router(summaries.router, prefix="/api")
 app.include_router(feedback.router, prefix="/api")
 app.include_router(reviews.router, prefix="/api")
 app.include_router(generation_runs.router, prefix="/api")
+app.include_router(settings.router, prefix="/api")
+app.include_router(characters.router, prefix="/api")
 
 
 @app.get("/api/health")
