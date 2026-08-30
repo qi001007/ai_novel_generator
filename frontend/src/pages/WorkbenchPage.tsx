@@ -173,6 +173,15 @@ export default function WorkbenchPage() {
           <CharactersPanel novelId={selectedNovelId} />
         </section>
       </main>
+      <footer className="statusbar">
+        <span>
+          <span className={`dot ${health === "ok" ? "ok" : ""}`} />
+          后端 {health === "ok" ? "已连接" : "未连接"}
+        </span>
+        <span>
+          {selectedChapter ? `本章 ${selectedChapter.word_count} 字` : "未选章节"}
+        </span>
+      </footer>
       {error ? <p className="status-error global-error">{error}</p> : null}
     </div>
   );

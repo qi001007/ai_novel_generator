@@ -49,7 +49,7 @@ body {
 }
 
 .app-shell {
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr;
 }
@@ -138,9 +138,16 @@ body {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr) minmax(320px, 380px);
   gap: 24px;
-  align-items: start;
   padding: 24px 32px 32px;
-  min-height: calc(100vh - 72px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace > .sidebar,
+.workspace > .editor,
+.workspace > .library {
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .panel {
@@ -488,6 +495,31 @@ button:disabled {
 .tree-row.selected {
   background: color-mix(in srgb, var(--primary) 12%, var(--surface));
   box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--ink-muted);
+}
+
+.statusbar .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--danger);
+}
+
+.statusbar .dot.ok {
+  background: var(--success);
 }
 
 .check-result {
