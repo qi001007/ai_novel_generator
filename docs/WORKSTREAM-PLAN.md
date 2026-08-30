@@ -30,7 +30,8 @@
 - [x] 主人挑选候选（选了候选 1 前端拆层）
 - [x] 实施选定重构第一阶段：zustand store（store/workbench.ts 承载全部状态与动作）+ pages/（BookshelfPage、WorkbenchPage）+ App.tsx 瘦身为视图开关；前端测试 5/5 与构建通过
 - [x] 后端 service 层重构第一阶段：chapters 域业务逻辑沉入 services/chapters.py（机械校验纯函数 + 生成流水线 + 章节重复校验），路由瘦身为参数解析与错误映射；后端 pytest 37/37
-- [ ] 后端 service 层扩展到 planning / reviews 域（下轮对话）
+- [x] 后端 service 层扩展到 reviews 域：七维校验收敛为单一 validate_ai_review_payload（消除两处重复），auto_review_chapter / record_final_review / list_reviews 全部入 service；后端 pytest 37/37
+- [ ] 后端 service 层扩展到 planning 域（下一场对话）
 
 ## C3 Phase 1 骨架：路由 + 书架首页 + 工作台三栏
 
