@@ -6,12 +6,14 @@ import CharacterLibrary from "../components/CharacterLibrary";
 import ChatPane from "../components/ChatPane";
 import EditorPane from "../components/EditorPane";
 import FeedbackPanel from "../components/FeedbackPanel";
+import ForeshadowWall from "../components/ForeshadowWall";
 import PlanningPanel from "../components/PlanningPanel";
 import SettingsPanel from "../components/SettingsPanel";
 import TreePane, { type PlanningLayer } from "../components/TreePane";
+import WorldMapPanel from "../components/WorldMapPanel";
 import { useWorkbench } from "../store/workbench";
 
-type RightView = "editor" | "planning" | "feedback" | "settings";
+type RightView = "editor" | "planning" | "feedback" | "settings" | "worldmap" | "foreshadow";
 
 export default function WorkbenchPage() {
   const navigate = useNavigate();
@@ -99,6 +101,16 @@ export default function WorkbenchPage() {
               setCharactersOpen(false);
               setRightView("feedback");
             }}
+            onOpenWorldMap={() => {
+              setCharactersOpen(false);
+              setRightView("worldmap");
+            }}
+            onOpenForeshadow={() => {
+              setCharactersOpen(false);
+              setRightView("foreshadow");
+            }}
+            worldMapOpen={rightView === "worldmap"}
+            foreshadowOpen={rightView === "foreshadow"}
           />
         </aside>
 
@@ -113,6 +125,8 @@ export default function WorkbenchPage() {
               )}
               {rightView === "feedback" && <FeedbackPanel novelId={state.selectedNovelId} />}
               {rightView === "settings" && <SettingsPanel novelId={state.selectedNovelId} />}
+              {rightView === "worldmap" && <WorldMapPanel novelId={state.selectedNovelId} />}
+              {rightView === "foreshadow" && <ForeshadowWall novelId={state.selectedNovelId} />}
               {rightView === "editor" && <EditorPane />}
             </div>
           </>

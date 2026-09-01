@@ -1415,6 +1415,59 @@ select:focus-visible {
 
 /* ---------- 反馈时间线 ---------- */
 
+.page-panel {
+  display: grid;
+  gap: 20px;
+  align-content: start;
+  height: 100%;
+  padding: 24px;
+  overflow-y: auto;
+  background: var(--bg);
+}
+
+.page-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.page-panel-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.page-panel-header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.page-panel-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  min-height: 300px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-2);
+  text-align: center;
+}
+
+.page-panel-empty h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text-1);
+}
+
+.page-panel-empty p {
+  margin: 0;
+  font-size: 13px;
+  max-width: 280px;
+}
+
 .feedback-header {
   display: flex;
   align-items: center;

@@ -16,6 +16,10 @@ type TreePaneProps = {
   onSelectChapter: (chapterId: number) => void;
   onOpenCharacters: () => void;
   onOpenFeedback: () => void;
+  onOpenWorldMap: () => void;
+  onOpenForeshadow: () => void;
+  worldMapOpen: boolean;
+  foreshadowOpen: boolean;
 };
 
 const planningNodes: { layer: PlanningLayer; label: string; hint: string }[] = [
@@ -34,6 +38,10 @@ export default function TreePane({
   onSelectChapter,
   onOpenCharacters,
   onOpenFeedback,
+  onOpenWorldMap,
+  onOpenForeshadow,
+  worldMapOpen,
+  foreshadowOpen,
 }: TreePaneProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
@@ -110,12 +118,20 @@ export default function TreePane({
           >
             反馈记录
           </button>
-          <div className="tree-row static" title="P2 排期">
+          <button
+            type="button"
+            className={`tree-row ${worldMapOpen ? "selected" : ""}`}
+            onClick={onOpenWorldMap}
+          >
             世界观 / 地图
-          </div>
-          <div className="tree-row static" title="P2 排期">
+          </button>
+          <button
+            type="button"
+            className={`tree-row ${foreshadowOpen ? "selected" : ""}`}
+            onClick={onOpenForeshadow}
+          >
             伏笔
-          </div>
+          </button>
         </div>
       )}
     </nav>
