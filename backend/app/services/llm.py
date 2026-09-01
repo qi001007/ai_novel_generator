@@ -43,6 +43,7 @@ class LLMSettings:
                 "draft": os.getenv("NOVEL_LLM_DRAFT_MODEL", ""),
                 "review": os.getenv("NOVEL_LLM_REVIEW_MODEL", ""),
                 "summary": os.getenv("NOVEL_LLM_SUMMARY_MODEL", ""),
+                "chat": os.getenv("NOVEL_LLM_CHAT_MODEL", ""),
             },
         )
 

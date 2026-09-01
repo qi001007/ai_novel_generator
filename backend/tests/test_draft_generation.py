@@ -1,4 +1,11 @@
+import pytest
 from fastapi.testclient import TestClient
+
+
+@pytest.fixture(autouse=True)
+def _force_unconfigured_llm(monkeypatch) -> None:
+    """Ensure the test uses the deterministic fallback, not a real LLM API."""
+    monkeypatch.setenv("NOVEL_LLM_API_KEY", "")
 
 
 def test_generate_chapter_from_brief(client: TestClient) -> None:

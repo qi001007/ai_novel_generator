@@ -11,6 +11,7 @@ def test_llm_status_reports_provider_and_model_configuration(
     monkeypatch.setenv("NOVEL_LLM_DRAFT_MODEL", "draft")
     monkeypatch.setenv("NOVEL_LLM_REVIEW_MODEL", "review")
     monkeypatch.setenv("NOVEL_LLM_SUMMARY_MODEL", "")
+    monkeypatch.setenv("NOVEL_LLM_CHAT_MODEL", "")
 
     response = client.get("/api/llm/status")
 
@@ -22,6 +23,7 @@ def test_llm_status_reports_provider_and_model_configuration(
         "draft": True,
         "review": True,
         "summary": False,
+        "chat": False,
     }
 
 
@@ -35,6 +37,7 @@ def test_llm_status_is_not_configured_without_models(
     monkeypatch.setenv("NOVEL_LLM_DRAFT_MODEL", "")
     monkeypatch.setenv("NOVEL_LLM_REVIEW_MODEL", "")
     monkeypatch.setenv("NOVEL_LLM_SUMMARY_MODEL", "")
+    monkeypatch.setenv("NOVEL_LLM_CHAT_MODEL", "")
 
     response = client.get("/api/llm/status")
 
@@ -45,4 +48,5 @@ def test_llm_status_is_not_configured_without_models(
         "draft": False,
         "review": False,
         "summary": False,
+        "chat": False,
     }
