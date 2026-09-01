@@ -148,7 +148,13 @@
 - [x] AI 写文件通道：对话回复里的 ```yaml @路径 代码块 → SSE 新增 `proposal` 事件（含 path/text/valid/error），
       主人点「应用」才以 `actor=ai` 写入；system prompt 已教会该格式与「只改值」约束
 - [x] 测试：`tests/test_documents.py` 14 项 + 提案 3 项，后端 79/79
-- [ ] 前端文件编辑器（CodeMirror 6：行号 / YAML 高亮 / 锁键装饰 / 当前行 / 状态栏）—— 等 mock 批准
+- [ ] 前端文件编辑器（CodeMirror 6：行号 / YAML 高亮 / 锁键装饰 / 当前行 / 状态栏）—— 等 Figma 帧批准
+- [ ] **Figma 写画板阻塞点（下次别再绕）**：`use_figma` 只由 Figma **远程** MCP server 提供；
+      本会话 figma server 只挂了 resources（skill/docs 可读），tools 为空 → 无法写帧。
+      修法：Codex 设置里确保 remote server 生效 + 桌面端打开该文件进 Dev Mode 开 MCP + 重启加载工具。
+      画帧时遵守本项目已知坑：hex 不用变量绑定、单次≤10 逻辑操作、建空框与填内容分两次、
+      调用后 getNodeByIdAsync 验 children.length、layoutSizing 先 append 再设、字体 style 名用真实值
+- [ ] 本地 HTML mock（mock-1/2/3 PNG）只是思路草图，不充当设计稿，不作为开工依据
 - [ ] B→D 跳转定位（编辑器内点值 → 打开该章简报并落在对应字段）—— 等 mock 批准
 - [ ] 待主人拍板 1：B 的 `plot_function`/`notes` 与 D 的 `goal`/`events` 语义重叠，跳转落点需要定映射，
       或者把 B 收敛成纯索引（只留 chapter+title），描述统一进 D 简报文件
