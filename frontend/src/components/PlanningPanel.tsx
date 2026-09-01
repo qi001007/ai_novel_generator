@@ -344,72 +344,94 @@ export default function PlanningPanel({
       ) : null}
 
       {layer === "B" ? (
-        <>
-          <ul className="toc-tree" aria-label="目录树">
-            {toc.map((item) => (
-              <li key={item.id} className={tocForm.id === item.id ? "open" : ""}>
-                <button
-                  type="button"
-                  className="toc-row"
-                  onClick={() => setTocForm({...item})}
-                >
-                  <span className="toc-number tabular">{item.chapter_number}</span>
-                  <input
-                    value={item.title}
-                    aria-label={`第 ${item.chapter_number} 章名`}
-                    onClick={(event) => event.stopPropagation()}
-                    onChange={(event) => {
-                      const title = event.target.value;
-                      setToc((prev) => prev.map((row) => (row.id === item.id ? {...row, title} : row)));
-                    }}
-                    onBlur={() => {
-                      if (!novelId || item.title === toc.find((row) => row.id === item.id)?.title) return;
-                      void api.put(`/api/novels/${novelId}/planning/toc/${item.id}`, {
-                        chapter_number: item.chapter_number,
-                        title: item.title,
-                        plot_function: item.plot_function,
-                        notes: item.notes,
-                        is_active: item.is_active,
-                      }).then(() => {
-                        if (novelId) return reload(novelId);
-                      }).catch(() => undefined);
-                    }}
-                  />
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="toc-detail-head">
+        <div className="toc-page">
+          <div className="toc-sidebar">
+            <ul className="toc-tree" aria-label="目录树">
+              {toc.map((item) => (
+                <li key={item.id} className={tocForm.id === item.id ? "open" : ""}>
+                  <button
+                    type="button"
+                    className="toc-row"
+                    onClick={() => setTocForm({...item})}
+                  >
+                    <span className="toc-number tabular">{item.chapter_number}</span>
+                    <input
+                      value={item.title}
+                      aria-label={`第 ${item.chapter_number} 章名`}
+                      onClick={(event) => event.stopPropagation()}
+                      onChange={(event) => {
+                        const title = event.target.value;
+                        setToc((prev) => prev.map((row) => (row.id === item.id ? {...row, title} : row)));
+                      }}
+                      onBlur={() => {
+                        if (!novelId || item.title === toc.find((row) => row.id === item.id)?.title) return;
+                        void api.put(`/api/novels/${novelId}/planning/toc/${item.id}`, {
+                          chapter_number: item.chapter_number,
+                          title: item.title,
+                          plot_function: item.plot_function,
+                          notes: item.notes,
+                          is_active: item.is_active,
+                        }).then(() => {
+                          if (novelId) return reload(novelId);
+                        }).catch(() => undefined);
+                      }}
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="toc-detail">
             {tocForm.id ? (
-              <span>第 {tocForm.chapter_number} 章 · 详情</span>
+              <>
+                <div className="toc-detail-header">
+                  <span className="toc-chapter-number">第 {tocForm.chapter_number} 章</span>
+                </div>
+                <section className="toc-doc-section">
+                  <h3>章节名</h3>
+                  <textarea
+                    value={tocForm.title}
+                    onChange={(event) => setTocForm({...tocForm, title: event.target.value})}
+                    placeholder="输入章节名…"
+                    aria-label="章节名"
+                  />
+                </section>
+                <section className="toc-doc-section">
+                  <h3>剧情功能</h3>
+                  <textarea
+                    value={tocForm.plot_function}
+                    onChange={(event) => setTocForm({...tocForm, plot_function: event.target.value})}
+                    placeholder="这一章承担什么剧情功能…"
+                    aria-label="剧情功能"
+                  />
+                </section>
+                <section className="toc-doc-section">
+                  <h3>备注</h3>
+                  <textarea
+                    value={tocForm.notes}
+                    onChange={(event) => setTocForm({...tocForm, notes: event.target.value})}
+                    placeholder="补充说明、埋伏笔、待确认项…"
+                    aria-label="备注"
+                  />
+                </section>
+                <div className="toc-detail-footer">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={busy || !novelId}
+                    onClick={() => save()}
+                  >
+                    保存本章
+                  </button>
+                </div>
+              </>
             ) : (
-              <span>点上方章节查看详情，或直接新增</span>
+              <div className="toc-detail-empty">
+                <p>点击左侧章节查看详情</p>
+              </div>
             )}
           </div>
-          <div className="form-grid">
-            <input
-              type="number"
-              value={tocForm.chapter_number}
-              onChange={(event) => setTocForm({...tocForm, chapter_number: Number(event.target.value)})}
-              placeholder="章号"
-            />
-            <input
-              value={tocForm.title}
-              onChange={(event) => setTocForm({...tocForm, title: event.target.value})}
-              placeholder="章节名"
-            />
-            <input
-              value={tocForm.plot_function}
-              onChange={(event) => setTocForm({...tocForm, plot_function: event.target.value})}
-              placeholder="剧情功能"
-            />
-            <textarea
-              value={tocForm.notes}
-              onChange={(event) => setTocForm({...tocForm, notes: event.target.value})}
-              placeholder="备注"
-            />
-          </div>
-        </>
+        </div>
       ) : null}
 
       {layer === "C" ? (
