@@ -3,6 +3,7 @@ import json
 import re
 from pathlib import Path
 from dataclasses import dataclass
+from collections.abc import Iterator
 from typing import Any, Protocol
 
 import httpx
@@ -55,6 +56,11 @@ class LLMSettings:
             and any(model.strip() for model in self.models.values())
         )
 
+    @property
+    def configured_models(self) -> set[str]:
+        """Distinct model names this deployment lets a client pick."""
+        return {model.strip() for model in self.models.values() if model.strip()}
+
 
 @dataclass(frozen=True)
 class LLMResult:
@@ -69,6 +75,24 @@ class LLMClient(Protocol):
     settings: LLMSettings
 
     def complete(self, task_type: str, system: str, user: str) -> LLMResult:
+        ...
+
+    def complete_messages(
+        self,
+        task_type: str,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+    ) -> LLMResult:
+        ...
+
+    def stream_messages(
+        self,
+        task_type: str,
+        messages: list[dict[str, str]],
+        temperature: float = 0.6,
+        usage_out: dict[str, int] | None = None,
+        model: str | None = None,
+    ) -> Iterator[str]:
         ...
 
 
@@ -93,18 +117,26 @@ class OpenAICompatibleClient:
         if not self.settings.is_configured:
             raise LLMUnavailableError("LLM API key is not configured")
 
-        model = self.settings.models.get(task_type, "").strip()
-        if not model:
-            raise LLMUnavailableError(f"LLM model for {task_type} is not configured")
+        return self.complete_messages(
+            task_type,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
 
+    def complete_messages(
+        self,
+        task_type: str,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+    ) -> LLMResult:
+        resolved = self._resolve_model(task_type, model)
         response = self._client.post(
             "/chat/completions",
             json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
+                "model": resolved,
+                "messages": messages,
                 "temperature": 0.8 if task_type == "draft" else 0.2,
             },
         )
@@ -120,11 +152,83 @@ class OpenAICompatibleClient:
 
         return LLMResult(
             content=content,
-            model=model,
+            model=resolved,
             token_input=int(usage.get("prompt_tokens", 0)),
             token_output=int(usage.get("completion_tokens", 0)),
             cost_estimate=0.0,
         )
+
+    def stream_messages(
+        self,
+        task_type: str,
+        messages: list[dict[str, str]],
+        temperature: float = 0.6,
+        usage_out: dict[str, int] | None = None,
+        model: str | None = None,
+    ) -> Iterator[str]:
+        resolved = self._resolve_model(task_type, model)
+        with self._client.stream(
+            "POST",
+            "/chat/completions",
+            json={
+                "model": resolved,
+                "messages": messages,
+                "temperature": temperature,
+                "stream": True,
+                # SCNet returns a trailing usage event only when asked for it.
+                "stream_options": {"include_usage": True},
+            },
+        ) as response:
+            if response.status_code >= 400:
+                response.read()
+                raise LLMError(
+                    f"LLM stream failed with status {response.status_code}"
+                )
+            for event in _iter_sse_events(response.iter_lines()):
+                usage = event.get("usage")
+                if isinstance(usage, dict) and usage_out is not None:
+                    usage_out["model"] = resolved
+                    usage_out["token_input"] = int(usage.get("prompt_tokens", 0))
+                    usage_out["token_output"] = int(usage.get("completion_tokens", 0))
+
+                choices = event.get("choices") or []
+                if not choices:
+                    continue
+                delta = choices[0].get("delta") or {}
+                content = delta.get("content")
+                if isinstance(content, str) and content:
+                    yield content
+
+    def _resolve_model(self, task_type: str, model: str | None = None) -> str:
+        if not self.settings.is_configured:
+            raise LLMUnavailableError("LLM API key is not configured")
+
+        if model and model.strip():
+            return model.strip()
+
+        model = self.settings.models.get(task_type, "").strip()
+        if not model:
+            raise LLMUnavailableError(f"LLM model for {task_type} is not configured")
+        return model
+
+
+def _iter_sse_events(lines: Iterator[str]) -> Iterator[dict[str, Any]]:
+    """Yield decoded JSON events from an OpenAI-compatible SSE body."""
+    for line in lines:
+        if not line.startswith("data:"):
+            continue
+
+        payload = line[len("data:"):].strip()
+        if not payload or payload == "[DONE]":
+            continue
+
+        try:
+            event = json.loads(payload)
+        except ValueError:
+            continue
+
+        if isinstance(event, dict):
+            yield event
 
 
 def get_llm_client() -> LLMClient:

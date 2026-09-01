@@ -1,13 +1,46 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, CornerDownLeft, Paperclip, Square } from "lucide-react";
+import {
+  ChevronDown,
+  CornerDownLeft,
+  Gauge,
+  Paperclip,
+  RotateCcw,
+  Square,
+} from "lucide-react";
 
+import { api } from "../api";
+import type {
+  ChatContextItem,
+  ChatMode,
+  ChatReference,
+  ChatStreamEvent,
+  StoredChatMessage,
+} from "../types";
 import { useWorkbench } from "../store/workbench";
 
 type CommandStatus = "running" | "done" | "failed";
 
-type ChatMessage =
+type AgentMeta = {
+  model?: string;
+  tokenInput?: number;
+  tokenOutput?: number;
+  refs?: ChatReference[];
+  unknown?: string[];
+};
+
+type AgentRow = {
+  kind: "agent";
+  id: number;
+  text: string;
+  status: "streaming" | "done" | "error";
+  question: string;
+  meta: AgentMeta;
+  error?: string;
+};
+
+type Row =
   | { kind: "user"; id: number; text: string }
-  | { kind: "assistant"; id: number; text: string }
+  | AgentRow
   | {
       kind: "command";
       id: number;
@@ -23,32 +56,74 @@ const commands = [
   { name: "/check", args: "", desc: "机械校验（字数/必要事实）" },
   { name: "/summary", args: "", desc: "章摘要与事实落库" },
   { name: "/save", args: "", desc: "保存当前正文" },
+  { name: "/plan", args: "A|B|C|D", desc: "切计划模式并盘点该层规划" },
+  { name: "/feedback", args: "<文本>", desc: "写入剧情反馈时间线" },
 ] as const;
 
-let nextId = 1;
+const PLAN_LAYERS: Record<string, { label: string; mention: string }> = {
+  A: { label: "A 全书蓝图", mention: "@蓝图" },
+  B: { label: "B 目录", mention: "@目录" },
+  C: { label: "C 剧情弧", mention: "@弧" },
+  D: { label: "D 章节简报", mention: "@简报" },
+};
+
+const GREETING =
+  "我是这本书的写作 Agent。自然语言直接说就行，我会按相关度自动取用蓝图、目录、设定、人物、伏笔与章摘要；" +
+  "用 @ 可以点名某份资料，斜杠命令走流水线：/generate /review /check /summary /save /plan /feedback。";
+
+// Local rows start above any plausible server id, so history rows and
+// in-flight rows can never collide when patched by id.
+let nextId = 1_000_000;
+
+function tokens(input?: number, output?: number) {
+  if (!input && !output) return null;
+  const short = (value: number) => (value >= 1000 ? `${(value / 1000).toFixed(1)}k` : `${value}`);
+  return `${short(input ?? 0)} in · ${short(output ?? 0)} out`;
+}
+
+function fromHistory(rows: StoredChatMessage[]): Row[] {
+  return rows.map((row) =>
+    row.role === "user"
+      ? { kind: "user", id: row.id, text: row.content }
+      : {
+          kind: "agent",
+          id: row.id,
+          text: row.content,
+          status: "done" as const,
+          question: "",
+          meta: {
+            model: row.model,
+            tokenInput: row.token_input,
+            tokenOutput: row.token_output,
+            refs: row.context_refs,
+          },
+        },
+  );
+}
 
 export default function ChatPane() {
   const selectedNovelId = useWorkbench((s) => s.selectedNovelId);
+  const selectedChapterId = useWorkbench((s) => s.selectedChapterId);
   const llmStatus = useWorkbench((s) => s.llmStatus);
   const busy = useWorkbench((s) => s.busy);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      kind: "assistant",
-      id: nextId++,
-      text: "我是这本书的写作工作台。用斜杠命令驱动流水线：/generate 生成正文、/review 七维自检、/check 机械校验、/summary 事实落库、/save 保存。自然语言对话 Agent 会在 C5 接入。",
-    },
-  ]);
+  const setTab = useWorkbench((s) => s.setTab);
+  const [rows, setRows] = useState<Row[]>([]);
   const [input, setInput] = useState("");
-  const [mode, setMode] = useState<"plan" | "write">("write");
+  const [mode, setMode] = useState<ChatMode>("write");
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [streaming, setStreaming] = useState(false);
+  const [expanded, setExpanded] = useState<number | null>(null);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [candidates, setCandidates] = useState<ChatContextItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const running = messages.some(
-    (message) => message.kind === "command" && message.status === "running",
-  );
+  const running =
+    streaming ||
+    rows.some((row) => row.kind === "command" && row.status === "running");
 
   useEffect(() => {
     const node = scrollRef.current;
@@ -57,7 +132,7 @@ export default function ChatPane() {
     } else if (node) {
       node.scrollTop = node.scrollHeight;
     }
-  }, [messages]);
+  }, [rows]);
 
   useEffect(() => {
     if (!running) return;
@@ -83,27 +158,243 @@ export default function ChatPane() {
     };
   }, [modelMenuOpen]);
 
-  const availableModels = llmStatus?.configured && llmStatus.models
-    ? Object.entries(llmStatus.models).filter(([, available]) => available).map(([name]) => name)
-    : [];
-  const activeModel = selectedModel ?? llmStatus?.provider ?? "未配置模型";
+  // Switching books reloads that book's own thread.
+  useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStreaming(false);
+    setRows([]);
+    if (!selectedNovelId) return;
+    let cancelled = false;
+    api
+      .get<StoredChatMessage[]>(`/api/novels/${selectedNovelId}/chat/messages`)
+      .then((history) => {
+        if (!cancelled) setRows(fromHistory(history));
+      })
+      .catch(() => {
+        if (!cancelled) setRows([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedNovelId]);
 
-  function appendMessage(message: ChatMessage) {
-    setMessages((prev) => [...prev, message]);
+  // The @mention list is backed by the same retriever the agent uses.
+  useEffect(() => {
+    if (mentionQuery === null || !selectedNovelId) {
+      setCandidates([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      api
+        .listChatContext(selectedNovelId, { q: mentionQuery })
+        .then((items) => {
+          if (!cancelled) setCandidates(items);
+        })
+        .catch(() => {
+          if (!cancelled) setCandidates([]);
+        });
+    }, 160);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [mentionQuery, selectedNovelId]);
+
+  const availableModels = llmStatus?.available_models ?? [];
+  const activeModel = selectedModel ?? "默认模型";
+
+  function appendMessage(message: Row) {
+    setRows((prev) => [...prev, message]);
   }
 
-  function patchCommand(id: number, patch: Partial<Extract<ChatMessage, { kind: "command" }>>) {
-    setMessages((prev) =>
-      prev.map((message) =>
-        message.kind === "command" && message.id === id ? { ...message, ...patch } : message,
+  function patchAgent(id: number, patch: Partial<AgentRow>) {
+    setRows((prev) =>
+      prev.map((row) => (row.kind === "agent" && row.id === id ? { ...row, ...patch } : row)),
+    );
+  }
+
+  function patchCommand(id: number, patch: Partial<Extract<Row, { kind: "command" }>>) {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.kind === "command" && row.id === id ? { ...row, ...patch } : row,
       ),
     );
   }
 
+  function applyEvent(id: number, event: ChatStreamEvent) {
+    if (event.event === "context") {
+      setRows((prev) =>
+        prev.map((row) =>
+          row.kind === "agent" && row.id === id
+            ? {
+                ...row,
+                meta: {
+                  ...row.meta,
+                  refs: event.data.items.map(({ kind, label, ref }) => ({ kind, label, ref })),
+                  unknown: event.data.unknown_mentions,
+                },
+              }
+            : row,
+        ),
+      );
+      return;
+    }
+    if (event.event === "delta") {
+      setRows((prev) =>
+        prev.map((row) =>
+          row.kind === "agent" && row.id === id ? { ...row, text: row.text + event.data.text } : row,
+        ),
+      );
+      return;
+    }
+    if (event.event === "done") {
+      const message = event.data.message;
+      setRows((prev) =>
+        prev.map((row) =>
+          row.kind === "agent" && row.id === id
+            ? {
+                ...row,
+                text: message.content,
+                status: "done",
+                meta: {
+                  model: message.model,
+                  tokenInput: message.token_input,
+                  tokenOutput: message.token_output,
+                  refs: row.meta.refs?.length ? row.meta.refs : message.context_refs,
+                  unknown: row.meta.unknown,
+                },
+              }
+            : row,
+        ),
+      );
+      return;
+    }
+    if (event.event === "error") {
+      patchAgent(id, {
+        status: "error",
+        error: event.data.message || "模型没有返回内容",
+        text: event.data.partial || "",
+      });
+      return;
+    }
+    // "end" arrives even when the model finished cleanly.
+    setRows((prev) =>
+      prev.map((row) =>
+        row.kind === "agent" && row.id === id && row.status === "streaming"
+          ? { ...row, status: "done" }
+          : row,
+      ),
+    );
+  }
+
+  async function ask(question: string, replaceId?: number) {
+    const text = question.trim();
+    if (!text || !selectedNovelId || running) return;
+    const agentId = replaceId ?? nextId++;
+
+    if (replaceId === undefined) {
+      appendMessage({ kind: "user", id: nextId++, text });
+    }
+    const fresh: AgentRow = {
+      kind: "agent",
+      id: agentId,
+      text: "",
+      status: "streaming",
+      question: text,
+      meta: {},
+    };
+    setRows((prev) =>
+      replaceId === undefined
+        ? [...prev, fresh]
+        : prev.map((row) => (row.kind === "agent" && row.id === replaceId ? fresh : row)),
+    );
+
+    setStreaming(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    try {
+      await api.streamChat(
+        selectedNovelId,
+        { content: text, mode, chapter_id: selectedChapterId, model: selectedModel },
+        (event) => applyEvent(agentId, event),
+        controller.signal,
+      );
+    } catch (cause) {
+      patchAgent(agentId, {
+        status: "error",
+        error: cause instanceof Error ? cause.message : "对话失败",
+      });
+    } finally {
+      abortRef.current = null;
+      setStreaming(false);
+      setRows((prev) =>
+        prev.map((row) =>
+          row.kind === "agent" && row.id === agentId && row.status === "streaming"
+            ? { ...row, status: row.text ? "done" : "error", error: row.error ?? "响应中断" }
+            : row,
+        ),
+      );
+    }
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+  }
+
+  async function runFeedback(rest: string, id: number) {
+    if (!selectedNovelId) return;
+    if (!rest.trim()) {
+      patchCommand(id, { status: "failed", detail: "用法：/feedback 第 40 章节奏太赶，需要一场静戏" });
+      return;
+    }
+    try {
+      await api.post(`/api/novels/${selectedNovelId}/feedback`, {
+        content: rest.trim(),
+        impact_levels: [],
+        suggestions: {},
+      });
+      patchCommand(id, { status: "done", detail: "反馈已写入时间线，等待影响分析" });
+      setTab("feedback");
+    } catch (cause) {
+      patchCommand(id, {
+        status: "failed",
+        detail: cause instanceof Error ? cause.message : "写入失败",
+      });
+    }
+  }
+
+  function runPlan(rest: string) {
+    const layer = (rest.trim().split(/\s+/)[0] ?? "").toUpperCase();
+    const target = PLAN_LAYERS[layer];
+    if (!target) {
+      appendMessage({
+        kind: "agent",
+        id: nextId++,
+        text: "",
+        status: "error",
+        question: "",
+        meta: {},
+        error: "用法：/plan A｜B｜C｜D（A 蓝图 / B 目录 / C 剧情弧 / D 简报）",
+      });
+      return;
+    }
+    setMode("plan");
+    void ask(`请盘点${target.label}当前的缺口与内部冲突，并列出下一步待办清单。${target.mention}`);
+  }
+
   async function runCommand(raw: string) {
-    const command = commands.find((item) => item.name === raw);
+    const [name, ...rest] = raw.split(/\s+/);
+    const command = commands.find((item) => item.name === name);
     const state = useWorkbench.getState();
-    if (!command || !selectedNovelId || running) return;
+    if (!command || !state.selectedNovelId || running) return;
+    const argument = rest.join(" ");
+
+    if (command.name === "/plan") {
+      runPlan(argument);
+      return;
+    }
 
     const id = nextId++;
     appendMessage({
@@ -114,6 +405,11 @@ export default function ChatPane() {
       detail: "执行中",
       startedAt: Date.now(),
     });
+
+    if (command.name === "/feedback") {
+      await runFeedback(argument, id);
+      return;
+    }
 
     const errorBefore = state.error;
     try {
@@ -173,24 +469,36 @@ export default function ChatPane() {
     }
   }
 
-  function submit() {
-    const text = input.trim();
-    if (!text || running) return;
-    setInput("");
-    appendMessage({ kind: "user", id: nextId++, text });
-    if (text.startsWith("/")) {
-      void runCommand(text.split(/\s+/)[0]);
-      return;
-    }
-    appendMessage({
-      kind: "assistant",
-      id: nextId++,
-      text: "自然语言指令需要 C5 的对话 Agent（NOVEL_LLM_CHAT_MODEL）。现在可以直接用：/generate /review /check /summary /save。",
-    });
+  function syncMention(value: string) {
+    const match = /@([^\s@]*)$/.exec(value);
+    setMentionQuery(match ? match[1] : null);
   }
 
-  const showHints = input.startsWith("/") && !busy;
-  const matched = commands.filter((item) => item.name.startsWith(input.trim()));
+  function submit() {
+    const text = input.trim();
+    if (!text || running || !selectedNovelId) return;
+    setInput("");
+    setMentionQuery(null);
+    if (text.startsWith("/")) {
+      void runCommand(text);
+      return;
+    }
+    void ask(text);
+  }
+
+  function insertMention(item: ChatContextItem) {
+    setInput((value) =>
+      /@([^\s@]*)$/.test(value)
+        ? value.replace(/@([^\s@]*)$/, `${item.mention} `)
+        : `${value}${item.mention} `,
+    );
+    setMentionQuery(null);
+  }
+
+  const slashHints = input.startsWith("/") && !busy;
+  const [typedName] = input.trim().split(/\s+/);
+  const matched = commands.filter((item) => item.name.startsWith(typedName));
+  const showMentions = mentionQuery !== null;
 
   return (
     <section className="chat-pane" aria-label="AI 对话">
@@ -200,74 +508,174 @@ export default function ChatPane() {
         </div>
       )}
       <div className="chat-messages" ref={scrollRef}>
-        {messages.map((message) => {
-          if (message.kind === "user") {
+        {(rows.length ? rows : [{
+          kind: "agent" as const,
+          id: 0,
+          text: GREETING,
+          status: "done" as const,
+          question: "",
+          meta: {},
+        }]).map((row) => {
+          if (row.kind === "user") {
             return (
-              <div key={message.id} className="chat-row user">
+              <div key={row.id} className="chat-row user">
                 <div className="chat-message">
                   <span className="chat-avatar user" aria-hidden="true">我</span>
-                  <div className="chat-bubble">{message.text}</div>
+                  <div className="chat-bubble">{row.text}</div>
                 </div>
               </div>
             );
           }
-          if (message.kind === "assistant") {
+          if (row.kind === "command") {
+            const seconds = row.status === "running" ? elapsed : null;
             return (
-              <div key={message.id} className="chat-row assistant">
+              <div key={row.id} className="chat-row assistant">
+                <div className="chat-message">
+                  <span className="chat-avatar agent" aria-hidden="true">墨</span>
+                  <div className={`chat-card command ${row.status}`}>
+                    <header>
+                      <code>{row.command}</code>
+                      <span className="chat-state">
+                        {row.status === "running" && <i className="spinner" aria-hidden="true" />}
+                        {row.status === "running" ? (
+                          <span className="tabular">运行中 {seconds ?? 0}s</span>
+                        ) : row.status === "done" ? (
+                          "完成"
+                        ) : (
+                          "失败"
+                        )}
+                      </span>
+                    </header>
+                    <p>{row.detail}</p>
+                  </div>
+                </div>
+              </div>
+            );
+          }
+          const usage = tokens(row.meta.tokenInput, row.meta.tokenOutput);
+          const refs = row.meta.refs ?? [];
+          return (
+            <div key={row.id} className="chat-row assistant">
               <div className="chat-message">
                 <span className="chat-avatar agent" aria-hidden="true">墨</span>
-                <div className="chat-card agent">
-                  <span className="chat-who">Agent · {mode === "plan" ? "计划模式" : "写作模式"}</span>
-                  <p>{message.text}</p>
+                <div className={`chat-card agent ${row.status}`}>
+                  <header className="chat-card-head">
+                    <span className="chat-who">
+                      Agent · {mode === "plan" ? "计划模式" : "写作模式"}
+                      {row.meta.model ? ` · ${row.meta.model}` : ""}
+                    </span>
+                    {row.status === "streaming" ? (
+                      <span className="chat-state">
+                        <i className="spinner" aria-hidden="true" />
+                        <span>生成中</span>
+                      </span>
+                    ) : null}
+                    {row.status === "error" ? (
+                      <span className="chat-state">回复失败</span>
+                    ) : null}
+                  </header>
+                  <p>
+                    {row.text}
+                    {row.status === "streaming" && !row.text ? "正在思考…" : null}
+                    {row.status === "streaming" ? (
+                      <span className="chat-caret" aria-hidden="true" />
+                    ) : null}
+                  </p>
+                  {row.status === "error" ? (
+                    <div className="chat-error">
+                      <span>{row.error}</span>
+                      {row.question ? (
+                        <button
+                          type="button"
+                          className="chat-retry"
+                          onClick={() => void ask(row.question, row.id)}
+                        >
+                          <RotateCcw size={12} />
+                          重试
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {row.status !== "streaming" && (usage || refs.length) ? (
+                    <button
+                      type="button"
+                      className="chat-meta"
+                      aria-expanded={expanded === row.id}
+                      onClick={() => setExpanded(expanded === row.id ? null : row.id)}
+                    >
+                      <Gauge size={11} />
+                      <span className="tabular">{usage ?? `引用 ${refs.length} 份资料`}</span>
+                      <ChevronDown size={11} />
+                    </button>
+                  ) : null}
+                  {expanded === row.id ? (
+                    <div className="chat-detail">
+                      <p className="chat-detail-line">
+                        输入 {row.meta.tokenInput ?? 0} / 输出 {row.meta.tokenOutput ?? 0} tokens
+                        {row.meta.model ? ` · ${row.meta.model}` : ""}
+                      </p>
+                      {refs.length ? (
+                        <ul className="chat-refs">
+                          {refs.map((ref) => (
+                            <li key={`${ref.kind}:${ref.ref}`} title={ref.label}>
+                              {ref.label}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="chat-detail-empty">本轮没有检索到资料</p>
+                      )}
+                      {row.meta.unknown?.length ? (
+                        <p className="chat-detail-empty">
+                          未识别的 @引用：{row.meta.unknown.join("、")}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
-              </div>
-            );
-          }
-          const seconds = message.status === "running" ? elapsed : null;
-          return (
-            <div key={message.id} className="chat-row assistant">
-            <div className="chat-message">
-              <span className="chat-avatar agent" aria-hidden="true">墨</span>
-              <div className={`chat-card command ${message.status}`}>
-                <header>
-                  <code>{message.command}</code>
-                  <span className="chat-state">
-                    {message.status === "running" && <i className="spinner" aria-hidden="true" />}
-                    {message.status === "running" ? (
-                      <span className="tabular">运行中 {seconds ?? 0}s</span>
-                    ) : message.status === "done" ? (
-                      "完成"
-                    ) : (
-                      "失败"
-                    )}
-                  </span>
-                </header>
-                <p>{message.detail}</p>
-              </div>
-            </div>
             </div>
           );
         })}
       </div>
       <div className="chat-dock">
-        {showHints && matched.length > 0 && (
-          <ul className="chat-hints" role="listbox">
+        {showMentions ? (
+          <ul className="chat-hints mentions" role="listbox" aria-label="引用资料">
+            {candidates.length ? (
+              candidates.map((item) => (
+                <li key={item.ref}>
+                  <button type="button" onClick={() => insertMention(item)}>
+                    <code>{item.mention}</code>
+                    <span title={item.label}>{item.label}</span>
+                  </button>
+                </li>
+              ))
+            ) : (
+              <li className="chat-hints-empty">
+                {selectedNovelId ? "没有匹配的资料" : "先在书架选一本书"}
+              </li>
+            )}
+          </ul>
+        ) : slashHints && matched.length ? (
+          <ul className="chat-hints" role="listbox" aria-label="斜杠命令">
             {matched.map((item) => (
               <li key={item.name}>
                 <button
                   type="button"
                   onClick={() => {
-                    setInput(item.name);
+                    setInput(item.name === "/plan" ? "/plan " : `${item.name} `);
                   }}
                 >
-                  <code>{item.name}</code>
+                  <code>
+                    {item.name}
+                    {item.args ? ` ${item.args}` : ""}
+                  </code>
                   <span>{item.desc}</span>
                 </button>
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
         <div className="chat-toolbar">
           <div className="mode-switch" role="radiogroup" aria-label="对话模式">
             <button
@@ -289,7 +697,20 @@ export default function ChatPane() {
               写作
             </button>
           </div>
-          <button type="button" className="icon-button" aria-label="添加参考资料（C5 接入）" disabled>
+          <button
+            type="button"
+            className={`icon-button ${mentionQuery !== null ? "active" : ""}`}
+            aria-label="添加引用资料"
+            aria-expanded={mentionQuery !== null}
+            onClick={() => {
+              if (mentionQuery !== null) {
+                setMentionQuery(null);
+                return;
+              }
+              setInput((value) => (/@([^\s@]*)$/.test(value) ? value : `${value}@`));
+              setMentionQuery("");
+            }}
+          >
             <Paperclip size={15} />
           </button>
           <span className="spacer" />
@@ -306,27 +727,33 @@ export default function ChatPane() {
             </button>
             {modelMenuOpen ? (
               <div className="model-menu" role="listbox" aria-label="选择模型">
-                {availableModels.length > 0 ? (
-                  availableModels.map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      role="option"
-                      aria-selected={activeModel === name}
-                      className={`model-menu-item ${activeModel === name ? "selected" : ""}`}
-                      onClick={() => {
-                        setSelectedModel(name);
-                        setModelMenuOpen(false);
-                      }}
-                    >
-                      {name}
-                    </button>
-                  ))
-                ) : (
-                  <p className="model-menu-empty">
-                    在 backend/.env 配置 NOVEL_LLM_* 后可选模型
-                  </p>
-                )}
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selectedModel === null}
+                  className={`model-menu-item ${selectedModel === null ? "selected" : ""}`}
+                  onClick={() => {
+                    setSelectedModel(null);
+                    setModelMenuOpen(false);
+                  }}
+                >
+                  默认（后端 NOVEL_LLM_CHAT_MODEL）
+                </button>
+                {availableModels.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    role="option"
+                    aria-selected={activeModel === name}
+                    className={`model-menu-item ${activeModel === name ? "selected" : ""}`}
+                    onClick={() => {
+                      setSelectedModel(name);
+                      setModelMenuOpen(false);
+                    }}
+                  >
+                    {name}
+                  </button>
+                ))}
               </div>
             ) : null}
           </div>
@@ -335,10 +762,17 @@ export default function ChatPane() {
           <textarea
             value={input}
             rows={1}
-            placeholder="输入 / 使用命令，或直接描述需求…"
+            placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"
             aria-label="对话输入"
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(event) => {
+              setInput(event.target.value);
+              syncMention(event.target.value);
+            }}
             onKeyDown={(event) => {
+              if (event.key === "Escape" && mentionQuery !== null) {
+                setMentionQuery(null);
+                return;
+              }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 submit();
@@ -350,15 +784,20 @@ export default function ChatPane() {
             className={running ? "danger" : "primary"}
             disabled={!running && !input.trim()}
             onClick={() => {
-              if (running) return;
+              if (running) {
+                stop();
+                return;
+              }
               submit();
             }}
-            aria-label={running ? "运行中" : "发送"}
+            aria-label={running ? "停止生成" : "发送"}
           >
             {running ? <Square size={14} /> : <CornerDownLeft size={14} />}
           </button>
         </div>
-        <p className="chat-context">上下文：当前章节 + D 简报 · Enter 发送 / Shift+Enter 换行</p>
+        <p className="chat-context">
+          上下文：自动检索 + @点名 · 保留最近 8 条 · Enter 发送 / Shift+Enter 换行
+        </p>
       </div>
     </section>
   );

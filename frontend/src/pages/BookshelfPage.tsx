@@ -11,12 +11,14 @@ export default function BookshelfPage() {
   const theme = useWorkbench((state) => state.theme);
   const toggleTheme = useWorkbench((state) => state.toggleTheme);
   const selectNovel = useWorkbench((state) => state.selectNovel);
+  const updateNovel = useWorkbench((state) => state.updateNovel);
   const navigate = useNavigate();
   const createNovel = useWorkbench((state) => state.createNovel);
 
   const [wizardOpen, setWizardOpen] = useState(false);
   const [coverEditId, setCoverEditId] = useState<number | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverError, setCoverError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -106,14 +108,19 @@ export default function BookshelfPage() {
                 }}
               >
                 <div className="book-cover">
-                  <span>{novel.title.slice(0, 1)}</span>
+                  {novel.cover_image ? (
+                    <img src={novel.cover_image} alt={`${novel.title} 封面`} />
+                  ) : (
+                    <span aria-hidden="true">{novel.title.slice(0, 1)}</span>
+                  )}
                   <button
                     type="button"
                     className="cover-change-btn"
                     aria-label={`更换「${novel.title}」封面`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setCoverPreview(null);
+                      setCoverPreview(novel.cover_image || null);
+                      setCoverError(null);
                       setCoverEditId(novel.id);
                     }}
                   >
@@ -173,8 +180,13 @@ export default function BookshelfPage() {
                   onChange={(event) => {
                     const file = event.target.files?.[0];
                     if (!file) return;
-                    const url = URL.createObjectURL(file);
-                    setCoverPreview(url);
+                    setCoverError(null);
+                    // A data URL is what the backend stores, so the pick survives a reload.
+                    const reader = new FileReader();
+                    reader.onload = () =>
+                      setCoverPreview(typeof reader.result === "string" ? reader.result : null);
+                    reader.onerror = () => setCoverError("读取图片失败，请换一张");
+                    reader.readAsDataURL(file);
                   }}
                 />
               </label>
@@ -183,13 +195,26 @@ export default function BookshelfPage() {
               </button>
             </div>
             <p className="cover-hint">建议比例 3:4，最小 720×960。</p>
+            {coverError ? <p className="cover-error">{coverError}</p> : null}
             <footer className="cover-modal-footer">
               <button type="button" onClick={() => setCoverEditId(null)}>取消</button>
               <button
                 type="button"
                 className="primary"
-                disabled={!coverPreview}
-                onClick={() => setCoverEditId(null)}
+                disabled={!coverPreview || busy}
+                onClick={() => {
+                  if (!coverTarget || !coverPreview) return;
+                  setBusy(true);
+                  updateNovel(coverTarget.id, { cover_image: coverPreview })
+                    .then(() => {
+                      setCoverEditId(null);
+                      setCoverPreview(null);
+                    })
+                    .catch((cause: unknown) =>
+                      setCoverError(cause instanceof Error ? cause.message : "封面保存失败"),
+                    )
+                    .finally(() => setBusy(false));
+                }}
               >
                 保存
               </button>

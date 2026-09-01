@@ -4,7 +4,12 @@ export type Novel = {
   description: string;
   target_chapters: number;
   style_constraints: string;
+  cover_image: string;
 };
+
+export type NovelUpdatePayload = Partial<
+  Omit<Novel, "id" | "created_at" | "updated_at">
+>;
 
 export type ChapterBrief = {
   id: number;
@@ -102,7 +107,53 @@ export type LLMStatus = {
   provider: string;
   configured: boolean;
   models: Record<string, boolean>;
+  available_models: string[];
 };
+
+export type ChatMode = "plan" | "write";
+
+export type ChatReference = {
+  kind: string;
+  label: string;
+  ref: string;
+};
+
+export type ChatContextItem = ChatReference & { mention: string };
+
+export type StoredChatMessage = {
+  id: number;
+  novel_id: number;
+  role: "user" | "assistant";
+  content: string;
+  mode: string;
+  model: string;
+  mentions: string[];
+  context_refs: ChatReference[];
+  token_input: number;
+  token_output: number;
+  created_at: string;
+};
+
+export type StreamChatPayload = {
+  content: string;
+  mode: ChatMode;
+  chapter_id?: number | null;
+  model?: string | null;
+};
+
+export type ChatContextPayload = {
+  items: (ChatReference & { score: number })[];
+  unknown_mentions: string[];
+  mode: string;
+  temperature: number;
+};
+
+export type ChatStreamEvent =
+  | { event: "context"; data: ChatContextPayload }
+  | { event: "delta"; data: { text: string } }
+  | { event: "done"; data: { message: StoredChatMessage } }
+  | { event: "error"; data: { message: string; partial: string } }
+  | { event: "end"; data: unknown };
 
 export type PlanningBlueprint = {
   id: number;

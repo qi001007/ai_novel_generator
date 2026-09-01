@@ -9,6 +9,7 @@ import type {
   LLMStatus,
   MachineCheckResult,
   Novel,
+  NovelUpdatePayload,
   Review,
 } from "../types";
 
@@ -38,6 +39,7 @@ type WorkbenchState = {
   init: () => Promise<void>;
   toggleTheme: () => void;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
+  updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
   setTab: (tab: WorkspaceTab) => void;
   selectNovel: (novelId: number) => Promise<void>;
   selectBrief: (briefId: number) => void;
@@ -116,6 +118,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   setTab(tab) {
     set({ tab });
+  },
+
+  async updateNovel(novelId, payload) {
+    const updated = await api.put<Novel>(`/api/novels/${novelId}`, payload);
+    set({ novels: get().novels.map((item) => (item.id === novelId ? updated : item)) });
+    return updated;
   },
 
   async selectNovel(novelId) {

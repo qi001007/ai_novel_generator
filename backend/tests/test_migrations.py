@@ -21,6 +21,7 @@ EXPECTED_TABLES = {
     "plot_feedback",
     "generation_run",
     "review",
+    "chat_message",
 }
 
 

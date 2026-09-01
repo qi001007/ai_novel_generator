@@ -11,7 +11,7 @@
 
 ## 状态看板
 
-当前进行到：C4b（Figma 独立整页补齐）
+当前进行到：C5 已完成（对话 Agent 后端 + 前端真流式），下一步 C4 TipTap 编辑器迁移
 
 ## C1 调研与设计基础（设计参考 → 清单 → Figma）
 
@@ -65,7 +65,8 @@
 - [x] 前端测试 5/5 + vite build 通过 + 运行时截图验收（workbench-new.png）
 - [ ] Figma 重绘工作台与人物卡片库两帧（MCP Starter 限额阻塞，额度恢复后按 v2.1 补齐并与实现比对）
 - [ ] 编辑器后续（归入 C4 剩余）：TipTap、Ctrl+F、双栏对照、选区 Diff、审稿抽屉、版本历史
-- [ ] 对话 Agent 后续（归入 C5）：真实 LLM 流式、@引用、Ctrl+K 命令面板
+- [x] 对话 Agent 后续（C5 已落地）：真实 LLM 流式、@引用候选与解析
+- [ ] Ctrl+K 全局命令面板（仍待做）
 
 ## C4b 九条批注落实（前端先行，后端后接）
 
@@ -102,12 +103,16 @@
 
 ## C5 Phase 1 对话 Agent
 
-- [ ] 后端对话 Agent 接口（独立模型配置 `NOVEL_LLM_CHAT_MODEL`）
-- [ ] 上下文自动检索 + @引用解析
-- [ ] 斜杠命令解析与命令面板前端
-- [ ] 流式消息卡片 + 错误卡片 + 重试
-- [ ] 消息级 Token 用量展开
-- [ ] 测试 + 构建 + 截图验收 + 推送
+- [x] 后端对话 Agent 接口（独立模型配置 `NOVEL_LLM_CHAT_MODEL`）：`services/chat.py` + `routers/chat.py`，
+      SSE 事件 context/delta/done/error/end；生成器自带 Session，避开 FastAPI yield 依赖提前关闭 session 的坑
+- [x] 上下文自动检索 + @引用解析：`services/context.py`，`@类型:名称`/`@章节号` 可解析，
+      未识别项回写提示词；`/chat/context` 供候选列表，`ContextItem.mention` 保证候选插入即可解析
+- [x] 斜杠命令解析与命令面板前端：补 `/plan A|B|C|D`（切计划模式并盘点该层）与 `/feedback <文本>`（写时间线）
+- [x] 流式消息卡片 + 错误卡片 + 重试：计划模式禁正文、temperature 0.2/0.7；失败可原位重试，流式中可停止
+- [x] 消息级 Token 用量展开：`ChatMessage.token_*`（消息级）+ `GenerationRun(task_type="chat")`（用量汇总）
+- [x] 封面持久化收口：`PUT /api/novels/{id}` + 书架弹层 base64 上传真保存
+- [x] 测试 + 构建：后端 60/60、前端 8/8、`npm run build` 通过；真接口冒烟经 :8000 与 Vite :5173 双路径确认逐字增量、落库与流一致
+- [ ] 全页截图验收：本机未装 Playwright，暂用 dev server 人工过目，C7 统一补
 
 ## C6 Phase 1 设定库与用量收尾
 

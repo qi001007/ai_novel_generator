@@ -17,4 +17,6 @@ def llm_status(
             task_type: bool(model)
             for task_type, model in llm.settings.models.items()
         },
+        # Concrete model names the chat pill is allowed to send back as `model`.
+        "available_models": sorted(llm.settings.configured_models),
     }
