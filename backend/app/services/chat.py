@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -10,6 +11,7 @@ from sqlmodel import Session, select
 
 from app.db import engine
 from app.models import Chapter, ChatMessage, GenerationRun, Novel
+from app.services.documents import DocumentError, resolve_path
 from app.services.context import (
     DEFAULT_CONTEXT_BUDGET,
     ContextItem,
@@ -23,6 +25,22 @@ from app.services.llm import LLMClient, LLMError, LLMUnavailableError
 CHAT_TASK_TYPE = "chat"
 HISTORY_WINDOW = 8
 MODES = ("plan", "write")
+
+# A reply may propose a whole file; the human decides whether it gets written.
+PROPOSAL_BLOCK = re.compile(r"```ya?ml\s+@([^\s`]+)\s*\n(.*?)```", re.S)
+
+FILE_EDIT_RULES = """
+
+## 直接改文件
+需要改动规划文件时，输出一个带文件名的 yaml 代码块，块内是改完后的「整份文件」而不是节选：
+
+```yaml @toc.yaml
+- chapter: 42
+  title: …
+```
+
+只有主人点「应用」后系统才写入，而且以 AI 身份写入：键名、chapter/arc 主键、条目增删都会被挡下，
+所以只改值。代码块外不要写解释，也不要把这份文件的内容复述第二遍。"""
 
 
 class ChatDomainError(Exception):
@@ -54,7 +72,8 @@ PLAN_BODY = """
 2. 只讨论 A 蓝图 / B 目录 / C 剧情弧 / D 简报 / 设定 / 人物 / 伏笔 / 章摘要 / 反馈这些规划对象。
 3. 谈改动必须给影响面：连带要调整哪些章、哪些设定、哪些伏笔。
 4. 发现新想法与既有设定矛盾时，点名冲突并给出收束方案。
-5. 结尾给出可执行的待办清单。"""
+5. 结尾给出可执行的待办清单。
+6. 改动方案落到文件上时，用下面的「直接改文件」格式提出。"""
 
 
 WRITE_BODY = """
@@ -63,10 +82,14 @@ WRITE_BODY = """
 1. 主人要正文时直接输出可用文字：不加解释、不加标题、不加大纲。
 2. 动笔前必须核对已有设定、人物状态、伏笔与章摘要，保持前后一致。
 3. 严格遵守文风约束；信息缺口用已确立设定填补，不擅自开辟新设定。
-4. 不属于正文的请求保持简短回答，先判断后理由。"""
+4. 不属于正文的请求保持简短回答，先判断后理由。
+5. 主人让你改写规划文件时，用下面的「直接改文件」格式提出。"""
 
 
-SYSTEM_BODIES = {"plan": PLAN_BODY, "write": WRITE_BODY}
+SYSTEM_BODIES = {
+    "plan": PLAN_BODY + FILE_EDIT_RULES,
+    "write": WRITE_BODY + FILE_EDIT_RULES,
+}
 
 
 @dataclass
@@ -86,6 +109,21 @@ class ChatTurn:
 
     def references(self) -> list[dict[str, Any]]:
         return [item.as_reference() for item in self.context_items]
+
+
+def extract_proposals(content: str) -> list[dict[str, Any]]:
+    """Turn ```yaml @path blocks into reviewable write proposals."""
+    proposals: list[dict[str, Any]] = []
+    for raw_path, text in PROPOSAL_BLOCK.findall(content or ""):
+        path = raw_path.strip().lstrip("/")
+        entry: dict[str, Any] = {"path": path, "text": text.rstrip() + "\n", "valid": True, "error": ""}
+        try:
+            resolve_path(path)
+        except DocumentError as cause:
+            entry["valid"] = False
+            entry["error"] = cause.detail
+        proposals.append(entry)
+    return proposals
 
 
 def temperature_for(mode: str) -> float:
@@ -319,6 +357,9 @@ def stream_turn(
     except (LLMError, LLMUnavailableError) as cause:
         yield ("error", {"message": str(cause), "partial": "".join(buffer)})
         return
+
+    for proposal in extract_proposals("".join(buffer)):
+        yield ("proposal", proposal)
 
     with factory() as session:
         message = persist_reply(

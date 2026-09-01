@@ -11,7 +11,7 @@
 
 ## 状态看板
 
-当前进行到：C5a 已完成（主人四条批注修复），下一步 C4 TipTap 编辑器迁移
+当前进行到：C4d 后端文档层已完成，前端文件编辑器等主人批准 mock 后动工
 
 ## C1 调研与设计基础（设计参考 → 清单 → Figma）
 
@@ -129,6 +129,31 @@
 - [x] 验证：后端 62/62、前端 15/15、`npm run build` 干净；Edge headless 实截
       c5-fix-dock.png / c5-fix-panes-dark.png / c5-minimap-long.png 逐项目视确认
 - [ ] 待主人确认：「缩小栏」若另有所指（例如编辑器页签栏或缩放控件），本轮按缩略栏理解并已重做
+
+## C4d 规划层文件化（主人批注：要 VSCode 式文件编辑，不是集成 UI）
+
+后端契约已完成并验证，前端待 mock 审批后动工。
+
+- [x] 文档层 `services/documents.py`：四层规划投影成可编辑 YAML 文件，DB 仍是唯一真源
+      - `blueprint.yaml`（A）/ `toc.yaml`（B，一条一章）/ `arcs.yaml`（C）/ `briefs/00NN.yaml`（D，每章一个文件）
+      - 多行中文用块标量 `|-` 渲染，短量列表内联，读起来就是文件本体而不是表单
+- [x] 键锁规则：键名与主键是结构，值才是内容
+      - 任何写入者：键名增删改名一律 422；`chapter` 必须等于文件名章号
+      - `actor=ai`：额外只允许改白名单字段（A 五个 / B title·plot_function·notes /
+        C title·objective·conflict·resolution·status / D 除 chapter·arc 外全部），
+        条目增删与 arc 归属变更直接拒收
+      - `actor=human`：可增删目录条目（消失的行置 is_active=false，不物理删）
+- [x] 乐观并发：读文件返回 `revision`（渲染文本 sha1），写入可带 `base_revision`，不一致 409
+- [x] 路由 `routers/documents.py`：`GET /api/novels/{id}/files`、`GET|PUT /api/novels/{id}/files/{path}`
+- [x] AI 写文件通道：对话回复里的 ```yaml @路径 代码块 → SSE 新增 `proposal` 事件（含 path/text/valid/error），
+      主人点「应用」才以 `actor=ai` 写入；system prompt 已教会该格式与「只改值」约束
+- [x] 测试：`tests/test_documents.py` 14 项 + 提案 3 项，后端 79/79
+- [ ] 前端文件编辑器（CodeMirror 6：行号 / YAML 高亮 / 锁键装饰 / 当前行 / 状态栏）—— 等 mock 批准
+- [ ] B→D 跳转定位（编辑器内点值 → 打开该章简报并落在对应字段）—— 等 mock 批准
+- [ ] 待主人拍板 1：B 的 `plot_function`/`notes` 与 D 的 `goal`/`events` 语义重叠，跳转落点需要定映射，
+      或者把 B 收敛成纯索引（只留 chapter+title），描述统一进 D 简报文件
+- [ ] 待主人拍板 2：左树补 D 层入口（briefs/ 展开），确认是文件节点而不是「第 N 章简报」表单节点
+- [ ] 待主人拍板 3：编辑器选型 CodeMirror 6（轻、Vite 友好）还是 Monaco（更 VSCode、需配 worker）
 
 ## C6 Phase 1 设定库与用量收尾
 

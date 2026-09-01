@@ -433,3 +433,83 @@ def test_every_candidate_mention_resolves_back(client: TestClient) -> None:
         )
         assert ref in [row["ref"] for row in response.json()["context_refs"]], mention
 
+
+BRIEF_DOC = """chapter: 42
+arc: null
+goal: 揭开星渊碑
+events: ''
+pov: 沈曜
+characters: [沈曜]
+conflict: ''
+hook: 碑上刻着他的名字
+required_facts: []
+status: draft
+"""
+
+
+def test_prompt_teaches_the_file_proposal_format(client: TestClient) -> None:
+    fake = use_fake(client, FakeChatClient())
+    novel_id = make_novel(client)
+
+    client.post(f"/api/novels/{novel_id}/chat", json={"content": "把目录第 3 章补完", "mode": "plan"})
+
+    system = fake.calls[0]["messages"][0]["content"]
+    assert "## 直接改文件" in system
+    assert "```yaml @toc.yaml" in system
+    assert "只改值" in system
+
+
+def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
+    # The fenced block deliberately arrives split across deltas.
+    chunks = [
+        "改好了：\n\n```yaml @briefs/0042.ya",
+        "ml\n" + BRIEF_DOC + "```\n",
+    ]
+    use_fake(client, FakeChatClient(chunks=chunks))
+    novel_id = make_novel(client)
+    client.post(
+        f"/api/novels/{novel_id}/planning/briefs",
+        json={
+            "chapter_number": 42,
+            "goal": "揭开星渊碑",
+            "pov": "沈曜",
+            "characters": ["沈曜"],
+        },
+    )
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "把第 42 章的钩子改紧", "mode": "write"},
+    )
+
+    events = parse_sse(response.text)
+    names = [name for name, _ in events]
+    assert names.index("proposal") < names.index("done")
+    proposal = payload_of(events, "proposal")
+    assert proposal["path"] == "briefs/0042.yaml"
+    assert proposal["valid"] is True
+    assert "hook: 碑上刻着他的名字" in proposal["text"]
+
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/briefs/0042.yaml",
+        json={"text": proposal["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200
+    assert applied.json()["changed"] == ["hook"]
+    briefs = client.get(f"/api/novels/{novel_id}/planning/briefs").json()
+    assert briefs[0]["hook"] == "碑上刻着他的名字"
+
+
+def test_proposal_for_an_unknown_file_is_flagged(client: TestClient) -> None:
+    use_fake(client, FakeChatClient(chunks=["```yaml @secrets.yaml\na: 1\n```"]))
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "给我看别的文件"},
+    )
+
+    proposal = payload_of(parse_sse(response.text), "proposal")
+    assert proposal["valid"] is False
+    assert "没有这个文件" in proposal["error"]
+
