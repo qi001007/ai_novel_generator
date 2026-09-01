@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ImagePlus, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useWorkbench } from "../store/workbench";
@@ -14,12 +15,25 @@ export default function BookshelfPage() {
   const createNovel = useWorkbench((state) => state.createNovel);
 
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [coverEditId, setCoverEditId] = useState<number | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [targetChapters, setTargetChapters] = useState(300);
   const [styleConstraints, setStyleConstraints] = useState("");
   const [busy, setBusy] = useState(false);
+
+  const coverTarget = novels.find((novel) => novel.id === coverEditId) ?? null;
+
+  useEffect(() => {
+    if (!coverEditId) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setCoverEditId(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [coverEditId]);
 
   function openWizard() {
     setTitle("");
@@ -80,6 +94,12 @@ export default function BookshelfPage() {
               <article
                 key={novel.id}
                 className="book-card"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && event.target === event.currentTarget) {
+                    void selectNovel(novel.id).then(() => navigate(`/novels/${novel.id}`));
+                  }
+                }}
                 onClick={async () => {
                   await selectNovel(novel.id);
                   navigate(`/novels/${novel.id}`);
@@ -87,6 +107,19 @@ export default function BookshelfPage() {
               >
                 <div className="book-cover">
                   <span>{novel.title.slice(0, 1)}</span>
+                  <button
+                    type="button"
+                    className="cover-change-btn"
+                    aria-label={`更换「${novel.title}」封面`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setCoverPreview(null);
+                      setCoverEditId(novel.id);
+                    }}
+                  >
+                    <ImagePlus size={14} />
+                    更换封面
+                  </button>
                 </div>
                 <div className="book-card-body">
                   <h3>{novel.title}</h3>
@@ -98,6 +131,72 @@ export default function BookshelfPage() {
           </div>
         )}
       </main>
+      {coverTarget ? (
+        <div
+          className="wizard-backdrop"
+          onClick={() => setCoverEditId(null)}
+          role="presentation"
+        >
+          <div
+            className="wizard cover-modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="封面编辑"
+          >
+            <header className="cover-modal-header">
+              <h2>封面编辑</h2>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="关闭"
+                onClick={() => setCoverEditId(null)}
+              >
+                <X size={16} />
+              </button>
+            </header>
+            <div className="cover-preview">
+              {coverPreview ? (
+                <img src={coverPreview} alt={`${coverTarget.title} 封面预览`} />
+              ) : (
+                <span aria-hidden="true">{coverTarget.title.slice(0, 1)}</span>
+              )}
+            </div>
+            <div className="cover-actions">
+              <label className="cover-upload">
+                <Upload size={14} />
+                上传封面
+                <input
+                  type="file"
+                  accept="image/*"
+                  aria-label="上传封面文件"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const url = URL.createObjectURL(file);
+                    setCoverPreview(url);
+                  }}
+                />
+              </label>
+              <button type="button" className="primary" disabled title="AI 生图接入 Phase 2">
+                AI 生成
+              </button>
+            </div>
+            <p className="cover-hint">建议比例 3:4，最小 720×960。</p>
+            <footer className="cover-modal-footer">
+              <button type="button" onClick={() => setCoverEditId(null)}>取消</button>
+              <button
+                type="button"
+                className="primary"
+                disabled={!coverPreview}
+                onClick={() => setCoverEditId(null)}
+              >
+                保存
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
       {wizardOpen ? (
         <div className="wizard-backdrop" onClick={() => setWizardOpen(false)}>
           <div className="wizard" onClick={(event) => event.stopPropagation()}>

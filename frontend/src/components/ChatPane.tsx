@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { CornerDownLeft, Paperclip, Square } from "lucide-react";
+import { ChevronDown, CornerDownLeft, Paperclip, Square } from "lucide-react";
 
 import { useWorkbench } from "../store/workbench";
 
@@ -40,8 +40,11 @@ export default function ChatPane() {
   ]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<"plan" | "write">("write");
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
 
   const running = messages.some(
     (message) => message.kind === "command" && message.status === "running",
@@ -61,6 +64,29 @@ export default function ChatPane() {
     const timer = window.setInterval(() => setElapsed((value) => value + 1), 1000);
     return () => window.clearInterval(timer);
   }, [running]);
+
+  useEffect(() => {
+    if (!modelMenuOpen) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setModelMenuOpen(false);
+    }
+    function onClickOutside(event: MouseEvent) {
+      if (modelMenuRef.current && !modelMenuRef.current.contains(event.target as Node)) {
+        setModelMenuOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("click", onClickOutside);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("click", onClickOutside);
+    };
+  }, [modelMenuOpen]);
+
+  const availableModels = llmStatus?.configured && llmStatus.models
+    ? Object.entries(llmStatus.models).filter(([, available]) => available).map(([name]) => name)
+    : [];
+  const activeModel = selectedModel ?? llmStatus?.provider ?? "未配置模型";
 
   function appendMessage(message: ChatMessage) {
     setMessages((prev) => [...prev, message]);
@@ -267,9 +293,43 @@ export default function ChatPane() {
             <Paperclip size={15} />
           </button>
           <span className="spacer" />
-          <button type="button" className="model-pill" disabled title="模型切换在 C5 接入">
-            {llmStatus?.provider ?? "未配置模型"}
-          </button>
+          <div className="model-menu-wrap" ref={modelMenuRef}>
+            <button
+              type="button"
+              className="model-pill"
+              onClick={() => setModelMenuOpen(!modelMenuOpen)}
+              aria-expanded={modelMenuOpen}
+              aria-haspopup="listbox"
+            >
+              {activeModel}
+              <ChevronDown size={12} />
+            </button>
+            {modelMenuOpen ? (
+              <div className="model-menu" role="listbox" aria-label="选择模型">
+                {availableModels.length > 0 ? (
+                  availableModels.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      role="option"
+                      aria-selected={activeModel === name}
+                      className={`model-menu-item ${activeModel === name ? "selected" : ""}`}
+                      onClick={() => {
+                        setSelectedModel(name);
+                        setModelMenuOpen(false);
+                      }}
+                    >
+                      {name}
+                    </button>
+                  ))
+                ) : (
+                  <p className="model-menu-empty">
+                    在 backend/.env 配置 NOVEL_LLM_* 后可选模型
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
         </div>
         <div className="chat-input">
           <textarea

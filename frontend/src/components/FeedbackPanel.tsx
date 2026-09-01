@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 
 import { api } from "../api";
 import type { PlotFeedback } from "../types";
@@ -21,9 +22,16 @@ const emptyForm: FeedbackForm = {
 
 const levels = ["D", "C", "B", "A"];
 
+const statusLabels: Record<string, string> = {
+  pending: "待确认",
+  applied: "已应用",
+  rejected: "已拒绝",
+};
+
 export default function FeedbackPanel({ novelId }: { novelId: number | null }) {
   const [feedback, setFeedback] = useState<PlotFeedback[]>([]);
   const [form, setForm] = useState<FeedbackForm>(emptyForm);
+  const [formOpen, setFormOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -72,58 +80,88 @@ export default function FeedbackPanel({ novelId }: { novelId: number | null }) {
 
   return (
     <section className="panel">
-      <h2>剧情反馈</h2>
-      <ul className="record-list">
-        {feedback.map((item) => (
-          <li key={item.id}>
-            <strong>{item.status}</strong>
-            <p>{item.content}</p>
-            <span>{item.impact_levels.join(" / ")}</span>
-          </li>
-        ))}
-      </ul>
-      <div className="form-grid">
-        <textarea
-          value={form.content}
-          onChange={(event) => setForm({...form, content: event.target.value})}
-          placeholder="反馈内容"
-        />
-        <div className="level-row">
-          {levels.map((level) => (
-            <label key={level}>
-              <input
-                type="checkbox"
-                checked={form.impact_levels.includes(level)}
-                onChange={(event) => setForm({
-                  ...form,
-                  impact_levels: event.target.checked
-                    ? [...form.impact_levels, level]
-                    : form.impact_levels.filter((item) => item !== level),
-                })}
-              />
-              {level}
-            </label>
-          ))}
-        </div>
-        <textarea
-          value={form.suggestions}
-          onChange={(event) => setForm({...form, suggestions: event.target.value})}
-          placeholder="建议修改 JSON"
-        />
-        <select
-          value={form.status}
-          onChange={(event) => setForm({...form, status: event.target.value})}
+      <div className="feedback-header">
+        <h2>反馈时间线</h2>
+        <button
+          type="button"
+          className="primary"
+          onClick={() => setFormOpen(!formOpen)}
+          aria-expanded={formOpen}
         >
-          <option value="pending">待确认</option>
-          <option value="applied">已应用</option>
-          <option value="rejected">已拒绝</option>
-        </select>
-      </div>
-      <div className="toolbar">
-        <button type="button" className="primary" disabled={busy || !novelId} onClick={() => save()}>
-          保存反馈
+          <Plus size={14} />
+          新增反馈
         </button>
       </div>
+
+      {formOpen ? (
+        <div className="feedback-form">
+          <textarea
+            value={form.content}
+            onChange={(event) => setForm({...form, content: event.target.value})}
+            placeholder="反馈内容"
+            aria-label="反馈内容"
+          />
+          <div className="level-row">
+            {levels.map((level) => (
+              <label key={level}>
+                <input
+                  type="checkbox"
+                  checked={form.impact_levels.includes(level)}
+                  onChange={(event) => setForm({
+                    ...form,
+                    impact_levels: event.target.checked
+                      ? [...form.impact_levels, level]
+                      : form.impact_levels.filter((item) => item !== level),
+                  })}
+                />
+                {level}
+              </label>
+            ))}
+          </div>
+          <div className="feedback-form-footer">
+            <button type="button" onClick={() => setFormOpen(false)}>取消</button>
+            <button
+              type="button"
+              className="primary"
+              disabled={busy || !novelId || !form.content.trim()}
+              onClick={() => void save().then(() => setFormOpen(false))}
+            >
+              保存反馈
+            </button>
+          </div>
+          {error ? <p className="status-error">{error}</p> : null}
+        </div>
+      ) : null}
+
+      {feedback.length === 0 ? (
+        <div className="feedback-empty">
+          <p>还没有反馈记录。</p>
+        </div>
+      ) : (
+        <ol className="feedback-timeline" aria-label="反馈时间线">
+          {feedback.map((item) => (
+            <li key={item.id} className={`feedback-item status-${item.status}`}>
+              <div className="feedback-marker" aria-hidden="true" />
+              <div className="feedback-body">
+                <div className="feedback-meta">
+                  <span className={`badge ${item.status === "applied" ? "filled" : "warning"}`}>
+                    {statusLabels[item.status] ?? item.status}
+                  </span>
+                  {item.impact_levels.length > 0 ? (
+                    <span className="feedback-levels">
+                      影响 {item.impact_levels.join(" / ")}
+                    </span>
+                  ) : null}
+                  {item.created_at ? (
+                    <time className="feedback-time">{item.created_at.slice(0, 10)}</time>
+                  ) : null}
+                </div>
+                <p className="feedback-content">{item.content}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
       {error ? <p className="status-error">{error}</p> : null}
     </section>
   );
