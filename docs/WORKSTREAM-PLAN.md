@@ -97,6 +97,7 @@
 - [x] 模型菜单 + 书架 v3 更换封面 + 反馈时间线：前端实现 + 测试 5/5 + 后端 37/37 + build + commit + push
 - [x] 绘画详情页页面壳 + 测试 5/5 + build + commit + push
 - [x] A 蓝图整页文档式编辑器（锚点导航 + 衬线正文）+ 测试 5/5 + build + commit + push
+- [x] B 目录整页双栏编辑器（左侧章节列表 + 右侧文档式详情）+ 测试 5/5 + build + commit + push
 - [ ] 批准后其余整页前端实现 + 测试 + 构建 + 截图 + commit + push
 
 ## C5 Phase 1 对话 Agent
