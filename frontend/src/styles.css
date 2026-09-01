@@ -873,6 +873,112 @@ select:focus-visible {
 
 /* ---------- 规划文档编辑 ---------- */
 
+.blueprint-page {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.blueprint-nav {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 12px;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+}
+
+.anchor-item {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+}
+
+.anchor-item:hover {
+  background: var(--surface-alt);
+  color: var(--text-1);
+}
+
+.anchor-item.selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.blueprint-doc {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+  padding: 32px 40px 48px;
+  overflow-y: auto;
+}
+
+.blueprint-doc-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.blueprint-doc-header h2 {
+  margin: 0;
+  font-family: "Noto Serif SC", serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.blueprint-section {
+  display: grid;
+  gap: 8px;
+  scroll-margin-top: 16px;
+}
+
+.blueprint-section + .blueprint-section {
+  border-top: 1px solid var(--border);
+  padding-top: 24px;
+}
+
+.blueprint-section h3 {
+  margin: 0;
+  font-family: "Noto Serif SC", serif;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.blueprint-section textarea {
+  min-height: 72px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  resize: vertical;
+  font-family: "Noto Serif SC", serif;
+  font-size: 17px;
+  line-height: 1.9;
+  color: var(--text-1);
+}
+
+.blueprint-section textarea:focus-visible {
+  outline: none;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
 .version-chips {
   display: flex;
   flex-wrap: wrap;

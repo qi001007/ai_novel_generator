@@ -104,6 +104,14 @@ const layerLabels: Record<Layer, string> = {
   D: "D 单章简报",
 };
 
+const blueprintSections = [
+  { key: "main_line" as const, label: "主线" },
+  { key: "ending" as const, label: "终局" },
+  { key: "core_conflicts" as const, label: "核心冲突" },
+  { key: "themes" as const, label: "主题" },
+  { key: "constraints" as const, label: "约束" },
+];
+
 export default function PlanningPanel({
   novelId,
   initialLayer,
@@ -121,6 +129,7 @@ export default function PlanningPanel({
   const [arcs, setArcs] = useState<ArcPlan[]>([]);
   const [briefs, setBriefs] = useState<ChapterBrief[]>([]);
   const [blueprintForm, setBlueprintForm] = useState<BlueprintForm>(emptyBlueprint);
+  const [activeAnchor, setActiveAnchor] = useState("main_line");
   const [tocForm, setTocForm] = useState<TocForm>(emptyToc);
   const [arcForm, setArcForm] = useState<ArcForm>(emptyArc);
   const [briefForm, setBriefForm] = useState<BriefForm>(emptyBrief);
@@ -153,6 +162,11 @@ export default function PlanningPanel({
 
   function splitList(value: string) {
     return value.split(/[,，]/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  function scrollToBlueprint(key: string) {
+    setActiveAnchor(key);
+    document.getElementById(`bp-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function reload(novelId: number) {
@@ -282,65 +296,51 @@ export default function PlanningPanel({
       </div>
 
       {layer === "A" ? (
-        <>
-          <div className="version-chips">
-            {blueprints.map((item) => (
+        <div className="blueprint-page">
+          <nav className="blueprint-nav" aria-label="蓝图章节锚点">
+            {blueprintSections.map((s, i) => (
               <button
-                key={item.id}
+                key={s.key}
                 type="button"
-                className={`chip ${blueprintForm.id === item.id ? "selected" : ""}`}
-                onClick={() => setBlueprintForm({...item})}
+                className={`anchor-item ${activeAnchor === s.key ? "selected" : ""}`}
+                onClick={() => scrollToBlueprint(s.key)}
               >
-                v{item.version}
+                {i + 1}. {s.label}
               </button>
             ))}
-            <button type="button" className="chip" onClick={() => setBlueprintForm(emptyBlueprint)}>
-              新版本
-            </button>
+          </nav>
+          <div className="blueprint-doc">
+            <div className="blueprint-doc-header">
+              <h2>全书蓝图</h2>
+              <div className="version-chips">
+                {blueprints.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`chip ${blueprintForm.id === item.id ? "selected" : ""}`}
+                    onClick={() => setBlueprintForm({...item})}
+                  >
+                    v{item.version}
+                  </button>
+                ))}
+                <button type="button" className="chip" onClick={() => setBlueprintForm(emptyBlueprint)}>
+                  新版本
+                </button>
+              </div>
+            </div>
+            {blueprintSections.map((s) => (
+              <section key={s.key} id={`bp-${s.key}`} className="blueprint-section">
+                <h3>{s.label}</h3>
+                <textarea
+                  value={blueprintForm[s.key]}
+                  onChange={(event) => setBlueprintForm({...blueprintForm, [s.key]: event.target.value})}
+                  placeholder={`在此编写${s.label}…`}
+                  aria-label={s.label}
+                />
+              </section>
+            ))}
           </div>
-          <div className="doc-editor">
-            <label className="doc-section">
-              <h3>主线</h3>
-              <textarea
-                value={blueprintForm.main_line}
-                onChange={(event) => setBlueprintForm({...blueprintForm, main_line: event.target.value})}
-                placeholder="整条故事的主线走向…"
-              />
-            </label>
-            <label className="doc-section">
-              <h3>终局</h3>
-              <textarea
-                value={blueprintForm.ending}
-                onChange={(event) => setBlueprintForm({...blueprintForm, ending: event.target.value})}
-                placeholder="全书结局…"
-              />
-            </label>
-            <label className="doc-section">
-              <h3>核心冲突</h3>
-              <textarea
-                value={blueprintForm.core_conflicts}
-                onChange={(event) => setBlueprintForm({...blueprintForm, core_conflicts: event.target.value})}
-                placeholder="推动全书的核心矛盾…"
-              />
-            </label>
-            <label className="doc-section">
-              <h3>主题</h3>
-              <textarea
-                value={blueprintForm.themes}
-                onChange={(event) => setBlueprintForm({...blueprintForm, themes: event.target.value})}
-                placeholder="想表达的主题…"
-              />
-            </label>
-            <label className="doc-section">
-              <h3>约束</h3>
-              <textarea
-                value={blueprintForm.constraints}
-                onChange={(event) => setBlueprintForm({...blueprintForm, constraints: event.target.value})}
-                placeholder="力量体系、禁忌、世界规则…"
-              />
-            </label>
-          </div>
-        </>
+        </div>
       ) : null}
 
       {layer === "B" ? (
