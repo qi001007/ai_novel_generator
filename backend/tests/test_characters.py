@@ -56,3 +56,30 @@ def test_update_character(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["identity"] == "青年修士"
     assert response.json()["expected_end_chapter"] == 24
+
+
+def test_character_portrait_round_trip(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "肖像测试"}).json()["id"]
+
+    created = client.post(
+        f"/api/novels/{novel_id}/characters",
+        json={"name": "沈砚", "portrait": "data:image/png;base64,iVBORw0KGgo="},
+    ).json()
+    assert created["portrait"] == "data:image/png;base64,iVBORw0KGgo="
+
+    cleared = client.put(
+        f"/api/novels/{novel_id}/characters/{created['id']}",
+        json={"name": "沈砚", "portrait": ""},
+    ).json()
+    assert cleared["portrait"] == ""
+
+
+def test_character_portrait_defaults_to_empty(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "默认肖像"}).json()["id"]
+
+    created = client.post(
+        f"/api/novels/{novel_id}/characters", json={"name": "路人甲"}
+    ).json()
+
+    assert created["portrait"] == ""
+

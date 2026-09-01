@@ -101,7 +101,7 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
   );
 }
 
-export default function ChatPane() {
+export default function ChatPane({ className = "" }: { className?: string }) {
   const selectedNovelId = useWorkbench((s) => s.selectedNovelId);
   const selectedChapterId = useWorkbench((s) => s.selectedChapterId);
   const llmStatus = useWorkbench((s) => s.llmStatus);
@@ -501,7 +501,7 @@ export default function ChatPane() {
   const showMentions = mentionQuery !== null;
 
   return (
-    <section className="chat-pane" aria-label="AI 对话">
+    <section className={`chat-pane ${className}`} aria-label="AI 对话">
       {llmStatus && !llmStatus.configured && (
         <div className="chat-notice">
           LLM 未配置：在 backend/.env 填入密钥后重启后端，模型状态会变绿。

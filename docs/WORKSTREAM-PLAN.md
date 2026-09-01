@@ -11,7 +11,7 @@
 
 ## 状态看板
 
-当前进行到：C5 已完成（对话 Agent 后端 + 前端真流式），下一步 C4 TipTap 编辑器迁移
+当前进行到：C5a 已完成（主人四条批注修复），下一步 C4 TipTap 编辑器迁移
 
 ## C1 调研与设计基础（设计参考 → 清单 → Figma）
 
@@ -113,6 +113,22 @@
 - [x] 封面持久化收口：`PUT /api/novels/{id}` + 书架弹层 base64 上传真保存
 - [x] 测试 + 构建：后端 60/60、前端 8/8、`npm run build` 通过；真接口冒烟经 :8000 与 Vite :5173 双路径确认逐字增量、落库与流一致
 - [ ] 全页截图验收：本机未装 Playwright，暂用 dev server 人工过目，C7 统一补
+
+## C5a 主人浏览器批注修复（本轮）
+
+- [x] 1 新建作品进工作台后对话坞撑满整栏：`.chat-pane` 三行网格被条件渲染的提示条挤位，
+      改为显式钉住 `grid-row`（notice=1 / messages=2 / dock=3）
+- [x] 2 人物卡片没有贴照片入口：`Character.portrait` 字段 + 迁移 `b4f0d2a8c61e` +
+      详情弹层头像即上传（data URL，>2MB 拒绝、可移除），卡片与弹层同时显示照片
+- [x] 3 三栏不能拖拽：新增 `Splitter`（role=separator，指针拖拽 + 方向键 16px + Home 复位），
+      列宽与折叠状态存 localStorage，默认值按 UI-DESIGN.md 的 280px / minmax(400px, 34%)
+- [x] 4 「缩小栏不是 VSCode 风格」：缩略栏改为固定 3px 行高（超出列高才压缩）、
+      视口块按 scrollTop/scrollHeight 1:1 映射、可点击可擦洗、透明底悬停提亮，去掉描边卡片感
+- [x] 顺带修掉两个自找的问题：`useMemo` 落在 `if (!chapter) return` 之后导致 hook 顺序漂移白屏
+      （已补 EditorPane 空态→有稿的回归测试）；滚动回调每像素重建 state（改为比值不变则跳过）
+- [x] 验证：后端 62/62、前端 15/15、`npm run build` 干净；Edge headless 实截
+      c5-fix-dock.png / c5-fix-panes-dark.png / c5-minimap-long.png 逐项目视确认
+- [ ] 待主人确认：「缩小栏」若另有所指（例如编辑器页签栏或缩放控件），本轮按缩略栏理解并已重做
 
 ## C6 Phase 1 设定库与用量收尾
 

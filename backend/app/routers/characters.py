@@ -14,6 +14,7 @@ router = APIRouter(prefix="/novels", tags=["characters"])
 class CharacterCreate(SQLModel):
     name: str
     level: str = "supporting"
+    portrait: str = ""
     identity: str = ""
     goals: str = ""
     behavior_constraints: str = ""

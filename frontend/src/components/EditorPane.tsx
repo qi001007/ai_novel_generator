@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
+
+type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
 import StatusBadge from "./StatusBadge";
 import { useWorkbench } from "../store/workbench";
@@ -21,12 +24,37 @@ export default function EditorPane() {
   const brief = briefs.find((item) => item.id === chapter?.brief_id) ?? null;
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [thumbTop, setThumbTop] = useState(0);
+  const minimapRef = useRef<HTMLDivElement>(null);
+  const scrubRef = useRef(false);
+  const [view, setView] = useState({ top: 0, height: 1 });
+
+  const syncView = useCallback(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+    const { scrollTop, scrollHeight, clientHeight } = node;
+    const next =
+      scrollHeight <= 0
+        ? { top: 0, height: 1 }
+        : {
+            top: scrollTop / scrollHeight,
+            height: Math.min(1, clientHeight / scrollHeight),
+          };
+    // Scroll fires per pixel; only re-render when the ratio actually moves.
+    setView((prev) =>
+      prev.top === next.top && prev.height === next.height ? prev : next,
+    );
+  }, []);
   const dirty = chapter ? draftContent !== (chapter.content ?? "") : false;
 
   useEffect(() => {
     setSavedAt(null);
   }, [chapter?.id]);
+
+  // Re-measure after the browser has laid out the new text.
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(syncView);
+    return () => window.cancelAnimationFrame(frame);
+  }, [draftContent, selectedChapterId, syncView]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -52,6 +80,18 @@ export default function EditorPane() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
+  const minimapBars = useMemo(() => {
+    const raw = draftContent.split("\n").slice(0, 1200);
+    const longest = Math.max(1, ...raw.map((line) => line.trim().length));
+    return raw.map((line) => {
+      const body = line.trim();
+      return {
+        indent: Math.min(line.length - line.trimStart().length, 24),
+        width: body ? Math.max(6, Math.min(100, (body.length / longest) * 100)) : 0,
+      };
+    });
+  }, [draftContent]);
+
   if (!chapter) {
     return (
       <section className="editor-pane" aria-label="章节编辑">
@@ -64,14 +104,32 @@ export default function EditorPane() {
   }
 
   const liveCount = draftContent.replace(/\s/g, "").length;
-  const minimapLines = draftContent.split("\n").slice(0, 400);
-
-  function jumpMinimap(event: React.MouseEvent<HTMLDivElement>) {
+  function scrubTo(clientY: number) {
     const node = scrollRef.current;
-    if (!node) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const ratio = (event.clientY - rect.top) / rect.height;
-    node.scrollTop = ratio * node.scrollHeight;
+    const map = minimapRef.current;
+    if (!node || !map) return;
+    const rect = map.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
+    node.scrollTop = ratio * (node.scrollHeight - node.clientHeight);
+  }
+
+  function onMinimapPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    scrubRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    scrubTo(event.clientY);
+  }
+
+  function onMinimapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    if (scrubRef.current) scrubTo(event.clientY);
+  }
+
+  function endMinimapScrub(event: React.PointerEvent<HTMLDivElement>) {
+    scrubRef.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   return (
@@ -110,11 +168,7 @@ export default function EditorPane() {
         <div
           className="editor-scroll"
           ref={scrollRef}
-          onScroll={(event) => {
-            const node = event.currentTarget;
-            const max = node.scrollHeight - node.clientHeight;
-            setThumbTop(max > 0 ? (node.scrollTop / max) * 100 : 0);
-          }}
+          onScroll={syncView}
         >
           <textarea
             value={draftContent}
@@ -123,16 +177,32 @@ export default function EditorPane() {
             spellCheck={false}
           />
         </div>
-        <div className="minimap" aria-hidden="true" onClick={jumpMinimap}>
-          <div className="minimap-lines">
-            {minimapLines.map((line, index) => (
+        <div
+          className="minimap"
+          ref={minimapRef}
+          style={{ "--lines": minimapBars.length, "--view-top": view.top, "--view-height": view.height } as MapVars}
+          aria-hidden="true"
+          title="缩略栏：点击或拖动可跳转正文"
+          onPointerDown={onMinimapPointerDown}
+          onPointerMove={onMinimapPointerMove}
+          onPointerUp={endMinimapScrub}
+          onPointerCancel={endMinimapScrub}
+        >
+          {minimapBars.map((bar, index) =>
+            bar.width > 0 ? (
               <span
                 key={index}
-                style={{ width: `${Math.min(100, (line.trim().length / 60) * 100)}%` }}
+                style={
+                  {
+                    "--i": index,
+                    left: `${8 + Math.min(bar.indent * 1.2, 40)}%`,
+                    width: `${Math.max(2, Math.min(bar.width * 0.84, 88 - Math.min(bar.indent * 1.2, 40)))}%`,
+                  } as MapVars
+                }
               />
-            ))}
-          </div>
-          <i className="minimap-thumb" style={{ top: `${thumbTop}%` }} />
+            ) : null,
+          )}
+          <i className="minimap-thumb" />
         </div>
       </div>
       <div className="editor-footer" aria-live="polite">

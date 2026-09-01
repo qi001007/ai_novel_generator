@@ -95,6 +95,7 @@ export type Character = {
   id: number;
   name: string;
   level: string;
+  portrait: string;
   identity: string;
   goals: string;
   behavior_constraints: string;

@@ -8,6 +8,7 @@ type CharacterForm = {
   id: number | null;
   name: string;
   level: string;
+  portrait: string;
   identity: string;
   goals: string;
   behavior_constraints: string;
@@ -20,6 +21,7 @@ const emptyForm: CharacterForm = {
   id: null,
   name: "",
   level: "supporting",
+  portrait: "",
   identity: "",
   goals: "",
   behavior_constraints: "",
@@ -91,6 +93,23 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
         .some((field) => field.toLowerCase().includes(keyword));
     });
   }, [characters, activeLevel, query]);
+
+  function pickPortrait(file?: File) {
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setError("照片请控制在 2MB 以内");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () =>
+      setEditing((prev) =>
+        prev
+          ? { ...prev, portrait: typeof reader.result === "string" ? reader.result : prev.portrait }
+          : prev,
+      );
+    reader.onerror = () => setError("读取照片失败，请换一张");
+    reader.readAsDataURL(file);
+  }
 
   async function save() {
     if (!novelId || !editing) return;
@@ -184,7 +203,13 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
                 setEditing(toForm(character));
               }}
             >
-              <span className="avatar" aria-hidden="true">{character.name.charAt(0)}</span>
+              <span className="avatar" aria-hidden="true">
+                {character.portrait ? (
+                  <img src={character.portrait} alt="" />
+                ) : (
+                  character.name.charAt(0)
+                )}
+              </span>
               <span className="card-name">{character.name}</span>
               <span className="level-badge">{levelLabels[character.level] ?? "未分级"}</span>
               <span className="card-range tabular">
@@ -214,7 +239,38 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
             </header>
             <div className="modal-grid">
               <div className="modal-profile">
-                <span className="avatar large" aria-hidden="true">{editing.name.charAt(0) || "?"}</span>
+                <label className="portrait-picker" title="上传人物照片">
+                  <span className="avatar large" aria-hidden="true">
+                    {editing.portrait ? (
+                      <img src={editing.portrait} alt={`${editing.name || "新人物"} 照片`} />
+                    ) : (
+                      editing.name.charAt(0) || "?"
+                    )}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    aria-label="上传人物照片"
+                    onChange={(event) => {
+                      pickPortrait(event.target.files?.[0]);
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+                <div className="portrait-actions">
+                  <span className="portrait-hint">
+                    {editing.portrait ? "点击头像可更换照片" : "点头像贴照片"}
+                  </span>
+                  {editing.portrait ? (
+                    <button
+                      type="button"
+                      className="ghost-danger"
+                      onClick={() => setEditing({ ...editing, portrait: "" })}
+                    >
+                      移除照片
+                    </button>
+                  ) : null}
+                </div>
                 <label>
                   姓名
                   <input

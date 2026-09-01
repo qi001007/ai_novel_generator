@@ -171,6 +171,7 @@ class Character(SQLModel, table=True):
     novel_id: int = Field(foreign_key="novel.id", index=True)
     name: str
     level: str = "supporting"
+    portrait: str = ""
     identity: str = ""
     goals: str = ""
     behavior_constraints: str = ""
