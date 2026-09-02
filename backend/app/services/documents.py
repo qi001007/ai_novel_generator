@@ -231,11 +231,16 @@ def validate_structure(path: str, text: str) -> str:
 # --- active records -------------------------------------------------------
 
 
-def _blueprint(session: Session, novel_id: int) -> PlanningBlueprint | None:
+def active_blueprint(session: Session, novel_id: int) -> PlanningBlueprint | None:
+    """The only reader for the A layer: newest active version (PRD 6.1).
+
+    Chat context and draft context both go through here, so the blueprint a chapter is
+    written against is the blueprint the file view shows.
+    """
     return session.exec(
         select(PlanningBlueprint)
         .where(PlanningBlueprint.novel_id == novel_id, PlanningBlueprint.is_active == True)  # noqa: E712
-        .order_by(PlanningBlueprint.version.desc())
+        .order_by(PlanningBlueprint.version.desc(), PlanningBlueprint.id.desc())
     ).first()
 
 
@@ -344,7 +349,7 @@ def list_files(session: Session, novel_id: int) -> list[FileMeta]:
 def read_file(session: Session, novel_id: int, path: str) -> FileDoc:
     kind, number = resolve_path(path)
     if kind == "blueprint":
-        model = _blueprint_model(_blueprint(session, novel_id))
+        model = _blueprint_model(active_blueprint(session, novel_id))
         text = render_document("blueprint", model)
         return FileDoc(BLUEPRINT_PATH, kind, "A", "全书蓝图", text, BLUEPRINT_AI_FIELDS, _revision(text))
     if kind == "toc":
@@ -468,7 +473,7 @@ def _write_blueprint(
     data = _require_keys(parsed, BLUEPRINT_FIELDS, BLUEPRINT_PATH)
     values = _coerce(data, BLUEPRINT_FIELDS, BLUEPRINT_PATH)
 
-    bp = _blueprint(session, novel_id)
+    bp = active_blueprint(session, novel_id)
     if bp is None:
         bp = PlanningBlueprint(novel_id=novel_id, version=1, is_active=True)
         session.add(bp)

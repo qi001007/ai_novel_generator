@@ -34,3 +34,6 @@ Thumbs.db
 # Runtime verification artifacts
 runtime-check.png
 runtime-workbench.png
+
+# Local patch scripts
+.scratch/

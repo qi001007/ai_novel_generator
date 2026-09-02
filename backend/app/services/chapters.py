@@ -1,6 +1,7 @@
 from sqlmodel import Session, select
 
-from app.models import ArcPlan, Chapter, ChapterBrief, GenerationRun, Novel, PlanningBlueprint
+from app.models import Chapter, ChapterBrief, GenerationRun, Novel
+from app.services.context import build_writing_context, log_injection
 from app.services.draft import build_template_draft
 from app.services.llm import LLMClient, LLMError
 from app.services.prompts import build_draft_user_prompt
@@ -56,12 +57,10 @@ def generate_from_brief(
 ) -> dict:
     ensure_chapter_number_free(session, novel.id, brief.chapter_number)
 
-    blueprint = session.exec(
-        select(PlanningBlueprint)
-        .where(PlanningBlueprint.novel_id == novel.id)
-        .order_by(PlanningBlueprint.version)
-    ).first()
-    arc = session.get(ArcPlan, brief.arc_plan_id) if brief.arc_plan_id else None
+    # One context source for chat and drafting alike: the sliding writing window is
+    # derived here (PRD 4.1) instead of being hand-picked per object.
+    writing_context = build_writing_context(session, novel.id, brief.chapter_number, brief_id=brief.id)
+    log_injection(writing_context, novel_id=novel.id, chapter_number=brief.chapter_number)
     generation_model = "template-v1"
     token_input = 0
     token_output = 0
@@ -74,7 +73,7 @@ def generate_from_brief(
                     "你是中文网文长篇连载作者。严格遵守 A 层约束、C 层剧情弧和 D 层简报，"
                     "写出完整章节正文，只输出正文。"
                 ),
-                user=build_draft_user_prompt(novel, blueprint, arc, brief),
+                user=build_draft_user_prompt(novel, [block.item for block in writing_context.selected]),
             )
         except LLMError as cause:
             raise ChapterDomainError(503, str(cause)) from cause
@@ -102,7 +101,7 @@ def generate_from_brief(
         chapter_id=chapter.id,
         task_type="draft",
         model=generation_model,
-        input_summary=f"ChapterBrief:{brief.id}",
+        input_summary=writing_context.manifest_json(),
         output=content,
         token_input=token_input,
         token_output=token_output,

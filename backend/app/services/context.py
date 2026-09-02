@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import dataclass, replace
+from json import JSONDecodeError
 from typing import Any
 
 from sqlmodel import Session, select
@@ -529,3 +532,286 @@ def render_context(items: list[ContextItem]) -> str:
     if not items:
         return "（暂无可引用的作品资料）"
     return "\n\n".join(item.as_prompt_block() for item in items)
+
+# --- writing context (PRD 4.1 / 6.1) -------------------------------------
+#
+# Draft generation used to pick four objects by hand (novel / blueprint / arc / brief)
+# and silently ignored every other fact the workbench stores, so a chapter could be
+# written without a single open foreshadow or the end of the previous chapter. Chat
+# already ranked the full item pool. Both now read `collect_items()`; only the ordering
+# rule differs: chat sorts by question relevance, writing by these fixed tiers.
+
+WRITING_CONTEXT_BUDGET = 12000
+PREVIOUS_CHAPTER_TAIL_CHARS = 600
+TOC_NEIGHBOURHOOD = 3
+RECENT_SUMMARY_CHAPTERS = 5
+CLOSED_FORESHADOW_STATUSES = {"resolved", "closed", "dropped", "已回收"}
+
+TIER_CORE = 1  # never trimmed, even when it overflows the budget
+TIER_CONTINUITY = 2  # previous arc / previous chapter glue
+TIER_NEARBY = 3  # neighbourhood index and settings
+TIER_FILL = 4  # everything else, first to go
+
+TIER_NAMES = {
+    TIER_CORE: "必注入",
+    TIER_CONTINUITY: "连续性",
+    TIER_NEARBY: "邻域",
+    TIER_FILL: "填充",
+}
+
+WRITING_KIND_ORDER = {
+    "novel": 0,
+    "blueprint": 1,
+    "brief": 2,
+    "arc": 3,
+    "chapter": 4,
+    "character": 5,
+    "foreshadow": 6,
+    "toc": 7,
+    "summary": 8,
+    "setting": 9,
+    "feedback": 10,
+}
+
+
+@dataclass
+class ContextBlock:
+    """One candidate injection, tagged with the tier that decided its fate."""
+
+    item: ContextItem
+    tier: int
+    reason: str = ""
+
+    @property
+    def chars(self) -> int:
+        return len(self.item.text)
+
+    def as_manifest(self, index: int | None = None) -> dict[str, Any]:
+        entry: dict[str, Any] = {
+            "kind": self.item.kind,
+            "label": self.item.label,
+            "ref": self.item.ref,
+            "tier": TIER_NAMES[self.tier],
+            "chars": self.chars,
+            "injected": index is not None,
+        }
+        if index is not None:
+            entry["index"] = index
+        if self.reason:
+            entry["reason"] = self.reason
+        return entry
+
+
+@dataclass
+class WritingContext:
+    """Everything one draft call sees, plus what the budget cut away."""
+
+    budget: int
+    used: int
+    selected: list[ContextBlock]
+    dropped: list[ContextBlock]
+
+    def manifest(self) -> dict[str, Any]:
+        return {
+            "budget": self.budget,
+            "used": self.used,
+            "blocks": [
+                *[block.as_manifest(i) for i, block in enumerate(self.selected, start=1)],
+                *[block.as_manifest() for block in self.dropped],
+            ],
+        }
+
+    def manifest_json(self) -> str:
+        return json.dumps(self.manifest(), ensure_ascii=False)
+
+
+def _chapter_refs(rows: list[Any], prefix: str) -> set[str]:
+    return {f"{prefix}:{row.id}" for row in rows}
+
+
+def _open_foreshadow_refs(session: Session, novel_id: int) -> set[str]:
+    rows = session.exec(
+        select(Foreshadow).where(Foreshadow.novel_id == novel_id)
+    ).all()
+    return {
+        f"foreshadow:{row.id}"
+        for row in rows
+        if row.status.strip().lower() not in CLOSED_FORESHADOW_STATUSES
+    }
+
+
+def _arc_refs_for_chapter(
+    session: Session, novel_id: int, chapter_number: int
+) -> tuple[set[str], set[str]]:
+    """Current arc (contains the chapter) and the arc that just closed before it."""
+    rows = session.exec(
+        select(ArcPlan).where(ArcPlan.novel_id == novel_id).order_by(ArcPlan.start_chapter)
+    ).all()
+    current = {
+        f"arc:{row.id}" for row in rows if row.start_chapter <= chapter_number <= row.end_chapter
+    }
+    earlier = [row for row in rows if row.end_chapter < chapter_number]
+    previous = {f"arc:{earlier[-1].id}"} if earlier else set()
+    return current, previous
+
+
+def _previous_chapter_tail(
+    session: Session, novel_id: int, chapter_number: int
+) -> ContextItem | None:
+    row = session.exec(
+        select(Chapter)
+        .where(Chapter.novel_id == novel_id, Chapter.chapter_number < chapter_number)
+        .order_by(Chapter.chapter_number.desc())
+    ).first()
+    if row is None or not row.content.strip():
+        return None
+    collapsed = " ".join(row.content.split())
+    return ContextItem(
+        kind="chapter",
+        label=f"上一章结尾 · 第 {row.chapter_number} 章",
+        ref=f"chapter_tail:{row.id}",
+        text=collapsed[-PREVIOUS_CHAPTER_TAIL_CHARS:],
+    )
+
+
+def build_writing_context(
+    session: Session,
+    novel_id: int,
+    chapter_number: int,
+    *,
+    brief_id: int | None = None,
+    budget: int = WRITING_CONTEXT_BUDGET,
+) -> WritingContext:
+    """Assemble the sliding writing window for one chapter (PRD 4.1)."""
+    brief = session.get(ChapterBrief, brief_id) if brief_id is not None else None
+    if brief is None:
+        brief = session.exec(
+            select(ChapterBrief).where(
+                ChapterBrief.novel_id == novel_id,
+                ChapterBrief.chapter_number == chapter_number,
+            )
+        ).first()
+
+    cast = {name.strip() for name in (brief.characters if brief else []) if name.strip()}
+    cast_refs = _chapter_refs(
+        [row for row in session.exec(select(Character).where(Character.novel_id == novel_id)).all() if row.name in cast],
+        "character",
+    )
+    current_arcs, previous_arcs = _arc_refs_for_chapter(session, novel_id, chapter_number)
+    open_foreshadows = _open_foreshadow_refs(session, novel_id)
+    brief_ref = f"brief:{brief.id}" if brief and brief.id is not None else ""
+
+    def tier_of(item: ContextItem) -> int:
+        number = _label_chapter_number(item.label)
+        if item.kind in {"novel", "blueprint"}:
+            return TIER_CORE
+        if item.kind == "brief":
+            return TIER_CORE if item.ref == brief_ref else TIER_NEARBY
+        if item.ref in open_foreshadows or item.ref in cast_refs:
+            return TIER_CORE
+        if item.ref in current_arcs:
+            return TIER_CORE
+        if item.ref in previous_arcs or item.ref.startswith("chapter_tail:"):
+            return TIER_CONTINUITY
+        if item.kind == "toc" and number is not None and abs(number - chapter_number) <= TOC_NEIGHBOURHOOD:
+            return TIER_NEARBY
+        if item.kind == "summary" and number is not None and 0 < chapter_number - number <= RECENT_SUMMARY_CHAPTERS:
+            return TIER_NEARBY
+        if item.kind == "setting":
+            return TIER_NEARBY
+        return TIER_FILL
+
+    pool = collect_items(session, novel_id)
+    tail = _previous_chapter_tail(session, novel_id, chapter_number)
+    if tail is not None:
+        pool = [*pool, tail]
+
+    # The previous chapter arrives once as its ending; letting its full text in as
+    # well would pay for the same prose twice (REQUIREMENTS 10.2, 兼顾成本).
+    tail_ref = tail.ref.split(":")[1] if tail is not None else ""
+    duplicated = [
+        block
+        for block in (
+            ContextBlock(item, tier_of(item))
+            for item in pool
+            if item.ref == f"chapter:{tail_ref}"
+        )
+    ]
+    for block in duplicated:
+        block.reason = "与已注入的上一章结尾重复"
+    pool = [item for item in pool if item.ref != f"chapter:{tail_ref}"]
+
+    blocks = [ContextBlock(item, tier_of(item)) for item in pool]
+    blocks.sort(key=lambda block: (block.tier, WRITING_KIND_ORDER.get(block.item.kind, 99), block.item.label))
+
+    selected: list[ContextBlock] = []
+    dropped: list[ContextBlock] = []
+    used = 0
+    for block in blocks:
+        if block.tier == TIER_CORE or used + block.chars <= budget:
+            selected.append(block)
+            used += block.chars
+            continue
+        block.reason = f"预算不足：已注入 {used} 字 / 预算 {budget} 字"
+        dropped.append(block)
+
+    if used > budget:
+        for block in selected:
+            if block.tier == TIER_CORE:
+                block.reason = f"必注入，超出预算 {used - budget} 字仍保留"
+
+    return WritingContext(
+        budget=budget,
+        used=used,
+        selected=selected,
+        dropped=[*dropped, *duplicated],
+    )
+
+
+# --- injection manifest observability (REQUIREMENTS 10.3) -----------------
+
+CONTEXT_DEBUG_ENV = "NOVEL_CONTEXT_DEBUG"
+
+
+def context_debug_enabled() -> bool:
+    return os.getenv(CONTEXT_DEBUG_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def injection_report(
+    ctx: WritingContext, *, novel_id: int, chapter_number: int
+) -> str:
+    """The injection manifest as the author reads it in the server terminal."""
+    lines = [
+        f"=== 注入上下文清单 · novel={novel_id} 第 {chapter_number} 章 · "
+        f"{ctx.used}/{ctx.budget} 字 ==="
+    ]
+    for index, block in enumerate(ctx.selected, start=1):
+        note = f"（{block.reason}）" if block.reason else ""
+        lines.append(
+            f"{index:>2}. [{TIER_NAMES[block.tier]}] {block.item.kind:<10} "
+            f"{block.chars:>5} 字  {block.item.label}{note}"
+        )
+    for block in ctx.dropped:
+        lines.append(
+            f" --. [{TIER_NAMES[block.tier]}] {block.item.kind:<10} "
+            f"{block.chars:>5} 字  未注入：{block.item.label}（{block.reason}）"
+        )
+    return "\n".join(lines)
+
+
+def log_injection(ctx: WritingContext, *, novel_id: int, chapter_number: int) -> None:
+    """Print every block one draft call injects, so the author can prune or add."""
+    if not context_debug_enabled():
+        return
+    print(injection_report(ctx, novel_id=novel_id, chapter_number=chapter_number), flush=True)
+
+
+def parse_context_manifest(text: str) -> dict[str, Any] | None:
+    """Read a stored manifest; older runs kept a plain-text marker instead."""
+    if not text or not text.lstrip().startswith("{"):
+        return None
+    try:
+        data = json.loads(text)
+    except JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None

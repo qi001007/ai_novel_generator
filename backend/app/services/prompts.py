@@ -1,43 +1,20 @@
-from app.models import ArcPlan, Chapter, ChapterBrief, Novel, PlanningBlueprint
+from app.models import Chapter, Novel
+from app.services.context import ContextItem, render_context
 
 
-def build_draft_user_prompt(
-    novel: Novel,
-    blueprint: PlanningBlueprint | None,
-    arc: ArcPlan | None,
-    brief: ChapterBrief,
-) -> str:
-    blueprint_text = (
-        f"主线：{blueprint.main_line}\n终局：{blueprint.ending}\n"
-        f"核心冲突：{blueprint.core_conflicts}\n主题：{blueprint.themes}\n"
-        f"约束：{blueprint.constraints}"
-        if blueprint
-        else "暂无"
-    )
-    arc_text = (
-        f"剧情弧：{arc.title}\n目标：{arc.objective}\n冲突：{arc.conflict}\n"
-        f"结果：{arc.resolution}\n状态：{arc.status}"
-        if arc
-        else "暂无"
-    )
+def build_draft_user_prompt(novel: Novel, items: list[ContextItem]) -> str:
+    """Render the writing window. Selecting what goes in is build_writing_context's job.
+
+    Keeping this a pure renderer is what stops the draft path from growing its own
+    private idea of "the right context" again (PRD 6.1).
+    """
     return f"""作品：{novel.title}
 文风约束：{novel.style_constraints or "未设置"}
 
-A 层蓝图：
-{blueprint_text}
+以下是本次写作可依据的全部资料，按写作优先级排列；严格遵守其中的约束，
+不要采用「未回收伏笔」之外另起的新设定。
 
-C 层剧情弧：
-{arc_text}
-
-D 层章节简报：
-章号：第 {brief.chapter_number} 章
-本章目标：{brief.goal}
-事件：{brief.events}
-视角：{brief.pov}
-出场人物：{"、".join(brief.characters)}
-冲突：{brief.conflict}
-结尾钩子：{brief.hook}
-必须包含的事实：{"、".join(brief.required_facts)}
+{render_context(items)}
 
 请写出一章完整正文，不要输出解释、标题或大纲。
 """
