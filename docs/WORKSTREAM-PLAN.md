@@ -587,9 +587,16 @@ novel 1 没有伏笔行（伏笔还没有写入端点，Phase 2），清单里�
 
 ### 待主人裁定的遗留
 
-1. **网关 401**：跑测试时 `/chat/completions` 真发了一次请求并回
-   `LLM request failed with status 401`，说明 `.env` 那把 key 被网关拒了。不修它，
-   主人在界面点生成会拿到 503。这条来自**真实报错**，不是推测。
+1. ~~网关 401~~ **已被推翻：那条结论是我的取证缺陷，不是超算平台的问题**（2026-09-03 复测）。
+   上轮我用 `(Select-String ...).Line.Split('=')[1]` 从 `backend/.env` 取 key，而这把 key 是
+   base64、结尾带 `=` 填充 —— `Split('=')[1]` 恰好切掉最后那位 padding（46 字符截成 45），
+   网关如实回 401，我却把它当成"key 过期"连续报了主人两轮。
+   复测证据：正确取法 `$line.Substring('NOVEL_LLM_API_KEY='.Length)` → **HTTP 200**；
+   再走后端自己的 `OpenAICompatibleClient` → 非流式返回真正文（`token_in=34 / token_out=324`）、
+   流式 5 个 chunk 正常。应用侧用 `load_dotenv()`，python-dotenv 保留值里的 `=`，
+   **后端从来没截断过这把 key**。教训：断言"外部服务挂了"之前，先打印自己取到凭据的长度与结尾字符。
+   顺带一条成本信号：MiniMax-M2.5 是推理模型，四字请求也烧掉 324 个 `completion_tokens`
+   （reasoning 计入输出），后端把 `token_output` 记成 324 是**真实账单口径**，不是 bug。
 2. novel 3「MD探针」是上一轮为验证 MD 迁移造的测试作品，本轮五条批注都发生在它上面；
    要删需主人点头（并先核实有没有 DELETE /novels 端点）。
 3. 帧 20 缺的规格栏 / 注记 / 圆点还补不补（帧已批准，价值下降）。
@@ -606,7 +613,7 @@ novel 1 没有伏笔行（伏笔还没有写入端点，Phase 2），清单里�
 - 批注 2 残留一处：`FileEditorPane` 跳转条直接渲染 `jump.field`（`plot_function` 等后端键名）。
   改查 `cmDoc.FIELD_LABEL`，未命中才退回原值；回归测试从断言 `plot_function` 改为断言
   「剧情功能」并加 `not.toContain` 兜底。前端 51 passed，提交 `f8b5948` 已推送。
-- 后端在受控命令里带 `NOVEL_CONTEXT_DEBUG=1` 重启（PID 39596），stdout 落
-  `.scratch/backend.log`；`/api/health` 200。清单打印在 LLM 调用**之前**，所以网关 401
-  不影响主人审查注入内容：按「生成」→ 先看清单 → 再处理 503。
+- 后端改为跑在一个**可见终端窗口**里（`NOVEL_CONTEXT_DEBUG=1`，启动脚本
+  `.scratch/run-backend.ps1`，控制台输出编码置 UTF-8 防中文乱码），清单直接滚动，
+  不再让主人去翻 `.scratch/backend.log`。这是主人指出的第二处「把方便留给自己」的缺陷。
 - `docs/HANDOFF.md` 计数刷新 86→99、45→51。`.bak-20260902` 两个文件已不存在（早前清理掉了）。
