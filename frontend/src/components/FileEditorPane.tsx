@@ -6,6 +6,7 @@ import { AlertTriangle, FileCode2, RefreshCw, X } from "lucide-react";
 
 import {
   cursorReport,
+  FIELD_LABEL,
   editorExtensions,
   focusField,
   jumpHandlers,
@@ -259,7 +260,7 @@ export default function FileEditorPane() {
       {jump ? (
         <div className="jump-bar">
           <span className="jump-from">
-            ↩ 来自 {jump.fromPath} · 第 {jump.chapter} 章 · {jump.field}
+            ↩ 来自 {jump.fromPath} · 第 {jump.chapter} 章 · {FIELD_LABEL[jump.field] ?? jump.field}
           </span>
           <span className="jump-hint">点击目录里的描述 → 打开该章简报，光标落在同一字段</span>
           <button

@@ -119,7 +119,7 @@ describe("FileEditorPane", () => {
     expect(document.querySelector(".pending-dot")).toBeTruthy();
   });
 
-  it("names the source when the reader arrived through a B→D jump", () => {
+  it("names the source in reader-facing words when the reader arrived through a B→D jump", () => {
     seed();
     useFiles.setState({
       active: "briefs/0043.md",
@@ -127,7 +127,8 @@ describe("FileEditorPane", () => {
     });
     render(<FileEditorPane />);
 
-    expect(document.querySelector(".jump-bar")?.textContent).toContain("来自 toc.md · 第 43 章 · plot_function");
+    expect(document.querySelector(".jump-bar")?.textContent).toContain("来自 toc.md · 第 43 章 · 剧情功能");
+    expect(document.querySelector(".jump-bar")?.textContent).not.toContain("plot_function");
     expect(document.querySelector(".jump-bar")?.textContent).toContain("返回来源");
   });
 
