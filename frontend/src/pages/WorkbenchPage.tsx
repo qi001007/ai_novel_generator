@@ -14,7 +14,7 @@ import SettingsPanel from "../components/SettingsPanel";
 import Splitter, { type PaneKey } from "../components/Splitter";
 import TreePane, { type BriefRow, type PlanningLayer } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
-import { BRIEF_FIELD_OF, briefChapter, briefPath, useFiles } from "../store/files";
+import { briefChapter, briefPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
 type RightView = "editor" | "files" | "planning" | "feedback" | "settings" | "worldmap" | "foreshadow";
@@ -147,25 +147,6 @@ export default function WorkbenchPage() {
     if (!deepLink || !state.selectedNovelId) return;
     void openFile(deepLink);
   }, [deepLink, state.selectedNovelId, openFile]);
-
-  // ?view=characters deep-links the page-level library, which otherwise only a
-  // click on the tree row can open.
-  const deepView = searchParams.get("view");
-  useEffect(() => {
-    if (deepView === "characters") setCharactersOpen(true);
-  }, [deepView]);
-
-  // Dev-only visual-QA link: ?jump=toc.yaml:43:plot_function replays a B→D jump
-  // (the same open() a click on a description performs) for headless screenshots.
-  const deepJump = import.meta.env.DEV ? searchParams.get("jump") : null;
-  useEffect(() => {
-    if (!deepJump || !state.selectedNovelId) return;
-    const [fromPath, chapter, field] = deepJump.split(":");
-    void openFile(briefPath(Number(chapter)), {
-      jump: { fromPath, chapter: Number(chapter), field },
-      field: BRIEF_FIELD_OF[field] ?? null,
-    });
-  }, [deepJump, state.selectedNovelId, openFile]);
 
   const chapter = state.chapters.find((item) => item.id === state.selectedChapterId) ?? null;
 

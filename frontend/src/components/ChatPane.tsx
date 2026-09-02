@@ -10,7 +10,7 @@ import {
 
 import { api } from "../api";
 import ProposalCard from "./ProposalCard";
-import { BLUEPRINT_PATH, useFiles } from "../store/files";
+import { useFiles } from "../store/files";
 import type {
   ChatContextItem,
   ChatMode,
@@ -189,43 +189,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       cancelled = true;
     };
   }, [selectedNovelId]);
-
-  // Dev-only visual-QA hook: ?demo=proposal replays a proposal through the same
-  // offerFromStream() the SSE uses, so the frame 18 card and the editor's pending
-  // band can be screenshotted without a live model turn. Never in a prod build.
-  const demoProposal =
-    import.meta.env.DEV &&
-    new URLSearchParams(window.location.search).get("demo") === "proposal";
-  const demoRan = useRef(false);
-  useEffect(() => {
-    if (!demoProposal || !selectedNovelId || demoRan.current || !rows.length) return;
-    demoRan.current = true;
-    void (async () => {
-      const doc = await api.readFile(selectedNovelId, BLUEPRINT_PATH);
-      const text = doc.text.replace(
-        "不可同时开启两条星路。",
-        "不可同时开启两条星路，也不得让观星阁覆灭。",
-      );
-      const question =
-        "请只改 blueprint.yaml 里 constraints 的值：第二条加上「也不得让观星阁覆灭」，" +
-        "其余四条原样保留，按约定输出一个 ```yaml @blueprint.yaml 代码块。";
-      const answer =
-        "constraints 第二条已改写，其余四条保持原样：\n\n" +
-        "```yaml @blueprint.yaml\n" + text + "```";
-      appendMessage({ kind: "user", id: nextId++, text: question });
-      const id = nextId++;
-      appendMessage({
-        kind: "agent",
-        id,
-        text: answer,
-        status: "done" as const,
-        question,
-        meta: {},
-      });
-      await offerFromStream(id, { path: BLUEPRINT_PATH, text, valid: true, error: "" });
-      void openFile(BLUEPRINT_PATH);
-    })();
-  }, [demoProposal, selectedNovelId, rows.length]);
 
   // The @mention list is backed by the same retriever the agent uses.
   useEffect(() => {

@@ -75,15 +75,6 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
     };
   }, [novelId]);
 
-  // Dev-only visual-QA link: ?char=<id> opens that card's detail layer, which is
-  // otherwise click-only (the portrait control needs a real browser screenshot).
-  useEffect(() => {
-    if (!import.meta.env.DEV || !characters.length) return;
-    const wanted = new URLSearchParams(window.location.search).get("char");
-    const found = wanted ? characters.find((item) => String(item.id) === wanted) : null;
-    if (found) setEditing(toForm(found));
-  }, [characters]);
-
   useEffect(() => {
     if (!editing) return;
     function onKeyDown(event: KeyboardEvent) {

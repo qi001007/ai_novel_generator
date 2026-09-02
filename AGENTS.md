@@ -95,4 +95,52 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
 - 仅当 MCP 工具确实缺失对应能力时才降级到 `gh` CLI。
 - 用户提到 "github"、"我的仓库"、"某个 PR/Issue"、"CI 挂了" 等关键词时，
   先在可用工具里找 github MCP 的工具再动手。
+## Figma / MCP 故障分流（2026-09-02 取证定稿）
+
+任何"某工具不在了 / MCP 掉了"的判断，必须先走本节流程。禁止凭单次报错直接下结论。
+
+### 1. 按报错串分流——三类错误含义完全不同，不许混用
+
+| 你看到的报错 | 真实含义 | 正确动作 |
+|---|---|---|
+| `unsupported call: <name>` | **工具名解析失败**。最常见是漏了 MCP 命名空间前缀（写 `use_figma` 而实际是 `mcp__figma__use_figma`），或该名字来自别的 harness（`write_file` / `read_files` 在本环境不存在） | 用全名重试；全名仍失败才可以判定"不存在" |
+| JSON 报错含 `at <anonymous> (PLUGIN_N_SOURCE:…)` 与 `Figma Debug UUID` | **工具在正常执行**，是你的脚本违反 Figma Plugin API | 改脚本，不要怀疑工具面 |
+| `You've reached the Figma MCP tool call limit on the … plan` | 服务端**额度**，与工具面无关。`use_figma` / `create_new_file` / `add_code_connect_map` / `whoami` 属写类或豁免额度 | 查文件归属空间与席位；不要改成"绕道像素取色" |
+
+取证基线（`~/.codex/thread_history_1.sqlite` + `logs_2.sqlite`，2026-09-02）：
+`use_figma` 结构化工具调用共 289 次派发 = 238 成功 / 51 服务端真报错 / **0 次派发失败**；
+Codex 判定 `MCP server tools unavailable` 的对象只有 `mineru`(21) / `github`(18) / `codex_apps`(1)，
+**`figma` 从未上榜**。历史上所有"use_figma 不存在"的字样都在模型自己的 reasoning / agentMessage 里，
+以及 `read_mcp_resource` 读回来的官方文档正文里，不在任何一条工具调用记录里。
+
+### 2. 活体探针只用 `mcp__figma__whoami`
+
+约 300ms 返回、payload 最小、且属额度豁免工具。
+
+**禁止**用 `list_mcp_resources` / `list_mcp_resource_templates` 判断 MCP 是否健康：
+它们读的是启动期缓存的工具/schema 快照，工具全部不可用时照样返回全量列表，是假阳性来源。
+
+### 3. `read_mcp_resource` 读来的排障文档只能当"待验证假设"
+
+Figma 官方 `tools-not-loading.md` / `code-to-canvas.md` 含原句
+"The `use_figma` or `generate_figma_design` tool isn't available"，
+但其成立条件是"**同时**配置了 desktop server `http://127.0.0.1:3845/mcp` 并遮蔽了远程 server"。
+本机实测：3845 无监听、`.codex` 全目录无 `3845` 配置、Figma 经插件 `figma@openai-api-curated`
+指向 `https://mcp.figma.com/mcp`，条件不成立。
+
+引用排障文档必须连同其成立条件整句引用；上下文压缩后只保留结论视为错误陈述。
+
+### 4. 本环境真实的抖动只在**参数层**，不在工具存在层
+
+`failed to parse function arguments: invalid type: null, expected u64`、
+`expected number, received string`、`apply_patch` 序列化失败属同一类：
+经本地 provider shim 时参数类型退化。处置 = 重发，或改用 here-string / 临时脚本落地。
+这类报错**不能**作为"工具面在掉"的证据。
+
+### 5. 真正需要修的两件事（别再重复排查）
+
+- `github` MCP 的 `AuthRequired: Token is not authorized`（11 次）＝ PAT 过期，需换新 token。
+- Figma 导出图下载在沙箱内直连超时，须 `sandbox_permissions=require_escalated` +
+  `$env:HTTPS_PROXY="http://127.0.0.1:7890"`。
+
 </INSTRUCTIONS>

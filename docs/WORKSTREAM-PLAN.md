@@ -112,7 +112,7 @@
 - [x] 消息级 Token 用量展开：`ChatMessage.token_*`（消息级）+ `GenerationRun(task_type="chat")`（用量汇总）
 - [x] 封面持久化收口：`PUT /api/novels/{id}` + 书架弹层 base64 上传真保存
 - [x] 测试 + 构建：后端 60/60、前端 8/8、`npm run build` 通过；真接口冒烟经 :8000 与 Vite :5173 双路径确认逐字增量、落库与流一致
-- [ ] 全页截图验收：本机未装 Playwright，暂用 dev server 人工过目，C7 统一补
+- [ ] 全页截图验收：浏览器驱动走 in-app Browser 的 Edge 绑定（见 C5b 取证通道更正），C7 统一补齐各页
 
 ## C5a 主人浏览器批注修复（本轮）
 
@@ -204,18 +204,20 @@
       `services/chat.py` 的 proposal `valid` 从"只校验路径"改成真校验结构，
       模型乱改键名（mainline/theme/core_conflict 之类）不再被标成 valid=True（原先点开应用必 422）
       + 回归测试 `test_proposal_that_renames_keys_is_flagged`
-- [x] 真实浏览器截图补齐（headless Edge 1440x900）：帧 18 提案卡（含编辑器 amber 行带与
-      "1 处提案待应用"页脚）、帧 19 跳转条（来自 toc.yaml · 第 43 章 · plot_function，光标落在 goal）、
-      toc.yaml 常驻点状下划线、人物卡与详情弹层（真库已贴一张演示照片）、深浅双主题各一张
-- [x] 为可复现取证补了 DEV-only 深链（`import.meta.env.DEV` 才生效，生产构建里不存在）：
-      `?view=characters` 打开人物整页、`?char=<id>` 打开其详情弹层、`?jump=toc.yaml:43:plot_function`
-      重放一次 B→D 跳转、`?demo=proposal` 用真实 blueprint.yaml 走一遍 offerFromStream 出提案卡、
-      `?theme=dark` 钉住主题
+- [x] 取证通道更正（主人指出后整改）：上一轮为了截图方便，往产品代码里塞了 5 个 DEV-only
+      深链（`?view=characters` `?char=` `?jump=` `?demo=proposal` `?theme=dark`），属"没要求的东西"，
+      **本轮全部拆除**；`?file=xxx.yaml` 是正式功能深链，保留。
+- [x] 改用真实浏览器驱动取证：`mcp__chrome_devtools__*` 在本机确实不可用（硬编码找 5 个 Chrome
+      路径，本机只有 Edge），但**不等于没有浏览器控制能力** —— in-app Browser 插件的 Edge 绑定可用：
+      `setupBrowserRuntime()` → `agent.browsers.get("edge")` → `tab.goto/playwright.locator(...).click()/screenshot()`，
+      帧 19 跳转、帧 18 提案、人物卡与弹层、深浅双主题均为真点击 + 真 LLM 回复后的截图
 - [x] 验证：后端 pytest 80/80、前端 Vitest 40/40（新增坞行序与人物卡结构两条回归）、`npm run build` 干净
       （591KB chunk 警告来自 CodeMirror，非错误）
 - [x] 清理：删除上一任遗留的 `_yaml_dump.txt`、`backend/_frames_yaml.txt`
-- [ ] 未动 owner 的东西待答：`AGENTS.md` 被外部改过 + 多出 `AGENTS.md.bak-20260902`、
-      未跟踪的 `docs/HANDOFF.md` —— 均排除在提交外，等主人裁定
+- [x] `AGENTS.md` 的「Figma / MCP 故障分流」一节为主人本人添加，随本轮正常入库
+- [ ] 待主人裁定：`AGENTS.md.bak-20260902`、未跟踪的 `docs/HANDOFF.md` 如何处理；
+      真库人物 沈曜（id=1）身上那张演示照片是否清掉；
+      Figma 帧 06/07 是否删除（先导出留档再删）
 
 ## Figma MCP 实况（更正记录口径）
 
