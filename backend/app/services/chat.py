@@ -20,7 +20,8 @@ from app.services.documents import (
 from app.services.context import (
     DEFAULT_CONTEXT_BUDGET,
     ContextItem,
-    build_context,
+    build_chat_context,
+    log_injection,
     mention_tokens,
     render_context,
 )
@@ -30,6 +31,7 @@ from app.services.llm import LLMClient, LLMError, LLMUnavailableError
 CHAT_TASK_TYPE = "chat"
 HISTORY_WINDOW = 8
 MODES = ("plan", "write")
+MODE_LABEL = {"plan": "计划模式", "write": "写作模式"}
 
 # A reply may propose a whole file; the human decides whether it gets written.
 # Both fences are accepted on purpose: the file surface moved from YAML to Markdown,
@@ -118,6 +120,7 @@ class ChatTurn:
     user_message_id: int
     model: str | None = None
     chapter_id: int | None = None
+    manifest: str = ""
 
     def references(self) -> list[dict[str, Any]]:
         return [item.as_reference() for item in self.context_items]
@@ -148,6 +151,12 @@ def extract_proposals(
                 entry["text"] = stabilize_proposal(path, base, entry["text"])
         proposals.append(entry)
     return proposals
+
+
+def _one_line(text: str, limit: int) -> str:
+    """Collapse a message into the short label the manifest header carries."""
+    cleaned = " ".join((text or "").split())
+    return cleaned if len(cleaned) <= limit else cleaned[:limit] + "…"
 
 
 def temperature_for(mode: str) -> float:
@@ -235,12 +244,18 @@ def prepare_turn(
         if candidate is not None and candidate.novel_id == novel.id:
             chapter = candidate
 
-    items, unknown = build_context(
+    writing_context, unknown = build_chat_context(
         session,
         novel.id,
         text,
         chapter_id=chapter.id if chapter else None,
         budget=context_budget,
+    )
+    items = [block.item for block in writing_context.selected]
+    log_injection(
+        writing_context,
+        novel_id=novel.id,
+        note=f"{MODE_LABEL[mode]} · 指令「{_one_line(text, 40)}」",
     )
 
     user_message = ChatMessage(
@@ -280,6 +295,7 @@ def prepare_turn(
         user_message_id=user_message_id,
         model=model,
         chapter_id=chapter.id if chapter else None,
+        manifest=writing_context.manifest_json(),
     )
 
 
@@ -310,10 +326,8 @@ def persist_reply(
             chapter_id=turn.chapter_id,
             task_type=CHAT_TASK_TYPE,
             model=model,
-            input_summary=(
-                f"mode={turn.mode}; context={len(turn.context_items)}; "
-                f"question={turn.question[:80]}"
-            ),
+            input_summary=turn.manifest
+            or f"mode={turn.mode}; context={len(turn.context_items)}",
             output=content,
             token_input=token_input,
             token_output=token_output,

@@ -185,35 +185,38 @@ C 层滑动窗口的结论见 PRD 4.1（弧是存储、窗口是派生视图）�
 ### 10.1 先修割裂（治本，PRD 6.1 已记录取证）
 
 - [x] 取证：正文生成与对话 Agent 是两条通路，写作侧没有伏笔 / 人物状态 / 上一章结尾
-- [ ] v1 正文生成改走与对话 Agent 同一个 collector 池（`collect_items()`），
+- [x] v1 正文生成改走与对话 Agent 同一个 collector 池（`collect_items()`），
   `build_draft_user_prompt()` 退化为渲染器，不再自行挑选资料
-- [ ] v1 废除第二真源：`generate_from_brief` 取蓝图必须用 `documents._blueprint()`
+- [x] v1 废除第二真源：`generate_from_brief` 取蓝图必须用 `documents._blueprint()`
   （最新 active 版本）；现状 `order_by(version)` 升序取**最旧**，属缺陷
 - [ ] v1 对话侧 `build_context()` 与写作侧 `build_writing_context()` 共享预算常量与裁剪
   逻辑，只有排序规则不同
+  2026-09-02 进度：两侧已共用**同一份清单报告器**（`build_chat_context()` 与
+  `build_writing_context()` 都产出 `WritingContext`，档位词表、`dropped` 记录、终端打印一致）；
+  仍未做的是把两份预算常量与裁剪循环合并成一份，故本条保持未勾。
 
 ### 10.2 写作优先级窗口（PRD 4.1 的落地）
 
-- [ ] v1 必注入（永不被预算裁掉）：作品信息与文风约束、A 蓝图、D 本章简报
-- [ ] v1 次优先：当前弧、上一章结尾、出场人物的当前状态、**所有未回收伏笔**
-- [ ] v1 第三档：B 目录邻域（N±3 章）、近 5 章章摘要、被点名设定
-- [ ] v1 填充档：其余按相关度，预算不足时从这一档开始裁
-- [ ] v1 不变量测试：预算再紧也不得裁掉未回收伏笔与出场人物状态
+- [x] v1 必注入（永不被预算裁掉）：作品信息与文风约束、A 蓝图、D 本章简报
+- [x] v1 次优先：当前弧、上一章结尾、出场人物的当前状态、**所有未回收伏笔**
+- [x] v1 第三档：B 目录邻域（N±3 章）、近 5 章章摘要、被点名设定
+- [x] v1 填充档：其余按相关度，预算不足时从这一档开始裁
+- [x] v1 不变量测试：预算再紧也不得裁掉未回收伏笔与出场人物状态
 - [ ] P2 弧收束摘要 / 卷摘要（分层摘要塔，窗口外事实的压缩来源）
 
 ### 10.3 双通道可观测
 
-- [ ] v1 `NOVEL_CONTEXT_DEBUG=1` 时后端终端打印注入清单：
+- [x] v1 `NOVEL_CONTEXT_DEBUG=1` 时后端终端打印注入清单，正文生成与对话两条链路都打：
   序号 / kind / 标签 / 字符数 / 是否被裁 + 原因，一次生成一段
-- [ ] v1 `generation_run.input_summary` 存结构化 JSON 清单（`budget` / `used` /
+- [x] v1 `generation_run.input_summary` 存结构化 JSON 清单（`budget` / `used` /
   `blocks[]`，每块含 `kind`、`label`、`chars`、`dropped`、`reason`）
-- [ ] v1 清单可经 `GET /api/novels/{id}/chapters/{chapter_id}/generation-runs` 回读
-- [ ] v1 后端测试覆盖：清单 JSON 可解析、块顺序符合 10.2、dropped 记录正确
-- [ ] v1 旧格式兼容：`input_summary` 已有的 `ChapterBrief:12` 纯文本读侧不得报错
+- [x] v1 清单可经 `GET /api/novels/{id}/chapters/{chapter_id}/generation-runs` 回读
+- [x] v1 后端测试覆盖：清单 JSON 可解析、块顺序符合 10.2、dropped 记录正确
+- [x] v1 旧格式兼容：`input_summary` 已有的 `ChapterBrief:12` 纯文本读侧不得报错
 - [ ] P2 详情页把清单渲染成可折叠列表（依赖 4.5 的独立页范式）
 
 ### 10.4 主人的迭代回路
 
-- [ ] v1 主人指认某个 `kind` 多余或缺失时，只改对应 collector，
+- [x] v1 主人指认某个 `kind` 多余或缺失时，只改对应 collector，
   不改调用方、不改提示词模板、不改前端
-- [ ] v1 每次改动补一条断言清单内容的测试，防回退
+- [x] v1 每次改动补一条断言清单内容的测试，防回退

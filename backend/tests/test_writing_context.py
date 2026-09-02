@@ -31,6 +31,7 @@ from app.services.context import (
     log_injection,
     parse_context_manifest,
 )
+from app.services.chat import prepare_turn
 from app.services.prompts import build_draft_user_prompt
 
 
@@ -276,3 +277,32 @@ def test_generation_run_persists_the_manifest(client: TestClient):
     kinds = {block["kind"] for block in manifest["blocks"]}
     assert {"novel", "blueprint", "brief", "chapter"} <= kinds
     assert any("上一章结尾" in block["label"] for block in manifest["blocks"])
+
+def test_chat_write_mode_prints_the_same_manifest(session, monkeypatch, capsys):
+    """主人要的回路：写作模式发续写指令，终端立刻列出注入了什么。
+
+    Chat used to call the relevance ranker with no report at all, so the
+    conversation path, the one the author actually drives, was invisible.
+    """
+    novel, _brief = _book(session)
+    monkeypatch.setenv("NOVEL_CONTEXT_DEBUG", "1")
+    turn = prepare_turn(session, novel, content="续写第 25 章", mode="write")
+
+    printed = capsys.readouterr().out
+    assert "注入上下文清单" in printed
+    assert "写作模式" in printed
+    assert "续写第 25 章" in printed
+
+    manifest = parse_context_manifest(turn.manifest)
+    assert manifest is not None, "对话轮次也要把清单落进 generation_run"
+    assert manifest["blocks"]
+    assert all(block["reason"] for block in manifest["blocks"])
+
+
+def test_chat_plan_mode_is_labelled_apart(session, monkeypatch, capsys):
+    novel, _brief = _book(session)
+    monkeypatch.setenv("NOVEL_CONTEXT_DEBUG", "1")
+    prepare_turn(session, novel, content="梳理伏笔", mode="plan")
+    printed = capsys.readouterr().out
+    assert "计划模式" in printed
+    assert "写作模式" not in printed

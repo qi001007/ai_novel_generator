@@ -453,15 +453,52 @@ def _label_chapter_number(label: str) -> int | None:
     return next(iter(numbers)) if numbers else None
 
 
-def build_context(
+def _chat_reason(
+    item: ContextItem,
+    *,
+    score: int,
+    mention: bool,
+    kind_hit: bool,
+    number_hit: bool,
+    focus_hit: bool,
+) -> tuple[int, str]:
+    """Tier plus the one-line reason the author reads in the injection manifest."""
+    parts: list[str] = []
+    tier = TIER_FILL
+    if mention:
+        parts.append("命中 @引用")
+        tier = TIER_CORE
+    if item.kind in {"novel", "blueprint"}:
+        parts.append("作品与蓝图恒注入")
+        tier = TIER_CORE
+    if focus_hit:
+        parts.append("当前焦点章")
+        tier = min(tier, TIER_CONTINUITY)
+    if number_hit:
+        parts.append("指令点到章号")
+        tier = min(tier, TIER_NEARBY)
+    if kind_hit:
+        parts.append("指令点名这类资料")
+        tier = min(tier, TIER_NEARBY)
+    if not parts:
+        parts.append(f"相关度 {score}")
+    return tier, "·".join(parts)
+
+
+def build_chat_context(
     session: Session,
     novel_id: int,
     query: str,
     *,
     chapter_id: int | None = None,
     budget: int = DEFAULT_CONTEXT_BUDGET,
-) -> tuple[list[ContextItem], list[str]]:
-    """Rank context blocks for one turn: always the blueprint, then the rest."""
+) -> tuple[WritingContext, list[str]]:
+    """Rank context for one chat turn, and report why each block got in.
+
+    The tiers and reasons only *describe* the order the relevance score already
+    produced, so the manifest can be read against the reply without the report
+    changing what the model sees.
+    """
     items = collect_items(session, novel_id)
     mentions, unknown = resolve_mentions(items, query)
     mention_refs = {item.ref for item in mentions}
@@ -483,27 +520,43 @@ def build_context(
         chapter = session.get(Chapter, chapter_id)
         focus_chapter = chapter.chapter_number if chapter else None
 
-    scored: list[ContextItem] = []
+    ranked: list[ContextBlock] = []
     for item in items:
         score = 0
         if item.kind in {"novel", "blueprint"}:
             score += 40
-        if item.ref in mention_refs:
+        mention_hit = item.ref in mention_refs
+        if mention_hit:
             score += 200
-        if item.kind in kinds:
+        kind_hit = item.kind in kinds
+        if kind_hit:
             score += 60
         score += 6 * len(query_grams & _grams(item.label))
         score += min(20, len(query_grams & _grams(item.text)))
 
+        number_hit = False
+        focus_hit = False
         number = _label_chapter_number(item.label)
         if number is not None:
-            if number in chapters:
+            number_hit = number in chapters
+            if number_hit:
                 score += 120
             if focus_chapter is not None and number == focus_chapter:
+                focus_hit = True
                 score += 80
 
-        if score > 0:
-            scored.append(
+        if score <= 0:
+            continue
+        tier, reason = _chat_reason(
+            item,
+            score=score,
+            mention=mention_hit,
+            kind_hit=kind_hit,
+            number_hit=number_hit,
+            focus_hit=focus_hit,
+        )
+        ranked.append(
+            ContextBlock(
                 ContextItem(
                     kind=item.kind,
                     label=item.label,
@@ -511,21 +564,48 @@ def build_context(
                     ref=item.ref,
                     score=score,
                     mention=item.mention,
-                )
+                ),
+                tier,
+                reason,
             )
+        )
 
-    scored.sort(key=lambda item: (-item.score, item.label))
+    ranked.sort(key=lambda block: (-block.item.score, block.item.label))
 
-    selected: list[ContextItem] = []
+    selected: list[ContextBlock] = []
+    dropped: list[ContextBlock] = []
     used = 0
-    for item in scored:
-        if used + len(item.text) > budget and selected:
+    for index, block in enumerate(ranked):
+        if used + block.chars > budget and selected:
+            block.reason = f"预算不足：已注入 {used} 字 / 预算 {budget} 字"
+            dropped.append(block)
             continue
-        selected.append(item)
-        used += len(item.text)
+        selected.append(block)
+        used += block.chars
         if used >= budget:
+            for tail in ranked[index + 1:]:
+                tail.reason = f"预算不足：已注入 {used} 字 / 预算 {budget} 字"
+                dropped.append(tail)
             break
-    return selected, unknown
+    return (
+        WritingContext(budget=budget, used=used, selected=selected, dropped=dropped),
+        unknown,
+    )
+
+
+def build_context(
+    session: Session,
+    novel_id: int,
+    query: str,
+    *,
+    chapter_id: int | None = None,
+    budget: int = DEFAULT_CONTEXT_BUDGET,
+) -> tuple[list[ContextItem], list[str]]:
+    """Back-compatible view of :func:`build_chat_context`: same order, no report."""
+    ctx, unknown = build_chat_context(
+        session, novel_id, query, chapter_id=chapter_id, budget=budget
+    )
+    return [block.item for block in ctx.selected], unknown
 
 
 def render_context(items: list[ContextItem]) -> str:
@@ -778,11 +858,16 @@ def context_debug_enabled() -> bool:
 
 
 def injection_report(
-    ctx: WritingContext, *, novel_id: int, chapter_number: int
+    ctx: WritingContext,
+    *,
+    novel_id: int,
+    chapter_number: int | None = None,
+    note: str = "",
 ) -> str:
     """The injection manifest as the author reads it in the server terminal."""
+    subject = note or f"第 {chapter_number} 章"
     lines = [
-        f"=== 注入上下文清单 · novel={novel_id} 第 {chapter_number} 章 · "
+        f"=== 注入上下文清单 · novel={novel_id} {subject} · "
         f"{ctx.used}/{ctx.budget} 字 ==="
     ]
     for index, block in enumerate(ctx.selected, start=1):
@@ -799,11 +884,22 @@ def injection_report(
     return "\n".join(lines)
 
 
-def log_injection(ctx: WritingContext, *, novel_id: int, chapter_number: int) -> None:
-    """Print every block one draft call injects, so the author can prune or add."""
+def log_injection(
+    ctx: WritingContext,
+    *,
+    novel_id: int,
+    chapter_number: int | None = None,
+    note: str = "",
+) -> None:
+    """Print every block one call injects, so the author can prune or add."""
     if not context_debug_enabled():
         return
-    print(injection_report(ctx, novel_id=novel_id, chapter_number=chapter_number), flush=True)
+    print(
+        injection_report(
+            ctx, novel_id=novel_id, chapter_number=chapter_number, note=note
+        ),
+        flush=True,
+    )
 
 
 def parse_context_manifest(text: str) -> dict[str, Any] | None:
