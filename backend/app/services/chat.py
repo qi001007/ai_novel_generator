@@ -11,7 +11,7 @@ from sqlmodel import Session, select
 
 from app.db import engine
 from app.models import Chapter, ChatMessage, GenerationRun, Novel
-from app.services.documents import DocumentError, resolve_path
+from app.services.documents import DocumentError, validate_structure
 from app.services.context import (
     DEFAULT_CONTEXT_BUDGET,
     ContextItem,
@@ -118,10 +118,10 @@ def extract_proposals(content: str) -> list[dict[str, Any]]:
         path = raw_path.strip().lstrip("/")
         entry: dict[str, Any] = {"path": path, "text": text.rstrip() + "\n", "valid": True, "error": ""}
         try:
-            resolve_path(path)
+            entry["error"] = validate_structure(path, entry["text"])
         except DocumentError as cause:
-            entry["valid"] = False
             entry["error"] = cause.detail
+        entry["valid"] = not entry["error"]
         proposals.append(entry)
     return proposals
 

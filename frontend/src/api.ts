@@ -1,6 +1,9 @@
 import type {
   ChatContextItem,
   ChatStreamEvent,
+  FileDoc,
+  FileMeta,
+  FileWriteResult,
   Novel,
   NovelUpdatePayload,
   StreamChatPayload,
@@ -106,4 +109,18 @@ export const api = {
 
   updateNovel: (novelId: number, payload: NovelUpdatePayload) =>
     api.put<Novel>(`/api/novels/${novelId}`, payload),
+
+  // --- document layer: the four planning files (DB stays the source of truth) ---
+  listFiles: (novelId: number) => api.get<FileMeta[]>(`/api/novels/${novelId}/files`),
+
+  readFile: (novelId: number, path: string) =>
+    api.get<FileDoc>(`/api/novels/${novelId}/files/${path}`),
+
+  // base_revision is what turns a lost update into a 409 instead of a silent overwrite.
+  writeFile: (novelId: number, path: string, text: string, opts: { actor?: string; baseRevision?: string } = {}) =>
+    api.put<FileWriteResult>(`/api/novels/${novelId}/files/${path}`, {
+      text,
+      actor: opts.actor ?? "human",
+      base_revision: opts.baseRevision ?? undefined,
+    }),
 };

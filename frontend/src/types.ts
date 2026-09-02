@@ -154,6 +154,7 @@ export type ChatStreamEvent =
   | { event: "delta"; data: { text: string } }
   | { event: "done"; data: { message: StoredChatMessage } }
   | { event: "error"; data: { message: string; partial: string } }
+  | { event: "proposal"; data: { path: string; text: string; valid: boolean; error: string } }
   | { event: "end"; data: unknown };
 
 export type PlanningBlueprint = {
@@ -197,3 +198,31 @@ export type PlotFeedback = {
   applied_at: string | null;
   created_at: string;
 };
+
+export type FileMeta = { path: string; kind: string; layer: string; label: string };
+
+export type FileDoc = {
+  path: string;
+  kind: string;
+  layer: string;
+  label: string;
+  text: string;
+  ai_fields: string[];
+  revision: string;
+};
+
+export type FileWriteResult = { path: string; changed: string[]; revision: string };
+
+// A ```yaml @path block the agent offered. It is a proposal, never a write:
+// only the human clicking "应用" sends it, with actor=ai.
+export type FileProposal = {
+  id: number;
+  path: string;
+  text: string;
+  valid: boolean;
+  error: string;
+  baseText: string;
+  baseRevision: string;
+};
+
+export type JumpSource = { fromPath: string; chapter: number; field: string };

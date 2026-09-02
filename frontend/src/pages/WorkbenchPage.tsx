@@ -1,34 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeft, Moon, Settings, Sun } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import CharacterLibrary from "../components/CharacterLibrary";
 import ChatPane from "../components/ChatPane";
 import EditorPane from "../components/EditorPane";
 import FeedbackPanel from "../components/FeedbackPanel";
+import FileEditorPane from "../components/FileEditorPane";
 import ForeshadowWall from "../components/ForeshadowWall";
 import PlanningPanel from "../components/PlanningPanel";
 import SettingsPanel from "../components/SettingsPanel";
 import Splitter, { type PaneKey } from "../components/Splitter";
-import TreePane, { type PlanningLayer } from "../components/TreePane";
+import TreePane, { type BriefRow, type PlanningLayer } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
+import { briefChapter, briefPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
-type RightView = "editor" | "planning" | "feedback" | "settings" | "worldmap" | "foreshadow";
+type RightView = "editor" | "files" | "planning" | "feedback" | "settings" | "worldmap" | "foreshadow";
 
-type Panes = {
-  sidebar: number;
-  chat: number;
-  sidebarClosed: boolean;
-  chatClosed: boolean;
-};
+type Panes = { sidebar: number; chat: number };
 
-// Defaults follow UI-DESIGN.md: sidebar 280px, chat minmax(400px, 34%).
+// Defaults follow UI-DESIGN.md and the approved frames: 280 / 470 / rest.
 const SIDEBAR_MIN = 200;
 const SIDEBAR_MAX = 520;
 const SIDEBAR_DEFAULT = 280;
 const CHAT_MIN = 400;
+const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 const PANE_STORAGE_KEY = "workbench.panes";
 
 function chatMax() {
@@ -36,7 +34,7 @@ function chatMax() {
 }
 
 function chatDefault() {
-  return clampPane("chat", Math.round(window.innerWidth * 0.34));
+  return clampPane("chat", Math.round(window.innerWidth * CHAT_DEFAULT_RATIO));
 }
 
 function clampPane(pane: PaneKey, value: number) {
@@ -46,12 +44,7 @@ function clampPane(pane: PaneKey, value: number) {
 }
 
 function defaultPanes(): Panes {
-  return {
-    sidebar: SIDEBAR_DEFAULT,
-    chat: chatDefault(),
-    sidebarClosed: false,
-    chatClosed: false,
-  };
+  return { sidebar: SIDEBAR_DEFAULT, chat: chatDefault() };
 }
 
 function loadPanes(): Panes {
@@ -64,8 +57,6 @@ function loadPanes(): Panes {
     return {
       sidebar: clampPane("sidebar", stored.sidebar ?? base.sidebar),
       chat: clampPane("chat", stored.chat ?? base.chat),
-      sidebarClosed: Boolean(stored.sidebarClosed),
-      chatClosed: Boolean(stored.chatClosed),
     };
   } catch {
     return base;
@@ -75,29 +66,34 @@ function loadPanes(): Panes {
 export default function WorkbenchPage() {
   const navigate = useNavigate();
   const { novelId: novelIdParam } = useParams();
+  const [searchParams] = useSearchParams();
   const state = useWorkbench();
   const [rightView, setRightView] = useState<RightView>("editor");
   const [planningLayer, setPlanningLayer] = useState<PlanningLayer>("A");
   const [charactersOpen, setCharactersOpen] = useState(false);
   const [panes, setPanes] = useState<Panes>(loadPanes);
 
+  const metas = useFiles((store) => store.metas);
+  const activeFile = useFiles((store) => store.active);
+  const revealSeq = useFiles((store) => store.revealSeq);
+  const attachFiles = useFiles((store) => store.attach);
+  const openFile = useFiles((store) => store.open);
+
   useEffect(() => {
     localStorage.setItem(PANE_STORAGE_KEY, JSON.stringify(panes));
   }, [panes]);
 
-  const sidebarWidth = panes.sidebarClosed ? 0 : clampPane("sidebar", panes.sidebar);
-  const chatWidth = charactersOpen || panes.chatClosed ? 0 : clampPane("chat", panes.chat);
+  const sidebarWidth = clampPane("sidebar", panes.sidebar);
+  const chatWidth = charactersOpen ? 0 : clampPane("chat", panes.chat);
   const columns = charactersOpen
-    ? `${sidebarWidth}px 5px minmax(0, 1fr)`
-    : `${sidebarWidth}px 5px ${chatWidth}px 5px minmax(0, 1fr)`;
+    ? `${sidebarWidth}px 1px minmax(0, 1fr)`
+    : `${sidebarWidth}px 1px ${chatWidth}px 1px minmax(0, 1fr)`;
 
   function writePane(pane: PaneKey, width: number) {
     setPanes((prev) => ({
       ...prev,
       sidebar: pane === "sidebar" ? width : prev.sidebar,
       chat: pane === "chat" ? width : prev.chat,
-      sidebarClosed: pane === "sidebar" ? false : prev.sidebarClosed,
-      chatClosed: pane === "chat" ? false : prev.chatClosed,
     }));
   }
 
@@ -125,14 +121,6 @@ export default function WorkbenchPage() {
     writePane(pane, clampPane(pane, current + delta));
   }
 
-  function togglePane(pane: PaneKey) {
-    setPanes((prev) =>
-      pane === "sidebar"
-        ? { ...prev, sidebarClosed: !prev.sidebarClosed }
-        : { ...prev, chatClosed: !prev.chatClosed },
-    );
-  }
-
   function resetPane(pane: PaneKey) {
     writePane(pane, pane === "sidebar" ? SIDEBAR_DEFAULT : chatDefault());
   }
@@ -148,11 +136,57 @@ export default function WorkbenchPage() {
     state.loadChapterRecords();
   }, [state.selectedNovelId, state.selectedChapterId, state.recordVersion]);
 
+  useEffect(() => {
+    if (state.selectedNovelId) void attachFiles(state.selectedNovelId);
+  }, [state.selectedNovelId, attachFiles]);
+
+  // ?file=toc.yaml deep-links a planning file, so a document can be shared or
+  // reopened directly. attach() above has already stamped novelId synchronously.
+  const deepLink = searchParams.get("file");
+  useEffect(() => {
+    if (!deepLink || !state.selectedNovelId) return;
+    void openFile(deepLink);
+  }, [deepLink, state.selectedNovelId, openFile]);
+
   const chapter = state.chapters.find((item) => item.id === state.selectedChapterId) ?? null;
 
   useEffect(() => {
     state.setDraftContent(chapter?.content ?? "");
   }, [chapter?.id]);
+
+  // The store decides when a file deserves the stage (tree click, AI proposal,
+  // and the B→D jump all route through open()).
+  useEffect(() => {
+    if (!revealSeq) return;
+    setCharactersOpen(false);
+    setRightView("files");
+  }, [revealSeq]);
+
+  // Brief rows: every file the server knows about, plus one empty slot for the
+  // chapter after the last, which the backend happily creates on first write.
+  const briefRows = useMemo<BriefRow[]>(() => {
+    const known = metas
+      .filter((meta) => meta.kind === "brief")
+      .map((meta) => ({
+        path: meta.path,
+        chapter: briefChapter(meta.path) ?? 0,
+        hint: `第 ${briefChapter(meta.path)} 章`,
+        exists: true,
+      }));
+    const numbers = new Set(known.map((row) => row.chapter));
+    // The next slot follows the highest thing we know about: a chapter, or a
+    // brief that exists without its prose yet.
+    const last = state.chapters.reduce(
+      (max, item) => Math.max(max, item.chapter_number),
+      known.reduce((max, row) => Math.max(max, row.chapter), chapter?.chapter_number ?? 0),
+    );
+    const next = last + 1;
+    let rows = known;
+    if (last && !numbers.has(next)) {
+      rows = [...rows, { path: briefPath(next), chapter: next, hint: "未建", exists: false }];
+    }
+    return rows.sort((a, b) => a.chapter - b.chapter);
+  }, [metas, state.chapters, chapter?.chapter_number]);
 
   const novel = state.novels.find((item) => item.id === state.selectedNovelId);
 
@@ -172,7 +206,7 @@ export default function WorkbenchPage() {
           <span className={`model-chip ${state.llmStatus?.configured ? "ok" : "warn"}`}>
             <i aria-hidden="true" />
             {state.llmStatus
-              ? `${state.llmStatus.provider} · ${state.llmStatus.configured ? "模型已配置" : "模型未配置"}`
+              ? `${state.llmStatus.available_models[0] ?? state.llmStatus.provider} · ${state.llmStatus.provider}`
               : "模型状态未知"}
           </span>
           <button
@@ -193,16 +227,16 @@ export default function WorkbenchPage() {
       </header>
 
       <main className="workspace" style={{ gridTemplateColumns: columns }}>
-        <aside
-          className={`sidebar ${panes.sidebarClosed ? "collapsed" : ""}`}
-          aria-label="结构栏"
-        >
+        <aside className="sidebar" aria-label="结构栏">
           <TreePane
             chapters={state.chapters}
             selectedChapterId={state.selectedChapterId}
-            activePlanningLayer={rightView === "planning" ? planningLayer : null}
+            activeFile={rightView === "files" ? activeFile : null}
+            selectedPlanningLayer={rightView === "planning" ? planningLayer : null}
+            briefRows={briefRows}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
+            onOpenFile={(path) => void openFile(path)}
             onOpenPlanning={(layer) => {
               setPlanningLayer(layer);
               setCharactersOpen(false);
@@ -237,10 +271,8 @@ export default function WorkbenchPage() {
           width={panes.sidebar}
           min={SIDEBAR_MIN}
           max={SIDEBAR_MAX}
-          collapsed={panes.sidebarClosed}
           onDragStart={beginDrag}
           onNudge={nudge}
-          onToggle={togglePane}
           onReset={resetPane}
         />
 
@@ -248,7 +280,7 @@ export default function WorkbenchPage() {
           <CharacterLibrary novelId={state.selectedNovelId} />
         ) : (
           <>
-            <ChatPane className={panes.chatClosed ? "collapsed" : ""} />
+            <ChatPane />
 
             <Splitter
               pane="chat"
@@ -256,10 +288,8 @@ export default function WorkbenchPage() {
               width={panes.chat}
               min={CHAT_MIN}
               max={chatMax()}
-              collapsed={panes.chatClosed}
               onDragStart={beginDrag}
               onNudge={nudge}
-              onToggle={togglePane}
               onReset={resetPane}
             />
             <div className="right-column">
@@ -270,6 +300,7 @@ export default function WorkbenchPage() {
               {rightView === "settings" && <SettingsPanel novelId={state.selectedNovelId} />}
               {rightView === "worldmap" && <WorldMapPanel novelId={state.selectedNovelId} />}
               {rightView === "foreshadow" && <ForeshadowWall novelId={state.selectedNovelId} />}
+              {rightView === "files" && <FileEditorPane />}
               {rightView === "editor" && <EditorPane />}
             </div>
           </>
@@ -282,9 +313,7 @@ export default function WorkbenchPage() {
           后端 {state.health === "ok" ? "已连接" : state.health === "loading" ? "检查中" : "未连接"}
         </span>
         <span>{chapter ? `第 ${chapter.chapter_number} 章 ${chapter.title || "未命名"}` : "未选章节"}</span>
-        <span className="tabular">
-          {chapter ? `${chapter.word_count} 字` : ""}
-        </span>
+        <span className="tabular">{chapter ? `${chapter.word_count} 字` : ""}</span>
       </footer>
       {state.error && !chapter ? <p className="status-error global-error">{state.error}</p> : null}
     </div>

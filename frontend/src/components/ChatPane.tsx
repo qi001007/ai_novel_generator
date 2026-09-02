@@ -9,11 +9,14 @@ import {
 } from "lucide-react";
 
 import { api } from "../api";
+import ProposalCard from "./ProposalCard";
+import { useFiles } from "../store/files";
 import type {
   ChatContextItem,
   ChatMode,
   ChatReference,
   ChatStreamEvent,
+  FileProposal,
   StoredChatMessage,
 } from "../types";
 import { useWorkbench } from "../store/workbench";
@@ -36,6 +39,7 @@ type AgentRow = {
   question: string;
   meta: AgentMeta;
   error?: string;
+  proposals?: FileProposal[];
 };
 
 type Row =
@@ -74,6 +78,8 @@ const GREETING =
 // Local rows start above any plausible server id, so history rows and
 // in-flight rows can never collide when patched by id.
 let nextId = 1_000_000;
+
+let nextProposalId = 1;
 
 function tokens(input?: number, output?: number) {
   if (!input && !output) return null;
@@ -117,6 +123,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ChatContextItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
+  const [applyingPath, setApplyingPath] = useState<string | null>(null);
+  const pendingFiles = useFiles((store) => store.pending);
+  const offerFile = useFiles((store) => store.offer);
+  const discardFile = useFiles((store) => store.discardProposal);
+  const openFile = useFiles((store) => store.open);
   const scrollRef = useRef<HTMLDivElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -223,7 +234,53 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     );
   }
 
+  // The stream carries the whole proposed file, so the diff the reader sees is
+  // computed against the buffer we just re-read: a stale base shows up as a
+  // rejected write rather than a silently wrong picture.
+  async function offerFromStream(
+    rowId: number,
+    data: { path: string; text: string; valid: boolean; error: string | null },
+  ) {
+    if (!selectedNovelId) return;
+    let baseText = "";
+    let baseRevision = "";
+    try {
+      const doc = await api.readFile(selectedNovelId, data.path);
+      baseText = doc.text;
+      baseRevision = doc.revision;
+    } catch {
+      // Unknown path: keep the card, but it cannot be applied.
+    }
+    const proposal: FileProposal = {
+      id: nextProposalId++,
+      path: data.path,
+      text: data.text,
+      valid: data.valid && Boolean(baseRevision),
+      error: data.error || (baseRevision ? "" : "\u670d\u52a1\u5668\u4e0a\u6ca1\u6709\u8fd9\u4efd\u6587\u4ef6"),
+      baseText,
+      baseRevision,
+    };
+    setRows((prev) =>
+      prev.map((row) =>
+        row.kind === "agent" && row.id === rowId
+          ? { ...row, proposals: [...(row.proposals ?? []), proposal] }
+          : row,
+      ),
+    );
+    if (proposal.valid) offerFile(proposal);
+  }
+
+  async function applyProposal(path: string) {
+    setApplyingPath(path);
+    await useFiles.getState().applyProposal(path);
+    setApplyingPath(null);
+  }
+
   function applyEvent(id: number, event: ChatStreamEvent) {
+    if (event.event === "proposal") {
+      void offerFromStream(id, event.data);
+      return;
+    }
     if (event.event === "context") {
       setRows((prev) =>
         prev.map((row) =>
@@ -570,7 +627,19 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <span>生成中</span>
                       </span>
                     ) : null}
-                    {row.status === "error" ? (
+                    {(row.proposals ?? []).map((item) =>
+                    pendingFiles[item.path]?.id === item.id ? (
+                      <ProposalCard
+                        key={`${item.path}:${item.id}`}
+                        proposal={item}
+                        applying={applyingPath === item.path}
+                        onOpen={() => void openFile(item.path)}
+                        onApply={() => void applyProposal(item.path)}
+                        onDiscard={() => discardFile(item.path)}
+                      />
+                    ) : null,
+                  )}
+                  {row.status === "error" ? (
                       <span className="chat-state">回复失败</span>
                     ) : null}
                   </header>

@@ -220,6 +220,50 @@ def brief_path(chapter_number: int) -> str:
     return f"briefs/{chapter_number:04d}.yaml"
 
 
+# --- proposal pre-flight ---------------------------------------------------
+
+_FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
+    "blueprint": BLUEPRINT_FIELDS,
+    "toc": TOC_FIELDS,
+    "arcs": ARC_FIELDS,
+    "brief": BRIEF_FIELDS,
+}
+_LIST_KINDS = frozenset({"toc", "arcs"})
+
+
+def validate_structure(path: str, text: str) -> str:
+    """Return "" when a writer could take `text`, else why it cannot.
+
+    A proposal arrives beside a diff and an 应用 button, so a shape the writer is
+    certain to reject -- a renamed, missing or extra key -- has to be caught when
+    the card is drawn, not after the reader clicks it.
+    """
+    kind, _ = resolve_path(path)
+    try:
+        parsed = load_document(text)
+    except DocumentError as cause:
+        return cause.detail
+
+    if kind in _LIST_KINDS:
+        if not isinstance(parsed, list):
+            return f"{path} 必须是「- …」的列表"
+        records = list(enumerate(parsed, start=1))
+        labels = [f"{path} 第 {index} 条" for index, _ in records]
+    else:
+        if not isinstance(parsed, dict):
+            return f"{path} 必须是键值映射"
+        records = list(enumerate([parsed], start=1))
+        labels = [path]
+
+    fields = _FIELDS_BY_KIND[kind]
+    for (_, record), label in zip(records, labels):
+        try:
+            _require_keys(record, fields, label)
+        except DocumentError as cause:
+            return cause.detail
+    return ""
+
+
 # --- active records -------------------------------------------------------
 
 

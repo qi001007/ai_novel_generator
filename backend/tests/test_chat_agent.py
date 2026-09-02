@@ -500,6 +500,41 @@ def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
     assert briefs[0]["hook"] == "碑上刻着他的名字"
 
 
+def test_proposal_that_renames_keys_is_flagged(client: TestClient) -> None:
+    """A card the writer must reject is not a card worth an 应用 button."""
+    use_fake(
+        client,
+        FakeChatClient(
+            chunks=[
+                "```yaml @blueprint.yaml\n"
+                "mainline: 一条线\n"
+                "ending: ''\n"
+                "core_conflicts: ''\n"
+                "themes: ''\n"
+                "constraints: ''\n"
+                "```"
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "改蓝图", "mode": "write"},
+    )
+
+    proposal = payload_of(parse_sse(response.text), "proposal")
+    assert proposal["valid"] is False
+    assert "main_line" in proposal["error"]
+    assert "mainline" in proposal["error"]
+
+    rejected = client.put(
+        f"/api/novels/{novel_id}/files/blueprint.yaml",
+        json={"text": proposal["text"], "actor": "ai"},
+    )
+    assert rejected.status_code == 422
+
+
 def test_proposal_for_an_unknown_file_is_flagged(client: TestClient) -> None:
     use_fake(client, FakeChatClient(chunks=["```yaml @secrets.yaml\na: 1\n```"]))
     novel_id = make_novel(client)

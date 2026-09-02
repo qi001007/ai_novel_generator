@@ -1,4 +1,3 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 
 export type PaneKey = "sidebar" | "chat";
@@ -9,23 +8,23 @@ type SplitterProps = {
   width: number;
   min: number;
   max: number;
-  collapsed: boolean;
   onDragStart: (pane: PaneKey, event: ReactPointerEvent<HTMLDivElement>) => void;
   onNudge: (pane: PaneKey, delta: number) => void;
-  onToggle: (pane: PaneKey) => void;
   onReset: (pane: PaneKey) => void;
 };
 
+/**
+ * A hairline, not a bar: the approved frames show no chrome between panes, so the
+ * handle is 1px and only announces itself on hover or keyboard focus.
+ */
 export default function Splitter({
   pane,
   label,
   width,
   min,
   max,
-  collapsed,
   onDragStart,
   onNudge,
-  onToggle,
   onReset,
 }: SplitterProps) {
   return (
@@ -50,22 +49,8 @@ export default function Splitter({
         } else if (event.key === "Home") {
           event.preventDefault();
           onReset(pane);
-        } else if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onToggle(pane);
         }
       }}
-    >
-      <button
-        type="button"
-        className="splitter-toggle"
-        aria-label={collapsed ? `展开${label}` : `折叠${label}`}
-        title={collapsed ? `展开${label}` : `折叠${label}`}
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={() => onToggle(pane)}
-      >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-      </button>
-    </div>
+    />
   );
 }
