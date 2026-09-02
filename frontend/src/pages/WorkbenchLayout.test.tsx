@@ -44,14 +44,14 @@ function stubFetch() {
       }
       if (url.endsWith("/api/novels/1/files")) {
         return json([
-          { path: "blueprint.yaml", kind: "blueprint", layer: "A", label: "全本蓝图" },
-          { path: "toc.yaml", kind: "toc", layer: "B", label: "目录" },
-          { path: "briefs/0042.yaml", kind: "brief", layer: "D", label: "第 42 章简报" },
+          { path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图" },
+          { path: "toc.md", kind: "toc", layer: "B", label: "目录" },
+          { path: "briefs/0042.md", kind: "brief", layer: "D", label: "第 42 章简报" },
         ]);
       }
-      if (url.includes("/files/blueprint.yaml")) {
+      if (url.includes("/files/blueprint.md")) {
         return json({
-          path: "blueprint.yaml",
+          path: "blueprint.md",
           kind: "blueprint",
           layer: "A",
           label: "全本蓝图",
@@ -130,18 +130,18 @@ describe("workbench layout", () => {
     await waitFor(() => {
       expect(document.querySelector(".file-editor")).toBeTruthy();
     });
-    expect(screen.getByText("blueprint.yaml")).toBeTruthy();
-    expect(document.querySelector(".file-path")?.textContent).toContain("blueprint.yaml");
-    expect(document.querySelector(".file-chip.mono")?.textContent).toBe("YAML");
+    expect(screen.getByText("blueprint.md")).toBeTruthy();
+    expect(document.querySelector(".file-path")?.textContent).toContain("blueprint.md");
+    expect(document.querySelector(".file-chip.mono")?.textContent).toBe("Markdown");
     expect(document.querySelector(".file-foot")?.textContent).toContain("与服务器一致");
   });
 
   it("lists brief files plus the next chapter slot", async () => {
     await openWorkbench();
     await waitFor(() => {
-      expect(screen.getByText("0042.yaml")).toBeTruthy();
+      expect(screen.getByText("0042.md")).toBeTruthy();
     });
-    expect(screen.getByText("0043.yaml")).toBeTruthy();
+    expect(screen.getByText("0043.md")).toBeTruthy();
     expect(screen.getByText("未建")).toBeTruthy();
   });
 });

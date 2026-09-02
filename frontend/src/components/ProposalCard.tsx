@@ -59,7 +59,7 @@ export default function ProposalCard({
       )}
 
       <div className="proposal-foot">
-        <span className="proposal-note">键名与主键锁定 · AI 只改值</span>
+        <span className="proposal-note">小节标题与主键锁定 · AI 只改值</span>
         <span className="proposal-acts">
           <button type="button" className="proposal-btn" onClick={onOpen}>
             在编辑器中打开

@@ -9,15 +9,14 @@ import EditorPane from "../components/EditorPane";
 import FeedbackPanel from "../components/FeedbackPanel";
 import FileEditorPane from "../components/FileEditorPane";
 import ForeshadowWall from "../components/ForeshadowWall";
-import PlanningPanel from "../components/PlanningPanel";
 import SettingsPanel from "../components/SettingsPanel";
 import Splitter, { type PaneKey } from "../components/Splitter";
-import TreePane, { type BriefRow, type PlanningLayer } from "../components/TreePane";
+import TreePane, { type BriefRow } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
 import { briefChapter, briefPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
-type RightView = "editor" | "files" | "planning" | "feedback" | "settings" | "worldmap" | "foreshadow";
+type RightView = "editor" | "files" | "feedback" | "settings" | "worldmap" | "foreshadow";
 
 type Panes = { sidebar: number; chat: number };
 
@@ -69,7 +68,6 @@ export default function WorkbenchPage() {
   const [searchParams] = useSearchParams();
   const state = useWorkbench();
   const [rightView, setRightView] = useState<RightView>("editor");
-  const [planningLayer, setPlanningLayer] = useState<PlanningLayer>("A");
   const [charactersOpen, setCharactersOpen] = useState(false);
   const [panes, setPanes] = useState<Panes>(loadPanes);
 
@@ -140,7 +138,7 @@ export default function WorkbenchPage() {
     if (state.selectedNovelId) void attachFiles(state.selectedNovelId);
   }, [state.selectedNovelId, attachFiles]);
 
-  // ?file=toc.yaml deep-links a planning file, so a document can be shared or
+  // ?file=toc.md deep-links a planning file, so a document can be shared or
   // reopened directly. attach() above has already stamped novelId synchronously.
   const deepLink = searchParams.get("file");
   useEffect(() => {
@@ -232,16 +230,10 @@ export default function WorkbenchPage() {
             chapters={state.chapters}
             selectedChapterId={state.selectedChapterId}
             activeFile={rightView === "files" ? activeFile : null}
-            selectedPlanningLayer={rightView === "planning" ? planningLayer : null}
             briefRows={briefRows}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
             onOpenFile={(path) => void openFile(path)}
-            onOpenPlanning={(layer) => {
-              setPlanningLayer(layer);
-              setCharactersOpen(false);
-              setRightView("planning");
-            }}
             onSelectChapter={(chapterId) => {
               setCharactersOpen(false);
               setRightView("editor");
@@ -293,9 +285,6 @@ export default function WorkbenchPage() {
               onReset={resetPane}
             />
             <div className="right-column">
-              {rightView === "planning" && (
-                <PlanningPanel novelId={state.selectedNovelId} initialLayer={planningLayer} />
-              )}
               {rightView === "feedback" && <FeedbackPanel novelId={state.selectedNovelId} />}
               {rightView === "settings" && <SettingsPanel novelId={state.selectedNovelId} />}
               {rightView === "worldmap" && <WorldMapPanel novelId={state.selectedNovelId} />}

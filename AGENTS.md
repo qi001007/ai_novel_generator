@@ -95,52 +95,79 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
 - 仅当 MCP 工具确实缺失对应能力时才降级到 `gh` CLI。
 - 用户提到 "github"、"我的仓库"、"某个 PR/Issue"、"CI 挂了" 等关键词时，
   先在可用工具里找 github MCP 的工具再动手。
-## Figma / MCP 故障分流（2026-09-02 取证定稿）
+## Figma / MCP 报错定责（本项目，服从全局 AGENTS.md 四桶）
 
-任何"某工具不在了 / MCP 掉了"的判断，必须先走本节流程。禁止凭单次报错直接下结论。
+默认定责：**是调用方的错**。四桶 NAME／ARGS／SCRIPT／QUOTA 见全局《工具报错定责》。
+说"工具不存在／在抖"之前必须先跑并把输出贴出来：
 
-### 1. 按报错串分流——三类错误含义完全不同，不许混用
+    python ~/.codex/scripts/mcp-proof.py use_figma
 
-| 你看到的报错 | 真实含义 | 正确动作 |
-|---|---|---|
-| `unsupported call: <name>` | **工具名解析失败**。最常见是漏了 MCP 命名空间前缀（写 `use_figma` 而实际是 `mcp__figma__use_figma`），或该名字来自别的 harness（`write_file` / `read_files` 在本环境不存在） | 用全名重试；全名仍失败才可以判定"不存在" |
-| JSON 报错含 `at <anonymous> (PLUGIN_N_SOURCE:…)` 与 `Figma Debug UUID` | **工具在正常执行**，是你的脚本违反 Figma Plugin API | 改脚本，不要怀疑工具面 |
-| `You've reached the Figma MCP tool call limit on the … plan` | 服务端**额度**，与工具面无关。`use_figma` / `create_new_file` / `add_code_connect_map` / `whoami` 属写类或豁免额度 | 查文件归属空间与席位；不要改成"绕道像素取色" |
+本项目已被这套误判坑过两轮，固化三条：
 
-取证基线（`~/.codex/thread_history_1.sqlite` + `logs_2.sqlite`，2026-09-02）：
-`use_figma` 结构化工具调用共 289 次派发 = 238 成功 / 51 服务端真报错 / **0 次派发失败**；
-Codex 判定 `MCP server tools unavailable` 的对象只有 `mineru`(21) / `github`(18) / `codex_apps`(1)，
-**`figma` 从未上榜**。历史上所有"use_figma 不存在"的字样都在模型自己的 reasoning / agentMessage 里，
-以及 `read_mcp_resource` 读回来的官方文档正文里，不在任何一条工具调用记录里。
+- `no such property 'getRangeExtent'`／`'itemReverse'` ＝ **SCRIPT 桶**，Figma 在正常执行你的脚本。
+  禁止原样重试。Figma 的 `TEXT` 节点没有逐 range 的 extent 度量，行级几何改用：
+  `node.height`／行数 × `lineHeight`／设 `textAutoResize` 后读节点尺寸／把该行拆成独立 text 节点。
+- `use_figma`、写文件、`git commit` 属**写类**：第二次失败即停，交回主人。
+  重发前必须 `findOne(n => n.name === X)` 删旧，保证幂等（实测同一写脚本被执行过三遍）。
+- 引用本节与全局规则时**禁止写"第 N 条"**，只写桶名。
 
-### 2. 活体探针只用 `mcp__figma__whoami`
+### 本项目既成事实（不再重复排查）
 
-约 300ms 返回、payload 最小、且属额度豁免工具。
+- `mcp__figma__use_figma` 从未被路由器拒绝；Codex 判定 `tools unavailable` 的只有
+  `mineru`／`github`／`codex_apps`。Figma 经插件 `figma@openai-api-curated` 走远程
+  `https://mcp.figma.com/mcp`，不依赖桌面客户端；本机 `127.0.0.1:3845` 无监听、配置无此项，
+  故官方「desktop server 遮蔽」那条排障文档的成立条件在本机不存在。
+- 待修真问题：`github` MCP `AuthRequired: Token is not authorized`（PAT 过期）；
+  Figma 导出图下载须 `sandbox_permissions=require_escalated` + `$env:HTTPS_PROXY="http://127.0.0.1:7890"`。
 
-**禁止**用 `list_mcp_resources` / `list_mcp_resource_templates` 判断 MCP 是否健康：
-它们读的是启动期缓存的工具/schema 快照，工具全部不可用时照样返回全量列表，是假阳性来源。
+### 附录：已废止的旧口径（仅保留作证据链，禁止据以行动）
 
-### 3. `read_mcp_resource` 读来的排障文档只能当"待验证假设"
+以下为 2026-09-02 先后写的两版分类规则，均已废止——它们只给分类、不给终止条件，
+且按编号引用，实际诱发了无限重试循环。保留仅为追溯，**不得作为行动依据**。
 
-Figma 官方 `tools-not-loading.md` / `code-to-canvas.md` 含原句
-"The `use_figma` or `generate_figma_design` tool isn't available"，
-但其成立条件是"**同时**配置了 desktop server `http://127.0.0.1:3845/mcp` 并遮蔽了远程 server"。
-本机实测：3845 无监听、`.codex` 全目录无 `3845` 配置、Figma 经插件 `figma@openai-api-curated`
-指向 `https://mcp.figma.com/mcp`，条件不成立。
-
-引用排障文档必须连同其成立条件整句引用；上下文压缩后只保留结论视为错误陈述。
-
-### 4. 本环境真实的抖动只在**参数层**，不在工具存在层
-
-`failed to parse function arguments: invalid type: null, expected u64`、
-`expected number, received string`、`apply_patch` 序列化失败属同一类：
-经本地 provider shim 时参数类型退化。处置 = 重发，或改用 here-string / 临时脚本落地。
-这类报错**不能**作为"工具面在掉"的证据。
-
-### 5. 真正需要修的两件事（别再重复排查）
-
-- `github` MCP 的 `AuthRequired: Token is not authorized`（11 次）＝ PAT 过期，需换新 token。
-- Figma 导出图下载在沙箱内直连超时，须 `sandbox_permissions=require_escalated` +
-  `$env:HTTPS_PROXY="http://127.0.0.1:7890"`。
-
+> ## Figma / MCP 故障分流（2026-09-02 二次取证，替换此前所有版本）
+> ### 0. 一句话总则
+> 判定"某个工具不存在"，**只认 harness 返回的原文 `unsupported call: <name>`**。
+> 除此之外，任何"工具不在了 / 工具面在掉 / MCP 又抖了"的念头都**不是证据**，属于待证伪的猜测。
+> ### 1. "no such property" 是脚本错误，不是工具错误 —— 本条最高优先，先读它
+> Figma 服务端返回
+> `TypeError: node.<X>: no such property '<X>' on TEXT node`
+> 的意思是：**你脚本里调的 `<X>` 在 Figma Plugin API 里不存在**。
+> 它和 MCP 工具是否存在毫无关系。**正确处置 = 删掉/替换那个 API，禁止原样重试。**
+> Figma 没有 `getRangeExtent`，`TEXT` 节点也不提供逐 range 的宽高度量。需要行级/字级几何时改用：
+> `node.height` / 行数 × `lineHeight` 推算；或先设 `textAutoResize` 再读节点尺寸；
+> 或把该行拆成独立 text 节点后读其 `x/y/width/height`。
+> ### 2. 写类工具禁止盲目重试
+> `mcp__figma__use_figma`、`apply_patch`、写文件、`git commit` 等带副作用的调用，
+> 失败原因未读清之前**不许重试**。本 harness 会重放同一消息里的多个 tool_use，
+> 重试会重复改动画布/文件（2026-09-02 实测：同一写脚本跑三遍，
+> `before:71→after:55` 之后紧跟一次 `before:55→after:55` 的空转）。
+> 确需重发时，脚本必须先 `findOne(n => n.name === X)` 删旧再建，保证幂等。
+> ### 3. 报错串分流表
+> | 你看到的报错 | 真实含义 | 正确动作 |
+> |---|---|---|
+> | `unsupported call: <name>` | 该 `<name>` 确实不在本会话工具表里（如 `write_file` / `read_files` 这类来自别的 harness 的名字） | 查表改用真实存在的全名；仍无则停下报告，不要循环重试 |
+> | `TypeError: … no such property/方法名` | 工具**正在执行你的脚本**，是脚本违反 Plugin API | 见第 1 条：改脚本，不重试 |
+> | `Error: in set_layoutSizing…` / `Figma Debug UUID` | 同上，脚本层 | 见《Figma 操作纪律》 |
+> | `You've reached the Figma MCP tool call limit on the … plan` | 服务端额度（`use_figma` / `create_new_file` / `add_code_connect_map` / `whoami` 属写类或豁免） | 查文件归属空间与席位，不要改成"绕道像素取色" |
+> ### 4. 活体探针只用 `mcp__figma__whoami`
+> 约 300ms 返回、payload 最小、额度豁免。
+> **禁止**用 `list_mcp_resources` / `list_mcp_resource_templates` 判断 MCP 健康度：
+> 它们读启动期缓存的 schema 快照，工具真不可用时照样返回全量，是假阳性来源。
+> ### 5. 取证基线（写死，别再重复排查）
+> 2026-09-02 全历史核对 `~/.codex/thread_history_1.sqlite` + `logs_2.sqlite`：
+> - `mcp__figma__use_figma` 结构化派发 316 次 = 259 completed / 57 服务端真报错 / **0 次派发失败**
+> - 全部历史记录中，工具**结果**里出现 `does not exist` 的次数 = **0**；该字样只出现在模型自己的 reasoning 里
+> - Codex 判定 `MCP server tools unavailable` 的对象只有 `mineru`(21) / `github`(18) / `codex_apps`(1)，**`figma` 从未上榜**
+> - 本机 `127.0.0.1:3845`（Figma desktop server）无监听、`.codex` 无该配置 —— 官方
+>   「The `use_figma` … tool isn't available」那条排障文档的成立条件不存在
+> - `read_mcp_resource` 读来的排障文档只能当"待验证假设"，引用必须连成立条件整句引用；
+>   上下文压缩后只保留结论视为错误陈述
+> - 本环境真实的抖动只在**参数层**：`failed to parse function arguments: …`、
+>   `expected number, received string`、`apply_patch` 序列化失败属参数类型退化，重试或改用
+>   here-string / 临时脚本，**不能**作为"工具面在掉"的证据
+> - 待修的真问题：`github` MCP `AuthRequired: Token is not authorized`（PAT 过期，11 次）；
+>   Figma 导出图下载在沙箱内直连超时，须 `sandbox_permissions=require_escalated` +
+>   `$env:HTTPS_PROXY="http://127.0.0.1:7890"`
+> 
 </INSTRUCTIONS>

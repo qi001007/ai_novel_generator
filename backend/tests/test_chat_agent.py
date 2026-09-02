@@ -434,16 +434,28 @@ def test_every_candidate_mention_resolves_back(client: TestClient) -> None:
         assert ref in [row["ref"] for row in response.json()["context_refs"]], mention
 
 
-BRIEF_DOC = """chapter: 42
-arc: null
-goal: 揭开星渊碑
-events: ''
-pov: 沈曜
-characters: [沈曜]
-conflict: ''
-hook: 碑上刻着他的名字
-required_facts: []
-status: draft
+BRIEF_DOC = """# 第 42 章简报（D 层 · 单章简报）
+
+> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。
+
+- **章节号**：42
+- **所属弧**：—
+- **视角**：沈曜
+- **出场人物**：
+  - 沈曜
+- **状态**：draft
+
+## 目标
+揭开星渊碑
+
+## 事件
+
+## 冲突
+
+## 钩子
+碑上刻着他的名字
+
+## 既定事实
 """
 
 
@@ -455,15 +467,16 @@ def test_prompt_teaches_the_file_proposal_format(client: TestClient) -> None:
 
     system = fake.calls[0]["messages"][0]["content"]
     assert "## 直接改文件" in system
-    assert "```yaml @toc.yaml" in system
+    assert "```markdown @toc.md" in system
+    assert "逐字节保持原样" in system
     assert "只改值" in system
 
 
 def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
     # The fenced block deliberately arrives split across deltas.
     chunks = [
-        "改好了：\n\n```yaml @briefs/0042.ya",
-        "ml\n" + BRIEF_DOC + "```\n",
+        "改好了：\n\n```markdown @briefs/0042.m",
+        "d\n" + BRIEF_DOC + "```\n",
     ]
     use_fake(client, FakeChatClient(chunks=chunks))
     novel_id = make_novel(client)
@@ -486,12 +499,12 @@ def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
     names = [name for name, _ in events]
     assert names.index("proposal") < names.index("done")
     proposal = payload_of(events, "proposal")
-    assert proposal["path"] == "briefs/0042.yaml"
+    assert proposal["path"] == "briefs/0042.md"
     assert proposal["valid"] is True
-    assert "hook: 碑上刻着他的名字" in proposal["text"]
+    assert "## 钩子\n碑上刻着他的名字" in proposal["text"]
 
     applied = client.put(
-        f"/api/novels/{novel_id}/files/briefs/0042.yaml",
+        f"/api/novels/{novel_id}/files/briefs/0042.md",
         json={"text": proposal["text"], "actor": "ai"},
     )
     assert applied.status_code == 200
@@ -500,18 +513,49 @@ def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
     assert briefs[0]["hook"] == "碑上刻着他的名字"
 
 
+def test_history_carries_the_proposal_back_for_a_reload(client: TestClient) -> None:
+    """A refresh must not swallow a review card the owner never applied."""
+    use_fake(
+        client,
+        FakeChatClient(chunks=["改好了：\n\n```md @briefs/0042.md\n" + BRIEF_DOC + "```\n"]),
+    )
+    novel_id = make_novel(client)
+    client.post(
+        f"/api/novels/{novel_id}/planning/briefs",
+        json={
+            "chapter_number": 42,
+            "goal": "揭开星渊碑",
+            "pov": "沈曜",
+            "characters": ["沈曜"],
+        },
+    )
+    client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "把第 42 章的钩子改紧", "mode": "write"},
+    )
+
+    rows = client.get(f"/api/novels/{novel_id}/chat/messages").json()
+    assistant = next(row for row in rows if row["role"] == "assistant")
+    reader = next(row for row in rows if row["role"] == "user")
+
+    assert [p["path"] for p in assistant["proposals"]] == ["briefs/0042.md"]
+    assert assistant["proposals"][0]["valid"] is True
+    assert "碑上刻着他的名字" in assistant["proposals"][0]["text"]
+    assert reader["proposals"] == []
+
+
 def test_proposal_that_renames_keys_is_flagged(client: TestClient) -> None:
     """A card the writer must reject is not a card worth an 应用 button."""
     use_fake(
         client,
         FakeChatClient(
             chunks=[
-                "```yaml @blueprint.yaml\n"
-                "mainline: 一条线\n"
-                "ending: ''\n"
-                "core_conflicts: ''\n"
-                "themes: ''\n"
-                "constraints: ''\n"
+                "```markdown @blueprint.md\n"
+                "## 主线一条线\n\n"
+                "## 终局\n\n"
+                "## 核心冲突\n\n"
+                "## 主题\n\n"
+                "## 约束\n"
                 "```"
             ]
         ),
@@ -525,18 +569,36 @@ def test_proposal_that_renames_keys_is_flagged(client: TestClient) -> None:
 
     proposal = payload_of(parse_sse(response.text), "proposal")
     assert proposal["valid"] is False
-    assert "main_line" in proposal["error"]
-    assert "mainline" in proposal["error"]
+    assert "主线" in proposal["error"]
+    assert "主线一条线" in proposal["error"]
 
     rejected = client.put(
-        f"/api/novels/{novel_id}/files/blueprint.yaml",
+        f"/api/novels/{novel_id}/files/blueprint.md",
         json={"text": proposal["text"], "actor": "ai"},
     )
     assert rejected.status_code == 422
 
 
+def test_a_legacy_yaml_fence_still_becomes_a_proposal(client: TestClient) -> None:
+    """The file surface moved to Markdown; a model mid-sentence in YAML still lands."""
+    use_fake(
+        client,
+        FakeChatClient(chunks=["```yaml @blueprint.md\n## 主线\n一条线\n\n## 终局\n\n## 核心冲突\n\n## 主题\n\n## 约束\n```"]),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "改蓝图", "mode": "write"},
+    )
+
+    proposal = payload_of(parse_sse(response.text), "proposal")
+    assert proposal["path"] == "blueprint.md"
+    assert proposal["valid"] is True, proposal["error"]
+
+
 def test_proposal_for_an_unknown_file_is_flagged(client: TestClient) -> None:
-    use_fake(client, FakeChatClient(chunks=["```yaml @secrets.yaml\na: 1\n```"]))
+    use_fake(client, FakeChatClient(chunks=["```markdown @secrets.md\n## 任何东西\n```"]))
     novel_id = make_novel(client)
 
     response = client.post(

@@ -10,21 +10,22 @@ import {
   focusField,
   jumpHandlers,
   scrollReport,
-  setYamlConfig,
+  setDocConfig,
   type ScrollInfo,
-} from "./cmYaml";
+} from "./cmDoc";
 import {
   LAYER_HINT,
   LAYER_LABEL,
   LOCK_LABEL,
+  briefPath,
   isDirty,
   useFiles,
 } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
-// The rail says "this line is structure": key names and primary keys are locked
-// for every writer, and for actor=ai so is everything else on the file.
-const LOCKED_KEYS: Record<string, string[]> = {
+// The rail says "this line is structure": section headings and primary keys are
+// locked for every writer, and for actor=ai so is everything else on the file.
+const LOCKED_FIELDS: Record<string, string[]> = {
   blueprint: ["main_line", "ending", "core_conflicts", "themes", "constraints"],
   toc: ["chapter"],
   arcs: ["arc"],
@@ -109,7 +110,7 @@ export default function FileEditorPane() {
     viewRef.current = view;
     jumpHandlers.set(view, (chapter, from, to) => {
       const path = activeRef.current;
-      void open(`briefs/${String(chapter).padStart(4, "0")}.yaml`, {
+      void open(briefPath(chapter), {
         jump: path ? { fromPath: path, chapter, field: from } : null,
         field: to,
       });
@@ -155,8 +156,8 @@ export default function FileEditorPane() {
     const view = viewRef.current;
     if (!view) return;
     view.dispatch({
-      effects: setYamlConfig({
-        lockedKeys: LOCKED_KEYS[kind] ?? [],
+      effects: setDocConfig({
+        lockedFields: LOCKED_FIELDS[kind] ?? [],
         pendingLines,
         jumpFrom: kind === "toc",
       }),
@@ -209,7 +210,7 @@ export default function FileEditorPane() {
         <div className="file-empty">
           <FileCode2 size={22} />
           <h2>规划文件</h2>
-          <p>左侧「规划」下的四层各对应一份 YAML：键名与主键锁死，AI 只能改值，改动以提案出现。</p>
+          <p>左侧「规划」下的四层各对应一份 Markdown：小节标题与主键锁死，AI 只能改值，改动以提案出现。</p>
         </div>
       </section>
     );
@@ -248,7 +249,7 @@ export default function FileEditorPane() {
       <div className="file-bar">
         <span className="file-path">{novelTitle} / 规划 / {active}</span>
         <span className="file-chip">{LAYER_LABEL[layer]} · {LAYER_HINT[kind]}</span>
-        <span className="file-chip mono">YAML</span>
+        <span className="file-chip mono">Markdown</span>
         <span className="file-spacer" />
         <span className="file-chip mono">rev {entry?.doc?.revision ?? "——"}</span>
         <span className="file-chip lock">{LOCK_LABEL[kind]}</span>
@@ -302,10 +303,12 @@ export default function FileEditorPane() {
           {lines.map((text, index) => {
             const trimmed = text.trim();
             const tone = trimmed.startsWith("#")
-              ? "comment"
-              : index + 1 === caretLine
-                ? "active"
-                : "";
+              ? "heading"
+              : trimmed.startsWith(">")
+                ? "comment"
+                : index + 1 === caretLine
+                  ? "active"
+                  : "";
             return (
               <i
                 key={index}

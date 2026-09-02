@@ -3,13 +3,13 @@ import { create } from "zustand";
 import { api } from "../api";
 import type { FileDoc, FileMeta, FileProposal, JumpSource } from "../types";
 
-export const BLUEPRINT_PATH = "blueprint.yaml";
-export const TOC_PATH = "toc.yaml";
-export const ARCS_PATH = "arcs.yaml";
+export const BLUEPRINT_PATH = "blueprint.md";
+export const TOC_PATH = "toc.md";
+export const ARCS_PATH = "arcs.md";
 
-export const briefPath = (chapter: number) => `briefs/${String(chapter).padStart(4, "0")}.yaml`;
+export const briefPath = (chapter: number) => `briefs/${String(chapter).padStart(4, "0")}.md`;
 export const briefChapter = (path: string) => {
-  const m = /^briefs\/([0-9]{4})\.yaml$/.exec(path);
+  const m = /^briefs\/([0-9]{4})\.md$/.exec(path);
   return m ? Number(m[1]) : null;
 };
 
@@ -27,14 +27,15 @@ export const TREE_LABEL: Record<string, string> = {
 };
 // What the amber chip promises the reader: structure is locked, values are not.
 export const LOCK_LABEL: Record<string, string> = {
-  blueprint: "键名与主键锁定",
-  toc: "chapter 主键锁定",
-  arcs: "arc 主键锁定",
-  brief: "chapter 与 arc 锁定",
+  blueprint: "小节标题锁定",
+  toc: "第 N 章主键锁定",
+  arcs: "弧 N 主键锁定",
+  brief: "章节号与所属弧锁定",
 };
 
 // B describes a chapter, D builds it. The jump lands on the D field carrying the
-// same intent, so both layers keep their current wording.
+// same intent, so both layers keep their current wording. Field names are the
+// backend ones; the Markdown labels a reader sees live in cmDoc.ts.
 export const BRIEF_FIELD_OF: Record<string, string> = {
   plot_function: "goal",
   notes: "events",

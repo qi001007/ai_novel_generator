@@ -121,6 +121,15 @@ export type ChatReference = {
 
 export type ChatContextItem = ChatReference & { mention: string };
 
+// A write the agent offered inside a stored reply. The server re-derives
+// it from the message body, so a reload can put the review card back.
+export type StoredProposal = {
+  path: string;
+  text: string;
+  valid: boolean;
+  error: string;
+};
+
 export type StoredChatMessage = {
   id: number;
   novel_id: number;
@@ -133,6 +142,7 @@ export type StoredChatMessage = {
   token_input: number;
   token_output: number;
   created_at: string;
+  proposals?: StoredProposal[];
 };
 
 export type StreamChatPayload = {
@@ -156,38 +166,6 @@ export type ChatStreamEvent =
   | { event: "error"; data: { message: string; partial: string } }
   | { event: "proposal"; data: { path: string; text: string; valid: boolean; error: string } }
   | { event: "end"; data: unknown };
-
-export type PlanningBlueprint = {
-  id: number;
-  version: number;
-  is_active: boolean;
-  main_line: string;
-  ending: string;
-  core_conflicts: string;
-  themes: string;
-  constraints: string;
-};
-
-export type TocEntry = {
-  id: number;
-  chapter_number: number;
-  title: string;
-  plot_function: string;
-  notes: string;
-  is_active: boolean;
-};
-
-export type ArcPlan = {
-  id: number;
-  title: string;
-  start_chapter: number;
-  end_chapter: number;
-  objective: string;
-  conflict: string;
-  resolution: string;
-  status: string;
-  planned_chapters: Record<string, unknown>;
-};
 
 export type PlotFeedback = {
   id: number;
@@ -213,7 +191,7 @@ export type FileDoc = {
 
 export type FileWriteResult = { path: string; changed: string[]; revision: string };
 
-// A ```yaml @path block the agent offered. It is a proposal, never a write:
+// A ```markdown @path block the agent offered. It is a proposal, never a write:
 // only the human clicking "应用" sends it, with actor=ai.
 export type FileProposal = {
   id: number;

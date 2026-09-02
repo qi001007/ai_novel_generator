@@ -14,12 +14,10 @@ type TreePaneProps = {
   chapters: Chapter[];
   selectedChapterId: number | null;
   activeFile: string | null;
-  selectedPlanningLayer: PlanningLayer | null;
   briefRows: BriefRow[];
   charactersOpen: boolean;
   feedbackOpen: boolean;
   onOpenFile: (path: string) => void;
-  onOpenPlanning: (layer: PlanningLayer) => void;
   onSelectChapter: (chapterId: number) => void;
   onOpenCharacters: () => void;
   onOpenFeedback: () => void;
@@ -39,12 +37,10 @@ export default function TreePane({
   chapters,
   selectedChapterId,
   activeFile,
-  selectedPlanningLayer,
   briefRows,
   charactersOpen,
   feedbackOpen,
   onOpenFile,
-  onOpenPlanning,
   onSelectChapter,
   onOpenCharacters,
   onOpenFeedback,
@@ -75,15 +71,15 @@ export default function TreePane({
             <div
               key={node.layer}
               className={`tree-row ${
-                fileSelected(node.path) || selectedPlanningLayer === node.layer ? "selected" : ""
+                fileSelected(node.path) ? "selected" : ""
               }`}
             >
               <button
                 type="button"
                 className="tree-prefix"
-                title={`${node.layer} 层表单视图`}
-                aria-label={`${node.label}表单视图`}
-                onClick={() => onOpenPlanning(node.layer)}
+                title={`${node.layer} 层规划文档`}
+                aria-label={`${node.label}（${node.layer} 层）`}
+                onClick={() => onOpenFile(node.path)}
               >
                 {node.layer}
               </button>

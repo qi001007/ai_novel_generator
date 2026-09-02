@@ -19,7 +19,7 @@
   --editor-active: #fdf3f0;
   --editor-linenum: #b7b4ae;
   --editor-comment: #a39f97;
-  /* YAML token colours (see cmYaml.ts yamlHighlight). Light keeps 帧 17. */
+  /* Document token colours (see cmDoc.ts docHighlight). Light keeps 帧 17. */
   --tok-key: var(--accent);
   --tok-string: #a11;
   --tok-literal: #164;
@@ -75,6 +75,12 @@
   --tok-meta: var(--text-2);
   --tok-keyword: #569cd6;
   --warn-soft: #33290f;
+  /* Inert controls: opacity over near-black reads as mud, so dark gets a
+     flat pair that stays legible without looking live. */
+  --control-disabled-bg: #212124;
+  --control-disabled-fg: #7e7b75;
+  --control-disabled-accent-bg: #3a2b27;
+  --control-disabled-accent-fg: #9a8883;
   --diff-minus: #e79283;
   --diff-minus-bg: #3a221d;
   --diff-plus: #7fc99a;
@@ -170,6 +176,26 @@ button.ghost-danger {
 button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+[data-theme="dark"] button:disabled {
+  opacity: 1;
+  border-color: var(--border);
+  background: var(--control-disabled-bg);
+  color: var(--control-disabled-fg);
+}
+
+[data-theme="dark"] button.primary:disabled {
+  border-color: transparent;
+  background: var(--control-disabled-accent-bg);
+  color: var(--control-disabled-accent-fg);
+}
+
+[data-theme="dark"] button.ghost-danger:disabled,
+[data-theme="dark"] .icon-button:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--control-disabled-fg);
 }
 
 .icon-button {
@@ -1404,8 +1430,7 @@ select:focus-visible {
 
 /* ---------- 右栏规划 / 反馈 / 设置面板 ---------- */
 
-.panel,
-.planning-panel {
+.panel {
   display: grid;
   gap: 12px;
   align-content: start;
@@ -2763,6 +2788,11 @@ body.resizing {
   cursor: not-allowed;
 }
 
+[data-theme="dark"] .file-save:disabled {
+  background: var(--control-disabled-bg);
+  color: var(--control-disabled-fg);
+}
+
 .jump-bar {
   display: flex;
   align-items: center;
@@ -3011,6 +3041,11 @@ body.resizing {
   background: var(--minimap-comment);
 }
 
+.minimap-ln.heading {
+  background: var(--tok-key);
+  opacity: 0.55;
+}
+
 .minimap-ln.active {
   background: var(--minimap-active);
 }
@@ -3147,4 +3182,10 @@ body.resizing {
 .proposal-btn.apply:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+[data-theme="dark"] .proposal-btn.apply:disabled {
+  opacity: 1;
+  background: var(--control-disabled-accent-bg);
+  color: var(--control-disabled-accent-fg);
 }

@@ -1,3 +1,5 @@
+"""The four planning layers projected onto editable Markdown documents."""
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -43,24 +45,24 @@ def test_file_tree_lists_the_planning_layers(client: TestClient) -> None:
     files = client.get(f"/api/novels/{novel_id}/files").json()
 
     assert [item["path"] for item in files] == [
-        "blueprint.yaml",
-        "toc.yaml",
-        "arcs.yaml",
-        "briefs/0042.yaml",
+        "blueprint.md",
+        "toc.md",
+        "arcs.md",
+        "briefs/0042.md",
     ]
     assert [item["layer"] for item in files] == ["A", "B", "C", "D"]
 
 
-def test_documents_render_as_readable_yaml(client: TestClient) -> None:
+def test_documents_render_as_markdown(client: TestClient) -> None:
     novel_id = seed_novel(client)
 
-    toc = read(client, novel_id, "toc.yaml")["text"]
-    assert "- chapter: 42" in toc
-    assert "title: 星渊碑影" in toc
-    # Multi-line values stay as block scalars instead of escaped one-liners.
-    assert "notes: |-" in toc and "两" in toc
+    toc = read(client, novel_id, "toc.md")["text"]
+    assert "## 第 42 章 星渊碑影" in toc
+    assert "- **剧情功能**：揭示碑的来历" in toc
+    # A multi-line value stays readable: the tail hangs under its own bullet.
+    assert "- **备注**：两\n  行" in toc
 
-    brief = read(client, novel_id, "briefs/0042.yaml")
+    brief = read(client, novel_id, "briefs/0042.md")
     assert brief["ai_fields"] == [
         "goal",
         "events",
@@ -71,58 +73,72 @@ def test_documents_render_as_readable_yaml(client: TestClient) -> None:
         "required_facts",
         "status",
     ]
-    assert "characters: [沈曜]" in brief["text"]
+    assert "- **出场人物**：\n  - 沈曜" in brief["text"]
+    assert "## 目标\n揭开星渊碑" in brief["text"]
+
+
+def test_rendering_a_document_untouched_writes_nothing(client: TestClient) -> None:
+    """The round trip is the proof that structure survived the format change."""
+    novel_id = seed_novel(client)
+
+    for path in ("blueprint.md", "toc.md", "arcs.md", "briefs/0042.md"):
+        doc = read(client, novel_id, path)
+        again = write(client, novel_id, path, doc["text"], actor="human")
+        assert again.status_code == 200, (path, again.text)
+        assert again.json()["changed"] == [], path
+        assert again.json()["revision"] == doc["revision"], path
+        assert read(client, novel_id, path)["text"] == doc["text"], path
 
 
 def test_human_edit_writes_back_to_the_database(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    doc = read(client, novel_id, "blueprint.yaml")
+    doc = read(client, novel_id, "blueprint.md")
 
     response = write(
         client,
         novel_id,
-        "blueprint.yaml",
-        doc["text"].replace("main_line: ''", "main_line: 沈曜要解开碑名之谜"),
+        "blueprint.md",
+        doc["text"].replace("## 主线\n\n", "## 主线\n沈曜要解开碑名之谜\n\n", 1),
     )
 
     assert response.status_code == 200
     assert response.json()["changed"] == ["main_line"]
     blueprint = client.get(f"/api/novels/{novel_id}/planning/blueprints").json()[0]
     assert blueprint["main_line"] == "沈曜要解开碑名之谜"
-    assert "沈曜要解开碑名之谜" in read(client, novel_id, "blueprint.yaml")["text"]
+    assert "沈曜要解开碑名之谜" in read(client, novel_id, "blueprint.md")["text"]
 
 
 def test_ai_may_change_values_but_never_structure(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    path = "briefs/0042.yaml"
+    path = "briefs/0042.md"
     doc = read(client, novel_id, path)
+    allowed_text = doc["text"].replace("## 目标\n揭开星渊碑", "## 目标\n碑名会吃人", 1)
 
-    allowed = write(client, novel_id, path, doc["text"].replace("goal: 揭开星渊碑", "goal: 碑名会吃人"), actor="ai")
+    allowed = write(client, novel_id, path, allowed_text, actor="ai")
     assert allowed.status_code == 200
     assert allowed.json()["changed"] == ["goal"]
 
     for label, text in [
-        ("identity", doc["text"].replace("chapter: 42", "chapter: 43")),
-        ("renamed key", doc["text"].replace("goal:", "goals:")),
-        ("dropped key", "\n".join(line for line in doc["text"].splitlines() if not line.startswith("hook:"))),
-        ("arc link", doc["text"].replace("arc: null", "arc: 7")),
+        ("primary key", doc["text"].replace("- **章节号**：42", "- **章节号**：43")),
+        ("renamed heading", doc["text"].replace("## 钩子", "## 钩子改名")),
+        ("renamed label", doc["text"].replace("- **状态**：", "- **当前状态**：")),
+        ("dropped label", "\n".join(l for l in doc["text"].splitlines() if not l.startswith("- **状态**："))),
+        ("arc link", doc["text"].replace("- **所属弧**：—", "- **所属弧**：7")),
     ]:
         refused = write(client, novel_id, path, text, actor="ai")
         assert refused.status_code == 422, (label, refused.text)
 
-    assert read(client, novel_id, path)["text"] == doc["text"].replace(
-        "goal: 揭开星渊碑", "goal: 碑名会吃人"
-    )
+    assert read(client, novel_id, path)["text"] == allowed_text
 
 
 def test_ai_cannot_add_or_remove_rows(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    doc = read(client, novel_id, "toc.yaml")
-    appended = doc["text"] + "- chapter: 43\n  title: 新章\n  plot_function: ''\n  notes: ''\n"
+    doc = read(client, novel_id, "toc.md")
+    appended = doc["text"] + "## 第 43 章 新章\n- **剧情功能**：\n- **备注**：\n"
 
-    assert write(client, novel_id, "toc.yaml", appended, actor="ai").status_code == 422
+    assert write(client, novel_id, "toc.md", appended, actor="ai").status_code == 422
 
-    human = write(client, novel_id, "toc.yaml", appended, actor="human")
+    human = write(client, novel_id, "toc.md", appended, actor="human")
     assert human.status_code == 200
     assert human.json()["changed"] == ["43.created", "43.title"]
     rows = client.get(f"/api/novels/{novel_id}/planning/toc").json()
@@ -131,36 +147,57 @@ def test_ai_cannot_add_or_remove_rows(client: TestClient) -> None:
 
 def test_ai_may_not_move_arc_bounds_but_may_rewrite_prose(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    doc = read(client, novel_id, "arcs.yaml")
+    doc = read(client, novel_id, "arcs.md")
+    arc = doc["text"].splitlines()[4]
+    arc_id = arc.split("弧 ")[1].split(" ")[0]
 
-    moved = write(client, novel_id, "arcs.yaml", doc["text"].replace("start_chapter: 10", "start_chapter: 12"), actor="ai")
+    moved = write(
+        client, novel_id, "arcs.md", doc["text"].replace("- **起始章**：10", "- **起始章**：12"), actor="ai"
+    )
     assert moved.status_code == 422
 
-    retitled = write(client, novel_id, "arcs.yaml", doc["text"].replace("title: 卷一", "title: 卷一·观星"), actor="ai")
-    assert retitled.status_code == 200
-    assert retitled.json()["changed"] == ["1.title"]
+    retitled = write(
+        client, novel_id, "arcs.md", doc["text"].replace(f"{arc}\n", f"{arc}·观星\n"), actor="ai"
+    )
+    assert retitled.status_code == 200, retitled.text
+    assert retitled.json()["changed"] == [f"{arc_id}.title"]
 
 
-def test_broken_yaml_is_reported_with_a_line(client: TestClient) -> None:
+def test_broken_markdown_is_refused_before_any_write(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    doc = read(client, novel_id, "blueprint.yaml")
+    doc = read(client, novel_id, "blueprint.md")
 
-    refused = write(client, novel_id, "blueprint.yaml", doc["text"] + "themes: [unclosed\n")
+    refused = write(client, novel_id, "blueprint.md", doc["text"] + "## 我随手加的一节\n")
 
     assert refused.status_code == 422
-    assert "YAML" in refused.json()["detail"]
+    assert "结构标识" in refused.json()["detail"]
+
+
+def test_a_list_section_rejects_prose(client: TestClient) -> None:
+    novel_id = seed_novel(client)
+    doc = read(client, novel_id, "briefs/0042.md")
+
+    accepted = write(
+        client,
+        novel_id,
+        "briefs/0042.md",
+        doc["text"].replace("## 既定事实\n", "## 既定事实\n这是一段散文而不是条目\n"),
+        actor="human",
+    )
+    assert accepted.status_code == 422
+    assert "列表小节" in accepted.json()["detail"]
 
 
 def test_stale_base_revision_conflicts(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    doc = read(client, novel_id, "blueprint.yaml")
-    write(client, novel_id, "blueprint.yaml", doc["text"].replace("ending: ''", "ending: 碑归碑"), actor="ai")
+    doc = read(client, novel_id, "blueprint.md")
+    write(client, novel_id, "blueprint.md", doc["text"].replace("## 终局\n\n", "## 终局\n碑归碑\n\n", 1), actor="ai")
 
     stale = write(
         client,
         novel_id,
-        "blueprint.yaml",
-        doc["text"].replace("themes: ''", "themes: 名字即存在"),
+        "blueprint.md",
+        doc["text"].replace("## 主题\n\n", "## 主题\n名字即存在\n\n", 1),
         actor="ai",
         base_revision=doc["revision"],
     )
@@ -171,29 +208,40 @@ def test_stale_base_revision_conflicts(client: TestClient) -> None:
 def test_writing_a_new_brief_file_creates_it(client: TestClient) -> None:
     novel_id = seed_novel(client)
     text = (
-        "chapter: 7\n"
-        "arc: null\n"
-        "goal: 主角入观星台\n"
-        "events: ''\n"
-        "pov: 沈曜\n"
-        "characters: [沈曜]\n"
-        "conflict: ''\n"
-        "hook: ''\n"
-        "required_facts: []\n"
-        "status: draft\n"
+        "# 第 7 章简报（D 层 · 单章简报）\n"
+        "\n"
+        "> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。\n"
+        "\n"
+        "- **章节号**：7\n"
+        "- **所属弧**：—\n"
+        "- **视角**：沈曜\n"
+        "- **出场人物**：\n"
+        "  - 沈曜\n"
+        "- **状态**：draft\n"
+        "\n"
+        "## 目标\n"
+        "主角入观星台\n"
+        "\n"
+        "## 事件\n"
+        "\n"
+        "## 冲突\n"
+        "\n"
+        "## 钩子\n"
+        "\n"
+        "## 既定事实\n"
     )
 
-    created = write(client, novel_id, "briefs/0007.yaml", text)
+    created = write(client, novel_id, "briefs/0007.md", text)
 
-    assert created.status_code == 200
+    assert created.status_code == 200, created.text
     briefs = client.get(f"/api/novels/{novel_id}/planning/briefs").json()
     assert {item["chapter_number"] for item in briefs} == {42, 7}
-    assert "briefs/0007.yaml" in [item["path"] for item in client.get(f"/api/novels/{novel_id}/files").json()]
+    assert "briefs/0007.md" in [item["path"] for item in client.get(f"/api/novels/{novel_id}/files").json()]
 
 
 @pytest.mark.parametrize(
     "path",
-    ["notes.txt", "briefs/0007.yml", "briefs/../novel.yaml", "%2e%2e/secrets.yaml"],
+    ["notes.txt", "briefs/0007.yml", "briefs/0007.yaml", "briefs/../novel.md", "%2e%2e/secrets.md"],
 )
 def test_unknown_paths_are_not_served(client: TestClient, path: str) -> None:
     novel_id = seed_novel(client)
@@ -203,4 +251,4 @@ def test_unknown_paths_are_not_served(client: TestClient, path: str) -> None:
 
 def test_documents_require_an_existing_novel(client: TestClient) -> None:
     assert client.get("/api/novels/999/files").status_code == 404
-    assert client.get("/api/novels/999/files/toc.yaml").status_code == 404
+    assert client.get("/api/novels/999/files/toc.md").status_code == 404

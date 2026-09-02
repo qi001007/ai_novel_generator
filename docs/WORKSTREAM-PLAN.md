@@ -323,31 +323,103 @@
 
 ### 门禁与风险
 
-- [ ] 主人先认这套标题/字段写法（本文件上面那份样例就是渲染结果），认完整包 1–7 一次做完
-- [ ] UI 铁律仍然走：帧 17/18/19 就地改完要出图给主人过目，批了才动前端
+- [x] 主人已认这套标题/字段写法（「就按你说的」），1–7 一次做完
+- [x] UI 铁律仍然走：帧 17/18/19 已就地改完并出图，见下文「本轮收口」
 - 风险 1：MD 比 YAML 自由，模型更容易顺手重排整篇（本轮已观察到它改一个值重排 30 行）。
   对策：prompt 里钉「除目标小节外，其余行逐字节保持原样」，提案卡对纯空行/折行变化做归并显示
 - 风险 2：`@codemirror/lang-markdown` 是要新增依赖，装包需出网走代理
 
+### 本轮收口（2026-09-02）
+
+1–7 全部落地，清单与实际实现的两处偏差如实记下：
+
+- 第 3 条说补「render→parse→render 幂等」往返测试，实际补的是
+  `test_rendering_a_document_untouched_writes_nothing`（未改动的文档写回应零变更），
+  它同时覆盖往返；另补 `test_a_list_section_rejects_prose` 与旧后缀 `briefs/0007.yaml` 必须 404。
+- 第 5 条的 `cmYaml.ts` 改名 `cmDoc.ts`，`scanKeys()` 换成 `scanDoc()`：锚点标题解析出
+  `chapter` / `arc`，非锚点标题返回 `chapter=null`，B→D 热区因此仍按字段名对齐。
+- 围栏兼容垫片按第 2 条落地：`PROPOSAL_BLOCK = ```(?:ya?ml|md|markdown) @路径`，
+  旧格式提案不会因迁移而丢（`test_a_legacy_yaml_fence_still_becomes_a_proposal`）。
+
+真机取证：`GET /files` 返回 `blueprint.md / toc.md / arcs.md / briefs/0042.md / briefs/0043.md`；
+左树 `0042.md 第 42 章`、`0044.md 未建`；chip 显示 `Markdown` 与 `第 N 章主键锁定`；
+点 `toc.md` 里的描述真跳到 `briefs/0042.md` 并把光标落在正文行；真跑 MiniMax-M2.5
+（2.0k in / 583 out）产出合法 MD 提案，卡片显示 `AI 提案 · +20 −27`。
+
+**风险 1 已实测发生**：只要求改 `## 约束` 第二条，模型把五个小节整体重排 + 重新折行，
+diff 47 行。键锁挡住了改标题，挡不住重排。prompt 里加「其余每一行逐字节保持原样」
+不足以治住。**待裁定**：是否在提案卡对纯折行/纯空行变化做归并显示（治标），
+或让写回通道只接受"目标小节以外逐字节相同"的提案（治本，但会拒掉一部分合法改写）。
+
 ## 真实浏览器取证时新发现（2026-09-02，均未动代码，等主人裁定）
 
-1. **深色主题禁用态对比度不足**：`e-dark.png` 与裁图 `e-dark-crop.png` 显示
+1. **深色主题禁用态对比度不足** —— 已修（本轮）：`e-dark.png` 与裁图 `e-dark-crop.png` 显示
    `保存 / 机械校验 / AI 自检 / 通过终审 / 打回` 这排禁用按钮，以及右栏顶部的章节选择器，
    是"灰底灰字"，几乎读不出来；同一屏的 `草稿` `事实落库` 与正文对比度正常。
-   根因方向：禁用态用的是写死的中性灰，没跟着 `data-theme="dark"` 的 token 走。
-   批准范围外（批准的帧都是浅色），故只报不改。
-2. **提案卡活不过刷新**：真跑一轮 MiniMax-M2.5 出了合法提案（`+10 -20`、可应用），
+   根因：`button:disabled` 只有 `opacity: 0.45`，朱砂底压在近黑表面上糊成一片；
+   `.file-save:disabled` 更直接，`--surface-alt` 底配 `--editor-linenum` 字，对比约 1.7:1。
+   修法：`[data-theme="dark"]` 下新增四个 token 并逐类覆盖 ——
+   `--control-disabled-bg #212124` / `--control-disabled-fg #7e7b75`（约 3.9:1）、
+   `--control-disabled-accent-bg #3a2b27` / `--control-disabled-accent-fg #9a8883`（约 3.6:1）。
+   浅色主题一行未动（批准的帧都是浅色，不擅自改）。
+   更正一条：记录里写的「右栏章节 select」**不存在** —— 全仓只有两个 `<select>`
+   （人物分级、简报弧选择），都没有 disabled。该子项作废。
+2. **提案卡活不过刷新** —— 已修（本轮）：真跑一轮 MiniMax-M2.5 出了合法提案（`+10 -20`、可应用），
    但 `fromHistory()` 只重建文本气泡、不重建 `proposals`，刷新后 `.proposal` 与 `.pending-dot` 双双归零，
    一键「应用」丢失，只剩对话里那段 yaml。等于核心闭环"AI 提案 → 点一下写回"在刷新后断掉。
+   修法走服务端单一真源：`GET /chat/messages` 的响应模型从裸 `ChatMessage` 换成
+   `ChatMessageOut`，多带一个 `proposals`（由既有 `extract_proposals(content)` 现算，
+   不新增存储、不复制围栏正则）。前端加载历史后逐条重建卡片，
+   并在 `offerFromStream` 里加一条判据：`baseText === data.text` 说明这条已被应用过，
+   不再复活卡片。新增测试三条 —— 后端 1 条（历史带回提案）、前端 2 条（刷新后卡片回来 /
+   已应用的不再回来）。
 3. **模型会顺手重排整份文件**：我只要求改 constraints 第二条，模型回的是整份 blueprint.yaml，
    键序与折行都变了（提案因此 30 行改动而非 1 行）。键锁校验挡住了改键名，但挡不住重排。
    可选处置：system prompt 里加"除目标值外逐字节保持原样"，或提案卡对纯折行变化做归并显示。
-4. **帧 06/07 已删但表单视图还在代码里**：`PlanningPanel.tsx` 仍可经左树 `A/B/C` 前缀徽章进入。
-   要么按 C4d 收掉这条入口，要么在 UI-DESIGN.md 里写明它是保留的备用视图。
+4. **帧 06/07 已删但表单视图还在代码里** —— 已修（本轮）：`PlanningPanel.tsx` 与其测试删除，
+   `RightView` 去掉 `"planning"`，`planningLayer` 状态与 `selectedPlanningLayer` / `onOpenPlanning`
+   两个 prop 一并拆掉；左树 `A/B/C` 前缀徽章改为直接打开对应的 `.md`（与 D 层行为一致）。
+   顺带清掉只有表单视图在用的类型 `PlanningBlueprint` / `TocEntry` / `ArcPlan` 与 `.planning-panel` 选择器。
+   后端 `/planning/*` REST 通道**保留不动** —— 它仍是 MD 编解码回写的结构化真源。
+   遗留：19 个只被表单视图用过的样式类（`toc-page` `toc-tree` `toc-detail*`
+   `blueprint-page` `blueprint-doc*` `version-chips` `item-list` `segmented`）现在是死样式，
+   与既有死样式混在一起，未擅自扩大清理面，待主人一句话再扫。
 
-## Figma MCP 实况（更正记录口径）
+## Figma MCP 实况（2026-09-02 二次取证，替换本节此前口径）
 
-Figma MCP **可用**，但本会话观察到工具**间歇性从工具集里消失**（同一轮有、下一轮没了），
-`use_figma` 偶发返回空壳 `{"safeToRetryWithoutCanvasRead":true}`、`get_screenshot` 偶发
-`maxDimension: expected number, received string`。处置 = 重试或改用导出图核对，
-不得据此写"Figma 不可用"，也不要为此改代码。真正需要修的仍是 github MCP 的过期 PAT。
+**结论：Figma MCP 可用，且从未发生「工具间歇性从工具集里消失」。**
+本节此前写的「间歇性消失」「处置 = 重试」属误判，它与 AGENTS.md 旧第 1 条
+（漏前缀则用全名重试）一起，把一个确定性的脚本 bug 放大成了无限重试循环，故删除。
+
+取证来源 ~/.codex/thread_history_1.sqlite + logs_2.sqlite：
+
+- 全历史 `mcp__figma__use_figma` 结构化派发 **316 次 = 259 completed / 57 服务端真报错 / 0 次派发失败**。
+- 工具**结果**里出现 `does not exist` 的次数为 **0**；该字样只出现在模型自己的 reasoning 里（28 次）。
+- Codex 判定 `MCP server tools unavailable` 的对象只有 `mineru`(21) / `github`(18) / `codex_apps`(1)，
+  **`figma` 从未上榜**。
+- 2026-09-02 14:14-14:21 的 6 次失败全是同一句
+  `TypeError: node.getRangeExtent: no such property getRangeExtent on TEXT node`
+  —— Figma 在正常执行脚本，是脚本调了 Plugin API 里不存在的方法。TEXT 节点没有逐 range 的
+  extent 度量，改用 `node.height`／行数 x `lineHeight`／`textAutoResize` 后读尺寸／拆独立 text 节点。
+- `get_screenshot` 的 `maxDimension: expected number, received string` 属**参数层**类型退化
+  （provider shim），不是工具面在掉，也不是 Figma 服务端的问题。
+- `use_figma` 偶发返回 `{"safeToRetryWithoutCanvasRead":true}` 是连接器给的提示字段，
+  但**写类调用不得据此自动重试**：harness 会重放同一消息里的多个 tool_use，
+  实测 14:03:48 / 14:03:54 / 14:04:02 同一脚本跑了三遍，14:08:17 出现 `before:55 -> after:55` 空转。
+
+处置口径统一改为 `AGENTS.md`《Figma / MCP 故障分流》第 0-5 条。
+真正需要修的仍是 github MCP 的过期 PAT（`AuthRequired: Token is not authorized`，11 次）。
+
+### 已核查：重复写没有把位移算两遍（2026-09-02 主人问询，只读比对完成）
+
+- 结论：22/22 个标记节点的当前 y 与 14:16:38 那次 report 的目标值逐项相等，
+  不存在 delta 累加两次的形态。原因是那一版脚本用的全是绝对目标值
+  `y = 14 + (行号 - 1) * 22`，结构上幂等，跑几遍都落在同一处。
+  14:21:33 与 14:21:59 两份相同 report 属**幂等空转**（第二次 `before == after`）。
+- 但重复写确实污染过一次，位置在 caret 的 x 而不是 y：同一条消息里的第二份脚本是我手抄的副本，
+  全角判定正则被抄坏，算出 `337 / 265`（应为 `366 / 294`）。
+  主人中断的那次调用已先把三个 caret 改回正确值，当前画布无残留。
+- 教训入库：`getRangeExtent` 在 Figma TEXT 节点上不存在；
+  报错含 `TypeError ... on TEXT node` 属脚本违反 Plugin API，不是工具面在掉；
+  **一条消息只发一个写调用**，重发前先确认脚本是绝对赋值而非增量位移。
+

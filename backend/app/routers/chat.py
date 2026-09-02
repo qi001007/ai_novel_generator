@@ -1,9 +1,11 @@
 import json
 from collections.abc import Callable, Iterator
+from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from sqlmodel import Session, SQLModel, select
+from sqlmodel import Field, Session, SQLModel, select
 from sqlalchemy.engine import Engine
 
 from app.db import get_session
@@ -13,6 +15,7 @@ from app.services.chat import (
     ChatDomainError,
     ChatTurn,
     complete_turn,
+    extract_proposals,
     prepare_turn,
     stream_turn,
 )
@@ -44,6 +47,42 @@ class ChatContextItem(SQLModel):
     mention: str = ""
 
 
+class ChatProposalOut(SQLModel):
+    # A fenced write the agent offered. History keeps carrying it so a
+    # reload cannot silently drop a review card that was never applied.
+    path: str
+    text: str
+    valid: bool
+    error: str = ""
+
+
+_MESSAGE_FIELDS = (
+    "id", "novel_id", "role", "content", "mode", "model", "mentions",
+    "context_refs", "token_input", "token_output", "created_at",
+)
+
+
+class ChatMessageOut(SQLModel):
+    id: int
+    novel_id: int
+    role: str
+    content: str
+    mode: str
+    model: str
+    mentions: list[str] = Field(default_factory=list)
+    context_refs: list[dict[str, Any]] = Field(default_factory=list)
+    token_input: int = 0
+    token_output: int = 0
+    created_at: datetime
+    proposals: list[ChatProposalOut] = Field(default_factory=list)
+
+    @classmethod
+    def of(cls, row: ChatMessage) -> "ChatMessageOut":
+        data = {name: getattr(row, name) for name in _MESSAGE_FIELDS}
+        data["proposals"] = extract_proposals(row.content)
+        return cls(**data)
+
+
 def _to_http(cause: ChatDomainError) -> HTTPException:
     return HTTPException(status_code=cause.status_code, detail=cause.detail)
 
@@ -69,12 +108,12 @@ def _event_stream(
     yield _sse("end", {})
 
 
-@router.get("/{novel_id}/chat/messages", response_model=list[ChatMessage])
+@router.get("/{novel_id}/chat/messages", response_model=list[ChatMessageOut])
 def list_chat_messages(
     novel_id: int,
     limit: int = 200,
     session: Session = Depends(get_session),
-) -> list[ChatMessage]:
+) -> list[ChatMessageOut]:
     get_novel_or_404(novel_id, session)
     rows = list(
         session.exec(
@@ -83,7 +122,7 @@ def list_chat_messages(
             .order_by(ChatMessage.created_at, ChatMessage.id)
         ).all()
     )
-    return rows[-max(limit, 1):]
+    return [ChatMessageOut.of(row) for row in rows[-max(limit, 1):]]
 
 
 @router.get("/{novel_id}/chat/context", response_model=list[ChatContextItem])

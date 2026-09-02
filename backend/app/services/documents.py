@@ -1,8 +1,9 @@
-"""Project the four planning layers onto editable YAML documents.
+"""Project the four planning layers onto editable Markdown documents.
 
 The database stays the source of truth: a document is a rendering of it, and a
-write is parsed back into it. Keys are structure and values are content, so an
-``ai`` actor may only touch the values it is allowed to touch.
+write is parsed back into it. Headings and field labels are structure and the
+rest is content, so an ``ai`` actor may only touch the values it is allowed to
+touch. The Markdown grammar itself lives in ``markdown_doc``.
 """
 
 from __future__ import annotations
@@ -12,7 +13,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-import yaml
 from sqlmodel import Session, select
 
 from app.models import (
@@ -22,15 +22,16 @@ from app.models import (
     TocEntry,
     utc_now,
 )
+from app.services import markdown_doc
 
 
 ACTOR_HUMAN = "human"
 ACTOR_AI = "ai"
 ACTORS = (ACTOR_HUMAN, ACTOR_AI)
 
-BLUEPRINT_PATH = "blueprint.yaml"
-TOC_PATH = "toc.yaml"
-ARCS_PATH = "arcs.yaml"
+BLUEPRINT_PATH = "blueprint.md"
+TOC_PATH = "toc.md"
+ARCS_PATH = "arcs.md"
 
 BLUEPRINT_FIELDS = ("main_line", "ending", "core_conflicts", "themes", "constraints")
 BLUEPRINT_AI_FIELDS = BLUEPRINT_FIELDS
@@ -64,18 +65,12 @@ BRIEF_FIELDS = (
 )
 BRIEF_AI_FIELDS = ("goal", "events", "pov", "characters", "conflict", "hook", "required_facts", "status")
 
-_INT_FIELDS = {"chapter", "start_chapter", "end_chapter"}
-_OPTIONAL_INT_FIELDS = {"arc"}
-_LIST_FIELDS = {"characters", "required_facts"}
+# The codec owns the field vocabulary, so the type sets are read from it.
+_INT_FIELDS = markdown_doc.INT_FIELDS
+_OPTIONAL_INT_FIELDS = markdown_doc.OPTIONAL_INT_FIELDS
+_LIST_FIELDS = markdown_doc.LIST_FIELDS
 
-_BRIEF_NAME = re.compile(r"^briefs/([0-9]{1,6})\.yaml$")
-
-_HEADERS = {
-    "blueprint": "# A 层 · 全书蓝图（长期）。五个键是结构标识，只能改值，不能改键名。\n",
-    "toc": "# B 层 · 目录（中期）。一条一章；chapter 是主键，不能改号、不能靠删行下线章节。\n",
-    "arcs": "# C 层 · 剧情弧。arc 是主键；起止章号只由主人调整。\n",
-    "brief": "# D 层 · 单章简报（施工图）：/generate 的输入，也进对话上下文。文件名章号即主键。\n",
-}
+_BRIEF_NAME = re.compile(r"^briefs/([0-9]{1,6})\.md$")
 
 
 class DocumentError(Exception):
@@ -111,49 +106,18 @@ class WriteResult:
     revision: str = ""
 
 
-class _BlockDumper(yaml.SafeDumper):
-    """SafeDumper that keeps multi-line prose readable with block scalars."""
-
-    def ignore_aliases(self, data: Any) -> bool:  # noqa: ANN401
-        return True
+def render_document(kind: str, payload: Any, *, chapter: int | None = None) -> str:
+    """Render a layer model to Markdown through the codec."""
+    return markdown_doc.render(kind, payload, chapter=chapter)
 
 
-def _represent_str(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
-    style = "|" if "\n" in data.strip() else None
-    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
-
-
-def _represent_list(dumper: yaml.Dumper, data: list[Any]) -> yaml.SequenceNode:
-    """Keep short scalar lists on one line; rows of records stay block style."""
-    flow = all(isinstance(item, (str, int, float, bool, type(None))) for item in data)
-    return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=flow)
-
-
-_BlockDumper.add_representer(str, _represent_str)
-_BlockDumper.add_representer(list, _represent_list)
-
-
-def dump_document(payload: Any, *, header: str) -> str:
-    body = yaml.dump_all(
-        [payload],
-        Dumper=_BlockDumper,
-        allow_unicode=True,
-        sort_keys=False,
-        default_flow_style=False,
-        width=10_000,
-    )
-    return header + body
-
-
-def load_document(text: str) -> Any:
+def load_document(kind: str, body: str, *, chapter: int | None = None) -> Any:
+    """Parse a document body, mapping codec complaints onto HTTP errors."""
     try:
-        return yaml.safe_load(text if text.strip() else "{}")
-    except yaml.YAMLError as cause:
-        where = ""
-        mark = getattr(cause, "problem_mark", None)
-        if mark is not None:
-            where = f"（第 {mark.line + 1} 行）"
-        raise DocumentError(f"YAML 解析失败{where}: {cause}") from cause
+        return markdown_doc.parse(kind, body, chapter=chapter)
+    except markdown_doc.MarkdownError as cause:
+        raise DocumentError(cause.detail) from cause
+
 
 
 def _touch(record: Any) -> None:
@@ -217,7 +181,7 @@ def resolve_path(path: str) -> tuple[str, int | None]:
 
 
 def brief_path(chapter_number: int) -> str:
-    return f"briefs/{chapter_number:04d}.yaml"
+    return f"briefs/{chapter_number:04d}.md"
 
 
 # --- proposal pre-flight ---------------------------------------------------
@@ -240,13 +204,13 @@ def validate_structure(path: str, text: str) -> str:
     """
     kind, _ = resolve_path(path)
     try:
-        parsed = load_document(text)
+        parsed = load_document(kind, text)
     except DocumentError as cause:
         return cause.detail
 
     if kind in _LIST_KINDS:
         if not isinstance(parsed, list):
-            return f"{path} 必须是「- …」的列表"
+            return f"{path} 必须是「## …」的记录列表"
         records = list(enumerate(parsed, start=1))
         labels = [f"{path} 第 {index} 条" for index, _ in records]
     else:
@@ -381,20 +345,20 @@ def read_file(session: Session, novel_id: int, path: str) -> FileDoc:
     kind, number = resolve_path(path)
     if kind == "blueprint":
         model = _blueprint_model(_blueprint(session, novel_id))
-        text = dump_document(model, header=_HEADERS["blueprint"])
+        text = render_document("blueprint", model)
         return FileDoc(BLUEPRINT_PATH, kind, "A", "全书蓝图", text, BLUEPRINT_AI_FIELDS, _revision(text))
     if kind == "toc":
         model = _toc_model(_toc_rows(session, novel_id))
-        text = dump_document(model, header=_HEADERS["toc"])
+        text = render_document("toc", model)
         return FileDoc(TOC_PATH, kind, "B", "目录", text, TOC_AI_FIELDS, _revision(text))
     if kind == "arcs":
         model = _arcs_model(_arc_rows(session, novel_id))
-        text = dump_document(model, header=_HEADERS["arcs"])
+        text = render_document("arcs", model)
         return FileDoc(ARCS_PATH, kind, "C", "剧情弧", text, ARC_AI_FIELDS, _revision(text))
 
     assert number is not None
     model = _brief_model(_brief(session, novel_id, number), number)
-    text = dump_document(model, header=_HEADERS["brief"])
+    text = render_document("brief", model, chapter=number)
     return FileDoc(
         brief_path(number), kind, "D", f"第 {number} 章简报", text, BRIEF_AI_FIELDS, _revision(text)
     )
@@ -484,7 +448,7 @@ def write_file(
             status_code=409,
         )
 
-    parsed = load_document(text)
+    parsed = load_document(kind, text, chapter=number)
     writer = {
         "blueprint": _write_blueprint,
         "toc": _write_toc,
@@ -527,7 +491,7 @@ def _write_toc(
     session: Session, novel_id: int, parsed: Any, *, actor: str, number: int | None
 ) -> list[str]:
     if not isinstance(parsed, list):
-        raise DocumentError(f"{TOC_PATH} 必须是「- chapter: …」的列表")
+        raise DocumentError(f"{TOC_PATH} 必须是「## 第 N 章 …」的记录列表")
 
     rows = [_require_keys(row, TOC_FIELDS, f"{TOC_PATH} 第 {i + 1} 条") for i, row in enumerate(parsed)]
     existing = _toc_rows(session, novel_id)
@@ -582,7 +546,7 @@ def _write_arcs(
     session: Session, novel_id: int, parsed: Any, *, actor: str, number: int | None
 ) -> list[str]:
     if not isinstance(parsed, list):
-        raise DocumentError(f"{ARCS_PATH} 必须是「- arc: …」的列表")
+        raise DocumentError(f"{ARCS_PATH} 必须是「## 弧 N …」的记录列表")
 
     rows = [_require_keys(row, ARC_FIELDS, f"{ARCS_PATH} 第 {i + 1} 条") for i, row in enumerate(parsed)]
     existing = _arc_rows(session, novel_id)

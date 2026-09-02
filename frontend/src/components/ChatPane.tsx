@@ -179,8 +179,21 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     let cancelled = false;
     api
       .get<StoredChatMessage[]>(`/api/novels/${selectedNovelId}/chat/messages`)
-      .then((history) => {
-        if (!cancelled) setRows(fromHistory(history));
+      .then(async (history) => {
+        if (cancelled) return;
+        setRows(fromHistory(history));
+        // The server keeps the fence in the stored reply, so a reload puts
+        // every still-unapplied review card back on its own message.
+        for (const row of history) {
+          if (cancelled) return;
+          if (row.role !== "assistant" || !row.proposals?.length) continue;
+          // A fence naming a retired .yaml path can never be applied again, so
+          // restoring it would only hang a dead error card on the thread.
+          for (const seed of row.proposals.filter((item) => !item.path.endsWith(".yaml"))) {
+            if (cancelled) return;
+            await offerFromStream(row.id, seed);
+          }
+        }
       })
       .catch(() => {
         if (!cancelled) setRows([]);
@@ -251,6 +264,8 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     } catch {
       // Unknown path: keep the card, but it cannot be applied.
     }
+    // Already applied verbatim: offering it again would be a stale card.
+    if (baseRevision && baseText === data.text) return;
     const proposal: FileProposal = {
       id: nextProposalId++,
       path: data.path,

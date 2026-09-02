@@ -27,20 +27,27 @@ HISTORY_WINDOW = 8
 MODES = ("plan", "write")
 
 # A reply may propose a whole file; the human decides whether it gets written.
-PROPOSAL_BLOCK = re.compile(r"```ya?ml\s+@([^\s`]+)\s*\n(.*?)```", re.S)
+# Both fences are accepted on purpose: the file surface moved from YAML to Markdown,
+# and a model still mid-sentence in the old format must not lose its proposal.
+PROPOSAL_BLOCK = re.compile(
+    r"```(?:ya?ml|md|markdown)\s+@([^\s`]+)\s*\n(.*?)```",
+    re.S,
+)
 
 FILE_EDIT_RULES = """
 
 ## 直接改文件
-需要改动规划文件时，输出一个带文件名的 yaml 代码块，块内是改完后的「整份文件」而不是节选：
+需要改动规划文件时，输出一个带文件名的 markdown 代码块，块内是改完后的「整份文件」而不是节选：
 
-```yaml @toc.yaml
-- chapter: 42
-  title: …
+```markdown @toc.md
+## 第 42 章 星渊碑影
+- **剧情功能**：…
 ```
 
-只有主人点「应用」后系统才写入，而且以 AI 身份写入：键名、chapter/arc 主键、条目增删都会被挡下，
-所以只改值。代码块外不要写解释，也不要把这份文件的内容复述第二遍。"""
+只有主人点「应用」后系统才写入，而且以 AI 身份写入：小节标题、字段名、`第 N 章` 与 `弧 N` 主键、
+条目增删都会被挡下，所以只改值。
+除要改的那一节以外，其余每一行都必须逐字节保持原样：不要重排小节顺序、不要重新折行、
+不要统一标点或删掉空行。代码块外不要写解释，也不要把这份文件的内容复述第二遍。"""
 
 
 class ChatDomainError(Exception):
@@ -112,7 +119,7 @@ class ChatTurn:
 
 
 def extract_proposals(content: str) -> list[dict[str, Any]]:
-    """Turn ```yaml @path blocks into reviewable write proposals."""
+    """Turn ```markdown @path blocks into reviewable write proposals."""
     proposals: list[dict[str, Any]] = []
     for raw_path, text in PROPOSAL_BLOCK.findall(content or ""):
         path = raw_path.strip().lstrip("/")

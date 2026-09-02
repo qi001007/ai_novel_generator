@@ -14,7 +14,7 @@ const DOC = {
   kind: "blueprint",
   layer: "A",
   label: "全本蓝图",
-  text: "main_line: 旧\n",
+  text: "## 主线\n旧\n",
   ai_fields: ["main_line"],
   revision: "rev-1",
 };
@@ -42,14 +42,14 @@ describe("files store", () => {
   it("saves with the revision it read, then re-reads", async () => {
     await useFiles.getState().attach(1);
     await useFiles.getState().open(BLUEPRINT_PATH);
-    useFiles.getState().setDraft(BLUEPRINT_PATH, "main_line: 新\n");
+    useFiles.getState().setDraft(BLUEPRINT_PATH, "## 主线\n新\n");
     expect(isDirty(useFiles.getState().entries[BLUEPRINT_PATH])).toBe(true);
 
     await expect(useFiles.getState().save(BLUEPRINT_PATH)).resolves.toBe(true);
     expect(mocked.writeFile).toHaveBeenCalledWith(
       1,
       BLUEPRINT_PATH,
-      "main_line: 新\n",
+      "## 主线\n新\n",
       { actor: "human", baseRevision: "rev-1" },
     );
   });
@@ -58,7 +58,7 @@ describe("files store", () => {
     mocked.writeFile.mockRejectedValueOnce(new Error("文件已被别处改动，请重新读取"));
     await useFiles.getState().attach(1);
     await useFiles.getState().open(BLUEPRINT_PATH);
-    useFiles.getState().setDraft(BLUEPRINT_PATH, "main_line: 新\n");
+    useFiles.getState().setDraft(BLUEPRINT_PATH, "## 主线\n新\n");
     await expect(useFiles.getState().save(BLUEPRINT_PATH)).resolves.toBe(false);
     expect(useFiles.getState().entries[BLUEPRINT_PATH].conflict).toBe(true);
   });
@@ -69,7 +69,7 @@ describe("files store", () => {
     useFiles.getState().offer({
       id: 1,
       path: BLUEPRINT_PATH,
-      text: "main_line: AI\n",
+      text: "## 主线\nAI\n",
       valid: true,
       error: "",
       baseText: DOC.text,
@@ -86,14 +86,14 @@ describe("files store", () => {
     useFiles.getState().offer({
       id: 2,
       path: BLUEPRINT_PATH,
-      text: "main_line: AI\n",
+      text: "## 主线\nAI\n",
       valid: true,
       error: "",
       baseText: DOC.text,
       baseRevision: "rev-1",
     });
     await expect(useFiles.getState().applyProposal(BLUEPRINT_PATH)).resolves.toBe(true);
-    expect(mocked.writeFile).toHaveBeenCalledWith(1, BLUEPRINT_PATH, "main_line: AI\n", {
+    expect(mocked.writeFile).toHaveBeenCalledWith(1, BLUEPRINT_PATH, "## 主线\nAI\n", {
       actor: "ai",
       baseRevision: "rev-1",
     });
@@ -106,7 +106,7 @@ describe("files store", () => {
     useFiles.getState().offer({
       id: 3,
       path: BLUEPRINT_PATH,
-      text: "main_line: AI\n",
+      text: "## 主线\nAI\n",
       valid: true,
       error: "",
       baseText: DOC.text,
@@ -119,15 +119,15 @@ describe("files store", () => {
 
   it("does not invent a tree entry for a brief the server never wrote", async () => {
     await useFiles.getState().attach(1);
-    await useFiles.getState().open("briefs/0048.yaml");
+    await useFiles.getState().open("briefs/0048.md");
     const state = useFiles.getState();
-    expect(state.active).toBe("briefs/0048.yaml");
+    expect(state.active).toBe("briefs/0048.md");
     // read_file renders an empty brief on the fly; that must not look like a file.
     expect(state.metas.map((meta) => meta.path)).toEqual([BLUEPRINT_PATH]);
   });
 
   it("re-reads the file list after a write so a new brief becomes real", async () => {
-    const brief = { path: "briefs/0048.yaml", kind: "brief", layer: "D", label: "第 48 章简报" };
+    const brief = { path: "briefs/0048.md", kind: "brief", layer: "D", label: "第 48 章简报" };
     mocked.listFiles
       .mockResolvedValueOnce([{ path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全本蓝图" }])
       .mockResolvedValueOnce([
@@ -135,9 +135,9 @@ describe("files store", () => {
         brief,
       ]);
     await useFiles.getState().attach(1);
-    await useFiles.getState().open("briefs/0048.yaml");
-    useFiles.getState().setDraft("briefs/0048.yaml", "chapter: 48\n");
-    await expect(useFiles.getState().save("briefs/0048.yaml")).resolves.toBe(true);
-    expect(useFiles.getState().metas.map((meta) => meta.path)).toContain("briefs/0048.yaml");
+    await useFiles.getState().open("briefs/0048.md");
+    useFiles.getState().setDraft("briefs/0048.md", "- **章节号**：48\n");
+    await expect(useFiles.getState().save("briefs/0048.md")).resolves.toBe(true);
+    expect(useFiles.getState().metas.map((meta) => meta.path)).toContain("briefs/0048.md");
   });
 });
