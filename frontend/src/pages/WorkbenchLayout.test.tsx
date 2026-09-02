@@ -113,7 +113,8 @@ describe("workbench layout", () => {
 
     expect(columns().split(" ")).toContain("1px");
     expect(document.querySelectorAll(".splitter-toggle")).toHaveLength(0);
-    expect(screen.queryByRole("button", { name: /折叠|展开/ })).toBeNull();
+    const toggles = workspace().querySelectorAll(".splitter button");
+    expect(toggles).toHaveLength(0);
   });
 
   it("names the model in the topbar chip", async () => {
@@ -132,7 +133,7 @@ describe("workbench layout", () => {
     });
     expect(screen.getByText("blueprint.md")).toBeTruthy();
     expect(document.querySelector(".file-path")?.textContent).toContain("blueprint.md");
-    expect(document.querySelector(".file-chip.mono")?.textContent).toBe("Markdown");
+    expect(document.querySelectorAll(".file-chip")).toHaveLength(0);
     expect(document.querySelector(".file-foot")?.textContent).toContain("与服务器一致");
   });
 

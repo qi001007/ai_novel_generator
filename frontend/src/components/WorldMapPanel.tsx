@@ -14,7 +14,7 @@ export default function WorldMapPanel({ novelId }: { novelId: number | null }) {
     <section className="page-panel" aria-label="世界观地图">
       <header className="page-panel-header">
         <h2>世界观 / 地图</h2>
-        <button type="button" className="primary" disabled={!novelId} title="AI 生图接入 Phase 2">
+        <button type="button" className="primary" disabled={!novelId} title="暂未开放">
           <Sparkles size={14} />
           AI 生成地图
         </button>

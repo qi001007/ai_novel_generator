@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeft, Moon, Settings, Sun } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -76,6 +76,32 @@ export default function WorkbenchPage() {
   const revealSeq = useFiles((store) => store.revealSeq);
   const attachFiles = useFiles((store) => store.attach);
   const openFile = useFiles((store) => store.open);
+  const refreshMetas = useFiles((store) => store.refreshMetas);
+
+  // All three entries land here, so they cannot drift apart.
+  async function handleCreateChapter() {
+    const created = await state.createNextChapter();
+    if (created === null) return;
+    await refreshMetas();
+    setCharactersOpen(false);
+    setRightView("files");
+    void openFile(briefPath(created));
+  }
+
+  const createChapter = useRef(handleCreateChapter);
+  createChapter.current = handleCreateChapter;
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const key = event.key.toLowerCase();
+      if ((event.ctrlKey || event.metaKey) && event.altKey && (event.code === "KeyN" || key === "n")) {
+        event.preventDefault();
+        void createChapter.current();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(PANE_STORAGE_KEY, JSON.stringify(panes));
@@ -197,9 +223,6 @@ export default function WorkbenchPage() {
           </button>
           <strong className="topbar-title">{novel?.title ?? "未选择作品"}</strong>
         </div>
-        <div className="topbar-center" aria-hidden="true">
-          <kbd>Ctrl</kbd>+<kbd>K</kbd> 命令面板（C5 接入）
-        </div>
         <div className="topbar-right">
           <span className={`model-chip ${state.llmStatus?.configured ? "ok" : "warn"}`}>
             <i aria-hidden="true" />
@@ -231,6 +254,9 @@ export default function WorkbenchPage() {
             selectedChapterId={state.selectedChapterId}
             activeFile={rightView === "files" ? activeFile : null}
             briefRows={briefRows}
+            creatingChapter={state.creatingChapter}
+            createError={state.createError}
+            onCreateChapter={() => void handleCreateChapter()}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
             onOpenFile={(path) => void openFile(path)}

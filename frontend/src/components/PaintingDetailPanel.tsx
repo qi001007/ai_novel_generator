@@ -37,7 +37,7 @@ export default function PaintingDetailPanel({ onBack }: PaintingDetailPanelProps
 
       <div className="painting-body">
         <div className="painting-canvas">
-          <p className="painting-placeholder">地图预览（Phase 2 接入 AI 生图）</p>
+          <p className="painting-placeholder">地图预览（AI 生图暂未开放）</p>
           <p className="painting-meta">
             生成于 09-01 20:12 · 由 A 蓝图与第 42 章碑文描述推导
           </p>

@@ -14,9 +14,6 @@ import {
   type ScrollInfo,
 } from "./cmDoc";
 import {
-  LAYER_HINT,
-  LAYER_LABEL,
-  LOCK_LABEL,
   briefPath,
   isDirty,
   useFiles,
@@ -71,7 +68,6 @@ export default function FileEditorPane() {
   const entry = active ? entries[active] : undefined;
   const proposal = active ? pending[active] : undefined;
   const kind = entry?.doc?.kind ?? "";
-  const layer = entry?.doc?.layer ?? "";
 
   // --- CodeMirror lives once; the store owns which document is loaded ------
   useEffect(() => {
@@ -248,11 +244,7 @@ export default function FileEditorPane() {
 
       <div className="file-bar">
         <span className="file-path">{novelTitle} / 规划 / {active}</span>
-        <span className="file-chip">{LAYER_LABEL[layer]} · {LAYER_HINT[kind]}</span>
-        <span className="file-chip mono">Markdown</span>
         <span className="file-spacer" />
-        <span className="file-chip mono">rev {entry?.doc?.revision ?? "——"}</span>
-        <span className="file-chip lock">{LOCK_LABEL[kind]}</span>
         <button
           type="button"
           className="file-save"

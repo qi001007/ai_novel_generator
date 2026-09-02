@@ -35,6 +35,8 @@ type WorkbenchState = {
   error: string | null;
   notice: string | null;
   busy: boolean;
+  creatingChapter: boolean;
+  createError: string | null;
   theme: ThemeState;
   init: () => Promise<void>;
   toggleTheme: () => void;
@@ -52,6 +54,7 @@ type WorkbenchState = {
   runAiReview: () => Promise<void>;
   extractChapterFacts: () => Promise<void>;
   loadChapterRecords: () => Promise<void>;
+  createNextChapter: () => Promise<number | null>;
 };
 
 export const useWorkbench = create<WorkbenchState>((set, get) => ({
@@ -72,6 +75,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   error: null,
   notice: null,
   busy: false,
+  creatingChapter: false,
+  createError: null,
   theme: ((): ThemeState => {
     const stored = localStorage.getItem("theme");
     if (stored === "light" || stored === "dark") return stored;
@@ -141,6 +146,59 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       });
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "加载失败" });
+    }
+  },
+
+  // One append at the end of D: the Chapter row and its brief must appear
+  // together, so a half-created chapter is reported rather than hidden.
+  async createNextChapter() {
+    const { selectedNovelId, chapters, briefs, creatingChapter } = get();
+    if (selectedNovelId === null || creatingChapter) return null;
+    const known = [
+      ...chapters.map((item) => item.chapter_number),
+      ...briefs.map((item) => item.chapter_number),
+    ];
+    const next = (known.length ? Math.max(...known) : 0) + 1;
+    set({ creatingChapter: true, createError: null });
+    try {
+      const brief = await api.post<ChapterBrief>(
+        `/api/novels/${selectedNovelId}/planning/briefs`,
+        { chapter_number: next },
+      );
+      try {
+        await api.post<Chapter>(`/api/novels/${selectedNovelId}/chapters`, {
+          chapter_number: next,
+          brief_id: brief.id,
+        });
+      } catch (cause) {
+        set({
+          creatingChapter: false,
+          createError: String(
+            cause instanceof Error ? cause.message : "第 " + next + " 章正文记录创建失败，简报已建",
+          ),
+        });
+        return null;
+      }
+      const [freshBriefs, freshChapters] = await Promise.all([
+        api.get<ChapterBrief[]>(`/api/novels/${selectedNovelId}/planning/briefs`),
+        api.get<Chapter[]>(`/api/novels/${selectedNovelId}/chapters`),
+      ]);
+      const made = freshChapters.find((item) => item.chapter_number === next);
+      set({
+        briefs: freshBriefs,
+        chapters: freshChapters,
+        selectedBriefId: brief.id,
+        selectedChapterId: made?.id ?? get().selectedChapterId,
+        creatingChapter: false,
+        createError: null,
+      });
+      return next;
+    } catch (cause) {
+      set({
+        creatingChapter: false,
+        createError: String(cause instanceof Error ? cause.message : "新建章节失败"),
+      });
+      return null;
     }
   },
 

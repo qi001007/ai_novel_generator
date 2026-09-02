@@ -13,24 +13,10 @@ export const briefChapter = (path: string) => {
   return m ? Number(m[1]) : null;
 };
 
-export const LAYER_LABEL: Record<string, string> = { A: "A 层", B: "B 层", C: "C 层", D: "D 层" };
-export const LAYER_HINT: Record<string, string> = {
-  blueprint: "长期",
-  toc: "中期",
-  arcs: "10-30 章",
-  brief: "单章",
-};
 export const TREE_LABEL: Record<string, string> = {
   blueprint: "全本蓝图",
   toc: "目录",
   arcs: "卷 / 剧情弧",
-};
-// What the amber chip promises the reader: structure is locked, values are not.
-export const LOCK_LABEL: Record<string, string> = {
-  blueprint: "小节标题锁定",
-  toc: "第 N 章主键锁定",
-  arcs: "弧 N 主键锁定",
-  brief: "章节号与所属弧锁定",
 };
 
 // B describes a chapter, D builds it. The jump lands on the D field carrying the
@@ -83,6 +69,7 @@ type FilesState = {
   attach: (novelId: number) => Promise<void>;
   open: (path: string, opts?: { jump?: JumpSource | null; field?: string | null }) => Promise<void>;
   reload: (path: string) => Promise<void>;
+  refreshMetas: () => Promise<void>;
   setDraft: (path: string, text: string) => void;
   save: (path: string) => Promise<boolean>;
   closeTab: (path: string) => void;
@@ -169,6 +156,10 @@ export const useFiles = create<FilesState>((set, get) => ({
       set((state) => patch(state, path, { loading: true, error: null }));
       await get().reload(path);
     }
+  },
+
+  async refreshMetas() {
+    await syncMetas(get, set);
   },
 
   async reload(path) {

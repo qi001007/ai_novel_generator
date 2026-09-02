@@ -5,7 +5,7 @@ export default function ForeshadowWall({ novelId }: { novelId: number | null }) 
     <section className="page-panel" aria-label="伏笔墙">
       <header className="page-panel-header">
         <h2>伏笔墙</h2>
-        <button type="button" className="primary" disabled={!novelId} title="AI 自检接入 Phase 2">
+        <button type="button" className="primary" disabled={!novelId} title="暂未开放">
           <Sparkles size={14} />
           AI 自检
         </button>

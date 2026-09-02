@@ -190,7 +190,7 @@ export default function BookshelfPage() {
                   }}
                 />
               </label>
-              <button type="button" className="primary" disabled title="AI 生图接入 Phase 2">
+              <button type="button" className="primary" disabled title="暂未开放">
                 AI 生成
               </button>
             </div>

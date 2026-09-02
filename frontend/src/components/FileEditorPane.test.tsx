@@ -64,8 +64,8 @@ describe("FileEditorPane", () => {
     expect(screen.getAllByRole("tab")).toHaveLength(2);
     expect(document.querySelector(".file-tab.active")?.textContent).toContain("blueprint.md");
     expect(document.querySelector(".file-path")?.textContent).toContain("九霄观星录 / 规划 / blueprint.md");
-    expect(document.querySelector(".file-chip.lock")?.textContent).toBe("小节标题锁定");
-    expect(document.querySelector(".file-chip.mono")?.textContent).toBe("Markdown");
+    // Owner 2026-09-02: internal shorthand must not reach the reader.
+    expect(document.querySelectorAll(".file-chip")).toHaveLength(0);
     expect(document.querySelector(".file-foot")?.textContent).toContain("与服务器一致");
     await waitFor(() => {
       expect(document.querySelector(".file-cm .cm-content")).toBeTruthy();
