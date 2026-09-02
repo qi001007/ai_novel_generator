@@ -19,6 +19,13 @@
   --editor-active: #fdf3f0;
   --editor-linenum: #b7b4ae;
   --editor-comment: #a39f97;
+  /* YAML token colours (see cmYaml.ts yamlHighlight). Light keeps 帧 17. */
+  --tok-key: var(--accent);
+  --tok-string: #a11;
+  --tok-literal: #164;
+  --tok-comment: #940;
+  --tok-meta: #404740;
+  --tok-keyword: #708;
   --warn-soft: #fbf3e2;
   --diff-minus: #b03a22;
   --diff-minus-bg: #fdf1ef;
@@ -60,6 +67,13 @@
   --editor-active: #2a201e;
   --editor-linenum: #55534f;
   --editor-comment: #6b6862;
+  /* Dark follows VSCode Dark+: sky-blue keys, salmon strings, blue literals. */
+  --tok-key: #9cdcfe;
+  --tok-string: #ce9178;
+  --tok-literal: #4fc1ff;
+  --tok-comment: #940;
+  --tok-meta: var(--text-2);
+  --tok-keyword: #569cd6;
   --warn-soft: #33290f;
   --diff-minus: #e79283;
   --diff-minus-bg: #3a221d;
@@ -2941,8 +2955,14 @@ body.resizing {
 }
 
 .file-cm .cm-key {
-  color: var(--accent);
+  color: var(--tok-key);
   font-weight: 700;
+}
+
+/* Quoted scalars and the header comment used to inherit CodeMirror's
+   light-theme-only defaults, which vanished on the graphite background. */
+.file-cm .cm-comment {
+  color: var(--tok-comment);
 }
 
 .file-cm .cm-pending-line {

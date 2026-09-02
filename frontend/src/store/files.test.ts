@@ -116,4 +116,28 @@ describe("files store", () => {
     expect(useFiles.getState().pending).toEqual({});
     expect(mocked.writeFile).not.toHaveBeenCalled();
   });
+
+  it("does not invent a tree entry for a brief the server never wrote", async () => {
+    await useFiles.getState().attach(1);
+    await useFiles.getState().open("briefs/0048.yaml");
+    const state = useFiles.getState();
+    expect(state.active).toBe("briefs/0048.yaml");
+    // read_file renders an empty brief on the fly; that must not look like a file.
+    expect(state.metas.map((meta) => meta.path)).toEqual([BLUEPRINT_PATH]);
+  });
+
+  it("re-reads the file list after a write so a new brief becomes real", async () => {
+    const brief = { path: "briefs/0048.yaml", kind: "brief", layer: "D", label: "第 48 章简报" };
+    mocked.listFiles
+      .mockResolvedValueOnce([{ path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全本蓝图" }])
+      .mockResolvedValueOnce([
+        { path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全本蓝图" },
+        brief,
+      ]);
+    await useFiles.getState().attach(1);
+    await useFiles.getState().open("briefs/0048.yaml");
+    useFiles.getState().setDraft("briefs/0048.yaml", "chapter: 48\n");
+    await expect(useFiles.getState().save("briefs/0048.yaml")).resolves.toBe(true);
+    expect(useFiles.getState().metas.map((meta) => meta.path)).toContain("briefs/0048.yaml");
+  });
 });

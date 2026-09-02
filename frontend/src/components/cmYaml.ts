@@ -9,7 +9,8 @@ import {
   lineNumbers,
   type ViewUpdate,
 } from "@codemirror/view";
-import { bracketMatching, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { bracketMatching, HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { yaml } from "@codemirror/lang-yaml";
 
 import { BRIEF_FIELD_OF } from "../store/files";
@@ -316,6 +317,22 @@ export function focusField(view: EditorView, field: string): boolean {
   return false;
 }
 
+// --- syntax colours -------------------------------------------------------
+
+// CodeMirror ships one highlight style and its own source comment says it
+// "works well with light themes": keys come out #00c and strings #a11, which on
+// the graphite background are the "blue so dark you cannot read it" the owner
+// flagged. Own style, every colour a theme token, so light keeps 帧 17's cinnabar
+// keys and dark gets the VSCode Dark+ palette instead.
+export const yamlHighlight = HighlightStyle.define([
+  { tag: [t.definition(t.propertyName), t.propertyName], color: "var(--tok-key)" },
+  { tag: [t.string, t.special(t.string)], color: "var(--tok-string)" },
+  { tag: [t.number, t.literal, t.atom, t.bool], color: "var(--tok-literal)" },
+  { tag: t.comment, color: "var(--tok-comment)" },
+  { tag: t.meta, color: "var(--tok-meta)" },
+  { tag: t.keyword, color: "var(--tok-keyword)" },
+]);
+
 export const editorExtensions = [
   lineNumbers(),
   railGutter,
@@ -324,6 +341,6 @@ export const editorExtensions = [
   bodyPlugin,
   clickHandlers(),
   yaml(),
-  syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+  syntaxHighlighting(yamlHighlight, { fallback: true }),
   bracketMatching(),
 ];

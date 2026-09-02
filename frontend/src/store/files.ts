@@ -64,6 +64,10 @@ const emptyEntry = (): FileEntry => ({
 // field be jumped to twice in a row and still register as new work.
 export type FileFocus = { path: string; field: string; seq: number };
 
+type FilesSet = (
+  partial: Partial<FilesState> | ((state: FilesState) => Partial<FilesState>),
+) => void;
+
 type FilesState = {
   novelId: number | null;
   metas: FileMeta[];
@@ -88,6 +92,19 @@ type FilesState = {
 };
 
 let focusSeq = 0;
+
+// The tree lists only files the server has confirmed. A brief opened from the
+// "未建" slot is a projection read_file renders on the fly, not a file, so it
+// must not appear in the tree until the first write actually creates it.
+async function syncMetas(get: () => FilesState, set: FilesSet) {
+  const novelId = get().novelId;
+  if (novelId === null) return;
+  try {
+    set({ metas: await api.listFiles(novelId) });
+  } catch {
+    // A failed refresh keeps the last honest list on screen.
+  }
+}
 
 function patch(state: FilesState, path: string, next: Partial<FileEntry>) {
   const prev = state.entries[path] ?? emptyEntry();
@@ -159,8 +176,8 @@ export const useFiles = create<FilesState>((set, get) => ({
     set((state) => patch(state, path, { loading: true, conflict: false }));
     try {
       const doc = await api.readFile(novelId, path);
-      set((state) => ({
-        ...patch(state, path, {
+      set((state) =>
+        patch(state, path, {
           doc,
           draft: doc.text,
           loading: false,
@@ -168,11 +185,7 @@ export const useFiles = create<FilesState>((set, get) => ({
           conflict: false,
           savedAt: null,
         }),
-        // The server creates a brief file on first write; keep the tree honest.
-        metas: state.metas.some((meta) => meta.path === path)
-          ? state.metas
-          : [...state.metas, { path, kind: doc.kind, layer: doc.layer, label: doc.label }],
-      }));
+      );
     } catch (cause) {
       set((state) => patch(state, path, { loading: false, error: detail(cause, "文件读取失败") }));
     }
@@ -206,6 +219,8 @@ export const useFiles = create<FilesState>((set, get) => ({
           savedAt: new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" }),
         }),
       );
+      // The first write of a brief turns it into a real file: let the tree see it.
+      await syncMetas(get, set);
       return true;
     } catch (cause) {
       const message = detail(cause, "保存失败");
@@ -252,6 +267,7 @@ export const useFiles = create<FilesState>((set, get) => ({
     delete next[path];
     set({ pending: next });
     await get().reload(path);
+    await syncMetas(get, set);
     return true;
   },
 

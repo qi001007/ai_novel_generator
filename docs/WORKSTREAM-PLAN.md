@@ -223,6 +223,56 @@
 - [ ] 待主人裁定：`AGENTS.md.bak-20260902`、未跟踪的 `docs/HANDOFF.md` 如何处理；
       真库人物 沈曜（id=1）身上那张演示照片是否清掉
 
+## C5c 主人浏览器批注第二批（2026-09-02 本轮）
+
+### 批注 1「按一次最新的章节，它就自动新建下一章的简报」—— 已修
+
+- 取证：`GET /api/novels/1/files` 只有 `briefs/0042.yaml`、`briefs/0043.yaml`，
+  而界面上排到了 `0047.yaml 第 47 章` + `0048.yaml 未建`。**多出来的四行是前端伪造的**，库里根本没有。
+- 根因在 `store/files.ts` 的 `reload()`：它把"刚读过的任何路径"无条件塞进 `metas`
+  （原注释写的是"服务器首次写入会建简报，保持树诚实"，方向反了）。
+  `read_file()` 对不存在的章号是**当场渲染一份空模板**、不写库也不 404，
+  于是点一次"未建"占位行，占位行就冒充成真文件，`briefRows` 里的 `last` 再往前推一格，
+  连着点就能凭空长出一串简报。
+- 修法：`reload()` 不再改 `metas`；新增 `syncMetas()`，只在**真写过之后**
+  （`save()` 成功、`applyProposal()` 成功）重新拉一次 `GET /files`。
+  占位行点了只是打开一个未落库的缓冲区，保存成功那一刻才进树。
+- 回归测试两条：`does not invent a tree entry for a brief the server never wrote`、
+  `re-reads the file list after a write so a new brief becomes real`。前端 40/40 → **42/42**。
+
+### 批注 2「这个蓝色太深了根本看不清，改成 VSCode 那种天蓝色」—— 已修
+
+- 根因不是我们的 token：`cmYaml.ts` 用的是 CodeMirror 的 `defaultHighlightStyle`，
+  它自己在源码里写着 *"A default highlight style (works well with light themes)"*。
+  键名走 `definition(propertyName)` = `#00c`，字符串走 `#a11`，
+  在石墨底 `#1c1c1e` 上等于隐形；而且这个内层 span 还盖住了外层 `.cm-key` 的朱砂，
+  所以**浅色主题下键名其实一直是脏蓝，并不符合帧 17**。
+- 修法：换成自写的 `yamlHighlight = HighlightStyle.define([...])`，每个颜色都是 CSS 变量，
+  于是 token 跟着 `data-theme` 走。新增 `--tok-key/string/literal/comment/meta/keyword`：
+  浅色 `--tok-key: var(--accent)`（回到帧 17 的朱砂），
+  深色 `--tok-key: #9cdcfe`（VSCode Dark+ 天蓝，主人点名的那个）、`--tok-string: #ce9178`、
+  `--tok-literal: #4fc1ff`。注释色两主题都保持原 `#940`，未被批注过就不动。
+- 实测（Edge 真浏览器 computed style）：深色键名 `rgb(156,220,254)`、字符串 `rgb(206,145,120)`；
+  切浅色键名回到朱砂。`--tok-*` 全部走变量，没有写死十六进制的第二套。
+
+### 批注 3「规划都存 YAML，将来注入模型上下文最好用 MD」—— 取证 + 建议，未动代码
+
+- 先纠正一个前提：**现在注入 LLM 的上下文根本不是 YAML**。`services/context.py` 是从 DB 列
+  直接取料（`blueprint.main_line` / `entry.plot_function` …），`_clip()` 压成单行，
+  再 `as_prompt_block()` 拼成 `【A 全书蓝图 · 主线】\n正文`，`render_context()` 用空行串起来。
+  所以"喂给模型的已经是纯文本段落"，YAML 只活在三个地方：人编辑的文件面、
+  AI 写回的 ` ```yaml @路径 ` 通道、乐观并发的 `revision`。
+- 主人这个方向本身是对的，代价在键锁：YAML 的键名是显式结构，所以"改键名一律 422、
+  AI 只能改白名单值"这种硬约束能便宜地做出来。换成 Markdown 后，
+  `_require_keys` / `_require_same_ids` 要重写成"标题 + 字段行"解析器，
+  整份文件 diff 也更容易越界（本轮就观察到模型为了改一个值把键序和折行全重排了）。
+- 建议（成本最低、两头都占）：**DB 仍是唯一真源，加一层 Markdown 投影**。
+  文件面继续 YAML，编辑/校验/写回/并发一行不动；另出 `render_markdown(path)` 或
+  `GET /files/{path}?as=md`，把同一份投影渲染成 MD 专供上下文注入与将来的分块向量化。
+  这样"注入用 MD"立刻成立，键锁那套硬约束不用推倒。
+- 待主人裁定：是否把 MD 投影排进 C6；还是连文件面一起换成 MD（那是一次跨前后端的迁移，
+  要重画帧 17 并在 UI-DESIGN.md 改掉"规划皆文档"的 YAML 口径）。
+
 ## 真实浏览器取证时新发现（2026-09-02，均未动代码，等主人裁定）
 
 1. **深色主题禁用态对比度不足**：`e-dark.png` 与裁图 `e-dark-crop.png` 显示
