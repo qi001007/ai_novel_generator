@@ -634,3 +634,27 @@ def _write_brief(
     _touch(brief)
     session.add(brief)
     return changed
+
+
+def stabilize_proposal(path: str, current_text: str, proposed_text: str) -> str:
+    """Stabilise a proposal against the file it would overwrite, by path."""
+    try:
+        kind, chapter = resolve_path(path)
+    except DocumentError:
+        return proposed_text
+    return markdown_doc.stabilize(kind, current_text, proposed_text, chapter=chapter)
+
+
+def current_text_reader(session: Session, novel_id: int):
+    """Return ``path -> current text`` for the proposal cards drawn in one response."""
+    cache: dict[str, str | None] = {}
+
+    def current(path: str) -> str | None:
+        if path not in cache:
+            try:
+                cache[path] = read_file(session, novel_id, path).text
+            except DocumentError:
+                cache[path] = None
+        return cache[path]
+
+    return current

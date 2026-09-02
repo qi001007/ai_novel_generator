@@ -11,7 +11,12 @@ from sqlmodel import Session, select
 
 from app.db import engine
 from app.models import Chapter, ChatMessage, GenerationRun, Novel
-from app.services.documents import DocumentError, validate_structure
+from app.services.documents import (
+    DocumentError,
+    current_text_reader,
+    stabilize_proposal,
+    validate_structure,
+)
 from app.services.context import (
     DEFAULT_CONTEXT_BUDGET,
     ContextItem,
@@ -118,8 +123,16 @@ class ChatTurn:
         return [item.as_reference() for item in self.context_items]
 
 
-def extract_proposals(content: str) -> list[dict[str, Any]]:
-    """Turn ```markdown @path blocks into reviewable write proposals."""
+def extract_proposals(
+    content: str,
+    current: Callable[[str], "str | None"] | None = None,
+) -> list[dict[str, Any]]:
+    """Turn ```markdown @path blocks into reviewable write proposals.
+
+    ``current`` resolves a path to the text on file; when it is supplied every
+    proposal is stabilised so a section the model merely re-wrapped keeps the
+    original line breaks instead of showing up as churn.
+    """
     proposals: list[dict[str, Any]] = []
     for raw_path, text in PROPOSAL_BLOCK.findall(content or ""):
         path = raw_path.strip().lstrip("/")
@@ -129,6 +142,10 @@ def extract_proposals(content: str) -> list[dict[str, Any]]:
         except DocumentError as cause:
             entry["error"] = cause.detail
         entry["valid"] = not entry["error"]
+        if entry["valid"] and current is not None:
+            base = current(path)
+            if base:
+                entry["text"] = stabilize_proposal(path, base, entry["text"])
         proposals.append(entry)
     return proposals
 
@@ -328,6 +345,11 @@ def complete_turn(session: Session, llm: LLMClient, turn: ChatTurn) -> ChatMessa
     )
 
 
+def _novel_id_of(session: Session, message_id: int) -> int | None:
+    row = session.get(ChatMessage, message_id)
+    return row.novel_id if row is not None else None
+
+
 def stream_turn(
     llm: LLMClient,
     turn: ChatTurn,
@@ -365,8 +387,11 @@ def stream_turn(
         yield ("error", {"message": str(cause), "partial": "".join(buffer)})
         return
 
-    for proposal in extract_proposals("".join(buffer)):
-        yield ("proposal", proposal)
+    with factory() as session:
+        novel_id = _novel_id_of(session, turn.user_message_id)
+        reader = current_text_reader(session, novel_id) if novel_id else None
+        for proposal in extract_proposals("".join(buffer), reader):
+            yield ("proposal", proposal)
 
     with factory() as session:
         message = persist_reply(

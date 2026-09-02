@@ -250,11 +250,6 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-.badge.success {
-  background: color-mix(in srgb, var(--success) 14%, var(--surface));
-  color: var(--success);
-}
-
 .badge.warning {
   background: color-mix(in srgb, var(--warning) 14%, var(--surface));
   color: var(--warning);
@@ -415,7 +410,7 @@ select:focus-visible {
   text-align: left;
 }
 
-.tree-row:hover:not(.static) {
+.tree-row:hover{
   background: var(--surface-alt);
 }
 
@@ -423,11 +418,6 @@ select:focus-visible {
   background: var(--accent-soft);
   box-shadow: inset 2px 0 0 var(--accent);
   color: var(--text-1);
-}
-
-.tree-row.static {
-  color: var(--text-2);
-  cursor: default;
 }
 
 .tree-prefix {
@@ -778,13 +768,6 @@ select:focus-visible {
   font-weight: 500;
 }
 
-.model-menu-empty {
-  margin: 0;
-  padding: 4px 8px;
-  font-size: 11px;
-  color: var(--text-2);
-}
-
 .icon-button:disabled {
   opacity: 0.4;
 }
@@ -1027,118 +1010,6 @@ select:focus-visible {
 
 /* ---------- 规划文档编辑 ---------- */
 
-.blueprint-page {
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 0;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.blueprint-nav {
-  display: grid;
-  gap: 2px;
-  align-content: start;
-  padding: 12px;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  overflow-y: auto;
-}
-
-.anchor-item {
-  display: block;
-  width: 100%;
-  min-height: 32px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--text-2);
-  font-size: 13px;
-  text-align: left;
-}
-
-.anchor-item:hover {
-  background: var(--surface-alt);
-  color: var(--text-1);
-}
-
-.anchor-item.selected {
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.blueprint-doc {
-  display: grid;
-  gap: 24px;
-  align-content: start;
-  padding: 32px 40px 48px;
-  overflow-y: auto;
-}
-
-.blueprint-doc-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.blueprint-doc-header h2 {
-  margin: 0;
-  font-family: "Noto Serif SC", serif;
-  font-size: 24px;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-.blueprint-section {
-  display: grid;
-  gap: 8px;
-  scroll-margin-top: 16px;
-}
-
-.blueprint-section + .blueprint-section {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-}
-
-.blueprint-section h3 {
-  margin: 0;
-  font-family: "Noto Serif SC", serif;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-.blueprint-section textarea {
-  min-height: 72px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  resize: vertical;
-  font-family: "Noto Serif SC", serif;
-  font-size: 17px;
-  line-height: 1.9;
-  color: var(--text-1);
-}
-
-.blueprint-section textarea:focus-visible {
-  outline: none;
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-.version-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
 .chip {
   min-height: 26px;
   padding: 2px 10px;
@@ -1152,188 +1023,7 @@ select:focus-visible {
   color: var(--accent-strong);
 }
 
-.doc-editor {
-  display: grid;
-  gap: 20px;
-}
-
-.doc-section {
-  display: grid;
-  gap: 6px;
-}
-
-.doc-section h3 {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-2);
-}
-
-.doc-section textarea {
-  min-height: 72px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  font-family: "Noto Serif SC", serif;
-  font-size: 15px;
-  line-height: 1.8;
-  resize: vertical;
-}
-
 /* ---------- 目录树 ---------- */
-
-.toc-page {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 0;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--surface);
-}
-
-.toc-sidebar {
-  overflow-y: auto;
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  padding: 8px;
-}
-
-.toc-detail {
-  display: grid;
-  gap: 24px;
-  align-content: start;
-  padding: 32px 40px 48px;
-  overflow-y: auto;
-}
-
-.toc-detail-header {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.toc-chapter-number {
-  font-family: "Noto Serif SC", serif;
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.toc-doc-section {
-  display: grid;
-  gap: 8px;
-}
-
-.toc-doc-section + .toc-doc-section {
-  border-top: 1px solid var(--border);
-  padding-top: 24px;
-}
-
-.toc-doc-section h3 {
-  margin: 0;
-  font-family: "Noto Serif SC", serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
-.toc-doc-section textarea {
-  min-height: 48px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  resize: vertical;
-  font-family: "Noto Serif SC", serif;
-  font-size: 16px;
-  line-height: 1.8;
-  color: var(--text-1);
-}
-
-.toc-doc-section textarea:focus-visible {
-  outline: none;
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-.toc-detail-footer {
-  display: flex;
-  justify-content: flex-end;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-}
-
-.toc-detail-empty {
-  display: grid;
-  place-content: center;
-  height: 100%;
-  color: var(--text-2);
-}
-
-.toc-detail-empty p {
-  margin: 0;
-  font-size: 14px;
-}
-
-.toc-tree {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.toc-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 32px;
-  padding: 2px 6px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: transparent;
-}
-
-.toc-row:hover {
-  background: var(--surface-alt);
-}
-
-.toc-tree li.open .toc-row {
-  background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
-}
-
-.toc-number {
-  flex: none;
-  min-width: 28px;
-  text-align: right;
-  font-size: 12px;
-  color: var(--text-2);
-}
-
-.toc-row input {
-  flex: 1;
-  min-width: 0;
-  min-height: 28px;
-  border-color: transparent;
-  background: transparent;
-}
-
-.toc-row input:hover,
-.toc-row input:focus-visible {
-  border-color: var(--border-strong);
-  background: var(--surface);
-}
-
-.toc-detail-head {
-  padding: 10px 0 0;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-2);
-}
 
 .editor-footer {
   display: flex;
@@ -1442,19 +1132,6 @@ select:focus-visible {
 .panel h2 {
   margin: 0;
   font-size: 15px;
-}
-
-.item-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-}
-
-.item-list button {
-  width: 100%;
-  text-align: left;
 }
 
 .form-grid {
@@ -2508,8 +2185,7 @@ select:focus-visible {
 }
 
 .splitter:hover::after,
-.splitter:focus-visible::after,
-.splitter.dragging::after {
+.splitter:focus-visible::after{
   background: var(--accent);
 }
 

@@ -291,3 +291,51 @@ def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
             records.append(row)
         return records
     raise MarkdownError(f"未知的文档层：{kind}")
+
+
+# --- proposal stabilisation -------------------------------------------------
+
+def _fold(value: Any) -> Any:
+    """Fold whitespace so a re-wrapped sentence compares equal to the original."""
+    if isinstance(value, list):
+        return [_fold(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _fold(item) for key, item in value.items()}
+    if value is None:
+        return ""
+    # Drop whitespace entirely: these documents are Chinese, and re-wrapping a
+    # sentence joins two hanzi with no separator, so a single space would still
+    # read as a change.
+    return "".join(str(value).split())
+
+
+def _keep_untouched(current: Any, proposed: Any) -> Any:
+    """Take the proposed value only where it really differs from the current one."""
+    if isinstance(current, dict) and isinstance(proposed, dict):
+        merged = dict(current)
+        for key, value in proposed.items():
+            if key not in current:
+                continue  # 结构键锁死，不接受新增
+            if _fold(current[key]) == _fold(value):
+                continue  # 只是重新折行 -> 保留文件自己的换行
+            merged[key] = value
+        return merged
+    if isinstance(current, list) and isinstance(proposed, list) and len(current) == len(proposed):
+        return [_keep_untouched(old, new) for old, new in zip(current, proposed)]
+    return proposed
+
+
+def stabilize(kind: str, current_text: str, proposed_text: str, *, chapter: int | None = None) -> str:
+    """Rebuild a proposal so untouched values keep the current file's own wrapping.
+
+    The model is asked to leave every other line byte-identical and does not obey,
+    which turns a one-value edit into a 47-line churn on the review card.  Here the
+    proposal is parsed, folded against the file it would overwrite, and rendered
+    again through the same codec, so reflow cannot escape the section that changed.
+    """
+    try:
+        base = parse(kind, current_text, chapter=chapter)
+        offered = parse(kind, proposed_text, chapter=chapter)
+        return render(kind, _keep_untouched(base, offered), chapter=chapter)
+    except Exception:
+        return proposed_text

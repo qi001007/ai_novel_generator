@@ -544,6 +544,42 @@ def test_history_carries_the_proposal_back_for_a_reload(client: TestClient) -> N
     assert reader["proposals"] == []
 
 
+def test_a_rewrapped_untouched_section_keeps_the_file_wrapping(client: TestClient) -> None:
+    """The model re-wraps lines it was told to leave alone; that churn is not a change.
+
+    Without stabilising, one edited value shows up as a 47-line diff and the owner
+    cannot see what actually moved.
+    """
+    rewrapped = BRIEF_DOC.replace("## 目标\n揭开星渊碑", "## 目标\n揭开\n星渊碑").replace(
+        "## 钩子\n碑上刻着他的名字", "## 钩子\n名字刻在碑上"
+    )
+    use_fake(client, FakeChatClient(chunks=["```md @briefs/0042.md\n" + rewrapped + "```\n"]))
+    novel_id = make_novel(client)
+    client.post(
+        f"/api/novels/{novel_id}/planning/briefs",
+        json={
+            "chapter_number": 42,
+            "goal": "揭开星渊碑",
+            "pov": "沈曜",
+            "characters": ["沈曜"],
+        },
+    )
+    client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "把第 42 章的钩子改一下", "mode": "write"},
+    )
+
+    rows = client.get(f"/api/novels/{novel_id}/chat/messages").json()
+    assistant = next(row for row in rows if row["role"] == "assistant")
+    text = assistant["proposals"][0]["text"]
+
+    # 目标 was only re-wrapped -> restored to the file's own single line.
+    assert "## 目标\n揭开星渊碑\n" in text
+    assert "## 目标\n揭开\n星渊碑" not in text
+    # 钩子 really changed -> the new value survives.
+    assert "## 钩子\n名字刻在碑上\n" in text
+
+
 def test_proposal_that_renames_keys_is_flagged(client: TestClient) -> None:
     """A card the writer must reject is not a card worth an 应用 button."""
     use_fake(
