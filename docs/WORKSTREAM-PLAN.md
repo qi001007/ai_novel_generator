@@ -148,17 +148,15 @@
 - [x] AI 写文件通道：对话回复里的 ```yaml @路径 代码块 → SSE 新增 `proposal` 事件（含 path/text/valid/error），
       主人点「应用」才以 `actor=ai` 写入；system prompt 已教会该格式与「只改值」约束
 - [x] 测试：`tests/test_documents.py` 14 项 + 提案 3 项，后端 79/79
-- [ ] 前端文件编辑器（CodeMirror 6：行号 / YAML 高亮 / 锁键装饰 / 当前行 / 状态栏）—— 等 Figma 帧批准
-- [ ] **Figma 写画板阻塞点（下次别再绕）**：`use_figma` 只由 Figma **远程** MCP server 提供；
-      本会话 figma server 只挂了 resources（skill/docs 可读），tools 为空 → 无法写帧。
-      修法：Codex 设置里确保 remote server 生效 + 桌面端打开该文件进 Dev Mode 开 MCP + 重启加载工具。
-      画帧时遵守本项目已知坑：hex 不用变量绑定、单次≤10 逻辑操作、建空框与填内容分两次、
-      调用后 getNodeByIdAsync 验 children.length、layoutSizing 先 append 再设、字体 style 名用真实值
-- [ ] 本地 HTML mock（mock-1/2/3 PNG）只是思路草图，不充当设计稿，不作为开工依据
-- [ ] B→D 跳转定位（编辑器内点值 → 打开该章简报并落在对应字段）—— 等 mock 批准
+- [x] Figma 帧 17/18/19 已画完（`155:252` / `286:2` / `286:162`），等主人审批
+      - 17 文件编辑器 · A 蓝图：VSCode 式标签 + 行号 + 键锁竖条 + 当前行 + minimap + 状态栏
+      - 18 AI 提案 diff · 应用前：对话里的提案卡（红删绿增 + 应用/丢弃），编辑器第 18 行 amber 待应用带，保存禁用
+      - 19 B→D 跳转定位：点目录里的描述 → 打开 `briefs/0043.yaml`，跳转来源条 + 光标落在 goal
+      - 更正：上一轮记的「use_figma 不可用」是错的，工具与画板写入均正常，帧已落盘
+- [ ] 前端文件编辑器 + B→D 跳转 —— 等帧 17/18/19 批准后开工
 - [ ] 待主人拍板 1：B 的 `plot_function`/`notes` 与 D 的 `goal`/`events` 语义重叠，跳转落点需要定映射，
       或者把 B 收敛成纯索引（只留 chapter+title），描述统一进 D 简报文件
-- [ ] 待主人拍板 2：左树补 D 层入口（briefs/ 展开），确认是文件节点而不是「第 N 章简报」表单节点
+- [x] 左树补 D 层入口：帧 17/19 已画成 `单章简报 / briefs/` + `0042.yaml` + `0043.yaml` 文件节点
 - [ ] 待主人拍板 3：编辑器选型 CodeMirror 6（轻、Vite 友好）还是 Monaco（更 VSCode、需配 worker）
 
 ## C6 Phase 1 设定库与用量收尾
