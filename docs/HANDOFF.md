@@ -29,9 +29,9 @@
 
 - 最新提交见 `git log -1`（本文件不写死哈希，避免再次过期）
 
-- 后端 cd backend; .venv\Scripts\python.exe -m pytest → 86/86 绿
+- 后端 cd backend; .venv\Scripts\python.exe -m pytest → 99/99 绿
 
-- 前端 cd frontend; npm run test -- --run → 45/45；npm run build 干净
+- 前端 cd frontend; npm run test -- --run → 51/51；npm run build 干净
 
 - 设计规范唯一依据 docs/UI-DESIGN.md v3；分工文档 docs/WORKSTREAM-PLAN.md
 
