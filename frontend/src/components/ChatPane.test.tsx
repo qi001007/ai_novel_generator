@@ -202,4 +202,27 @@ describe("ChatPane", () => {
     // Retry reuses the failed turn instead of stacking a second question bubble.
     expect(screen.getAllByText("还在吗")).toHaveLength(1);
   });
+
+  it("stacks the dock the way frame 14 draws it: field first, tools below", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => json([])));
+    const { container } = render(<ChatPane />);
+
+    let field!: HTMLElement;
+    await waitFor(() => {
+      const dock = container.querySelector(".chat-dock") as HTMLElement;
+      const input = dock.querySelector(".chat-input");
+      if (!input) throw new Error("dock not mounted");
+      field = input as HTMLElement;
+    });
+    const tools = container.querySelector(".chat-dock .chat-toolbar") as HTMLElement;
+    expect(field).toBeTruthy();
+    expect(tools).toBeTruthy();
+    expect(field.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    // The send button belongs to the field row, and the context line is not a
+    // third dock row — frame 14's dock is two rows tall.
+    expect(field.querySelector(".chat-send")).toBeTruthy();
+    expect(container.querySelector(".chat-dock .chat-context")).toBeNull();
+    expect(container.querySelector(".chat-pane > .chat-context")).toBeTruthy();
+  });
 });

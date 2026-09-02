@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import { api } from "../api";
@@ -57,6 +57,7 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const portraitRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!novelId) {
@@ -73,6 +74,15 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
       active = false;
     };
   }, [novelId]);
+
+  // Dev-only visual-QA link: ?char=<id> opens that card's detail layer, which is
+  // otherwise click-only (the portrait control needs a real browser screenshot).
+  useEffect(() => {
+    if (!import.meta.env.DEV || !characters.length) return;
+    const wanted = new URLSearchParams(window.location.search).get("char");
+    const found = wanted ? characters.find((item) => String(item.id) === wanted) : null;
+    if (found) setEditing(toForm(found));
+  }, [characters]);
 
   useEffect(() => {
     if (!editing) return;
@@ -203,19 +213,23 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
                 setEditing(toForm(character));
               }}
             >
-              <span className="avatar" aria-hidden="true">
-                {character.portrait ? (
-                  <img src={character.portrait} alt="" />
-                ) : (
-                  character.name.charAt(0)
-                )}
-              </span>
-              <span className="card-name">{character.name}</span>
-              <span className="level-badge">{levelLabels[character.level] ?? "未分级"}</span>
-              <span className="card-range tabular">
-                {character.expected_start_chapter || character.expected_end_chapter
-                  ? `${character.expected_start_chapter ?? "?"} - ${character.expected_end_chapter ?? "?"} 章`
-                  : "常驻"}
+              <span className="card-head">
+                <span className="avatar" aria-hidden="true">
+                  {character.portrait ? (
+                    <img src={character.portrait} alt="" />
+                  ) : (
+                    character.name.charAt(0)
+                  )}
+                </span>
+                <span className="card-title">
+                  <span className="card-name">{character.name}</span>
+                  <span className="card-range tabular">
+                    {character.expected_start_chapter || character.expected_end_chapter
+                      ? `${character.expected_start_chapter ?? "?"} - ${character.expected_end_chapter ?? "?"} 章`
+                      : "常驻"}
+                  </span>
+                </span>
+                <span className="level-badge">{levelLabels[character.level] ?? "未分级"}</span>
               </span>
               <span className="card-identity">{character.identity || "暂无身份设定"}</span>
             </button>
@@ -239,7 +253,7 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
             </header>
             <div className="modal-grid">
               <div className="modal-profile">
-                <label className="portrait-picker" title="上传人物照片">
+                <div className="portrait-field">
                   <span className="avatar large" aria-hidden="true">
                     {editing.portrait ? (
                       <img src={editing.portrait} alt={`${editing.name || "新人物"} 照片`} />
@@ -247,29 +261,36 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
                       editing.name.charAt(0) || "?"
                     )}
                   </span>
+                  <div className="portrait-actions">
+                    <button
+                      type="button"
+                      className="portrait-button"
+                      onClick={() => portraitRef.current?.click()}
+                    >
+                      {editing.portrait ? "更换照片" : "贴照片"}
+                    </button>
+                    {editing.portrait ? (
+                      <button
+                        type="button"
+                        className="ghost-danger"
+                        onClick={() => setEditing({ ...editing, portrait: "" })}
+                      >
+                        移除
+                      </button>
+                    ) : null}
+                  </div>
                   <input
+                    ref={portraitRef}
                     type="file"
                     accept="image/*"
+                    className="portrait-input"
                     aria-label="上传人物照片"
                     onChange={(event) => {
                       pickPortrait(event.target.files?.[0]);
                       event.target.value = "";
                     }}
                   />
-                </label>
-                <div className="portrait-actions">
-                  <span className="portrait-hint">
-                    {editing.portrait ? "点击头像可更换照片" : "点头像贴照片"}
-                  </span>
-                  {editing.portrait ? (
-                    <button
-                      type="button"
-                      className="ghost-danger"
-                      onClick={() => setEditing({ ...editing, portrait: "" })}
-                    >
-                      移除照片
-                    </button>
-                  ) : null}
+                  <p className="portrait-hint">方形照片效果最好，2MB 以内</p>
                 </div>
                 <label>
                   姓名

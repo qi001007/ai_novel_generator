@@ -11,7 +11,7 @@
 
 ## 状态看板
 
-当前进行到：C4d 后端文档层已完成，前端文件编辑器等主人批准 mock 后动工
+当前进行到：C4d 前端文件编辑器 + AI 提案卡 + B→D 跳转已落地并出真实浏览器截图；C5a 四项重做全部收口
 
 ## C1 调研与设计基础（设计参考 → 清单 → Figma）
 
@@ -124,11 +124,17 @@
       列宽与折叠状态存 localStorage，默认值按 UI-DESIGN.md 的 280px / minmax(400px, 34%)
 - [x] 4 「缩小栏不是 VSCode 风格」：缩略栏改为固定 3px 行高（超出列高才压缩）、
       视口块按 scrollTop/scrollHeight 1:1 映射、可点击可擦洗、透明底悬停提亮，去掉描边卡片感
+- [x] 2026-09-02 重做收口：② 人物卡按帧 08 重排（头像 40px 与姓名/章节/徽章同行、身份独占一行、
+      级别色改由徽章承载，去掉未经批准的 3px 顶边带），照片就贴在同一个头像位；详情弹层的上传入口
+      从"点头像猜"改成显式的「贴照片 / 更换照片 / 移除」按钮 + 2MB 提示；
+      ③ 对话坞按帧 14 重排（输入行在上、模式与模型行在下，坞实测 105px），上下文小字移出坞体
+      改放坞上方（UI-DESIGN 3.1.6），发送键收进输入行内 28px
 - [x] 顺带修掉两个自找的问题：`useMemo` 落在 `if (!chapter) return` 之后导致 hook 顺序漂移白屏
       （已补 EditorPane 空态→有稿的回归测试）；滚动回调每像素重建 state（改为比值不变则跳过）
 - [x] 验证：后端 62/62、前端 15/15、`npm run build` 干净；Edge headless 实截
       c5-fix-dock.png / c5-fix-panes-dark.png / c5-minimap-long.png 逐项目视确认
 - [ ] 待主人确认：「缩小栏」若另有所指（例如编辑器页签栏或缩放控件），本轮按缩略栏理解并已重做
+- [ ] 已知偏差待批：人物页工具行的分级 Tab 仍是分段控件，帧 08 画的是各自独立的 chip（未列入本轮重做项，暂未改）
 
 ## C4d 规划层文件化（主人批注：要 VSCode 式文件编辑，不是集成 UI）
 
@@ -148,16 +154,24 @@
 - [x] AI 写文件通道：对话回复里的 ```yaml @路径 代码块 → SSE 新增 `proposal` 事件（含 path/text/valid/error），
       主人点「应用」才以 `actor=ai` 写入；system prompt 已教会该格式与「只改值」约束
 - [x] 测试：`tests/test_documents.py` 14 项 + 提案 3 项，后端 79/79
-- [x] Figma 帧 17/18/19 已画完（`155:252` / `286:2` / `286:162`），等主人审批
+- [x] Figma 帧 17/18/19 已画完并获批（`155:252` / `286:2` / `286:162`）
       - 17 文件编辑器 · A 蓝图：VSCode 式标签 + 行号 + 键锁竖条 + 当前行 + minimap + 状态栏
       - 18 AI 提案 diff · 应用前：对话里的提案卡（红删绿增 + 应用/丢弃），编辑器第 18 行 amber 待应用带，保存禁用
       - 19 B→D 跳转定位：点目录里的描述 → 打开 `briefs/0043.yaml`，跳转来源条 + 光标落在 goal
       - 更正：上一轮记的「use_figma 不可用」是错的，工具与画板写入均正常，帧已落盘
-- [ ] 前端文件编辑器 + B→D 跳转 —— 等帧 17/18/19 批准后开工
-- [ ] 待主人拍板 1：B 的 `plot_function`/`notes` 与 D 的 `goal`/`events` 语义重叠，跳转落点需要定映射，
-      或者把 B 收敛成纯索引（只留 chapter+title），描述统一进 D 简报文件
+- [x] 前端文件编辑器 + B→D 跳转（帧 17/18/19 全部落地）：
+      - `src/utils/lineDiff.ts` 前后缀裁剪式行 diff；`src/store/files.ts` zustand 文件层
+        （metas/tabs/active/entries/pending/jump/focus/revealSeq + attach/open/save/offer/apply）
+      - `src/components/cmYaml.ts` CodeMirror 6 扩展：2px 锁条 rail、键名朱砂、提案 amber 行带、
+        toc 描述可跳转标记、minimap 与光标/滚动回报
+      - `src/components/FileEditorPane.tsx` 标签条 + file-bar + jump-bar + minimap + 15px 页脚 + 409 冲突条 + Ctrl+S
+      - `src/components/ProposalCard.tsx` 帧 18 提案卡（红删绿增 + 应用/丢弃/在编辑器中打开），
+        渲染位置在 Agent 正文之下（本轮修正：原先误嵌进消息卡 header）
+      - toc.yaml 里可跳转的描述改为**常驻点状下划线**（原来只有 hover 才变样），帧 19 的落点因此可见
+- [x] 拍板 1 已定：B→D 字段映射跳转 `plot_function→goal`、`notes→events`（不动后端、不丢数据）
+- [x] 拍板 2 已定：编辑器组件用 CodeMirror 6（`codemirror@6.0.2` + state/view/language/commands/lang-yaml/lint）
+- [x] 拍板 3 已定：D 层在左树就是文件节点 `briefs/00NN.yaml`，不是表单节点
 - [x] 左树补 D 层入口：帧 17/19 已画成 `单章简报 / briefs/` + `0042.yaml` + `0043.yaml` 文件节点
-- [ ] 待主人拍板 3：编辑器选型 CodeMirror 6（轻、Vite 友好）还是 Monaco（更 VSCode、需配 worker）
 
 ## C6 Phase 1 设定库与用量收尾
 
@@ -181,3 +195,31 @@
 - 独立地图页与 AI 生图
 - Token 用量汇总页
 - 树节点右键快捷操作
+
+## C5b 视觉收尾与真实浏览器取证（2026-09-02 本轮）
+
+- [x] C5a 四项重做全部收口（① 1px 发丝线 ④ 帧 17 minimap 上一轮已完成；② 人物卡贴照片
+      ③ 对话坞高度本轮完成），只批准帧的形状，不批准自创的控件样式
+- [x] 后端 `services/documents.py` 新增 `validate_structure(path, text)`：解析 + 逐条键名集合校验；
+      `services/chat.py` 的 proposal `valid` 从"只校验路径"改成真校验结构，
+      模型乱改键名（mainline/theme/core_conflict 之类）不再被标成 valid=True（原先点开应用必 422）
+      + 回归测试 `test_proposal_that_renames_keys_is_flagged`
+- [x] 真实浏览器截图补齐（headless Edge 1440x900）：帧 18 提案卡（含编辑器 amber 行带与
+      "1 处提案待应用"页脚）、帧 19 跳转条（来自 toc.yaml · 第 43 章 · plot_function，光标落在 goal）、
+      toc.yaml 常驻点状下划线、人物卡与详情弹层（真库已贴一张演示照片）、深浅双主题各一张
+- [x] 为可复现取证补了 DEV-only 深链（`import.meta.env.DEV` 才生效，生产构建里不存在）：
+      `?view=characters` 打开人物整页、`?char=<id>` 打开其详情弹层、`?jump=toc.yaml:43:plot_function`
+      重放一次 B→D 跳转、`?demo=proposal` 用真实 blueprint.yaml 走一遍 offerFromStream 出提案卡、
+      `?theme=dark` 钉住主题
+- [x] 验证：后端 pytest 80/80、前端 Vitest 40/40（新增坞行序与人物卡结构两条回归）、`npm run build` 干净
+      （591KB chunk 警告来自 CodeMirror，非错误）
+- [x] 清理：删除上一任遗留的 `_yaml_dump.txt`、`backend/_frames_yaml.txt`
+- [ ] 未动 owner 的东西待答：`AGENTS.md` 被外部改过 + 多出 `AGENTS.md.bak-20260902`、
+      未跟踪的 `docs/HANDOFF.md` —— 均排除在提交外，等主人裁定
+
+## Figma MCP 实况（更正记录口径）
+
+Figma MCP **可用**，但本会话观察到工具**间歇性从工具集里消失**（同一轮有、下一轮没了），
+`use_figma` 偶发返回空壳 `{"safeToRetryWithoutCanvasRead":true}`、`get_screenshot` 偶发
+`maxDimension: expected number, received string`。处置 = 重试或改用导出图核对，
+不得据此写"Figma 不可用"，也不要为此改代码。真正需要修的仍是 github MCP 的过期 PAT。

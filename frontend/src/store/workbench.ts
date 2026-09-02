@@ -73,6 +73,11 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   notice: null,
   busy: false,
   theme: ((): ThemeState => {
+    // Dev-only visual-QA link: ?theme=dark|light pins a theme for screenshots.
+    const forced = import.meta.env.DEV
+      ? new URLSearchParams(window.location.search).get("theme")
+      : null;
+    if (forced === "dark" || forced === "light") return forced;
     const stored = localStorage.getItem("theme");
     if (stored === "light" || stored === "dark") return stored;
     return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches

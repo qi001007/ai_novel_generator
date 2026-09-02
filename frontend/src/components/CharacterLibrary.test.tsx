@@ -64,6 +64,27 @@ describe("CharacterLibrary", () => {
     vi.unstubAllGlobals();
   });
 
+  it("lays the card out per frame 08: avatar, name over range, badge, identity", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(characters), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }))));
+
+    const { container } = render(<CharacterLibrary novelId={1} />);
+
+    await waitFor(() => expect(container.querySelector(".character-card")).toBeTruthy());
+    const card = container.querySelector(".character-card") as HTMLElement;
+    const cardHead = card.querySelector(".card-head") as HTMLElement;
+    // avatar + (name over range) + badge share one row; identity is its own row.
+    expect(cardHead.querySelector(".avatar")).toBeTruthy();
+    expect(cardHead.querySelector(".card-name")).toBeTruthy();
+    expect(cardHead.querySelector(".card-range")).toBeTruthy();
+    expect(cardHead.querySelector(".level-badge")).toBeTruthy();
+    expect(card.querySelector(".card-head .card-identity")).toBeNull();
+    expect(card.querySelector(":scope > .card-identity")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
   it("attaches a portrait photo to a character", async () => {
     const user = userEvent.setup();
     const saved: { name: string; portrait: string }[] = [];

@@ -10,7 +10,7 @@ import {
 
 import { api } from "../api";
 import ProposalCard from "./ProposalCard";
-import { useFiles } from "../store/files";
+import { BLUEPRINT_PATH, useFiles } from "../store/files";
 import type {
   ChatContextItem,
   ChatMode,
@@ -189,6 +189,43 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       cancelled = true;
     };
   }, [selectedNovelId]);
+
+  // Dev-only visual-QA hook: ?demo=proposal replays a proposal through the same
+  // offerFromStream() the SSE uses, so the frame 18 card and the editor's pending
+  // band can be screenshotted without a live model turn. Never in a prod build.
+  const demoProposal =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("demo") === "proposal";
+  const demoRan = useRef(false);
+  useEffect(() => {
+    if (!demoProposal || !selectedNovelId || demoRan.current || !rows.length) return;
+    demoRan.current = true;
+    void (async () => {
+      const doc = await api.readFile(selectedNovelId, BLUEPRINT_PATH);
+      const text = doc.text.replace(
+        "不可同时开启两条星路。",
+        "不可同时开启两条星路，也不得让观星阁覆灭。",
+      );
+      const question =
+        "请只改 blueprint.yaml 里 constraints 的值：第二条加上「也不得让观星阁覆灭」，" +
+        "其余四条原样保留，按约定输出一个 ```yaml @blueprint.yaml 代码块。";
+      const answer =
+        "constraints 第二条已改写，其余四条保持原样：\n\n" +
+        "```yaml @blueprint.yaml\n" + text + "```";
+      appendMessage({ kind: "user", id: nextId++, text: question });
+      const id = nextId++;
+      appendMessage({
+        kind: "agent",
+        id,
+        text: answer,
+        status: "done" as const,
+        question,
+        meta: {},
+      });
+      await offerFromStream(id, { path: BLUEPRINT_PATH, text, valid: true, error: "" });
+      void openFile(BLUEPRINT_PATH);
+    })();
+  }, [demoProposal, selectedNovelId, rows.length]);
 
   // The @mention list is backed by the same retriever the agent uses.
   useEffect(() => {
@@ -627,18 +664,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <span>生成中</span>
                       </span>
                     ) : null}
-                    {(row.proposals ?? []).map((item) =>
-                    pendingFiles[item.path]?.id === item.id ? (
-                      <ProposalCard
-                        key={`${item.path}:${item.id}`}
-                        proposal={item}
-                        applying={applyingPath === item.path}
-                        onOpen={() => void openFile(item.path)}
-                        onApply={() => void applyProposal(item.path)}
-                        onDiscard={() => discardFile(item.path)}
-                      />
-                    ) : null,
-                  )}
                   {row.status === "error" ? (
                       <span className="chat-state">回复失败</span>
                     ) : null}
@@ -650,6 +675,18 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       <span className="chat-caret" aria-hidden="true" />
                     ) : null}
                   </p>
+                  {(row.proposals ?? []).map((item) =>
+                    pendingFiles[item.path]?.id === item.id ? (
+                      <ProposalCard
+                        key={`${item.path}:${item.id}`}
+                        proposal={item}
+                        applying={applyingPath === item.path}
+                        onOpen={() => void openFile(item.path)}
+                        onApply={() => void applyProposal(item.path)}
+                        onDiscard={() => discardFile(item.path)}
+                      />
+                    ) : null,
+                  )}
                   {row.status === "error" ? (
                     <div className="chat-error">
                       <span>{row.error}</span>
@@ -707,6 +744,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           );
         })}
       </div>
+      <p className="chat-context">
+        上下文：自动检索 + @点名 · 保留最近 8 条 · Enter 发送 / Shift+Enter 换行
+      </p>
       <div className="chat-dock">
         {showMentions ? (
           <ul className="chat-hints mentions" role="listbox" aria-label="引用资料">
@@ -745,6 +785,43 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             ))}
           </ul>
         ) : null}
+        <div className="chat-input">
+          <textarea
+            value={input}
+            rows={1}
+            placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"
+            aria-label="对话输入"
+            onChange={(event) => {
+              setInput(event.target.value);
+              syncMention(event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" && mentionQuery !== null) {
+                setMentionQuery(null);
+                return;
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className={`chat-send ${running ? "danger" : "primary"}`}
+            disabled={!running && !input.trim()}
+            onClick={() => {
+              if (running) {
+                stop();
+                return;
+              }
+              submit();
+            }}
+            aria-label={running ? "停止生成" : "发送"}
+          >
+            {running ? <Square size={14} /> : <CornerDownLeft size={14} />}
+          </button>
+        </div>
         <div className="chat-toolbar">
           <div className="mode-switch" role="radiogroup" aria-label="对话模式">
             <button
@@ -768,7 +845,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           </div>
           <button
             type="button"
-            className={`icon-button ${mentionQuery !== null ? "active" : ""}`}
+            className={`chat-attach ${mentionQuery !== null ? "active" : ""}`}
             aria-label="添加引用资料"
             aria-expanded={mentionQuery !== null}
             onClick={() => {
@@ -827,46 +904,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             ) : null}
           </div>
         </div>
-        <div className="chat-input">
-          <textarea
-            value={input}
-            rows={1}
-            placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"
-            aria-label="对话输入"
-            onChange={(event) => {
-              setInput(event.target.value);
-              syncMention(event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && mentionQuery !== null) {
-                setMentionQuery(null);
-                return;
-              }
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className={running ? "danger" : "primary"}
-            disabled={!running && !input.trim()}
-            onClick={() => {
-              if (running) {
-                stop();
-                return;
-              }
-              submit();
-            }}
-            aria-label={running ? "停止生成" : "发送"}
-          >
-            {running ? <Square size={14} /> : <CornerDownLeft size={14} />}
-          </button>
-        </div>
-        <p className="chat-context">
-          上下文：自动检索 + @点名 · 保留最近 8 条 · Enter 发送 / Shift+Enter 换行
-        </p>
       </div>
     </section>
   );

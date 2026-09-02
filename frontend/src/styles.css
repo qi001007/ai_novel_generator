@@ -438,10 +438,11 @@ select:focus-visible {
 /* ---------- 中栏对话流 ---------- */
 
 /* Rows are pinned: the notice bar is conditional, so an implicit
-   auto/1fr/auto assignment would hand the 1fr row to the dock. */
+   auto/1fr/auto assignment would hand the 1fr row to the dock. The context
+   line is row 3 and the dock row 4, per frame 14 the dock is input + tools. */
 .chat-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   min-height: 0;
   background: var(--bg);
 }
@@ -454,8 +455,12 @@ select:focus-visible {
   grid-row: 2;
 }
 
-.chat-dock {
+.chat-context {
   grid-row: 3;
+}
+
+.chat-dock {
+  grid-row: 4;
 }
 
 .chat-notice {
@@ -607,6 +612,8 @@ select:focus-visible {
 
 .chat-dock {
   position: relative;
+  display: grid;
+  gap: 10px;
   padding: 8px 16px 10px;
   border-top: 1px solid var(--border);
   background: var(--surface);
@@ -616,7 +623,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 6px;
+  height: 28px;
 }
 
 .chat-toolbar .spacer {
@@ -626,36 +633,69 @@ select:focus-visible {
 .mode-switch {
   display: flex;
   gap: 2px;
+  height: 24px;
   padding: 2px;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-sm);
   background: var(--surface-alt);
 }
 
 .mode-switch button {
-  min-height: 22px;
-  padding: 1px 10px;
+  height: 20px;
+  padding: 0 8px;
   border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--text-2);
   font-size: 12px;
+  line-height: 20px;
 }
 
 .mode-switch button.selected {
-  background: var(--surface);
-  color: var(--text-1);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+  background: var(--accent);
+  color: #fff;
 }
 
 .model-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   max-width: 180px;
-  min-height: 26px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  background: var(--surface-alt);
   font-size: 12px;
   color: var(--text-2);
+}
+
+/* Paperclip lives in the tools row; the generic icon-button is 40px. */
+.chat-attach {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.chat-attach:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chat-attach.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .model-menu-wrap {
@@ -750,22 +790,56 @@ select:focus-visible {
   color: var(--text-2);
 }
 
+/* Frame 14 measures the dock as a 44px field row over a 28px tools row. */
 .chat-input {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
+  min-height: 44px;
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.chat-input:focus-within {
+  border-color: var(--accent);
 }
 
 .chat-input textarea {
   flex: 1;
-  resize: none;
-  min-height: 36px;
+  min-width: 0;
+  min-height: 20px;
   max-height: 120px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
   background: var(--surface-alt);
+  font-size: 13px;
+  line-height: 20px;
+  resize: none;
+}
+
+.chat-input textarea:focus-visible {
+  outline: 0;
+  background: var(--surface-alt);
+  box-shadow: inset 0 0 0 1px var(--accent-soft);
+}
+
+.chat-send {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
 }
 
 .chat-context {
-  margin: 6px 0 0;
+  margin: 0;
+  padding: 6px 16px 0;
   font-size: 11px;
   color: var(--text-2);
 }
@@ -1431,25 +1505,39 @@ select:focus-visible {
 
 .character-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
   align-content: start;
-  padding: 20px;
+  padding: 24px;
   overflow-y: auto;
 }
 
+/* Frame 08: identity row = avatar + (name over range) + level badge, then the
+   one-line identity. The badge carries the level colour, not a border band. */
 .character-card {
   position: relative;
   display: grid;
-  gap: 2px;
-  justify-items: start;
-  padding: 14px 14px 12px;
+  gap: 10px;
+  padding: 16px;
   border: 1px solid var(--border);
-  border-top: 3px solid var(--border-strong);
   border-radius: var(--radius-lg);
   background: var(--surface);
   text-align: left;
   transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.card-title {
+  display: grid;
+  flex: 1;
+  gap: 4px;
+  min-width: 0;
 }
 
 .card-name {
@@ -1465,25 +1553,14 @@ select:focus-visible {
   box-shadow: var(--shadow-lift);
 }
 
-.character-card.level-protagonist {
-  border-top-color: var(--accent);
-}
-
-.character-card.level-boss {
-  border-top-color: var(--warning);
-}
-
-.character-card.level-extra {
-  border-top-color: var(--border-strong);
-}
-
 .avatar {
   display: inline-grid;
+  flex: none;
   place-items: center;
-  width: 36px;
-  height: 36px;
-  margin-bottom: 6px;
-  border-radius: var(--radius-md);
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
   background: var(--accent-soft);
   color: var(--accent);
   font-family: "Noto Serif SC", serif;
@@ -1492,9 +1569,9 @@ select:focus-visible {
 }
 
 .avatar.large {
-  width: 56px;
-  height: 56px;
-  font-size: 26px;
+  width: 72px;
+  height: 72px;
+  font-size: 30px;
 }
 
 .card-name {
@@ -1503,11 +1580,26 @@ select:focus-visible {
 }
 
 .level-badge {
-  padding: 1px 6px;
-  border-radius: 4px;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface-alt);
   color: var(--text-2);
   font-size: 11px;
+  white-space: nowrap;
+}
+
+.character-card.level-protagonist .level-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.character-card.level-boss .level-badge {
+  background: var(--warn-soft);
+  color: var(--warning);
 }
 
 .card-range {
@@ -1516,8 +1608,7 @@ select:focus-visible {
 }
 
 .card-identity {
-  margin-top: 6px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--text-1);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -2407,13 +2498,35 @@ body.resizing {
   border-radius: inherit;
 }
 
-.portrait-picker {
-  display: inline-grid;
-  position: relative;
-  cursor: pointer;
+.portrait-field {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
 }
 
-.portrait-picker input[type="file"] {
+.portrait-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.portrait-button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font-size: 12px;
+}
+
+.portrait-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The picker stays reachable by label and keyboard, just not painted. */
+.portrait-input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -2425,18 +2538,8 @@ body.resizing {
   border: 0;
 }
 
-.portrait-picker:focus-within .avatar {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.portrait-actions {
-  display: grid;
-  justify-items: start;
-  gap: 4px;
-}
-
 .portrait-hint {
+  margin: 0;
   font-size: 11px;
   color: var(--text-2);
 }
@@ -2853,13 +2956,21 @@ body.resizing {
   font-size: 10px;
 }
 
+/* A description that opens a brief is marked as one all the time, not only under
+   the cursor: the dotted rule is the affordance, the hover only sharpens it. */
 .file-cm .cm-jumpable {
   cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .file-cm .cm-jumpable:hover {
   color: var(--accent);
-  text-decoration: underline;
+  text-decoration-style: solid;
+  text-decoration-color: var(--accent);
 }
 
 .file-cm .cm-cursor {
