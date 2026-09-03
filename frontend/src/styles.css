@@ -2033,18 +2033,33 @@ select:focus-visible {
    half a thickness forward. Note the sign: rotateY(+angle) is what turns the spine
    toward the viewer; a negative angle would show the pages instead. */
 .book-cover {
-  --book-t: 20px;
-  --book-w: 122px;
-  --book-h: 170px;
+  --book-t: 34px;
+  --book-w: 132px;
+  --book-h: 188px;
   position: relative;
-  height: 212px;
+  height: 244px;
   display: grid;
   place-items: center;
-  perspective: 1000px;
-  perspective-origin: 50% 42%;
+  perspective: 1200px;
+  perspective-origin: 50% 38%;
   background:
-    radial-gradient(70% 44% at 50% 100%, color-mix(in srgb, var(--text-1) 10%, transparent), transparent 70%),
+    radial-gradient(34% 13% at 62% 92%, color-mix(in srgb, var(--text-1) 26%, transparent), transparent 68%),
+    radial-gradient(58% 26% at 58% 96%, color-mix(in srgb, var(--text-1) 10%, transparent), transparent 72%),
     linear-gradient(color-mix(in srgb, var(--surface-alt) 55%, transparent), transparent 55%);
+}
+
+.book-cover::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  width: 132px;
+  height: 18px;
+  transform: translateX(-42%) skewX(-24deg);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--text-1) 18%, transparent);
+  filter: blur(7px);
+  pointer-events: none;
 }
 
 .book-3d {
@@ -2052,7 +2067,7 @@ select:focus-visible {
   width: var(--book-w);
   height: var(--book-h);
   transform-style: preserve-3d;
-  transform: rotateY(17deg) rotateX(-7deg);
+  transform: rotateY(23deg) rotateX(-11deg);
   transition: transform 200ms ease-out;
 }
 
@@ -2068,21 +2083,23 @@ select:focus-visible {
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--accent-strong) calc(var(--book-shade, 74) * 1%), var(--text-1)) 0%,
-    var(--accent-strong) 54%,
+    var(--accent-strong) 46%,
     color-mix(in srgb, var(--accent) calc(var(--book-shade, 74) * 1%), var(--text-1)) 100%
   );
+  /* hinge: the joint where the cover meets the spine catches a thin bright edge */
+  border-right: 1px solid color-mix(in srgb, var(--text-1) 34%, transparent);
 }
 
 /* fore-edge — right face, ruled like stacked paper */
 .book-3d::after {
   content: "";
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 4px;
+  bottom: 4px;
   right: 0;
   width: var(--book-t);
   transform: translateX(calc(var(--book-t) / 2)) rotateY(90deg);
-  background: repeating-linear-gradient(90deg, #dcd6cd 0 1px, #fbfaf8 1px 3px);
+  background: repeating-linear-gradient(90deg, #ded8cf 0 1px, #fbfaf8 1px 6px);
 }
 
 .book-face {
@@ -2119,20 +2136,22 @@ span.book-face {
 .book-top {
   position: absolute;
   top: 0;
-  left: 0;
-  width: 100%;
+  left: 4px;
+  width: calc(100% - 8px);
   height: var(--book-t);
   transform: translateY(calc(var(--book-t) / -2)) rotateX(90deg);
   background: repeating-linear-gradient(
     0deg,
-    #e6e2da 0 1px,
-    #fcfbf9 1px 3px
+    #ded8cf 0 1px,
+    #fcfbf9 1px 6px
   );
+  /* the cover overhangs the text block at the head, so shade the far end */
+  box-shadow: inset 0 -3px 4px -3px color-mix(in srgb, var(--text-1) 26%, transparent);
 }
 
 .book-card:hover .book-3d,
 .book-card:focus-visible .book-3d {
-  transform: rotateY(24deg) rotateX(-9deg) translateY(-3px);
+  transform: rotateY(29deg) rotateX(-13deg) translateY(-4px);
 }
 
 @media (prefers-reduced-motion: reduce) {
