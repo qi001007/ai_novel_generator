@@ -159,6 +159,16 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
   理由首句写死「BLOCKED BY HOOK（不是工具面故障）」；重复**读**放行，不误伤轮询；
   脚本异常一律 fail-open，绝不卡死会话。台账在 `%TEMP%\codex-dedupe-gate\dispatch.jsonl`。
   闸门需主人在 `/hooks` 里 trust 后才生效——模型无法自行 trust。
+- **`/hooks` 只在终端 CLI 里有，桌面应用没有**（09-03 实测：应用运行时 0.150.0-alpha.8 的输入框
+  无此命令，`codex doctor` 也完全不提 hook；终端 CLI 0.152.1 有）。应用内核**支持** hook——
+  `.sandbox-bin/codex.exe` 里有 PreToolUse / hooks.json / permissionDecision / hook_trust 这些符号——
+  缺的只是那张管理界面。要 trust 就去终端跑 codex 再输 /hooks。
+  trust 记录写在 config.toml 的 [hooks.state] 子表里，键形如
+  hooks.state.'<文件路径>:<event>:<i>:<j>' 下的 trusted_hash；**新开的会话才会加载**，
+  当前会话不会回头重读配置。
+- **`/hooks` 里别按 t（trust all）**：ECC 插件自带 22 条 hook（8×PreToolUse / 2×SessionStart /
+  2×PostToolUse / 7×Stop …），全是第三方 node -e 脚本。按 Enter 逐条看清命令再信任。
+  09-03 只 trust 了 python ~/.codex/scripts/dedupe_gate.py 那一条，ECC 的 SessionStart 保持未激活。
 - 文件编辑一律走锚点断言式 patch（锚点非唯一命中就整次抛错、不落盘）。
   今天它 7 次替我挡住了重复写入，这是唯一有效的既有防线。
 
