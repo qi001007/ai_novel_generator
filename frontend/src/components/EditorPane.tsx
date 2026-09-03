@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
@@ -356,8 +357,10 @@ export default function EditorPane() {
           onPointerDown={startBottomDrag}
         />
         <div className="editor-footer" aria-live="polite">
+          {/* A clean document has nothing to report. Saying the client and
+              server agree was news about the mechanism, not the manuscript. */}
           <span className="save-state">
-            {dirty ? "未保存" : savedAt ? `已保存 ${savedAt}` : "与服务器一致"}
+            {dirty ? "未保存" : savedAt ? `已保存 ${savedAt}` : ""}
           </span>
           {notice ? <span className="notice">{notice}</span> : null}
           {state.error ? <span className="status-error">{state.error}</span> : null}
@@ -365,28 +368,20 @@ export default function EditorPane() {
             type="button"
             className="footer-toggle"
             aria-expanded={!bottom.collapsed}
+            aria-label={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
+            title={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
             onClick={() => setBottom((prev) => ({ ...prev, collapsed: !prev.collapsed }))}
           >
-            {bottom.collapsed ? "展开调用记录" : "收起调用记录"}
+            {bottom.collapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
         </div>
       {generationRuns.length > 0 && !bottom.collapsed && (
         <section className="records" aria-label="生成与审稿记录">
+          {/* One entry point per record. This shortcut always opened the
+              newest run whatever the row beside it was showing, and the newest
+              run is usually a fact extraction with nothing worth reading. */}
           <header className="records-head">
             <h3>调用记录</h3>
-            {generationRuns.length ? (
-              <button
-                type="button"
-                className="primary"
-                onClick={() =>
-                  navigate(
-                    `/novels/${chapter.novel_id}/chapters/${chapter.id}/runs/${generationRuns[generationRuns.length - 1].id}`,
-                  )
-                }
-              >
-                查看调用详情
-              </button>
-            ) : null}
           </header>
           <ul className="record-list">
             {generationRuns.map((run) => (

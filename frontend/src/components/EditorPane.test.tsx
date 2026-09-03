@@ -122,8 +122,10 @@ describe("EditorPane", () => {
     fireEvent.click(screen.getByRole("button", { name: "收起调用记录" }));
     expect(screen.queryByText("调用记录")).toBeNull();
     expect(screen.getByRole("button", { name: "展开调用记录" })).toBeTruthy();
-    // The status line is the one thing that must survive collapsing.
-    expect(screen.getByText("与服务器一致")).toBeTruthy();
+    // The status line survives collapsing, but a clean document has nothing
+    // to report: whether client and server agree is implementation news.
+    expect(document.querySelector(".editor-footer .save-state")).toBeTruthy();
+    expect(screen.queryByText("与服务器一致")).toBeNull();
     expect(window.localStorage.getItem("novelgen.editor-bottom")).toContain("true");
   });
 

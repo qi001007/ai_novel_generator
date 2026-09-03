@@ -138,7 +138,7 @@ export default function TocListView({ onUseSource }: TocListViewProps) {
           const chapter = chapters.find((item) => item.chapter_number === row.chapter);
           return (
             <div className="toc-row" role="row" key={row.chapter}>
-              <span className="tabular" title="章号是主键，列表内不可改号">
+              <span className="tabular">
                 {row.chapter} <Lock />
               </span>
               <input
@@ -173,7 +173,6 @@ export default function TocListView({ onUseSource }: TocListViewProps) {
         <span className="tabular">
           {query ? `匹配 ${rows.length} / 共 ${allRows.length} 章 · Esc 清除搜索` : `共 ${allRows.length} 章`}
         </span>
-        <span>章号是主键，列表内不可改号、不可删行下线</span>
       </footer>
     </section>
   );

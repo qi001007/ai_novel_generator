@@ -423,9 +423,10 @@ select:focus-visible {
 .tree-prefix {
   display: inline-grid;
   place-items: center;
-  width: 18px;
-  height: 18px;
-  margin-right: 6px;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-right: 8px;
   border-radius: 4px;
   background: var(--surface-alt);
   color: var(--text-2);
@@ -996,6 +997,7 @@ select:focus-visible {
 .editor-body {
   display: flex;
   min-height: 0;
+  border: 1px solid transparent;
   background: var(--bg);
 }
 
@@ -1044,10 +1046,12 @@ select:focus-visible {
   line-height: 1.9;
 }
 
-/* The ring sits on the wrapper, not the textarea: an inset shadow on a box as
-   tall as its own content puts the bottom edge off-screen, leaving three sides. */
+/* A real border, not an inset shadow. An inset ring is painted underneath the
+   children, so whichever child carries its own opaque background (the minimap,
+   the panel below) swallowed one of its four sides and the ring read as three.
+   Transparent while unfocused, so nothing shifts on focus. */
 .editor-body:focus-within {
-  box-shadow: inset 0 0 0 1px var(--accent);
+  border-color: var(--accent);
 }
 
 .editor-body textarea::-webkit-scrollbar {
@@ -1097,16 +1101,20 @@ select:focus-visible {
   background: var(--surface);
 }
 
+/* Icon only: the panel it folds sits directly beneath it, so a chevron says
+   what a sentence here never needed to. */
 .footer-toggle {
+  display: inline-grid;
+  place-items: center;
   margin-left: auto;
-  min-height: 22px;
-  padding: 0 8px;
+  width: 26px;
+  height: 22px;
+  min-height: 0;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface-alt);
   color: var(--text-2);
-  font: inherit;
-  font-size: 11px;
   cursor: pointer;
 }
 
@@ -3157,7 +3165,7 @@ body.chat-dock-resizing {
 .tree-chapter .tree-prefix {
   display: inline-grid;
   place-items: center;
-  width: 18px;
+  width: 15px;
 }
 
 /* B 层列表不是嵌套卡，它替换正文区；源码视图保留在底层切换。 */
@@ -3767,7 +3775,7 @@ body.chat-dock-resizing {
 
 .manifest-columns {
   display: grid;
-  grid-template-columns: 26px 66px 76px minmax(0, 1fr) 62px 190px;
+  grid-template-columns: 26px 84px minmax(0, 1fr) 56px 200px;
   gap: 10px;
   padding: 8px 16px;
   background: var(--surface-alt);
@@ -3799,7 +3807,7 @@ body.chat-dock-resizing {
 
 .manifest-row {
   display: grid;
-  grid-template-columns: 26px 66px 76px minmax(0, 1fr) 62px 190px;
+  grid-template-columns: 26px 84px minmax(0, 1fr) 56px 200px;
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -3834,27 +3842,9 @@ body.chat-dock-resizing {
   font-size: 12px;
 }
 
-.manifest-row .tier {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 20px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  background: var(--surface-alt);
+.manifest-row .kind {
   color: var(--text-2);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
-.manifest-row .tier-必注入 {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.manifest-row .tier-邻域 {
-  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
-  color: var(--accent);
+  font-size: 11px;
 }
 
 .manifest-row .source {
@@ -4215,10 +4205,9 @@ body.chat-dock-resizing {
   }
 
   .manifest-row {
-    grid-template-columns: 32px 70px minmax(0, 1fr) 62px;
+    grid-template-columns: 26px 84px minmax(0, 1fr) 56px;
   }
 
-  .manifest-row .kind,
   .manifest-row .reason {
     display: none;
   }
@@ -4249,10 +4238,10 @@ body.chat-dock-resizing {
   }
 
   .manifest-row {
-    grid-template-columns: 32px minmax(0, 1fr) 58px;
+    grid-template-columns: 26px minmax(0, 1fr) 56px;
   }
 
-  .manifest-row .tier {
+  .manifest-row .kind {
     display: none;
   }
 }
@@ -4262,4 +4251,39 @@ body.chat-dock-resizing {
   .manifest-row {
     transition: none;
   }
+}
+
+/* ---------- 滚动条 ---------- */
+/* The system rail read as a foreign part bolted onto otherwise custom panels
+   (call records, file tabs). One themed rail for the app; the surfaces that
+   hide theirs are covered by the more specific rules further up. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-2) 34%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-2) 34%, transparent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--accent) 60%, transparent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }

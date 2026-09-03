@@ -17,11 +17,50 @@ import type {
 type DetailTab = "context" | "output" | "check" | "review";
 
 const TABS: Array<{ id: DetailTab; label: string }> = [
-  { id: "context", label: "注入了哪些资料" },
-  { id: "output", label: "模型写出的正文" },
+  { id: "context", label: "注入上下文" },
+  { id: "output", label: "模型输出" },
   { id: "check", label: "机械校验" },
   { id: "review", label: "审稿记录" },
 ];
+
+/* The author knows the plan as four layers. The backend trim tiers are a budget
+   mechanic that only decides what gets dropped under pressure, so the manifest
+   is grouped by planning layer and the tier word never reaches the prose. */
+const KIND_LABELS: Record<string, string> = {
+  novel: "作品信息",
+  blueprint: "全本蓝图",
+  toc: "目录",
+  arc: "分卷",
+  brief: "章简报",
+  setting: "设定",
+  character: "人物",
+  foreshadow: "伏笔",
+  summary: "章摘要",
+  chapter: "正文",
+  chapter_tail: "上章结尾",
+  feedback: "审稿意见",
+};
+
+const LAYERS: Array<{ name: string; kinds: string[] }> = [
+  { name: "A 层 · 全本蓝图", kinds: ["novel", "blueprint"] },
+  { name: "B 层 · 目录", kinds: ["toc"] },
+  { name: "C 层 · 分卷窗口", kinds: ["arc"] },
+  { name: "D 层 · 本章简报", kinds: ["brief"] },
+  { name: "已有正文与摘要", kinds: ["chapter", "chapter_tail", "summary"] },
+  { name: "设定库", kinds: ["setting", "character", "foreshadow", "feedback"] },
+];
+
+function layerOf(kind: string) {
+  return LAYERS.find((layer) => layer.kinds.includes(kind))?.name ?? "其他资料";
+}
+
+const TASK_LABELS: Record<string, string> = {
+  draft: "正文生成",
+  review: "AI 审稿",
+  summary: "章摘要",
+  fact_extract: "事实提取",
+  chat: "对话",
+};
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -125,13 +164,18 @@ export default function GenerationRunDetailPage() {
 
   const groupedBlocks = useMemo(() => {
     if (!manifest) return [];
-    const names = ["必注入", "连续性", "邻域", "填充"];
-    return names
-      .map((tier) => ({
-        tier,
-        blocks: manifest.blocks.filter((block) => (block.tier ?? "填充") === tier),
-      }))
-      .filter((group) => group.blocks.length > 0);
+    const order: string[] = [];
+    const byLayer = new Map<string, ContextManifestBlock[]>();
+    for (const block of manifest.blocks) {
+      const layer = layerOf(block.kind);
+      const bucket = byLayer.get(layer);
+      if (bucket) bucket.push(block);
+      else {
+        byLayer.set(layer, [block]);
+        order.push(layer);
+      }
+    }
+    return order.map((layer) => ({ layer, blocks: byLayer.get(layer) ?? [] }));
   }, [manifest]);
 
   const selectedBlock = useMemo<ContextManifestBlock | null>(() => {
@@ -199,10 +243,11 @@ export default function GenerationRunDetailPage() {
         </button>
         <div className="run-detail-heading">
           <h1>
-            第 {chapter.chapter_number} 章 {chapter.title || "未命名"} / 调用详情
+            第 {chapter.chapter_number} 章 {chapter.title || "未命名"}
           </h1>
           <p>
-            {run.task_type} run #{run.id} · {formatTime(run.created_at)} · 模型 {run.model}
+            {TASK_LABELS[run.task_type] ?? run.task_type} · 第 {run.id} 次调用 ·{" "}
+            {formatTime(run.created_at)} · 模型 {run.model}
           </p>
         </div>
         <span className={`run-status ${run.status === "completed" ? "ok" : "warn"}`}>
@@ -211,16 +256,9 @@ export default function GenerationRunDetailPage() {
         <button
           type="button"
           className="run-button secondary"
-          onClick={() => copyText(run.input_summary, "上下文清单 JSON ")}
+          onClick={() => copyText(run.input_summary, "注入清单 ")}
         >
-          复制清单
-        </button>
-        <button
-          type="button"
-          className="run-button primary"
-          onClick={() => navigate(`/novels/${novelId}?chapter=${chapterId}`)}
-        >
-          在正文打开
+          复制注入清单
         </button>
       </header>
 
@@ -261,13 +299,13 @@ export default function GenerationRunDetailPage() {
               manifest ? (
                 <>
                   <div className="manifest-columns" aria-hidden="true">
-                    <span>#</span><span>档位</span><span>kind</span><span>注入来源</span>
-                    <span>字符</span><span>原因</span>
+                    <span>#</span><span>资料</span><span>内容</span>
+                    <span>字数</span><span>说明</span>
                   </div>
                   <div className="manifest-list">
                     {groupedBlocks.map((group) => (
-                      <section key={group.tier}>
-                        <h3>{group.tier} · {group.blocks.length} 块</h3>
+                      <section key={group.layer}>
+                        <h3>{group.layer} · {group.blocks.length} 份</h3>
                         {group.blocks.map((block, index) => (
                           <button
                             key={`${block.ref}-${block.index ?? index}`}
@@ -277,15 +315,17 @@ export default function GenerationRunDetailPage() {
                             }`}
                             onClick={() => setSelectedKey(`${block.ref}:${block.index ?? index}`)}
                           >
-                            <span className="index">{block.injected ? block.index : "--"}</span>
-                            <span className={`tier tier-${block.tier ?? "fill"}`}>{block.tier ?? "填充"}</span>
-                            <span className="kind">{block.kind}</span>
+                            <span className="index">{block.index ?? "—"}</span>
+                            <span className="kind">{KIND_LABELS[block.kind] ?? block.kind}</span>
                             <span className="source">
                               <strong>{block.label}</strong>
-                              <small>{block.ref} · {block.injected ? "已注入" : "未注入"}</small>
                             </span>
                             <span className="chars tabular">{block.chars}</span>
-                            <span className="reason">{block.reason || (block.injected ? "符合当前窗口规则" : "未注入")}</span>
+                            <span className="reason">
+                              {block.injected
+                                ? block.reason || "已交给模型"
+                                : block.reason || "本次未交给模型"}
+                            </span>
                           </button>
                         ))}
                       </section>
@@ -294,12 +334,17 @@ export default function GenerationRunDetailPage() {
                   {selectedBlock ? (
                     <div className="manifest-detail">
                       <header>
-                        <strong>{selectedBlock.label} 原文</strong>
-                        <span>{selectedBlock.ref} · {selectedBlock.chars} 字 · 模型收到同一份内容</span>
+                        <strong>{selectedBlock.label}</strong>
+                        <span>
+                          {selectedBlock.chars} 字 ·
+                          {selectedBlock.injected
+                            ? "以下就是模型当时读到的内容"
+                            : "这一份没有交给模型"}
+                        </span>
                       </header>
                       <pre>
                         {selectedBlock.excerpt ||
-                          "这条旧记录生成于摘录保存功能上线前，这里没有当时的原文。请看模型输出，或重新生成一条新 run。"}
+                          "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到。"}
                       </pre>
                     </div>
                   ) : null}
@@ -368,25 +413,30 @@ export default function GenerationRunDetailPage() {
             <h2>本次调用</h2>
             <dl>
               <div><dt>模型</dt><dd>{run.model}</dd></div>
-              <div><dt>任务</dt><dd>{run.task_type} · 正文生成</dd></div>
+              <div><dt>任务</dt><dd>{TASK_LABELS[run.task_type] ?? run.task_type}</dd></div>
               <div><dt>开始时间</dt><dd>{formatTime(run.created_at)}</dd></div>
-              <div><dt>耗时</dt><dd>—（待后端埋点）</dd></div>
+              <div><dt>耗时</dt><dd>未记录</dd></div>
               <div><dt>上下文预算</dt><dd>{manifest ? `${manifest.budget} 字` : "—"}</dd></div>
               <div><dt>执行状态</dt><dd>{run.status === "completed" ? "成功" : run.status}</dd></div>
             </dl>
           </section>
 
           <section className="run-side-card">
-            <h2>链路与产物</h2>
+            <h2>这次生成的对象</h2>
             <dl>
-              <div><dt>作品</dt><dd>{novel?.title ?? "未知"} · novel:{novelId}</dd></div>
-              <div><dt>章节</dt><dd>第 {chapter.chapter_number} 章 · chapter:{chapter.id}</dd></div>
-              <div><dt>D 简报</dt><dd>{brief ? `brief:${brief.id}` : "未关联"}</dd></div>
-              <div><dt>正文文件</dt><dd>chapters/{String(chapter.chapter_number).padStart(4, "0")}/draft.md</dd></div>
-              <div><dt>Run ID</dt><dd>#{run.id} · generation_run</dd></div>
-              <div><dt>清单来源</dt><dd>generation_run.input_summary</dd></div>
-              <div><dt>上一轮</dt><dd>{runIndex > 0 ? `#${runs[runIndex - 1].id}` : "—"}</dd></div>
-              <div><dt>下一轮</dt><dd>{runIndex >= 0 && runIndex < runs.length - 1 ? `#${runs[runIndex + 1].id}` : "—"}</dd></div>
+              <div><dt>作品</dt><dd>{novel?.title ?? "未知"}</dd></div>
+              <div><dt>章节</dt><dd>第 {chapter.chapter_number} 章</dd></div>
+              <div><dt>依据的简报</dt><dd>{brief ? `第 ${chapter.chapter_number} 章简报` : "未关联"}</dd></div>
+              <div><dt>写入的文件</dt><dd>chapters/{String(chapter.chapter_number).padStart(4, "0")}/draft.md</dd></div>
+              <div>
+                <dt>相邻调用</dt>
+                <dd>
+                  {runIndex > 0 ? `上一次第 ${runs[runIndex - 1].id} 回` : "没有上一次"}
+                  {runIndex >= 0 && runIndex < runs.length - 1
+                    ? ` · 下一次第 ${runs[runIndex + 1].id} 回`
+                    : ""}
+                </dd>
+              </div>
             </dl>
           </section>
 
@@ -394,35 +444,17 @@ export default function GenerationRunDetailPage() {
             <h2>下一步</h2>
             <button
               type="button"
-              className="run-button primary full"
-              onClick={() => navigate(`/novels/${novelId}?chapter=${chapterId}`)}
-            >
-              在正文打开
-            </button>
-            <button
-              type="button"
-              className="run-button secondary full"
-              onClick={() => copyText(run.input_summary, "上下文清单 JSON ")}
-            >
-              复制上下文清单 JSON
-            </button>
-            <button
-              type="button"
-              className="run-button secondary full"
-              onClick={() => copyText(run.output, "模型输出")}
-            >
-              复制模型原始输出
-            </button>
-            <button
-              type="button"
               className="run-button ghost full"
               disabled={Boolean(chapter.content.trim())}
-              title={chapter.content.trim() ? "已有正文时先打回，避免直接覆盖" : "基于同一份 D 简报生成新 run"}
+              title={
+                chapter.content.trim()
+                  ? "已有正文，先打回才能重写，避免直接覆盖"
+                  : "按同一份简报再生成一次"
+              }
               onClick={() => void retryRun()}
             >
-              <RefreshCcw size={13} /> 重试本次生成
+              <RefreshCcw size={13} /> 重新生成本章
             </button>
-            <p>这些操作都在页面内完成；不需要打开后端终端。</p>
           </section>
         </aside>
       </div>

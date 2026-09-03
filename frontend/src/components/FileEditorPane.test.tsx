@@ -66,7 +66,7 @@ describe("FileEditorPane", () => {
     expect(document.querySelector(".file-path")?.textContent).toContain("九霄观星录 / 规划 / blueprint.md");
     // Owner 2026-09-02: internal shorthand must not reach the reader.
     expect(document.querySelectorAll(".file-chip")).toHaveLength(0);
-    expect(document.querySelector(".file-foot")?.textContent).toContain("与服务器一致");
+    expect(document.querySelector(".file-foot")?.textContent).not.toContain("与服务器一致");
     await waitFor(() => {
       expect(document.querySelector(".file-cm .cm-content")).toBeTruthy();
     });

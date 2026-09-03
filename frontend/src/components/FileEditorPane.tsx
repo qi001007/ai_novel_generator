@@ -297,7 +297,8 @@ export default function FileEditorPane() {
   else if (error) foot = error;
   else if (dirty) foot = "有未保存改动 · Ctrl+S 保存";
   else if (entry?.savedAt) foot = `已保存 ${entry.savedAt}`;
-  else foot = "与服务器一致";
+  // Nothing to report is nothing to print.
+  else foot = "";
 
   if (!tabs.length) {
     return (

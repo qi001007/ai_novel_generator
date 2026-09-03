@@ -157,20 +157,17 @@ export default function WorkbenchPage() {
     }
   }, [novelIdParam, state.selectedNovelId]);
 
-  // Deep links from run detail return with ?chapter=N, so the requested prose
-  // wins over selectNovel's first-chapter default.
+  // Deep links from run detail return with ?chapter=N. The view is restored
+  // whether or not the chapter was already selected: it usually was, because
+  // the store outlives this route, and skipping the view for that case is
+  // exactly what landed the author on a file instead of on the prose.
   useEffect(() => {
     const chapterId = Number(chapterIdParam);
-    if (
-      Number.isFinite(chapterId) &&
-      chapterIdParam !== null &&
-      state.chapters.some((item) => item.id === chapterId) &&
-      chapterId !== state.selectedChapterId
-    ) {
-      state.selectChapter(chapterId);
-      setRightView("editor");
-      setSearchParams({}, { replace: true });
-    }
+    if (!chapterIdParam || !Number.isFinite(chapterId)) return;
+    if (!state.chapters.some((item) => item.id === chapterId)) return;
+    if (chapterId !== state.selectedChapterId) state.selectChapter(chapterId);
+    setRightView("editor");
+    setSearchParams({}, { replace: true });
   }, [chapterIdParam, state.chapters, state.selectedChapterId, setSearchParams]);
 
   useEffect(() => {
@@ -196,8 +193,16 @@ export default function WorkbenchPage() {
   }, [chapter?.id]);
 
   // The store decides when a file deserves the stage (tree click, AI proposal,
-  // and the B→D jump all route through open()).
+  // and the B→D jump all route through open()). revealSeq survives this route,
+  // so its first run after mounting is news from the previous visit rather
+  // than a click; treating it as a click is what pulled the file pane back
+  // over the prose every time a run detail page was left.
+  const revealMounted = useRef(false);
   useEffect(() => {
+    if (!revealMounted.current) {
+      revealMounted.current = true;
+      return;
+    }
     if (!revealSeq) return;
     setCharactersOpen(false);
     setRightView("files");
