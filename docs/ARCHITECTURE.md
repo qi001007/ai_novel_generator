@@ -165,6 +165,10 @@ cd E:\novel-generator\backend
 $env:NOVEL_CONTEXT_DEBUG = '1'
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 
+# S1 最小写作环（隔离临时库；默认模板草稿，不耗 token）
+cd E:\novel-generator\backend
+.venv\Scripts\python.exe scripts\writing_ring_smoke.py
+
 # 前端
 cd E:\novel-generator\frontend; npm run test -- --run                        # 期望 52 passed
 cd E:\novel-generator\frontend; npm run build

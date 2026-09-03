@@ -45,6 +45,9 @@ cd E:\novel-generator\frontend; npm run build                              # 期
 要看注入上下文清单：后端起时带 `$env:NOVEL_CONTEXT_DEBUG = '1'`，跑在**可见终端**里
 （主人明确要过：别把方便留给自己、让他去翻日志文件）。
 
+S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scripts\writing_ring_smoke.py`；
+默认模板草稿，加 `--live` 才会真实调用模型。
+
 ## 读哪份文件
 
 | 你要干什么 | 读哪里 |
