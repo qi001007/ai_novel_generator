@@ -5,6 +5,7 @@ export type Novel = {
   target_chapters: number;
   style_constraints: string;
   cover_image: string;
+  cover_color?: string;
   /* Bookshelf aggregates. Absent on the create/update responses, which return a bare
      novel, so the shelf must render an em dash rather than invent a number. */
   chapter_count?: number;

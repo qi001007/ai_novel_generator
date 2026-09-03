@@ -1,4 +1,5 @@
 from datetime import datetime
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import SQLModel, Session, select
@@ -10,11 +11,21 @@ from app.models import Chapter, Novel, utc_now
 router = APIRouter(prefix="/novels", tags=["novels"])
 
 
+HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _check_color(value: str | None) -> None:
+    """A stray value would poison the custom property and render an invisible spine."""
+    if value and not HEX_COLOR.match(value):
+        raise HTTPException(status_code=422, detail="封面颜色必须是 #rrggbb 形式")
+
+
 class NovelCreate(SQLModel):
     title: str
     description: str = ""
     target_chapters: int = 0
     style_constraints: str = ""
+    cover_color: str = ""
 
 
 class NovelUpdate(SQLModel):
@@ -23,6 +34,7 @@ class NovelUpdate(SQLModel):
     target_chapters: int | None = None
     style_constraints: str | None = None
     cover_image: str | None = None
+    cover_color: str | None = None
 
 
 class NovelCard(Novel):
@@ -74,6 +86,7 @@ def create_novel(
     payload: NovelCreate,
     session: Session = Depends(get_session),
 ) -> Novel:
+    _check_color(payload.cover_color)
     existing = session.exec(select(Novel).where(Novel.title == payload.title)).first()
     if existing is not None:
         raise HTTPException(status_code=409, detail="A novel with this title already exists")
@@ -104,6 +117,7 @@ def update_novel(
         raise HTTPException(status_code=404, detail="Novel not found")
 
     changes = payload.model_dump(exclude_unset=True, exclude_none=True)
+    _check_color(changes.get("cover_color"))
     new_title = changes.get("title")
     if new_title is not None and new_title != novel.title:
         clash = session.exec(select(Novel).where(Novel.title == new_title)).first()

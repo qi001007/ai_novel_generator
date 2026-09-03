@@ -86,3 +86,33 @@ def test_bookshelf_card_of_an_empty_novel_is_zero_not_missing(client: TestClient
 
     card = next(n for n in client.get("/api/novels").json() if n["id"] == novel_id)
     assert (card["chapter_count"], card["done_count"], card["total_words"]) == (0, 0, 0)
+
+
+def test_cover_color_round_trips_and_reaches_the_card(client: TestClient) -> None:
+    created = client.post(
+        "/api/novels", json={"title": "调色", "cover_color": "#2f6b57"}
+    ).json()
+    assert created["cover_color"] == "#2f6b57"
+
+    card = next(n for n in client.get("/api/novels").json() if n["id"] == created["id"])
+    assert card["cover_color"] == "#2f6b57"
+
+    renamed = client.put(
+        f"/api/novels/{created['id']}", json={"cover_color": "#7d2f3f"}
+    ).json()
+    assert renamed["cover_color"] == "#7d2f3f"
+
+
+def test_cover_color_must_be_hex(client: TestClient) -> None:
+    bad = client.post("/api/novels", json={"title": "坏颜色", "cover_color": "red"})
+    assert bad.status_code == 422
+    assert "rrggbb" in bad.json()["detail"]
+
+    novel_id = client.post("/api/novels", json={"title": "坏颜色2"}).json()["id"]
+    bad_update = client.put(f"/api/novels/{novel_id}", json={"cover_color": "#gggggg"})
+    assert bad_update.status_code == 422
+
+
+def test_cover_color_defaults_to_empty_meaning_workbench_accent(client: TestClient) -> None:
+    created = client.post("/api/novels", json={"title": "默认色"}).json()
+    assert created["cover_color"] == ""

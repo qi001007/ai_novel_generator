@@ -4,9 +4,24 @@ import { ImagePlus, Moon, Settings, Sun, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useWorkbench } from "../store/workbench";
-import type { Novel } from "../types";
+import type { Novel, NovelUpdatePayload } from "../types";
 
 const STEPS = ["书名与简介", "篇幅与文风", "确认创建"];
+
+/* Owner asked for a palette instead of the red spine I had picked for every book.
+   Empty value means "follow the workbench accent", so an unset novel is not a
+   different-looking book - it is the default. */
+const COVER_COLORS = [
+  { value: "", label: "默认（跟随工作台主色）" },
+  { value: "#c2492f", label: "朱" },
+  { value: "#8f3b2e", label: "赭" },
+  { value: "#6b5330", label: "褐" },
+  { value: "#2f6b57", label: "青碧" },
+  { value: "#2f4a63", label: "黛蓝" },
+  { value: "#5a4668", label: "紫棠" },
+  { value: "#7d2f3f", label: "绛" },
+  { value: "#37423b", label: "松烟" },
+];
 
 /* The stamps come back as naive UTC, so without an explicit zone the browser reads
    them as local and every "3 天前" is off by eight hours. */
@@ -57,6 +72,7 @@ export default function BookshelfPage() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [coverEditId, setCoverEditId] = useState<number | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverColor, setCoverColor] = useState("");
   const [coverError, setCoverError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [title, setTitle] = useState("");
@@ -139,7 +155,7 @@ export default function BookshelfPage() {
               <article
                 className="book-card"
                 data-novel-id={novel.id}
-                style={{ "--book-shade": 58 + ((novel.id * 23) % 42) } as BookVars}
+                style={novel.cover_color ? ({ "--book-accent": novel.cover_color } as BookVars) : undefined}
                 tabIndex={0}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && event.target === event.currentTarget) {
@@ -173,6 +189,7 @@ export default function BookshelfPage() {
                     onClick={(event) => {
                       event.stopPropagation();
                       setCoverPreview(novel.cover_image || null);
+                      setCoverColor(novel.cover_color ?? "");
                       setCoverError(null);
                       setCoverEditId(novel.id);
                     }}
@@ -253,6 +270,22 @@ export default function BookshelfPage() {
                 <span aria-hidden="true">{coverTarget.title.slice(0, 1)}</span>
               )}
             </div>
+            <p className="cover-palette-label">书脊与封面色</p>
+            <div className="cover-palette" role="radiogroup" aria-label="封面颜色">
+              {COVER_COLORS.map((color) => (
+                <button
+                  key={color.value || "default"}
+                  type="button"
+                  role="radio"
+                  aria-checked={coverColor === color.value}
+                  aria-label={color.label}
+                  title={color.label}
+                  className={color.value ? "swatch" : "swatch swatch-default"}
+                  style={color.value ? { background: color.value } : undefined}
+                  onClick={() => setCoverColor(color.value)}
+                />
+              ))}
+            </div>
             <div className="cover-actions">
               <label className="cover-upload">
                 <Upload size={14} />
@@ -285,11 +318,15 @@ export default function BookshelfPage() {
               <button
                 type="button"
                 className="primary"
-                disabled={!coverPreview || busy}
+                disabled={
+                  busy || (!coverPreview && coverColor === (coverTarget?.cover_color ?? ""))
+                }
                 onClick={() => {
-                  if (!coverTarget || !coverPreview) return;
+                  if (!coverTarget) return;
                   setBusy(true);
-                  updateNovel(coverTarget.id, { cover_image: coverPreview })
+                  const payload: NovelUpdatePayload = { cover_color: coverColor };
+                  if (coverPreview) payload.cover_image = coverPreview;
+                  updateNovel(coverTarget.id, payload)
                     .then(() => {
                       setCoverEditId(null);
                       setCoverPreview(null);

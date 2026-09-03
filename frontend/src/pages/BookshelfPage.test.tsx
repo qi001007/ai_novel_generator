@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -80,4 +81,35 @@ describe("BookshelfPage", () => {
     expect(cards[cards.length - 1].className).toContain("book-new-card");
     expect(screen.getByRole("button", { name: "设置" })).toBeTruthy();
   });
+  it("saves the spine colour picked from the palette", async () => {
+    const user = userEvent.setup();
+    const puts: Record<string, unknown>[] = [];
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = String(init?.method ?? "GET");
+        if (url.endsWith("/api/novels/4") && method === "PUT") {
+          puts.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(ok({ ...shelf[0], cover_color: "#2f6b57" }));
+        }
+        return Promise.resolve(ok(shelf));
+      }),
+    );
+
+    const { container } = renderShelf();
+    const card = container.querySelector('.book-card[data-novel-id="4"]') as HTMLElement;
+    await user.click(within(card).getByRole("button", { name: "更换「演示测试」封面" }));
+    await user.click(screen.getByRole("radio", { name: "青碧" }));
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(puts.length).toBe(1));
+    expect(puts[0]).toEqual({ cover_color: "#2f6b57" });
+  });
+
 });

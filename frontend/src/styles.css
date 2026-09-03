@@ -2024,33 +2024,37 @@ select:focus-visible {
 .book-slot {
   position: relative;
   perspective: 1500px;
-  perspective-origin: 50% 38%;
+  /* Owner: a book lies flat or leans BACK, never forward. So the slab stays vertical
+     and the top face is revealed by putting the camera above it instead of tilting
+     the book toward the viewer. */
+  perspective-origin: 50% -180px;
 }
 
 .book-slot::after {
   content: "";
   position: absolute;
-  left: 14%;
-  right: 6%;
-  bottom: -12px;
-  height: 20px;
+  left: 20%;
+  right: 2%;
+  bottom: -30px;
+  height: 26px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--text-1) 30%, transparent);
-  filter: blur(9px);
-  transform: skewX(-16deg);
-  opacity: 0.5;
+  background: color-mix(in srgb, var(--text-1) 46%, transparent);
+  filter: blur(15px);
+  transform: skewX(-20deg);
+  opacity: 0.32;
   transition: opacity 180ms ease-out, transform 180ms ease-out;
   pointer-events: none;
 }
 
 .book-slot:hover::after,
 .book-slot:focus-within::after {
-  opacity: 0.75;
-  transform: skewX(-16deg) translateY(4px) scaleX(1.05);
+  opacity: 0.46;
+  transform: skewX(-20deg) translateY(6px) scaleX(1.06);
 }
 
 .book-card {
   --book-t: 40px;
+  --book-accent: var(--accent);
   position: relative;
   display: block;
   width: 100%;
@@ -2063,13 +2067,13 @@ select:focus-visible {
   text-align: left;
   cursor: pointer;
   transform-style: preserve-3d;
-  transform: rotateY(20deg) rotateX(-8deg);
+  transform: rotateY(20deg);
   transition: transform 200ms ease-out;
 }
 
 .book-card:hover,
 .book-card:focus-visible {
-  transform: rotateY(26deg) rotateX(-10deg) translateY(-6px);
+  transform: rotateY(26deg) translateY(-6px);
 }
 
 .book-card:focus-visible {
@@ -2083,7 +2087,7 @@ select:focus-visible {
   inset: 0;
   transform: translateZ(calc(var(--book-t) / -2)) rotateY(180deg);
   border-radius: 2px 5px 5px 2px;
-  background: color-mix(in srgb, var(--accent-strong) calc(var(--book-shade, 74) * 1%), var(--text-1));
+  background: color-mix(in srgb, var(--book-accent) 70%, var(--text-1));
 }
 
 /* spine: the left face */
@@ -2097,9 +2101,9 @@ select:focus-visible {
   border-right: 1px solid color-mix(in srgb, var(--text-1) 34%, transparent);
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--accent-strong) calc(var(--book-shade, 74) * 1%), var(--text-1)) 0%,
-    var(--accent-strong) 46%,
-    color-mix(in srgb, var(--accent) calc(var(--book-shade, 74) * 1%), var(--text-1)) 100%
+    color-mix(in srgb, var(--book-accent) 55%, #000) 0%,
+    var(--book-accent) 44%,
+    color-mix(in srgb, var(--book-accent) 86%, #fff) 100%
   );
 }
 
@@ -2137,8 +2141,8 @@ select:focus-visible {
   overflow: hidden;
   background: linear-gradient(
     112deg,
-    color-mix(in srgb, var(--accent) 22%, var(--surface)) 0%,
-    color-mix(in srgb, var(--accent) 7%, var(--surface)) 44%,
+    color-mix(in srgb, var(--book-accent) 15%, var(--surface)) 0%,
+    color-mix(in srgb, var(--book-accent) 4%, var(--surface)) 44%,
     var(--surface) 100%
   );
   box-shadow:
@@ -2161,7 +2165,7 @@ select:focus-visible {
   font-family: "Noto Serif SC", serif;
   font-size: 104px;
   line-height: 1;
-  color: var(--accent);
+  color: var(--book-accent);
   opacity: 0.14;
   pointer-events: none;
 }
@@ -2224,7 +2228,7 @@ select:focus-visible {
   display: block;
   height: 100%;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--book-accent);
 }
 
 .book-continue {
@@ -4571,4 +4575,40 @@ body.chat-dock-resizing {
 
 *::-webkit-scrollbar-corner {
   background: transparent;
+}
+
+/* 帧 25 palette: the owner picks a spine colour instead of me hashing one per id. */
+.cover-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 16px 4px;
+}
+
+.cover-palette .swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.cover-palette .swatch:hover {
+  transform: scale(1.08);
+}
+
+.cover-palette .swatch[aria-checked='true'] {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+
+.cover-palette .swatch-default {
+  background: linear-gradient(135deg, var(--accent) 0 50%, var(--surface) 50% 100%);
+}
+
+.cover-palette-label {
+  padding: 10px 16px 0;
+  font-size: 12px;
+  color: var(--text-2);
 }

@@ -18,6 +18,9 @@ class Novel(SQLModel, table=True):
     target_chapters: int = 0
     style_constraints: str = ""
     cover_image: str = ""
+    # Spine / cover colour the owner picks from the palette. Empty means "use the
+    # workbench accent", so an unset novel is not a different-looking book.
+    cover_color: str = ""
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
