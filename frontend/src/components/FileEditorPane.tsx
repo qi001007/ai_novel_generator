@@ -263,19 +263,20 @@ export default function FileEditorPane() {
     const track = Math.max(1, height - MM_PAD * 2);
     const pitch = Math.min(MM_PITCH, track / Math.max(1, lines.length));
     const dark = document.documentElement.dataset.theme === "dark";
+    const fontSize = Math.max(2, Math.min(5, pitch * 0.92));
+    ctx.font = `${fontSize}px "Noto Sans SC", "Microsoft YaHei", sans-serif`;
+    ctx.textBaseline = "top";
     lines.forEach((text, index) => {
       const trimmed = text.trim();
       if (!trimmed) return;
       const y = MM_PAD + index * pitch;
-      const barHeight = Math.max(0.8, Math.min(2, pitch * 0.7));
       const indent = Math.min((text.length - text.trimStart().length) * 0.8, 18);
-      const lineWidth = Math.min(56 - indent - 8, Math.max(3, trimmed.length * 0.42));
       ctx.fillStyle = trimmed.startsWith("#")
         ? (dark ? "#e06a4e" : "#c2492f")
         : trimmed.startsWith(">")
           ? (dark ? "rgba(157,155,150,.35)" : "rgba(115,113,108,.32)")
           : (dark ? "rgba(157,155,150,.62)" : "rgba(115,113,108,.58)");
-      ctx.fillRect(5 + indent, y, lineWidth, barHeight);
+      ctx.fillText(trimmed.slice(0, 46), 6 + indent, y + Math.max(0, (pitch - fontSize) / 2));
     });
   }, [lines, mmHeight, caretLine, scroll]);
 

@@ -38,7 +38,7 @@
 
 ```powershell
 cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 107 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 52 passed
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 53 passed
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 ```
 

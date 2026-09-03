@@ -677,7 +677,7 @@ select:focus-visible {
   align-items: center;
   height: 24px;
   padding: 0 10px;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 4px;
   background: transparent;
   color: var(--text-2);
@@ -697,7 +697,7 @@ select:focus-visible {
   max-width: 180px;
   height: 28px;
   padding: 0 10px;
-  border: 0;
+  border: 1px solid var(--border);
   border-radius: 12px;
   overflow: hidden;
   white-space: nowrap;
@@ -956,6 +956,7 @@ select:focus-visible {
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--border) 62%, transparent);
   background: var(--surface-alt);
   color: var(--text-2);
   font-size: 12px;
@@ -967,6 +968,8 @@ select:focus-visible {
 .editor-tab.active {
   background: var(--surface);
   color: var(--text-1);
+  box-shadow: inset 0 2px 0 var(--accent);
+  border-color: var(--border-strong);
 }
 
 .dirty-dot {
@@ -1045,9 +1048,9 @@ select:focus-visible {
   left: 3px;
   top: calc(var(--view-top) * 100%);
   height: calc(var(--view-height) * 100%);
-  border: 1px solid var(--hairline);
+  border: 1px solid color-mix(in srgb, var(--text-2) 42%, transparent);
   border-radius: 2px;
-  background: var(--minimap-thumb-bg);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
   pointer-events: none;
 }
 
@@ -1059,6 +1062,7 @@ select:focus-visible {
   padding: 28px 24px 48px;
   border: 0;
   background: transparent;
+  border-radius: 0;
   resize: none;
   font-family: "Noto Serif SC", "Source Han Serif SC", serif;
   font-size: 17px;
@@ -1067,7 +1071,7 @@ select:focus-visible {
 
 .editor-body textarea:focus-visible {
   outline: none;
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
   caret-color: var(--accent);
 }
 
@@ -2447,13 +2451,14 @@ body.chat-dock-resizing {
 
 .file-tabs {
   display: flex;
-  align-items: flex-end;
-  gap: 2px;
+  align-items: stretch;
+  gap: 0;
   flex: none;
-  height: 44px;
-  padding: 6px 12px 0;
+  height: 40px;
+  padding: 0 8px;
   overflow-x: auto;
   background: var(--surface-alt);
+  border-bottom: 1px solid var(--border-strong);
   scrollbar-width: thin;
 }
 
@@ -2463,9 +2468,11 @@ body.chat-dock-resizing {
   align-items: center;
   gap: 6px;
   flex: none;
-  height: 38px;
+  min-width: 132px;
+  height: 100%;
   padding: 0 10px 0 12px;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border: 0;
+  border-right: 1px solid var(--border);
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 12px;
@@ -2479,16 +2486,22 @@ body.chat-dock-resizing {
   color: inherit;
   font: inherit;
   cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-tab:hover {
   color: var(--text-1);
+  background: color-mix(in srgb, var(--surface) 58%, var(--surface-alt));
 }
 
 .file-tab.active {
   background: var(--surface);
   color: var(--text-1);
   box-shadow: inset 0 2px 0 var(--accent);
+  border-right-color: var(--border-strong);
 }
 
 .file-tab-close {
@@ -3155,10 +3168,11 @@ body.chat-dock-resizing {
   right: 0;
   height: 1px;
   border: 0;
-  background: var(--border);
+  background: transparent;
   cursor: ns-resize;
   touch-action: none;
   padding: 0;
+  outline: none;
 }
 
 .chat-dock-handle::after {

@@ -102,7 +102,7 @@ chapters/0042/draft.md  正文投影     ← 旧编辑器与终审编辑均写�
 | `app/models.py` | 303 | 15 张表：novel / blueprint / toc / arc / brief / chapter / setting / character / appearance / foreshadow / summary / feedback / generation_run / review / chat_message | 可用 |
 | 前端 | 约 5.6k | 书架 / 工作台三栏 / 双根树 / MD 文件编辑器（CodeMirror 6）/ 对话坞 / 提案卡 / 人物卡库 | 设计已定，UI 迭代未完 |
 
-实测门禁：后端 **107 passed**，前端 **52 passed / 13 files**，`npm run build` 干净。
+实测门禁：后端 **107 passed**，前端 **53 passed / 13 files**，`npm run build` 干净。
 **测试通过只代表已有代码自洽，不代表主人要的功能已实现**——两者在本文件里分开写（§3 与 §4）。
 
 ## 4. 缺口清单（明确没有什么，而不是「差不多」）
@@ -170,7 +170,7 @@ cd E:\novel-generator\backend
 .venv\Scripts\python.exe scripts\writing_ring_smoke.py
 
 # 前端
-cd E:\novel-generator\frontend; npm run test -- --run                        # 期望 52 passed
+cd E:\novel-generator\frontend; npm run test -- --run                        # 期望 53 passed
 cd E:\novel-generator\frontend; npm run build
 ```
 
