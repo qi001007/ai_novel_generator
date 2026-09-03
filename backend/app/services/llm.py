@@ -2,12 +2,17 @@ import os
 import json
 import re
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from collections.abc import Iterator
 from typing import Any, Protocol
 
 import httpx
 from dotenv import load_dotenv
+from fastapi import Depends
+from sqlmodel import Session, select
+
+from app.db import get_session
+from app.models import AppConfig
 
 
 class LLMError(RuntimeError):
@@ -231,8 +236,51 @@ def _iter_sse_events(lines: Iterator[str]) -> Iterator[dict[str, Any]]:
             yield event
 
 
-def get_llm_client() -> LLMClient:
-    return OpenAICompatibleClient(LLMSettings.from_env())
+# Stored keys double as the contract between /api/config/llm and this resolver.
+MODEL_KEYS = {
+    "draft": "llm.model.draft",
+    "review": "llm.model.review",
+    "summary": "llm.model.summary",
+    "chat": "llm.model.chat",
+}
+
+
+def stored_overrides(session: Session) -> dict[str, str]:
+    return {row.key: row.value for row in session.exec(select(AppConfig)).all()}
+
+
+def resolve_settings(session: Session) -> LLMSettings:
+    """backend/.env seeds the first run; saved rows win from then on."""
+    settings = LLMSettings.from_env()
+    rows = stored_overrides(session)
+    if not rows:
+        return settings
+
+    updates: dict[str, Any] = {}
+    if "llm.provider" in rows:
+        updates["provider"] = rows["llm.provider"]
+    if "llm.api_base_url" in rows:
+        updates["api_base_url"] = rows["llm.api_base_url"].rstrip("/")
+    if "llm.api_key" in rows:
+        updates["api_key"] = rows["llm.api_key"] or None
+    if rows.get("llm.timeout"):
+        try:
+            updates["timeout"] = float(rows["llm.timeout"])
+        except ValueError:
+            pass  # validated on write; a hand-edited row must not brick generation
+    models = dict(settings.models)
+    touched = False
+    for task, key in MODEL_KEYS.items():
+        if key in rows:
+            models[task] = rows[key]
+            touched = True
+    if touched:
+        updates["models"] = models
+    return replace(settings, **updates) if updates else settings
+
+
+def get_llm_client(session: Session = Depends(get_session)) -> LLMClient:
+    return OpenAICompatibleClient(resolve_settings(session))
 
 
 def parse_json_object(content: str) -> dict[str, Any]:

@@ -4,6 +4,7 @@ from app.routers import (
     chapters,
     characters,
     chat,
+    config,
     documents,
     feedback,
     generation_runs,
@@ -29,6 +30,7 @@ app.include_router(settings.router, prefix="/api")
 app.include_router(characters.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
+app.include_router(config.router, prefix="/api")
 
 
 @app.get("/api/health")

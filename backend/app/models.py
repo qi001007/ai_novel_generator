@@ -352,3 +352,21 @@ class ChatMessage(SQLModel, table=True):
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
+
+class AppConfig(SQLModel, table=True):
+    """Runtime overrides for values that used to live only in backend/.env.
+
+    A stored row wins even when its value is empty, so clearing a key in the UI really
+    clears it instead of silently falling back to the file. .env stays the seed for a
+    first run and the fallback for keys nobody has ever saved.
+    """
+
+    __tablename__ = "app_config"
+
+    key: str = Field(primary_key=True)
+    value: str = ""
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
