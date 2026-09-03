@@ -7,10 +7,18 @@ export const BLUEPRINT_PATH = "blueprint.md";
 export const TOC_PATH = "toc.md";
 export const ARCS_PATH = "arcs.md";
 
-export const briefPath = (chapter: number) => `briefs/${String(chapter).padStart(4, "0")}.md`;
+export const briefPath = (chapter: number) =>
+  `chapters/${String(chapter).padStart(4, "0")}/brief.md`;
+export const draftPath = (chapter: number) =>
+  `chapters/${String(chapter).padStart(4, "0")}/draft.md`;
+
 export const briefChapter = (path: string) => {
-  const m = /^briefs\/([0-9]{4})\.md$/.exec(path);
+  const m = /^(?:briefs\/([0-9]{4})\.md|chapters\/([0-9]{4})\/brief\.md)$/.exec(path);
   return m ? Number(m[1]) : null;
+};
+export const draftChapter = (path: string) => {
+  const m = /^(?:chapters\/([0-9]{4})(?:\.md|\/draft\.md)|chapters\/([0-9]{4})\/draft\.md)$/.exec(path);
+  return m ? Number(m[1] ?? m[2]) : null;
 };
 
 export const TREE_LABEL: Record<string, string> = {

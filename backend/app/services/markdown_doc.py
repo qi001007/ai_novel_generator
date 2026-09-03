@@ -66,12 +66,14 @@ _TITLES = {
     "toc": "# 目录（B 层 · 中期）",
     "arcs": "# 剧情弧（C 层）",
     "brief": "# 第 {n} 章简报（D 层 · 单章简报）",
+    "draft": "# 第 {n} 章正文",
 }
 _RULES = {
     "blueprint": "> 五个小节标题是结构标识：只能改正文，不能改标题、不能增删小节。",
     "toc": "> 一条一章。`第 N 章` 是主键：不能改号，也不能靠删条目下线章节。",
     "arcs": "> `弧 N` 是主键；起止章号只由主人调整。",
     "brief": "> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。",
+    "draft": "> 标题是投影结构；标题下方全部是正文内容。",
 }
 
 _HEADING = re.compile(r"^##\s+(.*)$")
@@ -134,6 +136,9 @@ def _section_lines(row: dict[str, Any], spec: tuple[tuple[str, str], ...]) -> li
 
 def render(kind: str, payload: Any, *, chapter: int | None = None) -> str:
     """Render one layer model to Markdown. ``payload`` is a dict or a list of dicts."""
+    if kind == "draft":
+        body = str(payload.get("content", "") if isinstance(payload, dict) else payload)
+        return _doc(_preamble(kind, chapter) + body.split("\n"))
     if kind == "blueprint":
         return _doc(_preamble(kind, chapter) + _section_lines(payload, _BLUEPRINT_SECTIONS))
     if kind == "brief":
@@ -266,6 +271,13 @@ def _merge(target: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
 def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
     """Parse Markdown back into the same shape the YAML parser produced."""
     blocks = _blocks(text)
+    if kind == "draft":
+        body = [
+            line
+            for line in blocks[0][1]
+            if line.strip() and not line.startswith(("#", ">"))
+        ]
+        return {"content": "\n".join(body).strip() + "\n"}
     if kind == "blueprint":
         return _read_sections(blocks, _BLUEPRINT_SECTIONS, "blueprint.md")
     if kind == "brief":

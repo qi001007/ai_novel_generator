@@ -17,8 +17,10 @@ import {
 import {
   briefPath,
   isDirty,
+  TOC_PATH,
   useFiles,
 } from "../store/files";
+import TocListView from "./TocListView";
 import { useWorkbench } from "../store/workbench";
 
 // The rail says "this line is structure": section headings and primary keys are
@@ -65,10 +67,15 @@ export default function FileEditorPane() {
   const [scroll, setScroll] = useState<ScrollInfo>({ top: 0, height: 1, lines: 0 });
   const [caretLine, setCaretLine] = useState(1);
   const [mmHeight, setMmHeight] = useState(0);
+  const [tocSource, setTocSource] = useState(false);
 
   const entry = active ? entries[active] : undefined;
   const proposal = active ? pending[active] : undefined;
   const kind = entry?.doc?.kind ?? "";
+
+  useEffect(() => {
+    setTocSource(false);
+  }, [active]);
 
   // --- CodeMirror lives once; the store owns which document is loaded ------
   useEffect(() => {
@@ -192,6 +199,7 @@ export default function FileEditorPane() {
   const conflict = entry?.conflict ?? false;
   const error = entry?.error ?? null;
   const pendingCount = Object.keys(pending).length;
+  const showTocList = active === TOC_PATH && Boolean(entry?.doc) && !tocSource;
 
   let foot: string;
   if (pendingCount) foot = `${pendingCount} 处提案待应用 · 尚未写入服务器`;
@@ -317,6 +325,12 @@ export default function FileEditorPane() {
           })}
         </div>
       </div>
+
+      {showTocList ? (
+        <div className="toc-list-overlay">
+          <TocListView onUseSource={() => setTocSource(true)} />
+        </div>
+      ) : null}
 
       <div className="file-foot" aria-live="polite">
         <span>{foot}</span>

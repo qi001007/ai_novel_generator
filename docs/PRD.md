@@ -89,7 +89,7 @@
 主人的方案是"四层都在一个文件夹里管理，正文与 D 层规划同处一章目录"。方向采纳，
 但必须先说清一个事实，避免假装照做：
 
-- 现状 `blueprint.md` / `toc.md` / `arcs.md` / `briefs/NNNN.md` **不是磁盘文件**，
+- 现状 `blueprint.md` / `toc.md` / `arcs.md` / `chapters/NNNN/{draft.md,brief.md}` **不是磁盘文件**，
   是 `documents.py` 从 `planning_blueprint` / `toc_entry` / `arc_plan` / `chapter_brief`
   四张表现渲染的**投影**，写回时解析回列。真源是 SQLite，磁盘上并不存在这个文件夹。
 - 所以"按章归组"落在**树的展示结构**上，零数据迁移：
@@ -108,7 +108,7 @@
       brief.md
 ```
 
-- 一章一目录、正文与简报同组，对后端只是路径解析规则变化，不动表结构。
+- 一章一目录、正文与简报同组，后端路径已收口；旧路径继续兼容，不动表结构。
 - 旧路径 `chapters/{N}`（正文）与 `briefs/0042.md`（简报）继续可解析，不断链。
 - 真磁盘文件（可 git、可手改、可备份）列为 P2 的**单向导出镜像** `exports/<书名>/…`，
   读仍以 DB 为准；双向同步要引入冲突解决，v1 不做。

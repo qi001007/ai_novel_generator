@@ -1,6 +1,7 @@
 import { create } from "zustand";
 
 import { api } from "../api";
+import { briefPath } from "../store/files";
 import type {
   Chapter,
   ChapterBrief,
@@ -161,24 +162,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const next = (known.length ? Math.max(...known) : 0) + 1;
     set({ creatingChapter: true, createError: null });
     try {
-      const brief = await api.post<ChapterBrief>(
-        `/api/novels/${selectedNovelId}/planning/briefs`,
-        { chapter_number: next },
-      );
-      try {
-        await api.post<Chapter>(`/api/novels/${selectedNovelId}/chapters`, {
-          chapter_number: next,
-          brief_id: brief.id,
-        });
-      } catch (cause) {
-        set({
-          creatingChapter: false,
-          createError: String(
-            cause instanceof Error ? cause.message : "第 " + next + " 章正文记录创建失败，简报已建",
-          ),
-        });
-        return null;
-      }
+      const blank = await api.readFile(selectedNovelId, briefPath(next));
+      await api.writeFile(selectedNovelId, blank.path, blank.text, {
+        baseRevision: blank.revision,
+      });
       const [freshBriefs, freshChapters] = await Promise.all([
         api.get<ChapterBrief[]>(`/api/novels/${selectedNovelId}/planning/briefs`),
         api.get<Chapter[]>(`/api/novels/${selectedNovelId}/chapters`),
@@ -187,7 +174,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       set({
         briefs: freshBriefs,
         chapters: freshChapters,
-        selectedBriefId: brief.id,
+        selectedBriefId: freshBriefs.find((item) => item.chapter_number === next)?.id ?? null,
         selectedChapterId: made?.id ?? get().selectedChapterId,
         creatingChapter: false,
         createError: null,

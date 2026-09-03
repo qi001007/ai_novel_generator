@@ -42,11 +42,38 @@ function stubFetch() {
           available_models: ["MiniMax-M2.5"],
         });
       }
+      if (url.endsWith("/api/novels/1/chapters")) {
+        return json([
+          {
+            id: 70,
+            novel_id: 1,
+            brief_id: 90,
+            chapter_number: 42,
+            title: "星渊碑影",
+            content: "",
+            word_count: 0,
+            status: "ai_reviewed",
+            final_decision: "",
+            final_comment: "",
+          },
+        ]);
+      }
       if (url.endsWith("/api/novels/1/files")) {
         return json([
           { path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图" },
           { path: "toc.md", kind: "toc", layer: "B", label: "目录" },
-          { path: "briefs/0042.md", kind: "brief", layer: "D", label: "第 42 章简报" },
+          {
+            path: "chapters/0042/draft.md",
+            kind: "draft",
+            layer: "正文",
+            label: "第 42 章正文",
+          },
+          {
+            path: "chapters/0042/brief.md",
+            kind: "brief",
+            layer: "D",
+            label: "第 42 章简报",
+          },
         ]);
       }
       if (url.includes("/files/blueprint.md")) {
@@ -137,12 +164,13 @@ describe("workbench layout", () => {
     expect(document.querySelector(".file-foot")?.textContent).toContain("与服务器一致");
   });
 
-  it("lists brief files plus the next chapter slot", async () => {
+  it("groups chapter prose and brief files under one chapter node", async () => {
     await openWorkbench();
     await waitFor(() => {
-      expect(screen.getByText("0042.md")).toBeTruthy();
+      expect(screen.getByText("0042")).toBeTruthy();
     });
-    expect(screen.getByText("0043.md")).toBeTruthy();
-    expect(screen.getByText("未建")).toBeTruthy();
+    expect(screen.getByText("draft.md")).toBeTruthy();
+    expect(screen.getByText("brief.md")).toBeTruthy();
+    expect(screen.queryByText("briefs/")).toBeNull();
   });
 });

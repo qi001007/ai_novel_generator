@@ -55,8 +55,6 @@ def ensure_chapter_number_free(
 def generate_from_brief(
     session: Session, llm: LLMClient, novel: Novel, brief: ChapterBrief
 ) -> dict:
-    ensure_chapter_number_free(session, novel.id, brief.chapter_number)
-
     # One context source for chat and drafting alike: the sliding writing window is
     # derived here (PRD 4.1) instead of being hand-picked per object.
     writing_context = build_writing_context(session, novel.id, brief.chapter_number, brief_id=brief.id)
@@ -84,14 +82,27 @@ def generate_from_brief(
     else:
         content = build_template_draft(brief)
 
-    chapter = Chapter(
-        novel_id=novel.id,
-        brief_id=brief.id,
-        chapter_number=brief.chapter_number,
-        content=content,
-        word_count=len(content),
-        status="draft",
-    )
+    existing = session.exec(
+        select(Chapter).where(
+            Chapter.novel_id == novel.id,
+            Chapter.chapter_number == brief.chapter_number,
+        )
+    ).first()
+    if existing is not None:
+        if existing.content.strip():
+            raise ChapterDomainError(409, "This chapter already has prose")
+        chapter = existing
+        chapter.brief_id = brief.id
+    else:
+        chapter = Chapter(
+            novel_id=novel.id,
+            brief_id=brief.id,
+            chapter_number=brief.chapter_number,
+            content="",
+            status="draft",
+        )
+    chapter.content = content
+    chapter.word_count = len(content)
     session.add(chapter)
     session.commit()
     session.refresh(chapter)

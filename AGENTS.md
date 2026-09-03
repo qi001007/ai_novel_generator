@@ -124,8 +124,9 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
 
 完整依据在 `docs/DECISIONS.md`，括号里是编号。
 
-- **四层规划只有一条写入口**：`PUT /api/novels/{id}/files/{path}`。禁止新增 `/planning/*` 写端点，
-  禁止任何形式开第二条写通路（D-01）。DB 是唯一真源，`.md` 是投影（D-02）。
+- **四层规划只有一条写入口**：`PUT /api/novels/{id}/files/{path}`。`/planning/*` 只读，写请求一律 410；
+  新建章节与简报也走同一条文件层 `PUT`，禁止任何形式开第二条写通路（D-01）。DB 是唯一真源，
+  `chapters/NNNN/{draft.md,brief.md}` 是投影（D-02 / D-03）。
 - **上下文注入只有一个构造器**：`collect_items()` 是唯一资料池。改注入内容只改对应 collector，
   不改调用方、不改提示词模板、不改前端（D-04 / D-06）。
 - **不许把「测试全绿」说成「功能已实现」**。对话 Agent 至今无工具调用、无联网搜索、无多步循环；

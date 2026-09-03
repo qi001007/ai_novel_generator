@@ -1518,8 +1518,15 @@ select:focus-visible {
 /* ---------- 绘画详情页 ---------- */
 
 .painting-detail {
+  height: calc(100vh - 32px);
   padding: 0;
   overflow: hidden;
+}
+
+.painting-page {
+  min-height: 100vh;
+  padding: 16px;
+  background: var(--bg);
 }
 
 .painting-header {
@@ -2971,4 +2978,350 @@ body.resizing {
   height: 1px;
   margin: 4px 6px;
   background: var(--border);
+}
+
+/* ---------- 按章归组树（帧 21） ---------- */
+
+.tree-children.nested {
+  padding-left: 20px;
+}
+
+.tree-chapter {
+  min-width: 0;
+}
+
+.tree-chapter .tree-prefix {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+}
+
+/* B 层列表不是嵌套卡，它替换正文区；源码视图保留在底层切换。 */
+.file-editor {
+  position: relative;
+}
+
+.toc-list-overlay {
+  position: absolute;
+  inset: 70px 0 0;
+  z-index: 8;
+  background: var(--bg);
+}
+
+.toc-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+}
+
+.toc-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.toc-title-group {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.toc-title-group .file-path {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.toc-title-group h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.toc-toolbar-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.segmented {
+  display: inline-flex;
+  height: 32px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+}
+
+.segmented button {
+  min-width: 56px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmented button.selected {
+  background: var(--surface);
+  color: var(--text-1);
+}
+
+.segmented button:not(.selected):hover {
+  color: var(--text-1);
+}
+
+.toc-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: min(220px, 34vw);
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  color: var(--text-2);
+}
+
+.toc-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.toc-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12px;
+}
+
+.toc-toolbar .primary {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.toc-toolbar .primary:disabled {
+  background: var(--control-disabled-bg);
+  color: var(--control-disabled-fg);
+  cursor: not-allowed;
+}
+
+.toc-table {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.toc-head,
+.toc-row {
+  display: grid;
+  grid-template-columns: 58px minmax(90px, 0.75fr) minmax(160px, 1fr) 72px;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 10px 16px;
+}
+
+.toc-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 32px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.toc-row {
+  min-height: 46px;
+  border-bottom: 1px solid var(--border);
+}
+
+.toc-row:nth-child(odd) {
+  background: color-mix(in srgb, var(--surface-alt) 58%, transparent);
+}
+
+.toc-row > .tabular {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.toc-lock {
+  color: var(--text-2);
+  font-size: 10px;
+}
+
+.toc-row input,
+.toc-row textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: none;
+}
+
+.toc-row textarea {
+  display: -webkit-box;
+  overflow: hidden;
+  height: 32px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.toc-row input:hover,
+.toc-row textarea:hover {
+  border-color: var(--border);
+}
+
+.toc-row input:focus,
+.toc-row textarea:focus {
+  border-color: var(--accent);
+  outline: 0;
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.toc-hit {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.toc-hit-field {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.toc-empty {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 48px 16px;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.toc-empty button {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  cursor: pointer;
+}
+
+.toc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: none;
+  min-height: 30px;
+  padding: 0 16px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+/* ---------- 绘画详情整屏页（帧 22） ---------- */
+
+.painting-costs {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0;
+  margin: 0;
+  font-size: 12px;
+}
+
+.painting-costs dt,
+.painting-costs dd {
+  min-height: 30px;
+  margin: 0;
+  padding: 6px 8px;
+}
+
+.painting-costs dt {
+  color: var(--text-2);
+}
+
+.painting-costs dd {
+  justify-self: end;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.painting-costs dt:nth-of-type(even),
+.painting-costs dd:nth-of-type(even) {
+  background: var(--surface-alt);
+}
+
+.painting-cost-note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+@media (max-width: 900px) {
+  .painting-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .painting-sidebar {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .toc-list-overlay {
+    inset: 112px 0 0;
+  }
+
+  .toc-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toc-toolbar-controls {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toc-row input,
+  .toc-row textarea,
+  .toc-empty button {
+    transition: none;
+  }
 }

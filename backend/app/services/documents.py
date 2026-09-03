@@ -17,6 +17,7 @@ from sqlmodel import Session, select
 
 from app.models import (
     ArcPlan,
+    Chapter,
     ChapterBrief,
     PlanningBlueprint,
     TocEntry,
@@ -65,12 +66,17 @@ BRIEF_FIELDS = (
 )
 BRIEF_AI_FIELDS = ("goal", "events", "pov", "characters", "conflict", "hook", "required_facts", "status")
 
+DRAFT_FIELDS = ("content",)
+DRAFT_AI_FIELDS = DRAFT_FIELDS
+
 # The codec owns the field vocabulary, so the type sets are read from it.
 _INT_FIELDS = markdown_doc.INT_FIELDS
 _OPTIONAL_INT_FIELDS = markdown_doc.OPTIONAL_INT_FIELDS
 _LIST_FIELDS = markdown_doc.LIST_FIELDS
 
 _BRIEF_NAME = re.compile(r"^briefs/([0-9]{1,6})\.md$")
+_CHAPTER_BRIEF_NAME = re.compile(r"^chapters/([0-9]{1,6})/brief\.md$")
+_CHAPTER_DRAFT_NAME = re.compile(r"^chapters/([0-9]{1,6})/(?:draft\.md|)$")
 
 
 class DocumentError(Exception):
@@ -173,15 +179,28 @@ def resolve_path(path: str) -> tuple[str, int | None]:
         return "arcs", None
     match = _BRIEF_NAME.match(normalized)
     if match:
-        number = int(match.group(1))
-        if number < 1:
-            raise DocumentError("章号从 1 开始", status_code=404)
-        return "brief", number
+        return "brief", _chapter_number_or_404(int(match.group(1)))
+    match = _CHAPTER_BRIEF_NAME.match(normalized)
+    if match:
+        return "brief", _chapter_number_or_404(int(match.group(1)))
+    match = _CHAPTER_DRAFT_NAME.match(normalized)
+    if match:
+        return "draft", _chapter_number_or_404(int(match.group(1)))
     raise DocumentError(f"没有这个文件：{path}", status_code=404)
 
 
+def _chapter_number_or_404(number: int) -> int:
+    if number < 1:
+        raise DocumentError("章号从 1 开始", status_code=404)
+    return number
+
+
 def brief_path(chapter_number: int) -> str:
-    return f"briefs/{chapter_number:04d}.md"
+    return f"chapters/{chapter_number:04d}/brief.md"
+
+
+def draft_path(chapter_number: int) -> str:
+    return f"chapters/{chapter_number:04d}/draft.md"
 
 
 # --- proposal pre-flight ---------------------------------------------------
@@ -191,6 +210,7 @@ _FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
     "toc": TOC_FIELDS,
     "arcs": ARC_FIELDS,
     "brief": BRIEF_FIELDS,
+    "draft": DRAFT_FIELDS,
 }
 _LIST_KINDS = frozenset({"toc", "arcs"})
 
@@ -273,6 +293,15 @@ def _brief(session: Session, novel_id: int, chapter_number: int) -> ChapterBrief
     ).first()
 
 
+def _chapter(session: Session, novel_id: int, chapter_number: int) -> Chapter | None:
+    return session.exec(
+        select(Chapter).where(
+            Chapter.novel_id == novel_id,
+            Chapter.chapter_number == chapter_number,
+        )
+    ).first()
+
+
 # --- rendering ------------------------------------------------------------
 
 
@@ -330,6 +359,19 @@ def list_files(session: Session, novel_id: int) -> list[FileMeta]:
         FileMeta(TOC_PATH, "toc", "B", "目录"),
         FileMeta(ARCS_PATH, "arcs", "C", "剧情弧"),
     ]
+    for chapter in session.exec(
+        select(Chapter)
+        .where(Chapter.novel_id == novel_id)
+        .order_by(Chapter.chapter_number)
+    ).all():
+        files.append(
+            FileMeta(
+                draft_path(chapter.chapter_number),
+                "draft",
+                "正文",
+                f"第 {chapter.chapter_number} 章正文",
+            )
+        )
     for brief in session.exec(
         select(ChapterBrief)
         .where(ChapterBrief.novel_id == novel_id)
@@ -360,6 +402,22 @@ def read_file(session: Session, novel_id: int, path: str) -> FileDoc:
         model = _arcs_model(_arc_rows(session, novel_id))
         text = render_document("arcs", model)
         return FileDoc(ARCS_PATH, kind, "C", "剧情弧", text, ARC_AI_FIELDS, _revision(text))
+
+    if kind == "draft":
+        assert number is not None
+        chapter = _chapter(session, novel_id, number)
+        if chapter is None:
+            raise DocumentError(f"第 {number} 章正文不存在", status_code=404)
+        text = render_document("draft", {"content": chapter.content}, chapter=number)
+        return FileDoc(
+            draft_path(number),
+            kind,
+            "正文",
+            f"第 {number} 章正文",
+            text,
+            DRAFT_AI_FIELDS,
+            _revision(text),
+        )
 
     assert number is not None
     model = _brief_model(_brief(session, novel_id, number), number)
@@ -459,6 +517,7 @@ def write_file(
         "toc": _write_toc,
         "arcs": _write_arcs,
         "brief": _write_brief,
+        "draft": _write_draft,
     }[kind]
     changed = writer(session, novel_id, parsed, actor=actor, number=number)
     session.commit()
@@ -585,9 +644,20 @@ def _write_arcs(
 
         row = by_id.get(arc_id)
         if row is None:
-            raise DocumentError(
-                f"arc {arc_id} 不存在；新建剧情弧请留 arc: null（由系统分配主键）"
+            if actor == ACTOR_AI or arc_id is not None:
+                raise DocumentError(
+                    f"arc {arc_id} 不存在；新建剧情弧请留 arc: null（由系统分配主键）"
+                )
+            row = ArcPlan(
+                novel_id=novel_id,
+                start_chapter=after["start_chapter"],
+                end_chapter=after["end_chapter"],
+                status=after["status"],
             )
+            session.add(row)
+            session.flush()
+            by_id[row.id] = row
+            changed.append(f"{row.id}.created")
         for name, value in after.items():
             if name == "arc":
                 continue
@@ -620,6 +690,24 @@ def _write_brief(
         session.add(brief)
         session.flush()
 
+    # The first durable write of a brief is the append action. Making the prose
+    # row here keeps both records atomic and leaves PUT /files as the only
+    # writer for new planning entries.
+    chapter = _chapter(session, novel_id, number)
+    if chapter is None:
+        chapter = Chapter(
+            novel_id=novel_id,
+            brief_id=brief.id,
+            chapter_number=number,
+            title="",
+            content="",
+            status="draft",
+        )
+        session.add(chapter)
+    elif chapter.brief_id != brief.id:
+        chapter.brief_id = brief.id
+        session.add(chapter)
+
     before = _brief_model(brief, number)
     if actor == ACTOR_AI:
         changed = _require_ai_values(BRIEF_AI_FIELDS, before, after, label)
@@ -638,6 +726,32 @@ def _write_brief(
             setattr(brief, name, after[name])
     _touch(brief)
     session.add(brief)
+    return changed
+
+
+def _write_draft(
+    session: Session,
+    novel_id: int,
+    parsed: Any,
+    *,
+    actor: str,
+    number: int | None,
+) -> list[str]:
+    assert number is not None
+    label = draft_path(number)
+    data = _require_keys(parsed, DRAFT_FIELDS, label)
+    content = _as_text(data["content"], f"{label}.content")
+    chapter = _chapter(session, novel_id, number)
+    if chapter is None:
+        raise DocumentError(f"第 {number} 章正文不存在", status_code=404)
+
+    changed = [] if chapter.content == content else ["content"]
+    if actor == ACTOR_AI:
+        _require_ai_values(DRAFT_AI_FIELDS, {"content": chapter.content}, {"content": content}, label)
+    chapter.content = content
+    chapter.word_count = len(content)
+    _touch(chapter)
+    session.add(chapter)
     return changed
 
 

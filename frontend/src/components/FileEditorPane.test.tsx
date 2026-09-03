@@ -162,10 +162,13 @@ describe("FileEditorPane", () => {
 
     await user.click(cell);
     await waitFor(() => {
-      expect(useFiles.getState().active).toBe("briefs/0043.md");
+      expect(useFiles.getState().active).toBe("chapters/0043/brief.md");
     });
     expect(useFiles.getState().jump).toEqual({ fromPath: "toc.md", chapter: 43, field: "plot_function" });
-    expect(useFiles.getState().focus).toMatchObject({ path: "briefs/0043.md", field: "goal" });
+    expect(useFiles.getState().focus).toMatchObject({
+      path: "chapters/0043/brief.md",
+      field: "goal",
+    });
   });
 
   it("offers a reload when the server rejected the save as a conflict", async () => {

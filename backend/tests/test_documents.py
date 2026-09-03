@@ -3,6 +3,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.planning_helpers import create_arc, create_brief, create_toc
+
 
 @pytest.fixture(autouse=True)
 def _keep_tests_offline(monkeypatch) -> None:
@@ -11,17 +13,29 @@ def _keep_tests_offline(monkeypatch) -> None:
 
 def seed_novel(client: TestClient, title: str = "文档层") -> int:
     novel_id = client.post("/api/novels", json={"title": title}).json()["id"]
-    client.post(
-        f"/api/novels/{novel_id}/planning/toc",
-        json={"chapter_number": 42, "title": "星渊碑影", "plot_function": "揭示碑的来历", "notes": "两\n行"},
+    create_toc(
+        client,
+        novel_id,
+        chapter_number=42,
+        title="星渊碑影",
+        plot_function="揭示碑的来历",
+        notes="两\n行",
     )
-    client.post(
-        f"/api/novels/{novel_id}/planning/arcs",
-        json={"title": "卷一", "start_chapter": 10, "end_chapter": 60, "objective": "立起目标"},
+    create_arc(
+        client,
+        novel_id,
+        title="卷一",
+        start_chapter=10,
+        end_chapter=60,
+        objective="立起目标",
     )
-    client.post(
-        f"/api/novels/{novel_id}/planning/briefs",
-        json={"chapter_number": 42, "goal": "揭开星渊碑", "pov": "沈曜", "characters": ["沈曜"]},
+    create_brief(
+        client,
+        novel_id,
+        chapter_number=42,
+        goal="揭开星渊碑",
+        pov="沈曜",
+        characters=["沈曜"],
     )
     return novel_id
 
@@ -48,9 +62,10 @@ def test_file_tree_lists_the_planning_layers(client: TestClient) -> None:
         "blueprint.md",
         "toc.md",
         "arcs.md",
-        "briefs/0042.md",
+        "chapters/0042/draft.md",
+        "chapters/0042/brief.md",
     ]
-    assert [item["layer"] for item in files] == ["A", "B", "C", "D"]
+    assert [item["layer"] for item in files] == ["A", "B", "C", "正文", "D"]
 
 
 def test_documents_render_as_markdown(client: TestClient) -> None:
@@ -62,7 +77,7 @@ def test_documents_render_as_markdown(client: TestClient) -> None:
     # A multi-line value stays readable: the tail hangs under its own bullet.
     assert "- **备注**：两\n  行" in toc
 
-    brief = read(client, novel_id, "briefs/0042.md")
+    brief = read(client, novel_id, "chapters/0042/brief.md")
     assert brief["ai_fields"] == [
         "goal",
         "events",
@@ -81,7 +96,7 @@ def test_rendering_a_document_untouched_writes_nothing(client: TestClient) -> No
     """The round trip is the proof that structure survived the format change."""
     novel_id = seed_novel(client)
 
-    for path in ("blueprint.md", "toc.md", "arcs.md", "briefs/0042.md"):
+    for path in ("blueprint.md", "toc.md", "arcs.md", "chapters/0042/brief.md"):
         doc = read(client, novel_id, path)
         again = write(client, novel_id, path, doc["text"], actor="human")
         assert again.status_code == 200, (path, again.text)
@@ -110,7 +125,7 @@ def test_human_edit_writes_back_to_the_database(client: TestClient) -> None:
 
 def test_ai_may_change_values_but_never_structure(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    path = "briefs/0042.md"
+    path = "chapters/0042/brief.md"
     doc = read(client, novel_id, path)
     allowed_text = doc["text"].replace("## 目标\n揭开星渊碑", "## 目标\n碑名会吃人", 1)
 
@@ -175,12 +190,12 @@ def test_broken_markdown_is_refused_before_any_write(client: TestClient) -> None
 
 def test_a_list_section_rejects_prose(client: TestClient) -> None:
     novel_id = seed_novel(client)
-    doc = read(client, novel_id, "briefs/0042.md")
+    doc = read(client, novel_id, "chapters/0042/brief.md")
 
     accepted = write(
         client,
         novel_id,
-        "briefs/0042.md",
+        "chapters/0042/brief.md",
         doc["text"].replace("## 既定事实\n", "## 既定事实\n这是一段散文而不是条目\n"),
         actor="human",
     )
@@ -236,7 +251,40 @@ def test_writing_a_new_brief_file_creates_it(client: TestClient) -> None:
     assert created.status_code == 200, created.text
     briefs = client.get(f"/api/novels/{novel_id}/planning/briefs").json()
     assert {item["chapter_number"] for item in briefs} == {42, 7}
-    assert "briefs/0007.md" in [item["path"] for item in client.get(f"/api/novels/{novel_id}/files").json()]
+    assert "chapters/0007/brief.md" in [item["path"] for item in client.get(f"/api/novels/{novel_id}/files").json()]
+
+
+def test_new_brief_append_creates_the_chapter_atomically(client: TestClient) -> None:
+    novel_id = seed_novel(client, "原子追加")
+    path = "chapters/0008/brief.md"
+    doc = read(client, novel_id, path)
+
+    created = write(client, novel_id, path, doc["text"])
+
+    assert created.status_code == 200, created.text
+    assert created.json()["path"] == path
+    briefs = client.get(f"/api/novels/{novel_id}/planning/briefs").json()
+    assert next(item["chapter_number"] for item in briefs if item["chapter_number"] == 8) == 8
+    chapters = client.get(f"/api/novels/{novel_id}/chapters").json()
+    assert [chapter["chapter_number"] for chapter in chapters] == [8, 42]
+    assert chapters[0]["brief_id"] == next(item["id"] for item in briefs if item["chapter_number"] == 8)
+
+
+def test_draft_file_projects_and_writes_chapter_prose(client: TestClient) -> None:
+    novel_id = seed_novel(client, "正文投影")
+    doc = read(client, novel_id, "chapters/0042/draft.md")
+
+    edited = doc["text"] + "沈曜推开了石门。\n"
+    saved = write(client, novel_id, "chapters/0042/draft.md", edited)
+
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["changed"] == ["content"]
+    chapter = client.get(f"/api/novels/{novel_id}/chapters").json()[0]
+    assert chapter["content"].endswith("沈曜推开了石门。\n")
+    assert chapter["word_count"] == len(chapter["content"])
+    projected = read(client, novel_id, "chapters/0042/draft.md")["text"]
+    assert projected.startswith("# 第 42 章正文")
+    assert projected.endswith("沈曜推开了石门。\n")
 
 
 @pytest.mark.parametrize(

@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, ChevronsDownUp, Plus } from "lucide-react";
 
 import StatusBadge from "./StatusBadge";
 import type { Chapter } from "../types";
-import { ARCS_PATH, BLUEPRINT_PATH, TOC_PATH } from "../store/files";
+import { ARCS_PATH, BLUEPRINT_PATH, TOC_PATH, draftPath } from "../store/files";
 
 export type PlanningLayer = "A" | "B" | "C";
 
@@ -98,7 +98,6 @@ export default function TreePane({
   };
 
   const menuPath = menu?.target.kind === "file" ? menu.target.path : null;
-  const firstBrief = briefRows[0]?.path ?? null;
 
   return (
     <nav className="tree" aria-label="项目结构">
@@ -135,61 +134,67 @@ export default function TreePane({
             </div>
           ))}
 
-          <div
-            className={`tree-row ${briefRows.some((row) => row.path === activeFile) ? "selected" : ""}`}
-            onContextMenu={(event) => openMenu(event, { kind: "group" })}
-          >
-            <button
-              type="button"
-              className="tree-prefix"
-              title="D 层单章简报"
-              aria-label="单章简报"
-              onClick={() => firstBrief && onOpenFile(firstBrief)}
-            >
-              D
-            </button>
-            <button
-              type="button"
-              className="tree-label"
-              onClick={() => firstBrief && onOpenFile(firstBrief)}
-            >
-              单章简报
-            </button>
-            <span className="tree-hint mono">briefs/</span>
-          </div>
-          {!collapsed.briefs &&
-            briefRows.map((row) => (
-              <div
-                key={row.path}
-                className={`tree-row file ${fileSelected(row.path) ? "selected" : ""}`}
-                onContextMenu={(event) => openMenu(event, { kind: "file", path: row.path })}
-              >
-                <button
-                  type="button"
-                  className="tree-label mono"
-                  onClick={() => onOpenFile(row.path)}
-                  title={row.path}
-                >
-                  {row.path.slice("briefs/".length)}
-                </button>
-                <span className={`tree-hint ${row.exists ? "" : "muted"}`}>{row.hint}</span>
-              </div>
-            ))}
-
           <div className="tree-divider">章节</div>
-          {chapters.map((chapter) => (
-            <button
-              key={chapter.id}
-              type="button"
-              className={`tree-row ${chapter.id === selectedChapterId ? "selected" : ""}`}
-              onClick={() => onSelectChapter(chapter.id)}
-            >
-              <span className="tree-ellipsis">
-                第 {chapter.chapter_number} 章 {chapter.title || "未命名"}
-              </span>
-              <StatusBadge status={chapter.status} />
-            </button>
-          ))}
+          {chapters.map((chapter) => {
+            const key = `chapter-${chapter.chapter_number}`;
+            const brief = briefRows.find((row) => row.chapter === chapter.chapter_number);
+            const selected =
+              chapter.id === selectedChapterId ||
+              activeFile === draftPath(chapter.chapter_number) ||
+              activeFile === brief?.path;
+            return (
+              <div key={chapter.id} className="tree-chapter">
+                <div
+                  className={`tree-row ${selected ? "selected" : ""}`}
+                  onContextMenu={(event) =>
+                    openMenu(event, { kind: "file", path: draftPath(chapter.chapter_number) })
+                  }
+                >
+                  <button
+                    type="button"
+                    className="tree-prefix"
+                    aria-label={`展开第 ${chapter.chapter_number} 章`}
+                    aria-expanded={!collapsed[key]}
+                    onClick={() => toggle(key)}
+                  >
+                    {collapsed[key] ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  </button>
+                  <button
+                    type="button"
+                    className="tree-label mono"
+                    onClick={() => toggle(key)}
+                  >
+                    {String(chapter.chapter_number).padStart(4, "0")}
+                  </button>
+                  <span className="tree-hint">正文 + 简报</span>
+                  <StatusBadge status={chapter.status} />
+                </div>
+                {!collapsed[key] && (
+                  <div className="tree-children nested">
+                    <button
+                      type="button"
+                      className={`tree-row file ${activeFile === draftPath(chapter.chapter_number) ? "selected" : ""}`}
+                      onClick={() => {
+                        onSelectChapter(chapter.id);
+                        onOpenFile(draftPath(chapter.chapter_number));
+                      }}
+                    >
+                      draft.md
+                    </button>
+                    <button
+                      type="button"
+                      className={`tree-row file ${activeFile === brief?.path ? "selected" : ""}`}
+                      disabled={!brief}
+                      title={brief ? undefined : "先写入简报后出现"}
+                      onClick={() => brief && onOpenFile(brief.path)}
+                    >
+                      brief.md
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {chapters.length === 0 && (
             <p className="tree-empty">
               还没有章节{" "}
@@ -244,7 +249,7 @@ export default function TreePane({
           className="tree-action ghost"
           title="折叠全部"
           aria-label="折叠全部"
-          onClick={() => setCollapsed({ plan: true, library: true, briefs: true })}
+          onClick={() => setCollapsed({ plan: true, library: true })}
         >
           <ChevronsDownUp size={13} />
         </button>
@@ -262,7 +267,7 @@ export default function TreePane({
             <span>新建下一章简报</span>
             <kbd>Ctrl+Alt+N</kbd>
           </button>
-          <button type="button" role="menuitem" className="tree-menu-item" onClick={runMenuAction(() => toggle(menu?.target.kind === "group" ? "briefs" : "plan"))}>
+          <button type="button" role="menuitem" className="tree-menu-item" onClick={runMenuAction(() => toggle("plan"))}>
             <span>折叠 / 展开</span>
             <kbd>←→</kbd>
           </button>

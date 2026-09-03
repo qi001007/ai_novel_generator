@@ -18,8 +18,9 @@
 
 ## 三条红线（违反即错，不解释）
 
-1. **四层规划只有一条写入口**：`PUT /api/novels/{id}/files/{path}`。禁止新增 `/planning/*` 写端点，
-   禁止在任何地方开第二条写通路（DECISIONS D-01）。DB 仍是唯一真源，`.md` 是投影（D-02）。
+1. **四层规划只有一条写入口**：`PUT /api/novels/{id}/files/{path}`。`/planning/*` 只读，写请求一律 410；
+   新建章节与简报也走同一条文件层 `PUT`。禁止在任何地方开第二条写通路（DECISIONS D-01）。
+   DB 仍是唯一真源，`chapters/NNNN/{draft.md,brief.md}` 是投影（D-02 / D-03）。
 2. **不许把「测试全绿」说成「功能已实现」**。对话 Agent 目前只有外壳，工具调用 / 联网搜索 /
    多步循环 = 0（ARCHITECTURE §4 缺口 1）。
 3. **上下文注入只有一个构造器**，改注入内容只改对应 collector，不改调用方、不改提示词模板、
@@ -36,7 +37,7 @@
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 101 passed
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 103 passed
 cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 51 passed
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 ```
@@ -59,10 +60,10 @@ cd E:\novel-generator\frontend; npm run build                              # 期
 
 ```text
 S0 上下文可观测   代码已就绪，待跑给主人看一次
+S3 写通路收口     后端、按章树、帧 21/22 前端已落地；旧正文编辑器直写迁移待补
 S1 最小写作环     待办
-S3 写通路收口     待办（含路径迁移，★ 必须在 S2 之前）
-S2 agentic 内核   未开始
+S2 agentic 内核   未开始（必须在 S3 完全收口后）
 S4 合流           未开始
 ```
 
-待主人拍板的存量事项：`DECISIONS.md` 第 5 节 Q-01 ～ Q-06。没答之前不要替他决定。
+待主人拍板的存量事项：当前 `DECISIONS.md` 第 5 节没有未决 Q 编号。

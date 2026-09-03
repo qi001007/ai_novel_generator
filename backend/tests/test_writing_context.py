@@ -31,6 +31,7 @@ from app.services.context import (
     log_injection,
     parse_context_manifest,
 )
+from tests.planning_helpers import create_brief, write_document
 from app.services.chat import prepare_turn
 from app.services.prompts import build_draft_user_prompt
 
@@ -254,18 +255,30 @@ def test_injection_print_is_opt_in(session, monkeypatch, capsys):
 
 def test_generation_run_persists_the_manifest(client: TestClient):
     novel_id = client.post("/api/novels", json={"title": "清单落库"}).json()["id"]
-    client.post(
-        f"/api/novels/{novel_id}/planning/blueprints",
-        json={"version": 3, "main_line": "主线落库", "constraints": "约束落库"},
+    write_document(
+        client,
+        novel_id,
+        "blueprint.md",
+        "blueprint",
+        {
+            "main_line": "主线落库",
+            "ending": "",
+            "core_conflicts": "",
+            "themes": "",
+            "constraints": "约束落库",
+        },
     )
     client.post(
         f"/api/novels/{novel_id}/chapters",
         json={"chapter_number": 1, "content": "第一章以钟声中结束。"},
     )
-    brief = client.post(
-        f"/api/novels/{novel_id}/planning/briefs",
-        json={"chapter_number": 2, "goal": "追查钟声来源", "characters": ["林渊"]},
-    ).json()
+    brief = create_brief(
+        client,
+        novel_id,
+        chapter_number=2,
+        goal="追查钟声来源",
+        characters=["林渊"],
+    )
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/from-brief/{brief['id']}",

@@ -2,6 +2,7 @@ from fastapi.testclient import TestClient
 
 from app.services.llm import LLMResult, get_llm_client
 from app.main import app
+from tests.planning_helpers import create_brief as make_brief
 
 
 class FakeLLMClient:
@@ -23,10 +24,14 @@ class FakeLLMClient:
 
 
 def create_brief(client: TestClient, novel_id: int) -> dict:
-    return client.post(
-        f"/api/novels/{novel_id}/planning/briefs",
-        json={"chapter_number": 1, "goal": "主角觉醒", "pov": "主角", "characters": ["主角"]},
-    ).json()
+    return make_brief(
+        client,
+        novel_id,
+        chapter_number=1,
+        goal="主角觉醒",
+        pov="主角",
+        characters=["主角"],
+    )
 
 
 def test_generate_chapter_uses_configured_llm(client: TestClient, monkeypatch) -> None:
@@ -78,9 +83,16 @@ def test_auto_ai_review_creates_complete_review(client: TestClient) -> None:
 
     novel_id = client.post("/api/novels", json={"title": "自动自检"}).json()["id"]
     brief = create_brief(client, novel_id)
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "brief_id": brief["id"], "content": content},
+    existing = client.get(f"/api/novels/{novel_id}/chapters").json()[0]
+    chapter = client.put(
+        f"/api/novels/{novel_id}/chapters/{existing['id']}",
+        json={
+            "chapter_number": 1,
+            "brief_id": brief["id"],
+            "title": existing["title"],
+            "content": content,
+            "status": existing["status"],
+        },
     ).json()
 
     response = client.post(

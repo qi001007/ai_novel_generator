@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.planning_helpers import create_brief
+
 
 @pytest.fixture(autouse=True)
 def _force_unconfigured_llm(monkeypatch) -> None:
@@ -10,19 +12,18 @@ def _force_unconfigured_llm(monkeypatch) -> None:
 
 def test_generate_chapter_from_brief(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "生成流程测试"}).json()["id"]
-    brief = client.post(
-        f"/api/novels/{novel_id}/planning/briefs",
-        json={
-            "chapter_number": 1,
-            "goal": "主角觉醒天赋",
-            "events": "主角在地下密室中看见祖传玉佩发光。",
-            "pov": "主角",
-            "characters": ["主角"],
-            "conflict": "天赋觉醒引来暗处窥视。",
-            "hook": "密室石门缓缓开启。",
-            "required_facts": ["主角"],
-        },
-    ).json()
+    brief = create_brief(
+        client,
+        novel_id,
+        chapter_number=1,
+        goal="主角觉醒天赋",
+        events="主角在地下密室中看见祖传玉佩发光。",
+        pov="主角",
+        characters=["主角"],
+        conflict="天赋觉醒引来暗处窥视。",
+        hook="密室石门缓缓开启。",
+        required_facts=["主角"],
+    )
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/from-brief/{brief['id']}",

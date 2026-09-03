@@ -12,6 +12,7 @@ from app.services.llm import (
     LLMUnavailableError,
     get_llm_client,
 )
+from tests.planning_helpers import create_brief
 
 
 @pytest.fixture(autouse=True)
@@ -480,14 +481,13 @@ def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
     ]
     use_fake(client, FakeChatClient(chunks=chunks))
     novel_id = make_novel(client)
-    client.post(
-        f"/api/novels/{novel_id}/planning/briefs",
-        json={
-            "chapter_number": 42,
-            "goal": "揭开星渊碑",
-            "pov": "沈曜",
-            "characters": ["沈曜"],
-        },
+    create_brief(
+        client,
+        novel_id,
+        chapter_number=42,
+        goal="揭开星渊碑",
+        pov="沈曜",
+        characters=["沈曜"],
     )
 
     response = client.post(
@@ -520,14 +520,13 @@ def test_history_carries_the_proposal_back_for_a_reload(client: TestClient) -> N
         FakeChatClient(chunks=["改好了：\n\n```md @briefs/0042.md\n" + BRIEF_DOC + "```\n"]),
     )
     novel_id = make_novel(client)
-    client.post(
-        f"/api/novels/{novel_id}/planning/briefs",
-        json={
-            "chapter_number": 42,
-            "goal": "揭开星渊碑",
-            "pov": "沈曜",
-            "characters": ["沈曜"],
-        },
+    create_brief(
+        client,
+        novel_id,
+        chapter_number=42,
+        goal="揭开星渊碑",
+        pov="沈曜",
+        characters=["沈曜"],
     )
     client.post(
         f"/api/novels/{novel_id}/chat/stream",
@@ -555,14 +554,13 @@ def test_a_rewrapped_untouched_section_keeps_the_file_wrapping(client: TestClien
     )
     use_fake(client, FakeChatClient(chunks=["```md @briefs/0042.md\n" + rewrapped + "```\n"]))
     novel_id = make_novel(client)
-    client.post(
-        f"/api/novels/{novel_id}/planning/briefs",
-        json={
-            "chapter_number": 42,
-            "goal": "揭开星渊碑",
-            "pov": "沈曜",
-            "characters": ["沈曜"],
-        },
+    create_brief(
+        client,
+        novel_id,
+        chapter_number=42,
+        goal="揭开星渊碑",
+        pov="沈曜",
+        characters=["沈曜"],
     )
     client.post(
         f"/api/novels/{novel_id}/chat/stream",
