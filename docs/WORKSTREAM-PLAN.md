@@ -228,10 +228,18 @@
            · 126 子节点，removedOld:true 证明早先尝试确有部分执行并留过残骸，被幂等 guard 摘除。
        ⚠ 另有一个上一任误建的独立文件 rISrh8a5tXvSLnK2uGsXEl（帧 24-26 旧稿，其中帧 25 有 5:2/6:2 两份重复），
          与主人看的 v2 文件无关，勿在其中继续；确认无用后可整文件删除。
- - [ ] **D-13 待拍板（帧 26 内已画，主人不点头不动代码）**：是否把 `PUT /characters/{id}`、`/settings/{id}`
+ - [ ] **D-15 已批准（原写 D-13，该号已被占用）· 主人同意转 410**：是否把 `PUT /characters/{id}`、`/settings/{id}`
        转 410，令设定库与四层规划共用唯一文件层写入口。推荐转（与 D-01 一致）；否则「唯一写入口」实为
-       两条，Agent 落地后无法审计它走哪条。点头 → 先写 DECISIONS 编号 D-13 再改代码。
- - [ ] **帧 25 的后端前置（决定工作量，先对齐再动手）**：现无任何配置写接口。需 AppConfig 表 + Alembic
+       两条，Agent 落地后无法审计它走哪条。已落档 DECISIONS **D-15**。
+ - [x] **D-15 第 1 单元：人物档案进文件层（加性，旧写口未断，零功能倒退）**
+       `settings/characters/{id}.md` 与 `settings/characters/new.md` 已挂上唯一文件层写入口：resolve_path /
+       list_files / read_file / write_file 派发 / validate_structure / markdown render+parse 六处齐全；重名
+       409 回指已有路径；`actor=ai` 改姓名被拒；`WriteResult.path` 改回报写入后的规范路径（否则新建会返回
+       new.md）。`tests/test_character_files.py` 8 项，全库 **115 passed**（原 107 + 8）。
+ - [ ] **D-15 第 2 单元（未做）**：portrait 资产端点 + 前端改走文件层（长字段铅笔跳 FileEditorPane）+
+       `POST/PUT /characters` 转 410。**顺序不能倒**：先断旧口会当场打断头像上传与人物编辑。
+ - [ ] **D-15 第 3 单元（未做）**：worldview / foreshadow / feedback 三册同法接入。
+- [ ] **帧 25 的后端前置（决定工作量，先对齐再动手）**：现无任何配置写接口。需 AppConfig 表 + Alembic
        迁移 + GET/PUT /api/config/llm + POST /api/config/llm/test + GET/PUT /api/config/generation，`.env`
        降为首次种子/兜底；api_key 只写不读，GET 返掩码尾 4 位，PUT 收到掩码串＝不修改，不进日志与导出。
  - [ ] **帧 25 书架数据缺口**：`GET /api/novels` 现只回 title/description，卡上的「N/M 章 · X 万字 · 最近

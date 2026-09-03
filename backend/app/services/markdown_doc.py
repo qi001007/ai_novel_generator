@@ -26,7 +26,7 @@ class MarkdownError(Exception):
 # Field vocabulary, so the parser knows which bullets carry numbers and which
 # carry a list. documents.py imports these instead of keeping a second copy.
 INT_FIELDS = frozenset({"chapter", "start_chapter", "end_chapter"})
-OPTIONAL_INT_FIELDS = frozenset({"arc"})
+OPTIONAL_INT_FIELDS = frozenset({"arc", "expected_start_chapter", "expected_end_chapter"})
 LIST_FIELDS = frozenset({"characters", "required_facts"})
 
 # (field, markdown label) in the order a document shows them.
@@ -61,6 +61,19 @@ _BRIEF_SECTIONS = (
     ("required_facts", "既定事实"),
 )
 
+_CHARACTER_BULLETS = (
+    ("name", "姓名"),
+    ("level", "分级"),
+    ("expected_start_chapter", "起始章"),
+    ("expected_end_chapter", "结束章"),
+)
+_CHARACTER_SECTIONS = (
+    ("identity", "身份"),
+    ("goals", "目标"),
+    ("behavior_constraints", "行为约束"),
+    ("current_status", "当前状态"),
+)
+
 _TITLES = {
     "blueprint": "# 全书蓝图（A 层 · 长期）",
     "toc": "# 目录（B 层 · 中期）",
@@ -74,6 +87,7 @@ _RULES = {
     "arcs": "> `弧 N` 是主键；起止章号只由主人调整。",
     "brief": "> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。",
     "draft": "> 标题是投影结构；标题下方全部是正文内容。",
+    "character": "> 文件名人物号即主键：改名不换路径。小节标题与字段名是结构标识，不可增删改名。",
 }
 
 _HEADING = re.compile(r"^##\s+(.*)$")
@@ -147,6 +161,16 @@ def render(kind: str, payload: Any, *, chapter: int | None = None) -> str:
             + _bullet_lines(payload, _BRIEF_BULLETS)
             + [""]
             + _section_lines(payload, _BRIEF_SECTIONS)
+        )
+    if kind == "character":
+        # The title carries the display name, not an id, so the preamble helper
+        # (which only formats a chapter number) is bypassed here on purpose.
+        return _doc(
+            [f"# {_text(payload.get('name')) or '未命名人物'}（设定库 · 人物）", "",
+             _RULES["character"], ""]
+            + _bullet_lines(payload, _CHARACTER_BULLETS)
+            + [""]
+            + _section_lines(payload, _CHARACTER_SECTIONS)
         )
     if kind in ("toc", "arcs"):
         spec = _TOC_BULLETS if kind == "toc" else _ARC_BULLETS
@@ -295,6 +319,10 @@ def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
         label = f"briefs/{chapter:04d}.md" if chapter else "单章简报"
         row = _read_bullets(blocks[0][1] or [], _BRIEF_BULLETS, label)
         _merge(row, _read_sections(blocks[1:], _BRIEF_SECTIONS, label))
+        return row
+    if kind == "character":
+        row = _read_bullets(blocks[0][1] or [], _CHARACTER_BULLETS, "人物档案")
+        _merge(row, _read_sections(blocks[1:], _CHARACTER_SECTIONS, "人物档案"))
         return row
     if kind in ("toc", "arcs"):
         spec = _TOC_BULLETS if kind == "toc" else _ARC_BULLETS

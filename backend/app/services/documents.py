@@ -19,6 +19,7 @@ from app.models import (
     ArcPlan,
     Chapter,
     ChapterBrief,
+    Character,
     PlanningBlueprint,
     TocEntry,
     utc_now,
@@ -33,6 +34,8 @@ ACTORS = (ACTOR_HUMAN, ACTOR_AI)
 BLUEPRINT_PATH = "blueprint.md"
 TOC_PATH = "toc.md"
 ARCS_PATH = "arcs.md"
+CHARACTER_DIR = "settings/characters"
+CHARACTER_NEW_PATH = f"{CHARACTER_DIR}/new.md"
 
 BLUEPRINT_FIELDS = ("main_line", "ending", "core_conflicts", "themes", "constraints")
 BLUEPRINT_AI_FIELDS = BLUEPRINT_FIELDS
@@ -69,6 +72,20 @@ BRIEF_AI_FIELDS = ("goal", "events", "pov", "characters", "conflict", "hook", "r
 DRAFT_FIELDS = ("content",)
 DRAFT_AI_FIELDS = DRAFT_FIELDS
 
+CHARACTER_FIELDS = (
+    "name",
+    "level",
+    "expected_start_chapter",
+    "expected_end_chapter",
+    "identity",
+    "goals",
+    "behavior_constraints",
+    "current_status",
+)
+# 姓名 is not AI-writable: it is unique per novel and the file path (the id) is the
+# durable identity, so a rename stays a deliberate human act.
+CHARACTER_AI_FIELDS = tuple(name for name in CHARACTER_FIELDS if name != "name")
+
 # The codec owns the field vocabulary, so the type sets are read from it.
 _INT_FIELDS = markdown_doc.INT_FIELDS
 _OPTIONAL_INT_FIELDS = markdown_doc.OPTIONAL_INT_FIELDS
@@ -77,6 +94,7 @@ _LIST_FIELDS = markdown_doc.LIST_FIELDS
 _BRIEF_NAME = re.compile(r"^briefs/([0-9]{1,6})\.md$")
 _CHAPTER_BRIEF_NAME = re.compile(r"^chapters/([0-9]{1,6})/brief\.md$")
 _CHAPTER_DRAFT_NAME = re.compile(r"^chapters/([0-9]{1,6})/(?:draft\.md|)$")
+_CHARACTER_NAME = re.compile(r"^settings/characters/([0-9]{1,9})\.md$")
 
 
 class DocumentError(Exception):
@@ -186,6 +204,11 @@ def resolve_path(path: str) -> tuple[str, int | None]:
     match = _CHAPTER_DRAFT_NAME.match(normalized)
     if match:
         return "draft", _chapter_number_or_404(int(match.group(1)))
+    if normalized == CHARACTER_NEW_PATH:
+        return "character", None
+    match = _CHARACTER_NAME.match(normalized)
+    if match:
+        return "character", int(match.group(1))
     raise DocumentError(f"没有这个文件：{path}", status_code=404)
 
 
@@ -203,6 +226,10 @@ def draft_path(chapter_number: int) -> str:
     return f"chapters/{chapter_number:04d}/draft.md"
 
 
+def character_path(character_id: int) -> str:
+    return f"{CHARACTER_DIR}/{character_id}.md"
+
+
 # --- proposal pre-flight ---------------------------------------------------
 
 _FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
@@ -211,6 +238,7 @@ _FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
     "arcs": ARC_FIELDS,
     "brief": BRIEF_FIELDS,
     "draft": DRAFT_FIELDS,
+    "character": CHARACTER_FIELDS,
 }
 _LIST_KINDS = frozenset({"toc", "arcs"})
 
@@ -353,6 +381,22 @@ def _brief_model(brief: ChapterBrief | None, chapter_number: int) -> dict[str, A
     }
 
 
+def _character_model(row: Character) -> dict[str, Any]:
+    # portrait and relationships are deliberately absent: a portrait is a base64
+    # data URL (an asset, not prose) and relationships are a JSON map. Neither
+    # belongs in a hand-edited document, and neither is edited by the UI today.
+    return {
+        "name": row.name,
+        "level": row.level,
+        "expected_start_chapter": row.expected_start_chapter,
+        "expected_end_chapter": row.expected_end_chapter,
+        "identity": row.identity,
+        "goals": row.goals,
+        "behavior_constraints": row.behavior_constraints,
+        "current_status": row.current_status,
+    }
+
+
 def list_files(session: Session, novel_id: int) -> list[FileMeta]:
     files = [
         FileMeta(BLUEPRINT_PATH, "blueprint", "A", "全书蓝图"),
@@ -385,6 +429,12 @@ def list_files(session: Session, novel_id: int) -> list[FileMeta]:
                 f"第 {brief.chapter_number} 章简报",
             )
         )
+    for person in session.exec(
+        select(Character).where(Character.novel_id == novel_id).order_by(Character.id)
+    ).all():
+        files.append(
+            FileMeta(character_path(person.id), "character", "设定", f"{person.name} 档案")
+        )
     return files
 
 
@@ -402,6 +452,22 @@ def read_file(session: Session, novel_id: int, path: str) -> FileDoc:
         model = _arcs_model(_arc_rows(session, novel_id))
         text = render_document("arcs", model)
         return FileDoc(ARCS_PATH, kind, "C", "剧情弧", text, ARC_AI_FIELDS, _revision(text))
+
+    if kind == "character":
+        if number is None:
+            model: dict[str, Any] = {name: "" for name in CHARACTER_FIELDS}
+            path = CHARACTER_NEW_PATH
+        else:
+            person = session.get(Character, number)
+            if person is None or person.novel_id != novel_id:
+                raise DocumentError(f"人物 {number} 不存在", status_code=404)
+            model = _character_model(person)
+            path = character_path(number)
+        text = render_document("character", model)
+        return FileDoc(
+            path, kind, "设定", f"{model.get('name') or '新人物'} 档案",
+            text, CHARACTER_AI_FIELDS, _revision(text),
+        )
 
     if kind == "draft":
         assert number is not None
@@ -518,12 +584,23 @@ def write_file(
         "arcs": _write_arcs,
         "brief": _write_brief,
         "draft": _write_draft,
+        "character": _write_character,
     }[kind]
     changed = writer(session, novel_id, parsed, actor=actor, number=number)
     session.commit()
+    if kind == "character" and number is None:
+        # A create lands on a numeric path, so report that path rather than new.md.
+        created = session.exec(
+            select(Character).where(
+                Character.novel_id == novel_id,
+                Character.name == str(parsed["name"]).strip(),
+            )
+        ).first()
+        if created is not None:
+            path = character_path(created.id)
 
     after = read_file(session, novel_id, path)
-    return WriteResult(path=current.path, changed=changed, revision=after.revision)
+    return WriteResult(path=after.path, changed=changed, revision=after.revision)
 
 
 def _write_blueprint(
@@ -752,6 +829,54 @@ def _write_draft(
     chapter.word_count = len(content)
     _touch(chapter)
     session.add(chapter)
+    return changed
+
+
+def _write_character(
+    session: Session,
+    novel_id: int,
+    parsed: Any,
+    *,
+    actor: str,
+    number: int | None,
+) -> list[str]:
+    label = character_path(number) if number is not None else CHARACTER_NEW_PATH
+    data = _require_keys(parsed, CHARACTER_FIELDS, label)
+    after = _coerce(data, CHARACTER_FIELDS, label)
+    name = after["name"].strip()
+    if not name:
+        raise DocumentError(f"{label} 的「姓名」不能为空", status_code=422)
+    after["name"] = name
+
+    same_name = [Character.novel_id == novel_id, Character.name == name]
+    if number is not None:
+        same_name.append(Character.id != number)
+    clash = session.exec(select(Character).where(*same_name)).first()
+    if clash is not None:
+        raise DocumentError(f"已有同名人物：{name}（写入请走 {character_path(clash.id)}）", status_code=409)
+
+    if number is None:
+        person = Character(novel_id=novel_id, name=name)
+        for key in CHARACTER_AI_FIELDS:
+            setattr(person, key, after[key])
+        session.add(person)
+        session.flush()
+        _touch(person)
+        return list(CHARACTER_FIELDS)
+
+    person = session.get(Character, number)
+    if person is None or person.novel_id != novel_id:
+        raise DocumentError(f"人物 {number} 不存在", status_code=404)
+
+    before = _character_model(person)
+    if actor == ACTOR_AI:
+        _require_ai_values(CHARACTER_AI_FIELDS, before, after, label)
+    changed: list[str] = [key for key, value in after.items() if before[key] != value]
+    for key in changed:
+        setattr(person, key, after[key])
+    if changed:
+        _touch(person)
+    session.add(person)
     return changed
 
 
