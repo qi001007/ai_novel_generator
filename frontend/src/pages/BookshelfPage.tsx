@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { ImagePlus, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useWorkbench } from "../store/workbench";
 
 const STEPS = ["书名与简介", "篇幅与文风", "确认创建"];
+
+// Same trick EditorPane uses for inline custom properties.
+type BookVars = CSSProperties & Record<`--${string}`, string | number>;
 
 export default function BookshelfPage() {
   const novels = useWorkbench((state) => state.novels);
@@ -96,6 +100,7 @@ export default function BookshelfPage() {
               <article
                 key={novel.id}
                 className="book-card"
+                style={{ "--book-shade": 58 + ((novel.id * 23) % 42) } as BookVars}
                 tabIndex={0}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" && event.target === event.currentTarget) {
@@ -108,11 +113,20 @@ export default function BookshelfPage() {
                 }}
               >
                 <div className="book-cover">
-                  {novel.cover_image ? (
-                    <img src={novel.cover_image} alt={`${novel.title} 封面`} />
-                  ) : (
-                    <span aria-hidden="true">{novel.title.slice(0, 1)}</span>
-                  )}
+                  <div className="book-3d">
+                    <span className="book-top" aria-hidden="true" />
+                    {novel.cover_image ? (
+                      <img
+                        className="book-face"
+                        src={novel.cover_image}
+                        alt={`${novel.title} 封面`}
+                      />
+                    ) : (
+                      <span className="book-face" aria-hidden="true">
+                        {novel.title.slice(0, 1)}
+                      </span>
+                    )}
+                  </div>
                   <button
                     type="button"
                     className="cover-change-btn"

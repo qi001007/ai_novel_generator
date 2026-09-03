@@ -2019,33 +2019,127 @@ select:focus-visible {
   background: var(--surface);
   overflow: hidden;
   cursor: pointer;
-  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+  transition: box-shadow 150ms ease-out, border-color 150ms ease-out;
 }
 
 .book-card:hover {
-  transform: translateY(-2px);
   box-shadow: var(--shadow-lift);
 }
 
+/* A book, not a rectangle with a stripe glued on. The slab has real thickness: the
+   spine and the fore-edge are separate 3D faces, so the geometry is written down.
+   Under rotateY(±90) an element's local x maps onto world z, so each side face only
+   has to shift by half the thickness to sit on the slab edge, and the cover moves
+   half a thickness forward. Note the sign: rotateY(+angle) is what turns the spine
+   toward the viewer; a negative angle would show the pages instead. */
 .book-cover {
-  height: 150px;
+  --book-t: 20px;
+  --book-w: 122px;
+  --book-h: 170px;
+  position: relative;
+  height: 212px;
   display: grid;
   place-items: center;
-  overflow: hidden;
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  perspective: 1000px;
+  perspective-origin: 50% 42%;
+  background:
+    radial-gradient(70% 44% at 50% 100%, color-mix(in srgb, var(--text-1) 10%, transparent), transparent 70%),
+    linear-gradient(color-mix(in srgb, var(--surface-alt) 55%, transparent), transparent 55%);
 }
 
-.book-cover img {
+.book-3d {
+  position: relative;
+  width: var(--book-w);
+  height: var(--book-h);
+  transform-style: preserve-3d;
+  transform: rotateY(17deg) rotateX(-7deg);
+  transition: transform 200ms ease-out;
+}
+
+/* spine — left face of the slab */
+.book-3d::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--book-t);
+  transform: translateX(calc(var(--book-t) / -2)) rotateY(-90deg);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-strong) calc(var(--book-shade, 74) * 1%), var(--text-1)) 0%,
+    var(--accent-strong) 54%,
+    color-mix(in srgb, var(--accent) calc(var(--book-shade, 74) * 1%), var(--text-1)) 100%
+  );
+}
+
+/* fore-edge — right face, ruled like stacked paper */
+.book-3d::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: var(--book-t);
+  transform: translateX(calc(var(--book-t) / 2)) rotateY(90deg);
+  background: repeating-linear-gradient(90deg, #dcd6cd 0 1px, #fbfaf8 1px 3px);
+}
+
+.book-face {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  display: grid;
+  place-items: center;
   object-fit: cover;
+  transform: translateZ(calc(var(--book-t) / 2));
+  border-radius: 1px 3px 3px 1px;
+  background: linear-gradient(
+    112deg,
+    color-mix(in srgb, var(--accent) 20%, var(--surface)) 0%,
+    color-mix(in srgb, var(--accent) 7%, var(--surface)) 46%,
+    var(--surface) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text-1) 9%, transparent),
+    inset 7px 0 12px -9px color-mix(in srgb, var(--text-1) 34%, transparent);
 }
 
-.book-cover span {
+/* The letter cover is a span that itself carries .book-face, so the selector
+   has to be span.book-face - ".book-face span" would match nothing. */
+span.book-face {
   font-family: "Noto Serif SC", serif;
-  font-size: 52px;
+  font-size: 56px;
   font-weight: 600;
   color: var(--accent);
+}
+
+/* top face: the stacked pages seen from above (needs the negative rotateX) */
+.book-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: var(--book-t);
+  transform: translateY(calc(var(--book-t) / -2)) rotateX(90deg);
+  background: repeating-linear-gradient(
+    0deg,
+    #e6e2da 0 1px,
+    #fcfbf9 1px 3px
+  );
+}
+
+.book-card:hover .book-3d,
+.book-card:focus-visible .book-3d {
+  transform: rotateY(24deg) rotateX(-9deg) translateY(-3px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The book keeps its 3D pose; only the turn on hover is dropped. */
+  .book-3d {
+    transition: none;
+  }
 }
 
 .cover-change-btn {
