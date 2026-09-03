@@ -254,6 +254,15 @@ export default function FileEditorPane() {
       <div className="file-bar">
         <span className="file-path">{novelTitle} / 规划 / {active}</span>
         <span className="file-spacer" />
+        {active === TOC_PATH && tocSource ? (
+          <button
+            type="button"
+            className="file-mode-return"
+            onClick={() => setTocSource(false)}
+          >
+            返回列表
+          </button>
+        ) : null}
         <button
           type="button"
           className="file-save"

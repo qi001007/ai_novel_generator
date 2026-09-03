@@ -1,11 +1,10 @@
 import { create } from "zustand";
 
 import { api } from "../api";
-import { briefPath, draftDocument, draftPath } from "../store/files";
+import { briefPath, draftDocument, draftPath, useFiles } from "../store/files";
 import type {
   Chapter,
   ChapterBrief,
-  ChapterGenerationResponse,
   GenerationRun,
   LLMStatus,
   MachineCheckResult,
@@ -209,17 +208,48 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
     set({ busy: true, error: null });
     try {
-      const result = await api.post<ChapterGenerationResponse>(
-        `/api/novels/${selectedNovelId}/chapters/from-brief/${selectedBriefId}`,
+      let streamed = "";
+      await api.streamGeneration(
+        selectedNovelId,
+        selectedBriefId,
+        (event) => {
+          if (event.event === "delta") {
+            streamed += event.data.text;
+            const chapter = get().chapters.find((item) => item.id === get().selectedChapterId);
+            set({ draftContent: streamed });
+            if (chapter) {
+              useFiles.getState().setDraft(
+                draftPath(chapter.chapter_number),
+                draftDocument(chapter.chapter_number, streamed),
+              );
+            }
+            return;
+          }
+          if (event.event === "done") {
+            const result = {
+              chapter: event.data.chapter,
+              generation_run: event.data.generation_run,
+              machine_check: event.data.machine_check,
+            };
+            set({
+              chapters: get().chapters.some((item) => item.id === result.chapter.id)
+                ? get().chapters.map((item) => (item.id === result.chapter.id ? result.chapter : item))
+                : [...get().chapters, result.chapter],
+              selectedChapterId: result.chapter.id,
+              selectedBriefId: result.chapter.brief_id ?? get().selectedBriefId,
+              draftContent: result.chapter.content,
+              machineCheck: result.machine_check,
+              lastGenerationRunId: result.generation_run.id,
+              recordVersion: get().recordVersion + 1,
+              error: null,
+            });
+            void useFiles.getState().refreshMetas();
+          }
+          if (event.event === "error") {
+            throw new Error(event.data.message || "生成失败");
+          }
+        },
       );
-      const chapters = await api.get<Chapter[]>(`/api/novels/${selectedNovelId}/chapters`);
-      set({
-        chapters,
-        selectedChapterId: result.chapter.id,
-        machineCheck: result.machine_check,
-        lastGenerationRunId: result.generation_run.id,
-        recordVersion: get().recordVersion + 1,
-      });
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "生成失败" });
     } finally {

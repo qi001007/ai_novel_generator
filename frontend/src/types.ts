@@ -186,6 +186,20 @@ export type ChatStreamEvent =
   | { event: "proposal"; data: { path: string; text: string; valid: boolean; error: string } }
   | { event: "end"; data: unknown };
 
+export type GenerationStreamEvent =
+  | { event: "context"; data: { manifest: ContextManifest } }
+  | { event: "delta"; data: { text: string } }
+  | {
+      event: "done";
+      data: {
+        chapter: Chapter;
+        generation_run: GenerationRun;
+        machine_check: MachineCheckResult;
+      };
+    }
+  | { event: "error"; data: { message?: string; partial?: string } }
+  | { event: "end"; data: unknown };
+
 export type PlotFeedback = {
   id: number;
   content: string;

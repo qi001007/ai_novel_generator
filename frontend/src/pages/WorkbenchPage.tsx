@@ -206,27 +206,42 @@ export default function WorkbenchPage() {
   // Brief rows: every file the server knows about, plus one empty slot for the
   // chapter after the last, which the backend happily creates on first write.
   const briefRows = useMemo<BriefRow[]>(() => {
-    const known = metas
+    const rows = new Map<number, BriefRow>();
+    metas
       .filter((meta) => meta.kind === "brief")
       .map((meta) => ({
         path: meta.path,
         chapter: briefChapter(meta.path) ?? 0,
         hint: `第 ${briefChapter(meta.path)} 章`,
         exists: true,
-      }));
-    const numbers = new Set(known.map((row) => row.chapter));
+      }))
+      .forEach((row) => {
+        if (row.chapter > 0) rows.set(row.chapter, row);
+      });
+    // Chapter rows and briefs are created atomically, so an existing chapter is
+    // enough to make its brief reachable even if a metadata refresh was stale.
+    state.chapters.forEach((item) => {
+      const chapter = item.chapter_number;
+      if (!rows.has(chapter)) {
+        rows.set(chapter, {
+          path: briefPath(chapter),
+          chapter,
+          hint: `第 ${chapter} 章`,
+          exists: true,
+        });
+      }
+    });
     // The next slot follows the highest thing we know about: a chapter, or a
     // brief that exists without its prose yet.
     const last = state.chapters.reduce(
       (max, item) => Math.max(max, item.chapter_number),
-      known.reduce((max, row) => Math.max(max, row.chapter), chapter?.chapter_number ?? 0),
+      [...rows.values()].reduce((max, row) => Math.max(max, row.chapter), chapter?.chapter_number ?? 0),
     );
     const next = last + 1;
-    let rows = known;
-    if (last && !numbers.has(next)) {
-      rows = [...rows, { path: briefPath(next), chapter: next, hint: "未建", exists: false }];
+    if (last && !rows.has(next)) {
+      rows.set(next, { path: briefPath(next), chapter: next, hint: "未建", exists: false });
     }
-    return rows.sort((a, b) => a.chapter - b.chapter);
+    return [...rows.values()].sort((a, b) => a.chapter - b.chapter);
   }, [metas, state.chapters, chapter?.chapter_number]);
 
   const novel = state.novels.find((item) => item.id === state.selectedNovelId);

@@ -162,7 +162,8 @@ export default function TreePane({
                   <button
                     type="button"
                     className="tree-label mono"
-                    onClick={() => toggle(key)}
+                    title={`打开第 ${chapter.chapter_number} 章正文页`}
+                    onClick={() => onSelectChapter(chapter.id)}
                   >
                     {String(chapter.chapter_number).padStart(4, "0")}
                   </button>

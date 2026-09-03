@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   ChevronDown,
   CornerDownLeft,
@@ -128,6 +129,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [candidates, setCandidates] = useState<ChatContextItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
+  const [dockHeight, setDockHeight] = useState(118);
   const pendingFiles = useFiles((store) => store.pending);
   const offerFile = useFiles((store) => store.offer);
   const discardFile = useFiles((store) => store.discardProposal);
@@ -417,6 +419,24 @@ export default function ChatPane({ className = "" }: { className?: string }) {
 
   function stop() {
     abortRef.current?.abort();
+  }
+
+  function startDockDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startY = event.clientY;
+    const startHeight = dockHeight;
+
+    function onMove(moveEvent: PointerEvent) {
+      setDockHeight(Math.min(420, Math.max(92, Math.round(startHeight + startY - moveEvent.clientY))));
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }
 
   async function runFeedback(rest: string, id: number) {
@@ -754,7 +774,14 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       <p className="chat-context">
         上下文：自动检索 + @点名 · 保留最近 8 条 · Enter 发送 / Shift+Enter 换行
       </p>
-      <div className="chat-dock">
+      <div className="chat-dock" style={{ height: dockHeight }}>
+        <button
+          type="button"
+          className="chat-dock-handle"
+          aria-label="调整输入框高度"
+          title="拖动调整输入框高度"
+          onPointerDown={startDockDrag}
+        />
         {showMentions ? (
           <ul className="chat-hints mentions" role="listbox" aria-label="引用资料">
             {candidates.length ? (
@@ -795,7 +822,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         <div className="chat-input">
           <textarea
             value={input}
-            rows={1}
+            rows={2}
             placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"
             aria-label="对话输入"
             onChange={(event) => {

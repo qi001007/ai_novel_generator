@@ -58,8 +58,24 @@ export default function TocListView({ onUseSource }: TocListViewProps) {
   const [query, setQuery] = useState("");
 
   const parsed = useMemo(() => parseToc(entry?.draft ?? ""), [entry?.draft]);
+  const allRows = useMemo(() => {
+    const known = new Map(parsed.rows.map((row) => [row.chapter, row]));
+    // A chapter can exist before its B-layer row is filled. Show it as a
+    // missing row so the directory stays in step with the chapter list.
+    chapters.forEach((chapter) => {
+      if (!known.has(chapter.chapter_number)) {
+        known.set(chapter.chapter_number, {
+          chapter: chapter.chapter_number,
+          title: chapter.title || "未命名",
+          plot_function: "",
+          notes: "",
+        });
+      }
+    });
+    return [...known.values()].sort((a, b) => a.chapter - b.chapter);
+  }, [chapters, parsed.rows]);
   const normalizedQuery = query.trim().toLowerCase();
-  const rows = parsed.rows.filter((row) =>
+  const rows = allRows.filter((row) =>
     [row.title, row.plot_function, row.notes].some((value) =>
       value.toLowerCase().includes(normalizedQuery),
     ),
@@ -69,7 +85,7 @@ export default function TocListView({ onUseSource }: TocListViewProps) {
 
   function updateRow(chapter: number, patch: Partial<TocRow>) {
     if (!entry?.doc) return;
-    const next = parsed.rows.map((row) =>
+    const next = allRows.map((row) =>
       row.chapter === chapter ? { ...row, ...patch } : row,
     );
     setDraft(entry.doc.path, renderToc(parsed.preamble, next));
@@ -155,7 +171,7 @@ export default function TocListView({ onUseSource }: TocListViewProps) {
 
       <footer className="toc-foot">
         <span className="tabular">
-          {query ? `匹配 ${rows.length} / 共 ${parsed.rows.length} 章 · Esc 清除搜索` : `共 ${parsed.rows.length} 章`}
+          {query ? `匹配 ${rows.length} / 共 ${allRows.length} 章 · Esc 清除搜索` : `共 ${allRows.length} 章`}
         </span>
         <span>章号是主键，列表内不可改号、不可删行下线</span>
       </footer>

@@ -643,6 +643,7 @@ select:focus-visible {
 .chat-dock {
   position: relative;
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 10px;
   padding: 8px 16px 10px;
   border-top: 1px solid var(--border);
@@ -816,7 +817,7 @@ select:focus-visible {
 /* Frame 14 measures the dock as a 44px field row over a 28px tools row. */
 .chat-input {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
   min-height: 44px;
   padding: 7px;
@@ -831,15 +832,16 @@ select:focus-visible {
 
 .chat-input textarea {
   flex: 1;
+  height: 100%;
   min-width: 0;
-  min-height: 20px;
-  max-height: 120px;
+  min-height: 44px;
   padding: 4px 8px;
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--surface-alt);
   font-size: 13px;
   line-height: 20px;
+  overflow-y: auto;
   resize: none;
 }
 
@@ -975,6 +977,7 @@ select:focus-visible {
   height: calc(min(3px, 100% / var(--lines)) * 0.7);
   top: calc(var(--i) * min(3px, 100% / var(--lines)));
   background: color-mix(in srgb, var(--text-2) 55%, transparent);
+  pointer-events: none;
 }
 
 .minimap-thumb {
@@ -986,6 +989,7 @@ select:focus-visible {
   border: 1px solid var(--hairline);
   border-radius: 2px;
   background: var(--minimap-thumb-bg);
+  pointer-events: none;
 }
 
 .editor-body textarea {
@@ -3015,6 +3019,23 @@ body.resizing {
   min-height: 0;
   height: 100%;
   background: var(--surface);
+}
+
+.chat-dock-handle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 7px;
+  border: 0;
+  background: transparent;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.chat-dock-handle:hover,
+.chat-dock-handle:focus-visible {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .toc-toolbar {
