@@ -115,3 +115,66 @@ def create_chapter(
             if item["chapter_number"] == chapter_number
         )
     return chapter
+
+
+def _character_by_id(client, novel_id: int, character_id: int) -> dict:
+    """There is no single-character GET route, so read it back from the list."""
+    rows = client.get(f"/api/novels/{novel_id}/characters").json()
+    return next(row for row in rows if row["id"] == character_id)
+
+
+def character_doc(
+    name: str = "",
+    level: str = "",
+    identity: str = "",
+    goals: str = "",
+    behavior_constraints: str = "",
+    current_status: str = "",
+    start: int | None = None,
+    end: int | None = None,
+) -> str:
+    """Build the Markdown the server projects for a character file."""
+    dash = "\u2014"
+
+    def num(value: int | None) -> str:
+        return dash if value is None else str(value)
+
+    def section(title: str, body: str) -> list[str]:
+        return ["", "## " + title, ""] + ([body] if body else [""])
+
+    lines = [
+        "# " + (name or "新人物") + "（设定库 · 人物）",
+        "",
+        "> 文件名人物号即主键：改名不换路径。小节标题与字段名是结构标识，不可增删改名。",
+        "",
+        "- **姓名**：" + (name or dash),
+        "- **分级**：" + (level or dash),
+        "- **起始章**：" + num(start),
+        "- **结束章**：" + num(end),
+    ]
+    lines += section("身份", identity)
+    lines += section("目标", goals)
+    lines += section("行为约束", behavior_constraints)
+    lines += section("当前状态", current_status)
+    return "\n".join(lines) + "\n"
+
+
+def create_character(client, novel_id: int, **fields) -> dict:
+    """Create through the one file-layer entry point and return the stored row."""
+    result = client.put(
+        f"/api/novels/{novel_id}/files/settings/characters/new.md",
+        json={"text": character_doc(**fields), "actor": "human"},
+    )
+    assert result.status_code == 200, result.text
+    path = result.json()["path"]
+    character_id = int(path.rsplit("/", 1)[-1].split(".")[0])
+    return _character_by_id(client, novel_id, character_id)
+
+
+def write_character(client, novel_id: int, character_id: int, **fields) -> dict:
+    result = client.put(
+        f"/api/novels/{novel_id}/files/settings/characters/{character_id}.md",
+        json={"text": character_doc(**fields), "actor": "human"},
+    )
+    assert result.status_code == 200, result.text
+    return _character_by_id(client, novel_id, character_id)

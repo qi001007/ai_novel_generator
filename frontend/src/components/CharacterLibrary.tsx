@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 
 import { api } from "../api";
-import type { Character } from "../types";
+import type { Character, FileDoc, FileWriteResult } from "../types";
 
 type CharacterForm = {
   id: number | null;
@@ -47,6 +47,42 @@ const levelLabels: Record<string, string> = {
 
 function toForm(character: Character): CharacterForm {
   return { ...character };
+}
+
+/* The character document is the projection the server renders, so the form edits that
+   text in place instead of re-deriving a second format here. Anything the writer does
+   not recognise comes back as a structure error, which is the point. */
+function setBullet(text: string, label: string, value: string): string {
+  const re = new RegExp("^- \\*\\*" + label + "\\*\\*：[^\\n]*", "m");
+  return re.test(text) ? text.replace(re, "- **" + label + "**：" + value) : text;
+}
+
+function setSection(text: string, title: string, body: string): string {
+  const lines = text.split("\n");
+  const start = lines.findIndex((line) => line.trim() === "## " + title);
+  if (start < 0) return text;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (lines[i].startsWith("## ")) {
+      end = i;
+      break;
+    }
+  }
+  const bodyLines = body.trim() ? body.trim().split("\n") : [];
+  return [...lines.slice(0, start), "## " + title, "", ...bodyLines, "", ...lines.slice(end)].join("\n");
+}
+
+function fillCharacterDoc(text: string, form: CharacterForm): string {
+  let out = text;
+  out = setBullet(out, "姓名", form.name.trim());
+  out = setBullet(out, "分级", form.level);
+  out = setBullet(out, "起始章", form.expected_start_chapter === null ? "—" : String(form.expected_start_chapter));
+  out = setBullet(out, "结束章", form.expected_end_chapter === null ? "—" : String(form.expected_end_chapter));
+  out = setSection(out, "身份", form.identity);
+  out = setSection(out, "目标", form.goals);
+  out = setSection(out, "行为约束", form.behavior_constraints);
+  out = setSection(out, "当前状态", form.current_status);
+  return out;
 }
 
 export default function CharacterLibrary({ novelId }: { novelId: number | null }) {
@@ -117,11 +153,22 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
     setBusy(true);
     setError(null);
     try {
-      const { id, ...payload } = editing;
-      if (id) {
-        await api.put(`/api/novels/${novelId}/characters/${id}`, payload);
-      } else {
-        await api.post(`/api/novels/${novelId}/characters`, payload);
+      const { id, portrait } = editing;
+      // One writer for content: the file layer. A create lands on new.md and the
+      // result reports the numeric path it was moved to, which is how the id is found.
+      const docPath = `settings/characters/${id ?? "new"}.md`;
+      const doc = await api.get<FileDoc>(`/api/novels/${novelId}/files/${docPath}`);
+      const written = await api.put<FileWriteResult>(`/api/novels/${novelId}/files/${docPath}`, {
+        text: fillCharacterDoc(doc.text, editing),
+        actor: "human",
+        base_revision: doc.revision,
+      });
+      const savedId = id ?? Number(/(\d+)\.md$/.exec(written.path)?.[1]);
+      // A portrait is a base64 asset, not prose: it has its own narrow endpoint so the
+      // document layer stays the only writer of text fields (DECISIONS D-15).
+      const original = id ? characters.find((item) => item.id === id)?.portrait ?? "" : "";
+      if (savedId && portrait !== original) {
+        await api.put(`/api/novels/${novelId}/characters/${savedId}/portrait`, { portrait });
       }
       const data = await api.get<Character[]>(`/api/novels/${novelId}/characters`);
       setCharacters(data);

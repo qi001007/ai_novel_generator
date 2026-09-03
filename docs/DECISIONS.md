@@ -101,7 +101,8 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
 - **`portrait` 与 `relationships` 不进文档**：前者是 base64 data URL（资产，不是文本，最大 2 MB，塞进 MD 会毁掉可编辑性），后者是 JSON 映射且当前 UI 不编辑。文件层写通路对二者原样保留。**推论：转 410 之前必须先补一个只写 portrait 的资产端点**，否则人物头像上传当场断掉——这不是可选优化，是 410 的前置。
 - **`actor=ai` 不得改 `name`**：改名是人的动作（唯一约束 + 路径身份），沿用 D-10 的受保护字段机制。
 - **编号更正**：本条在讨论中一度记作「D-13」，而 D-13（新章 v1 只做末尾追加）与 D-14 均已被占用，故落档为 D-15。引用处已一并改。
-- **状态**：文件层与投影已实现（`documents.py`、`markdown_doc.py`，测试 `tests/test_character_files.py` 8 项，全库 115 passed）。前端切换、portrait 资产端点、两个旧写口转 410 **尚未做**；这三件没做完就不开 410。
+- **状态**：① 文件层与投影已实现；② portrait 走独立窄端点 `PUT /characters/{id}/portrait`，前端 `CharacterLibrary.save()` 改走文件层，`POST/PUT /characters` 已 raise 410（`CharacterCreate` 随失效删除）；③ 世界观 / 伏笔 / 反馈三册**尚未接入**。全库 120 passed。
+- **顺带记录**：`DELETE /characters/{id}` 从来不存在，而前端一直在调它 —— 人物删除按钮是坏的，与本决策无关，已登记 WORKSTREAM 等「删除语义」那条决策一并定。
 
 ## 2. 已废止（禁止据以行动）
 

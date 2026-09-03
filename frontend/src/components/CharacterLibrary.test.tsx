@@ -85,22 +85,55 @@ describe("CharacterLibrary", () => {
     vi.unstubAllGlobals();
   });
 
-  it("attaches a portrait photo to a character", async () => {
+  it("saves through the file layer, and the photo through the asset endpoint (D-15)", async () => {
     const user = userEvent.setup();
-    const saved: { name: string; portrait: string }[] = [];
+    const blankDoc = [
+      "# 新人物（设定库 · 人物）",
+      "",
+      "> 文件名人物号即主键：改名不换路径。小节标题与字段名是结构标识，不可增删改名。",
+      "",
+      "- **姓名**：—",
+      "- **分级**：—",
+      "- **起始章**：—",
+      "- **结束章**：—",
+      "",
+      "## 身份",
+      "",
+      "## 目标",
+      "",
+      "## 行为约束",
+      "",
+      "## 当前状态",
+      "",
+    ].join("\n");
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    const writes: { path: string; body: Record<string, unknown> }[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = input.toString();
-        if (url.includes("/characters") && String(init?.method) === "POST") {
-          const body = JSON.parse(String(init?.body));
-          saved.push({ name: body.name, portrait: body.portrait });
-          return Promise.resolve(new Response(JSON.stringify({ ...body, id: 3 }), { status: 201 }));
+        const method = String(init?.method ?? "GET");
+        if (url.endsWith("/files/settings/characters/new.md") && method === "GET") {
+          return Promise.resolve(ok({
+            path: "settings/characters/new.md", kind: "character", layer: "设定",
+            label: "新人物 档案", text: blankDoc, ai_fields: [], revision: "rev-0",
+          }));
         }
-        return Promise.resolve(new Response(JSON.stringify(characters), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        }));
+        if (url.endsWith("/files/settings/characters/new.md") && method === "PUT") {
+          writes.push({ path: "file", body: JSON.parse(String(init?.body)) });
+          // the server reports the numeric path the create actually landed on
+          return Promise.resolve(ok({ path: "settings/characters/7.md", changed: ["name"], revision: "rev-1" }));
+        }
+        if (url.endsWith("/characters/7/portrait") && method === "PUT") {
+          writes.push({ path: "portrait", body: JSON.parse(String(init?.body)) });
+          return Promise.resolve(ok({ ...characters[0], id: 7 }));
+        }
+        if (url.includes("/api/novels/1/characters")) return Promise.resolve(ok(characters));
+        return Promise.reject(new Error(`unexpected ${method} ${url}`));
       }),
     );
 
@@ -116,9 +149,18 @@ describe("CharacterLibrary", () => {
     await screen.findByAltText("沈砚 照片");
     await user.click(screen.getByRole("button", { name: "保存" }));
 
-    await waitFor(() => {
-      expect(saved[0]?.portrait.startsWith("data:image/png;base64,")).toBe(true);
-    });
+    await waitFor(() => expect(writes.length).toBe(2));
+    // content goes through the one file-layer writer, as a human edit, with the
+    // revision we read, so a concurrent agent write cannot be clobbered
+    expect(writes[0].path).toBe("file");
+    const text = String(writes[0].body.text);
+    expect(text).toContain("- **姓名**：沈砚");
+    expect(writes[0].body.actor).toBe("human");
+    expect(writes[0].body.base_revision).toBe("rev-0");
+    // the base64 asset never enters that document; it has its own narrow endpoint
+    expect(text).not.toContain("base64");
+    expect(writes[1].path).toBe("portrait");
+    expect(String(writes[1].body.portrait).startsWith("data:image/png;base64,")).toBe(true);
     vi.unstubAllGlobals();
   });
 

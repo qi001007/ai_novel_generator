@@ -3,6 +3,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.planning_helpers import create_character
+
 
 @pytest.fixture(autouse=True)
 def _keep_tests_offline(monkeypatch) -> None:
@@ -11,21 +13,19 @@ def _keep_tests_offline(monkeypatch) -> None:
 
 def seed_character(client: TestClient) -> tuple[int, int]:
     novel_id = client.post("/api/novels", json={"title": "设定库"}).json()["id"]
-    created = client.post(
-        f"/api/novels/{novel_id}/characters",
-        json={
-            "name": "陈默",
-            "level": "protagonist",
-            "identity": "守碑人后裔",
-            "goals": "查清父亲失踪",
-            "behavior_constraints": "不主动伤无辜",
-            "current_status": "左眼失明",
-            "expected_start_chapter": 1,
-            "expected_end_chapter": 42,
-        },
+    person = create_character(
+        client,
+        novel_id,
+        name="陈默",
+        level="protagonist",
+        identity="守碑人后裔",
+        goals="查清父亲失踪",
+        behavior_constraints="不主动伤无辜",
+        current_status="左眼失明",
+        start=1,
+        end=42,
     )
-    assert created.status_code == 201
-    return novel_id, created.json()["id"]
+    return novel_id, person["id"]
 
 
 def test_character_appears_as_a_projected_file(client: TestClient) -> None:
@@ -139,14 +139,59 @@ def test_portrait_stays_out_of_the_document(client: TestClient) -> None:
     novel_id, cid = seed_character(client)
     blob = "data:image/png;base64," + "A" * 5000
     put = client.put(
-        f"/api/novels/{novel_id}/characters/{cid}",
-        json={
-            "name": "陈默", "level": "protagonist", "portrait": blob,
-            "identity": "守碑人后裔", "goals": "查清父亲失踪",
-            "behavior_constraints": "不主动伤无辜", "current_status": "左眼失明",
-            "expected_start_chapter": 1, "expected_end_chapter": 42,
-        },
+        f"/api/novels/{novel_id}/characters/{cid}/portrait",
+        json={"portrait": blob},
     )
     assert put.status_code == 200
     text = client.get(f"/api/novels/{novel_id}/files/settings/characters/{cid}.md").json()["text"]
     assert "base64" not in text and blob not in text
+
+
+# --- portrait asset endpoint (D-15: an asset, not prose) --------------------
+
+
+def test_portrait_endpoint_writes_only_the_portrait(client: TestClient) -> None:
+    novel_id, cid = seed_character(client)
+    before = client.get(f"/api/novels/{novel_id}/characters").json()[0]
+
+    res = client.put(
+        f"/api/novels/{novel_id}/characters/{cid}/portrait",
+        json={"portrait": "data:image/png;base64,iVBORw0KGgo="},
+    )
+    assert res.status_code == 200, res.text
+    after = res.json()
+    assert after["portrait"].startswith("data:image/png;base64,")
+    # every text field is untouched, so the file layer stays the only content writer
+    for field in ("name", "level", "identity", "goals", "behavior_constraints", "current_status"):
+        assert after[field] == before[field], field
+
+    text = client.get(f"/api/novels/{novel_id}/files/settings/characters/{cid}.md").json()["text"]
+    assert "base64" not in text
+
+
+def test_portrait_can_be_cleared(client: TestClient) -> None:
+    novel_id, cid = seed_character(client)
+    client.put(f"/api/novels/{novel_id}/characters/{cid}/portrait", json={"portrait": "data:image/png;base64,AA=="})
+    res = client.put(f"/api/novels/{novel_id}/characters/{cid}/portrait", json={"portrait": ""})
+    assert res.status_code == 200
+    assert res.json()["portrait"] == ""
+
+
+def test_portrait_rejects_non_image_payloads(client: TestClient) -> None:
+    novel_id, cid = seed_character(client)
+    bad = client.put(
+        f"/api/novels/{novel_id}/characters/{cid}/portrait",
+        json={"portrait": "https://evil.example/x.png"},
+    )
+    assert bad.status_code == 422
+    big = client.put(
+        f"/api/novels/{novel_id}/characters/{cid}/portrait",
+        json={"portrait": "data:image/png;base64," + "A" * (3 * 1024 * 1024 + 8)},
+    )
+    assert big.status_code == 413
+
+
+def test_portrait_of_unknown_character_is_404(client: TestClient) -> None:
+    novel_id, _ = seed_character(client)
+    res = client.put(f"/api/novels/{novel_id}/characters/9999/portrait", json={"portrait": ""})
+    assert res.status_code == 404

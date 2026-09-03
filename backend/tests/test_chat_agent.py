@@ -12,7 +12,7 @@ from app.services.llm import (
     LLMUnavailableError,
     get_llm_client,
 )
-from tests.planning_helpers import create_brief, create_chapter
+from tests.planning_helpers import create_brief, create_chapter, create_character
 
 
 @pytest.fixture(autouse=True)
@@ -264,10 +264,7 @@ def test_history_window_keeps_the_last_eight_messages(client: TestClient) -> Non
 def test_resolved_mention_pins_that_material_first(client: TestClient) -> None:
     use_fake(client, FakeChatClient())
     novel_id = make_novel(client)
-    character = client.post(
-        f"/api/novels/{novel_id}/characters",
-        json={"name": "陈九思", "goals": "查清父亲失踪的真相"},
-    ).json()
+    character = create_character(client, novel_id, name="陈九思", goals="查清父亲失踪的真相")
 
     response = client.post(
         f"/api/novels/{novel_id}/chat",
@@ -300,10 +297,7 @@ def test_unknown_mention_is_reported_to_the_model(client: TestClient) -> None:
 
 def test_context_endpoint_filters_candidates(client: TestClient) -> None:
     novel_id = make_novel(client)
-    client.post(
-        f"/api/novels/{novel_id}/characters",
-        json={"name": "陈九思", "goals": "查清真相"},
-    )
+    create_character(client, novel_id, name="陈九思", goals="查清真相")
     client.post(
         f"/api/novels/{novel_id}/settings",
         json={"category": "力量体系", "name": "星图", "content": "观星台所藏星图"},
@@ -413,9 +407,7 @@ def test_chat_requires_an_existing_novel(
 def test_every_candidate_mention_resolves_back(client: TestClient) -> None:
     use_fake(client, FakeChatClient())
     novel_id = make_novel(client)
-    character = client.post(
-        f"/api/novels/{novel_id}/characters", json={"name": "陈九思"}
-    ).json()
+    character = create_character(client, novel_id, name="陈九思")
     create_chapter(client, novel_id, chapter_number=5, content="星图亮了。")
 
     items = client.get(f"/api/novels/{novel_id}/chat/context").json()

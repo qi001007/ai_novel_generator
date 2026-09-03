@@ -1,27 +1,30 @@
-from typing import Any
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, SQLModel, select
 
 from app.db import get_session
-from app.models import Character
+from app.models import Character, utc_now
 from app.routers.planning import get_novel_or_404
 
 
 router = APIRouter(prefix="/novels", tags=["characters"])
 
 
-class CharacterCreate(SQLModel):
-    name: str
-    level: str = "supporting"
+# D-15: every text field of a character is written through the document layer.
+def _retired_write() -> None:
+    raise HTTPException(
+        status_code=410,
+        detail="人物档案写入口已收口到 PUT /files/settings/characters/{id}.md（见 DECISIONS D-15）",
+    )
+
+
+# A portrait is an asset, not prose: it is a base64 data URL up to ~2MB of source
+# image, which is why it never joins the Markdown projection (DECISIONS D-15) and gets
+# this narrow endpoint instead. Empty string clears it, because the UI has a clear button.
+MAX_PORTRAIT_CHARS = 3 * 1024 * 1024
+
+
+class PortraitUpdate(SQLModel):
     portrait: str = ""
-    identity: str = ""
-    goals: str = ""
-    behavior_constraints: str = ""
-    relationships: dict[str, Any] = {}
-    current_status: str = ""
-    expected_start_chapter: int | None = None
-    expected_end_chapter: int | None = None
 
 
 @router.get("/{novel_id}/characters", response_model=list[Character])
@@ -39,53 +42,41 @@ def list_characters(
     )
 
 
-@router.post("/{novel_id}/characters", response_model=Character, status_code=201)
-def create_character(
-    novel_id: int,
-    payload: CharacterCreate,
-    session: Session = Depends(get_session),
-) -> Character:
-    get_novel_or_404(novel_id, session)
-    existing = session.exec(
-        select(Character).where(
-            Character.novel_id == novel_id,
-            Character.name == payload.name,
-        )
-    ).first()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="This character already exists")
-
-    character = Character(novel_id=novel_id, **payload.model_dump())
-    session.add(character)
-    session.commit()
-    session.refresh(character)
-    return character
+@router.post("/{novel_id}/characters")
+def create_character() -> None:
+    raise _retired_write()
 
 
-@router.put("/{novel_id}/characters/{character_id}", response_model=Character)
-def update_character(
+@router.put("/{novel_id}/characters/{character_id}")
+def update_character() -> None:
+    raise _retired_write()
+
+
+@router.put("/{novel_id}/characters/{character_id}/portrait", response_model=Character)
+def set_portrait(
     novel_id: int,
     character_id: int,
-    payload: CharacterCreate,
+    payload: PortraitUpdate,
     session: Session = Depends(get_session),
 ) -> Character:
+    """Write only the portrait, so the document layer can own every text field.
+
+    Keeping this endpoint narrow is what makes D-15 safe: it cannot touch a field the
+    file layer is responsible for, so there is still exactly one writer for content.
+    """
     get_novel_or_404(novel_id, session)
     character = session.get(Character, character_id)
     if character is None or character.novel_id != novel_id:
         raise HTTPException(status_code=404, detail="Character not found")
 
-    duplicate = session.exec(
-        select(Character).where(
-            Character.novel_id == novel_id,
-            Character.name == payload.name,
-            Character.id != character_id,
-        )
-    ).first()
-    if duplicate is not None:
-        raise HTTPException(status_code=409, detail="This character already exists")
+    value = (payload.portrait or "").strip()
+    if value and not value.startswith("data:image/"):
+        raise HTTPException(status_code=422, detail="头像只接受 data:image/... 内联图片")
+    if len(value) > MAX_PORTRAIT_CHARS:
+        raise HTTPException(status_code=413, detail="头像过大，请压到 2MB 以内")
 
-    for field, value in payload.model_dump().items():
-        setattr(character, field, value)
+    character.portrait = value
+    character.updated_at = utc_now()
     session.add(character)
     session.commit()
     session.refresh(character)

@@ -236,8 +236,16 @@
        list_files / read_file / write_file 派发 / validate_structure / markdown render+parse 六处齐全；重名
        409 回指已有路径；`actor=ai` 改姓名被拒；`WriteResult.path` 改回报写入后的规范路径（否则新建会返回
        new.md）。`tests/test_character_files.py` 8 项，全库 **115 passed**（原 107 + 8）。
- - [ ] **D-15 第 2 单元（未做）**：portrait 资产端点 + 前端改走文件层（长字段铅笔跳 FileEditorPane）+
-       `POST/PUT /characters` 转 410。**顺序不能倒**：先断旧口会当场打断头像上传与人物编辑。
+ - [x] **D-15 第 2 单元：旧写口已转 410，人物内容只剩文件层一条写通路**
+       `PUT /characters/{id}/portrait` 窄端点先落地（只写 portrait，测过它碰不到任何文本字段），
+       前端 `CharacterLibrary.save()` 改成读投影→就地改 bullet/小节→PUT 回同一文件，头像另走
+       资产端点；新建时靠 `WriteResult.path` 回报的数字路径拿到 id。之后 `POST/PUT /characters`
+       才 raise 410，`CharacterCreate` 与 `typing.Any` 随失效一并删除。
+       迁移波及 4 个测试文件（test_characters 重写、test_chat_agent 3 处、test_character_files
+       seed 与肖像用例、planning_helpers 新增 character_doc/create_character/write_character）。
+       全库 **120 passed**（原 115），前端 56 passed / 13 files，build 干净，写作环 PASS。
+ - [ ] **D-15 第 2b 单元（未做）**：长字段只读预览 + 铅笔跳 `useFiles.open(path,{field})`。
+       现弹窗四个长字段仍是可编辑输入框，功能正确，只是没按帧 26 的形态呈现。
  - [ ] **D-15 第 3 单元（未做）**：worldview / foreshadow / feedback 三册同法接入。
 - [ ] **帧 25 的后端前置（决定工作量，先对齐再动手）**：现无任何配置写接口。需 AppConfig 表 + Alembic
        迁移 + GET/PUT /api/config/llm + POST /api/config/llm/test + GET/PUT /api/config/generation，`.env`
@@ -251,6 +259,10 @@
       帧 08 的独立 chip 画法作废（Q-04）
 - [ ] **删除作品功能**：后端加 `DELETE /api/novels/{id}` → 先定 15 表级联策略 → 前端二次确认（输书名）＋出帧
       （DECISIONS 5.2；排 S3 之后）
+- [ ] **新发现（非本批造成）：`DELETE /api/novels/{id}/characters/{cid}` 不存在**
+       前端 `CharacterLibrary.remove()` 一直在调它，实际必然 405 —— 人物「删除」按钮是坏的。
+       2026-09-03 全仓 grep 只有 `chat.py` 有 delete 路由。与「删除作品功能」同属删除语义，
+       一并等那条决策（级联策略未定），本批只记录不顺手改。
 - [ ] novel 3「MD探针」测试作品：等上一条有端点后删除
 
 ---
