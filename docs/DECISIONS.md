@@ -136,16 +136,35 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
 
 ---
 
-## 5. 待裁定（存量，未结）
+## 5. 待裁定与处置
 
-| 编号 | 事项 | 现状 |
+### 5.1 已自主裁定并关闭（2026-09-03）
+
+| 编号 | 事项 | 处置 | 依据 |
+|---|---|---|---|
+| Q-01 | 19 个死样式类 | **关闭：根本不存在了**，记录过期 | `34f36ef`「清理死样式」已删干净。实测 `styles.css` 与全部 tsx/ts 对 `toc-page`／`toc-tree`／`toc-detail`／`blueprint-page`／`blueprint-doc`／`version-chips`／`item-list`／`segmented` 命中数**全为 0**；探针自检（`tree-row` css8/code9、`proposal` css19/code98）证明探测有效 |
+| Q-03 | 帧 20 未落的 4 项装饰 | **裁定不补** | `note-why`／`spec-col`／`legend`／编号圆点是给主人看的规格标注，不是产品界面元素；三通道代码已落地（`58b8da4`），补标注不改变实现 |
+| Q-04 | 人物分级 Tab vs 帧 08 独立 chip | **裁定以文档为准，不改代码** | 实现 `CharacterLibrary.tsx:156` 是 `role="tablist"` + `role="tab"` + `aria-selected`，正是 UI-DESIGN §3 规定的「分类 Tab」，语义与无障碍都对；帧 08 的 chip 是同一事物的另一种画法，作废 |
+| Q-06 | A 路端点退役节奏 | **定：随 S3 一次性退役，不分两批** | 分两批会留下「端点还在但没人调」的中间态，那正是本次要根治的漂移形态 |
+| Q-02 | novel 3「MD探针」删不删 | **升级为需求缺口，不直改库** | 用 SQL 直删真库是绕过外键与软删规则的无痕运维动作，不做；见 5.2 |
+
+### 5.2 取证升级出来的真缺口：删除作品功能整体缺失
+
+原记录说「没有 DELETE 端点所以删不掉测试作品」，实测比这严重——**这个功能前后端都没有**：
+
+- `BookshelfPage.tsx` 与 `store/workbench.ts` 里 `delete`／`删除`／`del(` **零命中**；`api.ts` 定义了 `del` 方法但无人调用。
+- 后端 `routers/novels.py` 只有 GET／POST／PUT。
+- 而 PRD §2 与 UI-DESIGN §1 功能点都明文要求「删除作品（输书名确认）」。
+
+为什么不顺手补：删一部小说要先定 15 张表的级联策略（`chapter`／`chapter_brief`／`chat_message`／`generation_run`／
+`foreshadow`／`review` 是物理删还是随 novel 软删），还要设计二次确认交互与帧。这是业务逻辑，不是清理。
+已登记进 REQUIREMENTS §1 与 WORKSTREAM U7，排在 S3 之后。
+
+### 5.3 仍待主人
+
+| 编号 | 事项 | 说明 |
 |---|---|---|
-| Q-01 | 19 个只被旧表单视图用过的死样式类（`toc-page` `toc-tree` `toc-detail*` `blueprint-page` `blueprint-doc*` `version-chips` `item-list` `segmented`） | 未擅自扩大清理面，等主人一句话再扫 |
-| Q-02 | novel 3「MD探针」是验证迁移造的测试作品，要不要删 | **`routers/novels.py` 只有 GET/POST/PUT，没有 DELETE 端点**，删不掉。要么加端点，要么直改库 |
-| Q-03 | 帧 20「树右键菜单与新建章节入口」未落 4 项（`note-why` 注记 / `spec-col` 规格 / `legend` 图例 / 三个编号圆点） | 帧已批准、三通道代码已落地（`58b8da4`），补规格价值下降，待定 |
-| Q-04 | 人物页工具行的分级 Tab 仍是分段控件，帧 08 画的是各自独立 chip | 未列入重做项，暂未改 |
-| Q-05 | 帧 21（B 层目录列表）/ 帧 22（绘画详情）审批 | 2026-09-02 已出待批，UI 铁律要求批前不写前端 |
-| Q-06 | A 路端点退役的具体节奏 | 归 S3 方案里定，不在文档层面空转 |
+| Q-05 | 帧 21（B 层目录列表）／帧 22（绘画详情页）审批 | UI 铁律要求批准前不写前端。这条我不代批 |
 
 ---
 

@@ -111,7 +111,7 @@ chapters/0042/draft.md  正文         ← 现状正文不是文件，只在 Cha
 | 5 | 双栏对照生成 + 逐段合并、选区 Diff 修改 | WORKSTREAM C4 全节未勾；Figma 帧 05 已批但代码未做（T-12） | S1 之后 |
 | 6 | 伏笔没有写入端点 | 注入清单里伏笔档为空，novel 1 无 `foreshadow` 行 | P2 |
 | 7 | 绘画 / AI 生图是**纯前端假数据** | `artwork` / `painting` 在后端零命中；`PaintingDetailPanel.tsx` 无后端来源 | P3 |
-| 8 | 无 `DELETE /api/novels/{id}` | `routers/novels.py` 只有 GET/POST/PUT，导致 Q-02 的测试作品删不掉 | 小 |
+| 8 | **删除作品功能整体缺失**（不是只缺端点） | 前端 `BookshelfPage`／`workbench` 里 `删除`／`del(` 零命中，`api.ts` 的 `del` 无人调用；后端 `routers/novels.py` 只 GET/POST/PUT；而 PRD §2 与 UI-DESIGN §1 都要它 | S3 之后（DECISIONS 5.2） |
 | 9 | 磁盘导出镜像未做 | D-02 列 P2 且只单向导出 | P2 |
 | 10 | 对话侧与写作侧的预算常量与裁剪循环仍是两份 | REQUIREMENTS 10.1 最后一条因此保持未勾 | S1 |
 
