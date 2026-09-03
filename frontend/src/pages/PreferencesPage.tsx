@@ -1,16 +1,21 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Moon, Settings, Sun } from "lucide-react";
+import { ArrowLeft, Moon, Sun } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import { useWorkbench } from "../store/workbench";
 
-type LlmStatus = {
+type LlmConfig = {
   provider: string;
+  api_base_url: string;
+  timeout: number;
+  models: Record<string, string>;
+  api_key_masked: string;
+  api_key_set: boolean;
   configured: boolean;
-  models: Record<string, boolean>;
-  available_models: string[];
 };
+
+type TestResult = { ok: boolean; detail: string };
 
 const TASKS: Array<[string, string]> = [
   ["draft", "正文生成"],
@@ -19,21 +24,27 @@ const TASKS: Array<[string, string]> = [
   ["chat", "对话"],
 ];
 
-const PROVIDERS: Record<string, string> = {
-  openai_compatible: "OpenAI 兼容接口",
-};
-
 export default function PreferencesPage() {
   const navigate = useNavigate();
   const theme = useWorkbench((state) => state.theme);
   const toggleTheme = useWorkbench((state) => state.toggleTheme);
-  const [status, setStatus] = useState<LlmStatus | null>(null);
+  const [config, setConfig] = useState<LlmConfig | null>(null);
+  const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [timeout, setTimeout_] = useState("120");
+  const [models, setModels] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
-    api.get<LlmStatus>("/api/llm/status").then((data) => {
-      if (active) setStatus(data);
+    api.get<LlmConfig>("/api/config/llm").then((data) => {
+      if (!active) return;
+      setConfig(data);
+      setBaseUrl(data.api_base_url);
+      setTimeout_(String(data.timeout));
+      setModels(data.models);
     }).catch((cause: Error) => {
       if (active) setError(cause.message);
     });
@@ -46,12 +57,55 @@ export default function PreferencesPage() {
     if (next !== theme) toggleTheme();
   }
 
+  function save() {
+    if (!config) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    api
+      .put<LlmConfig>("/api/config/llm", {
+        api_base_url: baseUrl,
+        // Blank means "leave the stored key alone"; the server also ignores a mask echo.
+        api_key: apiKey,
+        timeout: Number(timeout),
+        models,
+      })
+      .then((data) => {
+        setConfig(data);
+        setBaseUrl(data.api_base_url);
+        setTimeout_(String(data.timeout));
+        setModels(data.models);
+        setApiKey("");
+        setNotice("已保存，后端立即生效，不需要重启。");
+      })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "保存失败"),
+      )
+      .finally(() => setBusy(false));
+  }
+
+  function test() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    api
+      .post<TestResult>("/api/config/llm/test", {})
+      .then((result) => {
+        setNotice(result.detail);
+        if (!result.ok) setError(result.detail);
+      })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "测试失败"),
+      )
+      .finally(() => setBusy(false));
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
           <strong>墨阁</strong>
-          <span>设置</span>
+          <span>· 偏好设置</span>
         </div>
         <div className="topbar-actions">
           <button type="button" aria-label="返回书架" title="返回书架" onClick={() => navigate("/")}>
@@ -69,50 +123,81 @@ export default function PreferencesPage() {
 
       <main className="prefs-main">
         <section className="page-panel">
-          <h2>
-            <Settings size={14} aria-hidden="true" /> 模型接入
-          </h2>
-          {error ? <p className="prefs-error">读不到模型状态：{error}</p> : null}
-          {!status && !error ? <p className="prefs-muted">正在读取后端配置……</p> : null}
-          {status ? (
+          <h2>模型接入</h2>
+          {!config && !error ? <p className="prefs-muted">正在读取后端配置……</p> : null}
+          {config ? (
             <>
-              <dl className="prefs-facts">
-                <div>
-                  <dt>服务商</dt>
-                  <dd>{PROVIDERS[status.provider] ?? status.provider}</dd>
-                </div>
-                <div>
-                  <dt>可用性</dt>
-                  <dd>
-                    <span className={status.configured ? "prefs-badge ok" : "prefs-badge warn"}>
-                      {status.configured ? "已配置" : "未配置"}
-                    </span>
-                  </dd>
-                </div>
-                <div>
-                  <dt>可用模型</dt>
-                  <dd>{status.available_models.length > 0 ? status.available_models.join("、") : "—"}</dd>
-                </div>
-              </dl>
-              <table className="prefs-table">
-                <thead>
-                  <tr>
-                    <th>用途</th>
-                    <th>是否已配模型</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TASKS.map(([key, label]) => (
-                    <tr key={key}>
-                      <td>{label}</td>
-                      <td>{status.models[key] ? "已配置" : "未配置"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
               <p className="prefs-muted">
-                这些值目前由后端进程的 backend/.env 决定，改完需重启后端。页面上改配置的接口还没有，
-                所以我这里只如实显示现状，不放不能用的输入框。
+                这些值原本只写在 backend/.env 里，现在存在数据库，保存后后端立即生效。
+                .env 仍然是首次启动的种子：没在这里存过的项，继续读 .env。
+              </p>
+              <label className="prefs-field">
+                Base URL
+                <input
+                  value={baseUrl}
+                  onChange={(event) => setBaseUrl(event.target.value)}
+                  placeholder="https://api.example.com/v1"
+                  aria-label="Base URL"
+                />
+              </label>
+              <label className="prefs-field">
+                API Key
+                <input
+                  type="password"
+                  value={apiKey}
+                  onChange={(event) => setApiKey(event.target.value)}
+                  placeholder={
+                    config.api_key_set
+                      ? "已保存 " + config.api_key_masked + "，留空则不修改"
+                      : "尚未配置"
+                  }
+                  aria-label="API Key"
+                  autoComplete="off"
+                />
+              </label>
+              <label className="prefs-field prefs-field-narrow">
+                超时（秒）
+                <input
+                  type="number"
+                  min={1}
+                  max={600}
+                  value={timeout}
+                  onChange={(event) => setTimeout_(event.target.value)}
+                  aria-label="超时秒数"
+                />
+              </label>
+              <div className="prefs-models">
+                {TASKS.map(([key, label]) => (
+                  <label className="prefs-field" key={key}>
+                    {label}
+                    <input
+                      value={models[key] ?? ""}
+                      onChange={(event) =>
+                        setModels({ ...models, [key]: event.target.value })
+                      }
+                      aria-label={label + "模型"}
+                    />
+                  </label>
+                ))}
+              </div>
+              <p className="prefs-state">
+                <span className={config.configured ? "prefs-badge ok" : "prefs-badge warn"}>
+                  {config.configured ? "已配置" : "未配置"}
+                </span>
+                <span>服务商 {config.provider}</span>
+              </p>
+              {notice ? <p className="prefs-notice">{notice}</p> : null}
+              {error ? <p className="prefs-error">{error}</p> : null}
+              <div className="prefs-actions">
+                <button type="button" onClick={test} disabled={busy}>
+                  测试连接
+                </button>
+                <button type="button" className="primary" onClick={save} disabled={busy}>
+                  保存
+                </button>
+              </div>
+              <p className="prefs-muted">
+                测试连接只访问网关的模型列表，不产生任何 token 费用。
               </p>
             </>
           ) : null}

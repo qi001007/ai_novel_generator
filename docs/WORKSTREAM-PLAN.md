@@ -247,9 +247,17 @@
  - [ ] **D-15 第 2b 单元（未做）**：长字段只读预览 + 铅笔跳 `useFiles.open(path,{field})`。
        现弹窗四个长字段仍是可编辑输入框，功能正确，只是没按帧 26 的形态呈现。
  - [ ] **D-15 第 3 单元（未做）**：worldview / foreshadow / feedback 三册同法接入。
-- [ ] **帧 25 的后端前置（决定工作量，先对齐再动手）**：现无任何配置写接口。需 AppConfig 表 + Alembic
-       迁移 + GET/PUT /api/config/llm + POST /api/config/llm/test + GET/PUT /api/config/generation，`.env`
-       降为首次种子/兜底；api_key 只写不读，GET 返掩码尾 4 位，PUT 收到掩码串＝不修改，不进日志与导出。
+- [x] **帧 25 后端前置之一：LLM 配置写接口已落地（决策 D-16）**
+       `AppConfig` 表 + 迁移 `e8c2f4a1b930` + `GET/PUT /api/config/llm` + `POST /api/config/llm/test`；
+       `get_llm_client` 改带 session 并叠加存库值，`.env` 降为首次种子。存了即覆盖（含空值），
+       key 只写不读（GET 回 `****`+尾 4，PUT 收到掩码串视为未改），测试连接打 `GET /models` 不耗 token。
+       `/settings` 模型接入段已可编辑：3 项测试 + 真机截图核对（Base URL / Key / 超时 / 四路模型）。
+       仍缺 `GET/PUT /api/config/generation`（生成默认值）与数据目录接口，页面未摆假控件。
+- [x] **帧 25 书架配色改为用户选（主人否掉我一版）**：我原先给每本书按 id 哈希一个深浅，
+       主人指出「侧边红色太丑，要么用工作台同色系，要么做调色盘让用户改」。改为封面弹层 9 色
+       调色盘 + `novel.cover_color`（迁移 `d5a1b7c9e234`，写入校验 #rrggbb，留空＝跟随主色）。
+       顺带解释清一件事：他看到的「每本书偏转角度不一样」不是角度问题——实测五张卡矩阵完全相同，
+       是我那个深浅哈希让书脊看起来宽窄不同。
  - [x] **帧 25 书架部分已实现**（主人指出：批准的设计稿一直没落地，这本就是原始任务）
        GET /api/novels 现返回 NovelCard（chapter_count / done_count / total_words /
        last_edited_at，status=final 计为已完成），前端书卡按稿呈现：一行简介、4px 进度轨、

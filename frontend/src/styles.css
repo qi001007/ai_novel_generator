@@ -4612,3 +4612,135 @@ body.chat-dock-resizing {
   font-size: 12px;
   color: var(--text-2);
 }
+
+/* /settings (frame 25). The page reuses .page-panel; only the form needs rules. */
+.prefs-main {
+  width: min(880px, 100% - 48px);
+  margin: 0 auto;
+  padding: 32px 0 64px;
+  display: grid;
+  gap: 20px;
+}
+
+.prefs-main h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.prefs-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.prefs-field input {
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+.prefs-field input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.prefs-field-narrow {
+  max-width: 160px;
+}
+
+.prefs-models {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0 16px;
+  padding-top: 4px;
+}
+
+.prefs-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 14px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.prefs-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.prefs-badge.ok {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+
+.prefs-badge.warn {
+  background: var(--warn-soft);
+  color: var(--warning);
+}
+
+.prefs-muted {
+  margin: 0 0 14px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.prefs-notice {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--success);
+}
+
+.prefs-error {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.prefs-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.theme-choice {
+  /* .page-panel is a grid, so an inline-flex child still stretches across the row
+     unless it is told to sit at its own width. */
+  display: inline-flex;
+  justify-self: start;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.theme-choice button {
+  min-width: 64px;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.theme-choice button[aria-checked='true'] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
