@@ -416,7 +416,7 @@ select:focus-visible {
 
 .tree-row.selected {
   background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
   color: var(--text-1);
 }
 
@@ -557,7 +557,6 @@ select:focus-visible {
   min-width: 0;
   padding: 10px 14px;
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--surface);
 }
@@ -577,19 +576,7 @@ select:focus-visible {
 }
 
 .chat-card.command {
-  border-left-color: var(--border-strong);
-}
-
-.chat-card.command.running {
-  border-left-color: var(--warning);
-}
-
-.chat-card.command.done {
-  border-left-color: var(--success);
-}
-
-.chat-card.command.failed {
-  border-left-color: var(--danger);
+  background: var(--surface-alt);
 }
 
 .chat-card.command header {
@@ -605,12 +592,22 @@ select:focus-visible {
   color: var(--text-1);
 }
 
+/* Status reads as a dot on the label, not as a coloured edge on the card. */
 .chat-state {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: 11px;
   color: var(--text-2);
+}
+
+.chat-state::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 50%;
+  background: currentColor;
 }
 
 .chat-card.command.done .chat-state {
@@ -957,7 +954,7 @@ select:focus-visible {
 .editor-tab.active {
   background: var(--surface);
   color: var(--text-1);
-  box-shadow: inset 0 2px 0 var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
   border-color: var(--border-strong);
 }
 
@@ -2161,12 +2158,12 @@ select:focus-visible {
   gap: 8px;
 }
 
-.chat-card.agent.streaming {
-  border-left-color: var(--warning);
+.chat-card.agent.streaming .chat-state {
+  color: var(--warning);
 }
 
-.chat-card.agent.error {
-  border-left-color: var(--danger);
+.chat-card.agent.error .chat-state {
+  color: var(--danger);
 }
 
 .chat-caret {
@@ -2488,6 +2485,7 @@ body.chat-dock-resizing {
   padding: 0 10px 0 12px;
   border: 0;
   border-right: 1px solid var(--border);
+  border-radius: 9px 9px 0 0;
   color: var(--text-2);
   font-family: var(--mono);
   font-size: 12px;
@@ -2515,7 +2513,7 @@ body.chat-dock-resizing {
 .file-tab.active {
   background: var(--surface);
   color: var(--text-1);
-  box-shadow: inset 0 2px 0 var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
   border-right-color: var(--border-strong);
 }
 
@@ -3146,7 +3144,10 @@ body.chat-dock-resizing {
 /* ---------- 按章归组树（帧 21） ---------- */
 
 .tree-children.nested {
-  padding-left: 20px;
+  padding-left: 16px;
+  margin-left: 14px;
+  border-left: 1px solid var(--border);
+  gap: 3px;
 }
 
 .tree-chapter {
@@ -3258,25 +3259,49 @@ body.chat-dock-resizing {
   height: 32px;
   padding: 2px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 9px;
   background: var(--surface-alt);
 }
 
 .segmented button {
-  min-width: 56px;
-  padding: 0 8px;
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 1 1 0;
+  min-width: 58px;
+  min-height: 0; /* the global button rule would overflow the 28px slot */
+  height: 100%;
+  padding: 0 10px;
   border: 0;
-  border-radius: 5px;
+  border-radius: 7px; /* concentric with the 9px outer minus the 2px inset */
   background: none;
   color: var(--text-2);
   font: inherit;
   font-size: 12px;
+  line-height: 1;
   cursor: pointer;
+}
+
+.segmented button + button::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: -1px;
+  width: 1px;
+  background: var(--border-strong);
+}
+
+/* No divider should touch the selected pill from either side. */
+.segmented button.selected::before,
+.segmented button:has(+ .selected)::before {
+  display: none;
 }
 
 .segmented button.selected {
   background: var(--surface);
   color: var(--text-1);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
 }
 
 .segmented button:not(.selected):hover {
@@ -3800,7 +3825,7 @@ body.chat-dock-resizing {
 
 .manifest-row.selected {
   background: var(--accent-soft);
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .manifest-row .index,

@@ -139,10 +139,15 @@
       复现＝悬停输入框上沿即出现整块橙色）；
       调用记录区可拖高、可收起，高度与折叠态存 localStorage，状态行折叠后仍可见；
       删除对话坞上方的检索机制说明行（后端 Agent 一写就过时）。
-- [ ] 批注剩余未修：分段控件「列表/源码」文字居中与中分线（6）；
-      **全面废弃「三边无色、单边有色」**——`chat-card` 左色条、`tree-row.selected` 左内阴影、
-      `file-tab.active` 顶部内阴影、`manifest-row.selected` 左内阴影（8/9/11）；
-      `draft.md` 与 `brief.md` 层级分界加引导线（9）；`file-tab` 圆角平滑（10）。
+- [x] 批注第二批已修（6 / 8 / 9 / 10 / 11）：**全面废弃「三边无色、单边有色」**——
+      `chat-card` 左色条改为对称细边 + 状态圆点（`.chat-state::before` 用 currentColor）、
+      `tree-row.selected` / `manifest-row.selected` 左内阴影改整圈描边、
+      `editor-tab.active` / `file-tab.active` 顶部内阴影改整圈描边、`file-tab` 上圆角 9px、
+      `draft.md` 与 `brief.md` 之间加层级引导线（`.tree-children.nested` 左边框 + 缩进）。
+      分段控件「列表/源码」真因是**全局 `button{min-height:32px}` 塞不进 28px 槽位**
+      （与批注 1 的拖拽手柄同一个病根）：补 `min-height:0` + `display:grid;place-items:center`
+      + 与外框同心的 7px 圆角 + 1px 中分线（选中 pill 两侧自动隐线）。
+      待主人在界面里目视确认 6 与 10/11（需打开 toc.md，静态截图截不到）。
 - [x] 绘画详情页右侧数据核实：**全是前端假数据**，后端生图能力为 0（批注 7，
       与 ARCHITECTURE §4 缺口 5 一致，本次只确认不改）。
 - [ ] 全局控件尺寸/对齐继续按界面走查，发现一处修一处并补可复现步骤
