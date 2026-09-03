@@ -120,7 +120,8 @@ describe("EditorPane", () => {
     expect(screen.getByText("调用记录")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "收起调用记录" }));
-    expect(screen.queryByText("调用记录")).toBeNull();
+    // The title row stays; it is what carries the control to open it again.
+    expect(document.querySelector(".record-list")).toBeNull();
     expect(screen.getByRole("button", { name: "展开调用记录" })).toBeTruthy();
     // The status line survives collapsing, but a clean document has nothing
     // to report: whether client and server agree is implementation news.

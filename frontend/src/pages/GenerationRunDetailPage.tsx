@@ -41,17 +41,17 @@ const KIND_LABELS: Record<string, string> = {
   feedback: "审稿意见",
 };
 
-const LAYERS: Array<{ name: string; kinds: string[] }> = [
-  { name: "A 层 · 全本蓝图", kinds: ["novel", "blueprint"] },
-  { name: "B 层 · 目录", kinds: ["toc"] },
-  { name: "C 层 · 分卷窗口", kinds: ["arc"] },
-  { name: "D 层 · 本章简报", kinds: ["brief"] },
-  { name: "已有正文与摘要", kinds: ["chapter", "chapter_tail", "summary"] },
-  { name: "设定库", kinds: ["setting", "character", "foreshadow", "feedback"] },
+const LAYERS: Array<{ short: string; kinds: string[] }> = [
+  { short: "A", kinds: ["novel", "blueprint"] },
+  { short: "B", kinds: ["toc"] },
+  { short: "C", kinds: ["arc"] },
+  { short: "D", kinds: ["brief"] },
+  { short: "正文", kinds: ["chapter", "chapter_tail", "summary"] },
+  { short: "设定", kinds: ["setting", "character", "foreshadow", "feedback"] },
 ];
 
 function layerOf(kind: string) {
-  return LAYERS.find((layer) => layer.kinds.includes(kind))?.name ?? "其他资料";
+  return LAYERS.find((layer) => layer.kinds.includes(kind))?.short ?? "—";
 }
 
 const TASK_LABELS: Record<string, string> = {
@@ -162,21 +162,6 @@ export default function GenerationRunDetailPage() {
     [run],
   );
 
-  const groupedBlocks = useMemo(() => {
-    if (!manifest) return [];
-    const order: string[] = [];
-    const byLayer = new Map<string, ContextManifestBlock[]>();
-    for (const block of manifest.blocks) {
-      const layer = layerOf(block.kind);
-      const bucket = byLayer.get(layer);
-      if (bucket) bucket.push(block);
-      else {
-        byLayer.set(layer, [block]);
-        order.push(layer);
-      }
-    }
-    return order.map((layer) => ({ layer, blocks: byLayer.get(layer) ?? [] }));
-  }, [manifest]);
 
   const selectedBlock = useMemo<ContextManifestBlock | null>(() => {
     if (!manifest) return null;
@@ -299,36 +284,34 @@ export default function GenerationRunDetailPage() {
               manifest ? (
                 <>
                   <div className="manifest-columns" aria-hidden="true">
-                    <span>#</span><span>资料</span><span>内容</span>
+                    <span>#</span><span>层</span><span>资料</span><span>内容</span>
                     <span>字数</span><span>说明</span>
                   </div>
+                  {/* One table. The layer is a column beside the row it
+                      describes, not a heading that splits the list. */}
                   <div className="manifest-list">
-                    {groupedBlocks.map((group) => (
-                      <section key={group.layer}>
-                        <h3>{group.layer} · {group.blocks.length} 份</h3>
-                        {group.blocks.map((block, index) => (
-                          <button
-                            key={`${block.ref}-${block.index ?? index}`}
-                            type="button"
-                            className={`manifest-row ${block.injected ? "" : "dropped"} ${
-                              selectedKey === `${block.ref}:${block.index ?? index}` ? "selected" : ""
-                            }`}
-                            onClick={() => setSelectedKey(`${block.ref}:${block.index ?? index}`)}
-                          >
-                            <span className="index">{block.index ?? "—"}</span>
-                            <span className="kind">{KIND_LABELS[block.kind] ?? block.kind}</span>
-                            <span className="source">
-                              <strong>{block.label}</strong>
-                            </span>
-                            <span className="chars tabular">{block.chars}</span>
-                            <span className="reason">
-                              {block.injected
-                                ? block.reason || "已交给模型"
-                                : block.reason || "本次未交给模型"}
-                            </span>
-                          </button>
-                        ))}
-                      </section>
+                    {manifest.blocks.map((block, index) => (
+                      <button
+                        key={`${block.ref}-${block.index ?? index}`}
+                        type="button"
+                        className={`manifest-row ${block.injected ? "" : "dropped"} ${
+                          selectedKey === `${block.ref}:${block.index ?? index}` ? "selected" : ""
+                        }`}
+                        onClick={() => setSelectedKey(`${block.ref}:${block.index ?? index}`)}
+                      >
+                        <span className="index">{block.index ?? "—"}</span>
+                        <span className="layer">{layerOf(block.kind)}</span>
+                        <span className="kind">{KIND_LABELS[block.kind] ?? block.kind}</span>
+                        <span className="source">
+                          <strong>{block.label}</strong>
+                        </span>
+                        <span className="chars tabular">{block.chars}</span>
+                        <span className="reason">
+                          {block.injected
+                            ? block.reason || "已交给模型"
+                            : block.reason || "本次未交给模型"}
+                        </span>
+                      </button>
                     ))}
                   </div>
                   {selectedBlock ? (

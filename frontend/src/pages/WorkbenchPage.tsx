@@ -194,16 +194,16 @@ export default function WorkbenchPage() {
 
   // The store decides when a file deserves the stage (tree click, AI proposal,
   // and the B→D jump all route through open()). revealSeq survives this route,
-  // so its first run after mounting is news from the previous visit rather
-  // than a click; treating it as a click is what pulled the file pane back
-  // over the prose every time a run detail page was left.
-  const revealMounted = useRef(false);
+  // so a fresh mount must only react to a change it caused, never to the value
+  // it inherited. A boolean "mounted" flag is not enough: StrictMode runs every
+  // effect twice on mount, so the flag is already true on the second pass and
+  // the stale value is mistaken for a click anyway. Comparing against the value
+  // captured at first render is the version that holds in both passes.
+  const lastReveal = useRef(revealSeq);
   useEffect(() => {
-    if (!revealMounted.current) {
-      revealMounted.current = true;
-      return;
-    }
-    if (!revealSeq) return;
+    const previous = lastReveal.current;
+    lastReveal.current = revealSeq;
+    if (previous === revealSeq || !revealSeq) return;
     setCharactersOpen(false);
     setRightView("files");
   }, [revealSeq]);

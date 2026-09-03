@@ -33,6 +33,16 @@ function readBottomPref() {
   }
 }
 
+/* The record list showed raw task keys (draft, fact_extract), which is backend
+   vocabulary, not the author's. */
+const TASK_LABELS: Record<string, string> = {
+  draft: "正文生成",
+  review: "AI 审稿",
+  summary: "章摘要",
+  fact_extract: "事实提取",
+  chat: "对话",
+};
+
 function formatTime(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
@@ -356,7 +366,12 @@ export default function EditorPane() {
           hidden={bottom.collapsed}
           onPointerDown={startBottomDrag}
         />
-        <div className="editor-footer" aria-live="polite">
+        {/* One slim row: the title, whatever is worth saying about the
+           document, and the chevron that folds the list under it. It used to
+           be two stacked rows, and once the header shortcut went away the
+           extra one read as dead space. */}
+        <header className="editor-footer" aria-live="polite">
+          <h3>调用记录</h3>
           {/* A clean document has nothing to report. Saying the client and
               server agree was news about the mechanism, not the manuscript. */}
           <span className="save-state">
@@ -374,21 +389,17 @@ export default function EditorPane() {
           >
             {bottom.collapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
           </button>
-        </div>
+        </header>
       {generationRuns.length > 0 && !bottom.collapsed && (
-        <section className="records" aria-label="生成与审稿记录">
-          {/* One entry point per record. This shortcut always opened the
-              newest run whatever the row beside it was showing, and the newest
-              run is usually a fact extraction with nothing worth reading. */}
-          <header className="records-head">
-            <h3>调用记录</h3>
-          </header>
-          <ul className="record-list">
+        <ul className="record-list" aria-label="生成与审稿记录">
             {generationRuns.map((run) => (
               <li key={`run-${run.id}`}>
                 <div>
                   <strong>{run.model}</strong>
-                  <span>{run.task_type} · {formatTime(run.created_at)}</span>
+                  <span>
+                    {TASK_LABELS[run.task_type] ?? run.task_type} ·{" "}
+                    {formatTime(run.created_at)}
+                  </span>
                   <span className="tabular">{run.token_input} / {run.token_output} token</span>
                 </div>
                 <button
@@ -400,9 +411,8 @@ export default function EditorPane() {
                   详情
                 </button>
               </li>
-            ))}
-          </ul>
-        </section>
+          ))}
+        </ul>
       )}
       </div>
     </section>

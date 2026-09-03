@@ -183,6 +183,34 @@
 - [x] 批注 5/11 补了**红→绿证据**：`App.test.tsx` 新增用例先种 `revealSeq=3` 模拟上次访问遗留，
       再渲染 `?chapter=2` 断言落在正文；把两处修复回退后该用例确实失败（报
       `Unable to find a label with the text of: 章节正文`，即主人描述的症状），恢复后通过。
+- [x] 批注第四批已修，且**全部用真实浏览器量过**（2026-09-03 第三轮 7 条）：
+      **1/2** 根因不是尺寸写错，是全局 `button{min-height:32px}` 把 `height:15px` 整段顶掉——
+      实测 `.tree-prefix` 高 **32px**（行高也是 32，所以主人看到的就是「根本没改」）。
+      补 `min-height:0`；同一病根一次性扫出 **4 处**（`.tree-prefix` `.chat-attachments button`
+      `.file-tab-close` `.mode-switch button`），不等主人逐条点名。实测 15×15、上下各留 8.5px。
+      **3** 上轮改到 `.editor-body` 后四条边**确实都上了色**，但实测其右边界
+      `right=1656` 恰等于 `innerWidth=1656`：1px 边框压在窗口最外一列，肉眼读作「右边无色」。
+      改到 `.editor-scroll`（不含缩略栏，即主人给的两个选项之一），右边界 1600，四边齐。
+      **4.1 滑块缝** `.minimap-viewport` 写死 `left:2px; right:2px`，实测两侧各 2px。
+      改左右贴齐，描边换 `inset box-shadow`（不占布局）。实测 gapLeft=gapRight=**0**。
+      **4.2 拖动偏差** 主人猜「字少导致比率不对」——**猜错，真因是 CSS 与 JS 两套几何**：
+      CSS `top:(100% - h%)*progress` 可走 **514.8px** 且从 **0** 起；JS `thumbGeometry()`
+      `MM_PAD + progress*(track-h)` 可走 **501.5px** 且从 **8px** 起。抓取判定用 JS 值、
+      画出来的是 CSS 值 → 按下瞬间跳 8px、拖动持续漂 2.6%。改法：CSS 引入
+      `--pad:8px` / `--track` / `max(18px,…)`，与 JS 同式。实测 expTop==actTop==204.4、
+      expH==actH==101.3；**CDP 真实鼠标拖 90px → 滑块走 90.1px（1:1）**。
+      **5** `.editor-footer` 与 `.records-head` 两行合成一行（标题 + 状态 + chevron），
+      `.record-list` 接管滚动；实测 footer 高 **29px**（原两行约 59px）。
+      **6** 删掉每层一个 `<h3>` 分组行，层级降为表格一列（A/B/C/D/正文/设定），单表；
+      顺手清掉我上轮引入的新毛病：`.manifest-list{min-height:260px}` 让 2 行数据下面
+      挂着 230px 空白、行高 48px 偏松。现测 `listH3=0`、层列值 `A,D`。
+      **7 返回仍落错页——我上轮的修复是错的，而且我的测试没抓到**。`revealMounted` 布尔守卫
+      在 **StrictMode** 下失效：React 对每个 effect 跑两遍，第二遍 flag 已真，遗留值照样被
+      当成点击。jsdom 测试没套 StrictMode，所以绿灯 + 真机坏。改成 `lastReveal = useRef(revealSeq)`
+      比较首渲染捕获值，两遍都跳过；回归测试现在套 `<StrictMode>`。
+      CDP 真实序列复验：文件面板开着 → 进 run 详情 → 浏览器返回 → `prose:true, filePane:false`
+      （**上一轮同一序列实测是 `filePane:true`**）。
+      顺手：记录列表里的原始 `draft` / `fact_extract` 改中文（与上轮批注 9 同一族）。
 - [ ] **批注 14/15 · 19 · 20 转设计轨（需 Figma 出帧，本批未动代码）**
       14/15 对话坞与消息区之间的硬分割线：主人明确「这里你最好先打设计稿」→ **帧 24**；
       19 人物卡片的身份/目标等长字段应能在编辑器里改对应 MD，并在「新建人物」旁加跳转入口；

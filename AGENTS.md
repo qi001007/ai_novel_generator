@@ -136,6 +136,29 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
 - **文档各管一段，别往一处堆**：理由→DECISIONS，现状→ARCHITECTURE，需求→PRD/REQUIREMENTS，
   视觉→UI-DESIGN，进度→WORKSTREAM-PLAN，入口→HANDOFF（DECISIONS §6）。
 
+### 前端取证通道（2026-09-03 实测可用，优先于猜）
+
+本机无 Chrome、`chrome_devtools` MCP 不可用，但裸 Edge + CDP 完全可用，且能真实点击与拖拽：
+
+    $edge='C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe'
+    Start-Process $edge -WindowStyle Hidden -ArgumentList '--headless','--no-sandbox',
+      '--disable-gpu','--remote-debugging-port=9333',
+      '--user-data-dir=E:\novel-generator\.scratch\cdp-profile','--window-size=1680,1050','about:blank'
+
+Node v24 有全局 `WebSocket`，不需要 `ws` 包。`PUT /json/new?<url>` 开页 →
+`Runtime.evaluate`（结果在 `resp.result.result.value`，不是 `resp.result.value`）→
+`Input.dispatchMouseEvent` 真驱动鼠标 → `Page.captureScreenshot` 出图。
+**效果类 bug 一律先量再改**。本轮靠 `getBoundingClientRect` 才发现两件阅读永远看
+不出来的事：「焦点环四条边都上了色，但右边界 right=1656 恰等于 innerWidth=1656，
+所以看起来少一条」；「缩略栏滑块的 CSS 与 JS 几何差 8px 常量 + 2.6% 比例」。
+
+### 测试环境必须等于运行环境（2026-09-03 吃过一次）
+
+`main.tsx` 套了 `<StrictMode>`，React 对每个 effect **跑两遍**。凡用「布尔 flag
+忽略首次执行」的写法在真机上一律失效，而 jsdom 测试若不套 StrictMode 会给绿灯。
+正确写法：**把首渲染的值存进 `useRef`，后续只对变化起反应**；测试要套同样的
+StrictMode。「测试全绿」不等于功能实现——红线的又一次命中，本次是真机复现才发现的。
+
 ### 写类调用纪律（2026-09-03 补，同一天被自己咬了四次）
 
 - **一条消息只发一个写 tool_use。** 同一消息内的多个 tool_use 会被 harness **全部执行**，

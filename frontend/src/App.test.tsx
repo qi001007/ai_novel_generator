@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -97,10 +98,14 @@ describe("App", () => {
     // that file rather than on the chapter they had come from.
     useFiles.setState({ revealSeq: 3 });
 
+    // StrictMode because main.tsx uses it: its double effect run is what made
+    // the first version of this fix pass here and fail in the browser.
     render(
-      <MemoryRouter initialEntries={["/novels/1?chapter=2"]}>
-        <App />
-      </MemoryRouter>,
+      <StrictMode>
+        <MemoryRouter initialEntries={["/novels/1?chapter=2"]}>
+          <App />
+        </MemoryRouter>,
+      </StrictMode>
     );
 
     await waitFor(() => {
