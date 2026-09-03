@@ -130,6 +130,8 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [elapsed, setElapsed] = useState(0);
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
   const [dockHeight, setDockHeight] = useState(118);
+  const [attachments, setAttachments] = useState<File[]>([]);
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const pendingFiles = useFiles((store) => store.pending);
   const offerFile = useFiles((store) => store.offer);
   const discardFile = useFiles((store) => store.discardProposal);
@@ -419,6 +421,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
 
   function stop() {
     abortRef.current?.abort();
+  }
+
+  function addAttachments(files: FileList | null) {
+    if (!files?.length) return;
+    setAttachments((prev) => [...prev, ...Array.from(files)].slice(0, 10));
   }
 
   function startDockDrag(event: ReactPointerEvent<HTMLButtonElement>) {
@@ -863,6 +870,24 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             {running ? <Square size={14} /> : <CornerDownLeft size={14} />}
           </button>
         </div>
+        {attachments.length ? (
+          <ul className="chat-attachments" aria-label="已选附件">
+            {attachments.map((file, index) => (
+              <li key={`${file.name}-${index}`}>
+                <span title={`${file.name} · ${(file.size / 1024).toFixed(1)} KB`}>
+                  {file.name}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`移除附件 ${file.name}`}
+                  onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
         <div className="chat-toolbar">
           <div className="mode-switch" role="radiogroup" aria-label="对话模式">
             <button
@@ -886,20 +911,24 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           </div>
           <button
             type="button"
-            className={`chat-attach ${mentionQuery !== null ? "active" : ""}`}
-            aria-label="添加引用资料"
-            aria-expanded={mentionQuery !== null}
-            onClick={() => {
-              if (mentionQuery !== null) {
-                setMentionQuery(null);
-                return;
-              }
-              setInput((value) => (/@([^\s@]*)$/.test(value) ? value : `${value}@`));
-              setMentionQuery("");
-            }}
+            className="chat-attach"
+            aria-label="上传附件"
+            onClick={() => attachmentInputRef.current?.click()}
           >
             <Paperclip size={15} />
           </button>
+          <input
+            ref={attachmentInputRef}
+            type="file"
+            className="chat-attachment-input"
+            multiple
+            aria-label="选择附件文件"
+            accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.html,.htm,.doc,.docx"
+            onChange={(event) => {
+              addAttachments(event.target.files);
+              event.target.value = "";
+            }}
+          />
           <span className="spacer" />
           <div className="model-menu-wrap" ref={modelMenuRef}>
             <button

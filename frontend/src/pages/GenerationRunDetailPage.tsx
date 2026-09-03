@@ -17,10 +17,10 @@ import type {
 type DetailTab = "context" | "output" | "check" | "review";
 
 const TABS: Array<{ id: DetailTab; label: string }> = [
-  { id: "context", label: "注入上下文" },
-  { id: "output", label: "模型输出" },
+  { id: "context", label: "注入了哪些资料" },
+  { id: "output", label: "模型写出的正文" },
   { id: "check", label: "机械校验" },
-  { id: "review", label: "审稿" },
+  { id: "review", label: "审稿记录" },
 ];
 
 function formatTime(value: string) {
@@ -282,7 +282,7 @@ export default function GenerationRunDetailPage() {
                             <span className="kind">{block.kind}</span>
                             <span className="source">
                               <strong>{block.label}</strong>
-                              <small>{block.ref}</small>
+                              <small>{block.ref} · {block.injected ? "已注入" : "未注入"}</small>
                             </span>
                             <span className="chars tabular">{block.chars}</span>
                             <span className="reason">{block.reason || (block.injected ? "符合当前窗口规则" : "未注入")}</span>
@@ -294,10 +294,13 @@ export default function GenerationRunDetailPage() {
                   {selectedBlock ? (
                     <div className="manifest-detail">
                       <header>
-                        <strong>{selectedBlock.label}</strong>
-                        <span>{selectedBlock.ref} · {selectedBlock.chars} 字</span>
+                        <strong>{selectedBlock.label} 原文</strong>
+                        <span>{selectedBlock.ref} · {selectedBlock.chars} 字 · 模型收到同一份内容</span>
                       </header>
-                      <pre>{selectedBlock.excerpt || "这条旧记录没有保存上下文原文。"}</pre>
+                      <pre>
+                        {selectedBlock.excerpt ||
+                          "这条旧记录生成于摘录保存功能上线前，这里没有当时的原文。请看模型输出，或重新生成一条新 run。"}
+                      </pre>
                     </div>
                   ) : null}
                 </>
