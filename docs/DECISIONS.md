@@ -133,6 +133,7 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
 | T-11 | 从 `backend/.env` 取值禁用 `Split` 按等号切，改用 `Substring('NOVEL_LLM_API_KEY='.Length)`（见 R-01） | C5d |
 | T-12 | Figma 帧 05（框选双栏）**不是过时稿**：它是 REQUIREMENTS 里未做的 v1 选区修改，属 backlog，保留 | C5b |
 | T-13 | 围栏兼容垫片：`PROPOSAL_BLOCK` 同时收 `yaml / yml / md / markdown @路径`，旧格式提案不因迁移而丢 | C6 收口 |
+| T-14 | **注入清单会把空内容显示成「必注入 · 0 字」，让一部没有规划的书看起来完全正常**。根因：`build_writing_context` 的预算循环是 `if tier == TIER_CORE or used + chars <= budget`，必注入档无条件入选、不看内容是否为空；collector 侧只有 blueprint 段做了 `if value.strip()`。修法：装配层统一过滤空文本块、移入未注入区并写明原因。**这条同时是「测试全绿 ≠ 功能正确」的实证**：`test_writing_context.py:223` 早就断言 `all(chars > 0)`，但 fixture 字段全非空，从未覆盖空值情形。 | 2026-09-03 S0 |
 
 ---
 
@@ -161,6 +162,8 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
 已登记进 REQUIREMENTS §1 与 WORKSTREAM U7，排在 S3 之后。
 
 ### 5.3 仍待主人
+
+另：2026-09-03 跑 S0 清单时发现并修复一个缺陷，见 T-14。
 
 | 编号 | 事项 | 说明 |
 |---|---|---|

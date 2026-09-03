@@ -237,6 +237,8 @@ LLM 调用＝一路文本回来即结束。已有的是外壳（多轮窗口 8�
   `blocks[]`，每块含 `kind`、`label`、`chars`、`dropped`、`reason`）
 - [x] v1 清单可经 `GET /api/novels/{id}/chapters/{chapter_id}/generation-runs` 回读
 - [x] v1 后端测试覆盖：清单 JSON 可解析、块顺序符合 10.2、dropped 记录正确
+- [x] v1 空内容不得显示为已注入：必注入档若内容为空，须落入未注入区并写明原因
+      （2026-09-03 跑真实清单时发现的缺陷，见 DECISIONS T-14；此前空简报会以「必注入 · 0 字」混在清单里）
 - [x] v1 旧格式兼容：`input_summary` 已有的 `ChapterBrief:12` 纯文本读侧不得报错
 - [ ] P2 详情页把清单渲染成可折叠列表（依赖 4.5 的独立页范式）
 

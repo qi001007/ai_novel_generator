@@ -306,3 +306,21 @@ def test_chat_plan_mode_is_labelled_apart(session, monkeypatch, capsys):
     printed = capsys.readouterr().out
     assert "计划模式" in printed
     assert "写作模式" not in printed
+
+
+def test_blank_core_blocks_are_reported_missing_not_injected(session):
+    """An empty field is not an injection: a blank D-brief must not read as 必注入 0 字."""
+    novel, brief = _book(session)
+    brief.goal = ""
+    brief.characters = []
+    session.add(brief)
+    session.commit()
+    ctx = _window(session, novel, brief)
+    assert all(block.chars > 0 for block in ctx.selected), "空内容不得算已注入"
+    blank = [b for b in ctx.dropped if b.item.kind == "brief" and b.item.ref == f"brief:{brief.id}"]
+    assert blank, "空简报要出现在未注入清单里，而不是隐身"
+    assert "必注入" in blank[0].reason and "空" in blank[0].reason
+    manifest = json.loads(ctx.manifest_json())
+    assert all(b["chars"] > 0 for b in manifest["blocks"] if b["injected"])
+    blank_entries = [b for b in manifest["blocks"] if not b["injected"] and b["chars"] == 0]
+    assert blank_entries and all(b["reason"] for b in blank_entries), "空块要带原因出现在未注入区"

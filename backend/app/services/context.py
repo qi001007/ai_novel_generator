@@ -824,6 +824,16 @@ def build_writing_context(
     blocks = [ContextBlock(item, tier_of(item)) for item in pool]
     blocks.sort(key=lambda block: (block.tier, WRITING_KIND_ORDER.get(block.item.kind, 99), block.item.label))
 
+    # An empty field is not an injection. A blank D-brief used to land in the manifest as
+    # 「必注入 · 0 字」, which made a chapter with no planning at all look healthy. Filtering
+    # here rather than per collector so every current and future kind is covered (D-06).
+    empties = [block for block in blocks if not block.item.text.strip()]
+    blocks = [block for block in blocks if block.item.text.strip()]
+    for block in empties:
+        block.reason = (
+            "必注入档内容为空，本章实际缺少该资料" if block.tier == TIER_CORE else "内容为空，未注入"
+        )
+
     selected: list[ContextBlock] = []
     dropped: list[ContextBlock] = []
     used = 0
@@ -844,7 +854,7 @@ def build_writing_context(
         budget=budget,
         used=used,
         selected=selected,
-        dropped=[*dropped, *duplicated],
+        dropped=[*dropped, *empties, *duplicated],
     )
 
 
