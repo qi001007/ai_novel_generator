@@ -468,11 +468,11 @@ select:focus-visible {
 /* ---------- 中栏对话流 ---------- */
 
 /* Rows are pinned: the notice bar is conditional, so an implicit
-   auto/1fr/auto assignment would hand the 1fr row to the dock. The context
-   line is row 3 and the dock row 4, per frame 14 the dock is input + tools. */
+   auto/1fr/auto assignment would hand the 1fr row to the dock. Per frame 14
+   the dock is input + tools. */
 .chat-pane {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
   background: var(--bg);
 }
@@ -485,12 +485,8 @@ select:focus-visible {
   grid-row: 2;
 }
 
-.chat-context {
-  grid-row: 3;
-}
-
 .chat-dock {
-  grid-row: 4;
+  grid-row: 3;
 }
 
 .chat-notice {
@@ -920,13 +916,6 @@ select:focus-visible {
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-}
-
-.chat-context {
-  margin: 0;
-  padding: 6px 16px 0;
-  font-size: 11px;
-  color: var(--text-2);
 }
 
 /* ---------- 右栏编辑器 ---------- */

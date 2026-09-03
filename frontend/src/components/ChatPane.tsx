@@ -785,9 +785,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           );
         })}
       </div>
-      <p className="chat-context">
-        上下文：自动检索 + @点名 · 保留最近 8 条 · Enter 发送 / Shift+Enter 换行
-      </p>
       <div className="chat-dock" style={{ height: dockHeight }}>
         <button
           type="button"

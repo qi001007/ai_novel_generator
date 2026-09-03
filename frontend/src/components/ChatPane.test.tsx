@@ -220,10 +220,9 @@ describe("ChatPane", () => {
     expect(tools).toBeTruthy();
     expect(field.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // The send button belongs to the field row, and the context line is not a
-    // third dock row — frame 14's dock is two rows tall.
+    // The send button belongs to the field row, and there is no mechanism
+    // caption above it: that line described pre-Agent retrieval rules.
     expect(field.querySelector(".chat-send")).toBeTruthy();
-    expect(container.querySelector(".chat-dock .chat-context")).toBeNull();
-    expect(container.querySelector(".chat-pane > .chat-context")).toBeTruthy();
+    expect(container.querySelector(".chat-context")).toBeNull();
   });
 });
