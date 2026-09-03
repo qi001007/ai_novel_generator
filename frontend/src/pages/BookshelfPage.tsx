@@ -135,8 +135,8 @@ export default function BookshelfPage() {
         ) : (
           <div className="bookshelf-grid">
             {novels.map((novel) => (
+              <div className="book-slot" key={novel.id}>
               <article
-                key={novel.id}
                 className="book-card"
                 data-novel-id={novel.id}
                 style={{ "--book-shade": 58 + ((novel.id * 23) % 42) } as BookVars}
@@ -151,21 +151,21 @@ export default function BookshelfPage() {
                   navigate(`/novels/${novel.id}`);
                 }}
               >
-                <div className="book-cover">
-                  <div className="book-3d">
-                    <span className="book-top" aria-hidden="true" />
-                    {novel.cover_image ? (
-                      <img
-                        className="book-face"
-                        src={novel.cover_image}
-                        alt={`${novel.title} 封面`}
-                      />
-                    ) : (
-                      <span className="book-face" aria-hidden="true">
-                        {novel.title.slice(0, 1)}
-                      </span>
-                    )}
-                  </div>
+                <span className="book-spine" aria-hidden="true" />
+                <span className="book-top" aria-hidden="true" />
+                <span className="book-fore-edge" aria-hidden="true" />
+                <div className="book-face">
+                  {novel.cover_image ? (
+                    <img
+                      className="book-cover-img"
+                      src={novel.cover_image}
+                      alt={`${novel.title} 封面`}
+                    />
+                  ) : (
+                    <span className="book-monogram" aria-hidden="true">
+                      {novel.title.slice(0, 1)}
+                    </span>
+                  )}
                   <button
                     type="button"
                     className="cover-change-btn"
@@ -180,40 +180,45 @@ export default function BookshelfPage() {
                     <ImagePlus size={14} />
                     更换封面
                   </button>
-                </div>
-                <div className="book-card-body">
-                  <h3>{novel.title}</h3>
-                  <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句。"}</p>
-                  {progressPercent(novel) === null ? null : (
-                    <div
-                      className="book-progress"
-                      role="progressbar"
-                      aria-valuenow={progressPercent(novel) ?? 0}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={`已完成 ${novel.done_count ?? 0} 章，共 ${novel.target_chapters || novel.chapter_count || 0} 章目标`}
-                    >
-                      <span style={{ width: `${progressPercent(novel)}%` }} />
-                    </div>
-                  )}
-                  <p className="book-stats">
-                    <span>
-                      {novel.chapter_count === undefined
-                        ? "—"
-                        : `${novel.chapter_count}${novel.target_chapters ? " / " + novel.target_chapters : ""} 章`}
-                    </span>
-                    <span aria-hidden="true">·</span>
-                    <span>{formatWords(novel.total_words)}</span>
-                  </p>
-                  <p className="book-updated">最近编辑 {relativeTime(novel.last_edited_at)}</p>
                   <span className="book-continue" aria-hidden="true">继续写作</span>
+                  <div className="book-meta">
+                    <h3>{novel.title}</h3>
+                    <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句。"}</p>
+                    {progressPercent(novel) === null ? null : (
+                      <div
+                        className="book-progress"
+                        role="progressbar"
+                        aria-valuenow={progressPercent(novel) ?? 0}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label={`已完成 ${novel.done_count ?? 0} 章，共 ${novel.target_chapters || novel.chapter_count || 0} 章目标`}
+                      >
+                        <span style={{ width: `${progressPercent(novel)}%` }} />
+                      </div>
+                    )}
+                    <p className="book-stats">
+                      <span>
+                        {novel.chapter_count === undefined
+                          ? "—"
+                          : `${novel.chapter_count}${novel.target_chapters ? " / " + novel.target_chapters : ""} 章`}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>{formatWords(novel.total_words)}</span>
+                    </p>
+                    <p className="book-updated">最近编辑 {relativeTime(novel.last_edited_at)}</p>
+                  </div>
                 </div>
               </article>
+              </div>
             ))}
-            <button type="button" className="book-card book-new-card" onClick={openWizard}>
-              <span className="book-new-plus" aria-hidden="true">+</span>
-              <span className="book-new-label">新建作品</span>
-            </button>
+            <div className="book-slot">
+              <button type="button" className="book-card book-new-card" onClick={openWizard}>
+                <span className="book-face">
+                  <span className="book-new-plus" aria-hidden="true">+</span>
+                  <span className="book-new-label">新建作品</span>
+                </span>
+              </button>
+            </div>
           </div>
         )}
       </main>

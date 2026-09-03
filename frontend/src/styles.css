@@ -2005,179 +2005,266 @@ select:focus-visible {
   margin: 0;
 }
 
+/* The card IS the book. An earlier pass drew a small 3D book inside a flat rectangle,
+   which is an illustration of a book, not a book: the owner asked for the whole card to
+   carry the shape and the depth. So the cover holds the title, the summary and the
+   progress, and the spine / fore-edge are faces of this same slab.
+
+   Geometry note, because the signs are easy to get backwards: under rotateY(±90) an
+   element's local x maps onto world z, so each side face only shifts by half the
+   thickness to land on the slab edge; and rotateY(+angle) is what turns the SPINE
+   toward the viewer. The ground shadow deliberately lives on .book-slot, not on the
+   slab - a filter on a preserve-3d element flattens it. */
 .bookshelf-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fill, minmax(214px, 1fr));
+  gap: 38px 28px;
 }
 
-.book-card {
+.book-slot {
   position: relative;
-  display: grid;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  overflow: hidden;
-  cursor: pointer;
-  transition: box-shadow 150ms ease-out, border-color 150ms ease-out;
-}
-
-.book-card:hover {
-  box-shadow: var(--shadow-lift);
-}
-
-/* A book, not a rectangle with a stripe glued on. The slab has real thickness: the
-   spine and the fore-edge are separate 3D faces, so the geometry is written down.
-   Under rotateY(±90) an element's local x maps onto world z, so each side face only
-   has to shift by half the thickness to sit on the slab edge, and the cover moves
-   half a thickness forward. Note the sign: rotateY(+angle) is what turns the spine
-   toward the viewer; a negative angle would show the pages instead. */
-.book-cover {
-  --book-t: 34px;
-  --book-w: 132px;
-  --book-h: 188px;
-  position: relative;
-  height: 244px;
-  display: grid;
-  place-items: center;
-  perspective: 1200px;
+  perspective: 1500px;
   perspective-origin: 50% 38%;
-  background:
-    radial-gradient(34% 13% at 62% 92%, color-mix(in srgb, var(--text-1) 26%, transparent), transparent 68%),
-    radial-gradient(58% 26% at 58% 96%, color-mix(in srgb, var(--text-1) 10%, transparent), transparent 72%),
-    linear-gradient(color-mix(in srgb, var(--surface-alt) 55%, transparent), transparent 55%);
 }
 
-.book-cover::after {
+.book-slot::after {
   content: "";
   position: absolute;
-  left: 50%;
-  bottom: 20px;
-  width: 132px;
-  height: 18px;
-  transform: translateX(-42%) skewX(-24deg);
+  left: 14%;
+  right: 6%;
+  bottom: -12px;
+  height: 20px;
   border-radius: 50%;
-  background: color-mix(in srgb, var(--text-1) 18%, transparent);
-  filter: blur(7px);
+  background: color-mix(in srgb, var(--text-1) 30%, transparent);
+  filter: blur(9px);
+  transform: skewX(-16deg);
+  opacity: 0.5;
+  transition: opacity 180ms ease-out, transform 180ms ease-out;
   pointer-events: none;
 }
 
-.book-3d {
+.book-slot:hover::after,
+.book-slot:focus-within::after {
+  opacity: 0.75;
+  transform: skewX(-16deg) translateY(4px) scaleX(1.05);
+}
+
+.book-card {
+  --book-t: 40px;
   position: relative;
-  width: var(--book-w);
-  height: var(--book-h);
+  display: block;
+  width: 100%;
+  aspect-ratio: 0.72;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   transform-style: preserve-3d;
-  transform: rotateY(23deg) rotateX(-11deg);
+  transform: rotateY(20deg) rotateX(-8deg);
   transition: transform 200ms ease-out;
 }
 
-/* spine — left face of the slab */
-.book-3d::before {
+.book-card:hover,
+.book-card:focus-visible {
+  transform: rotateY(26deg) rotateX(-10deg) translateY(-6px);
+}
+
+.book-card:focus-visible {
+  outline: none;
+}
+
+/* back cover, so the slab is never see-through */
+.book-card::before {
   content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateZ(calc(var(--book-t) / -2)) rotateY(180deg);
+  border-radius: 2px 5px 5px 2px;
+  background: color-mix(in srgb, var(--accent-strong) calc(var(--book-shade, 74) * 1%), var(--text-1));
+}
+
+/* spine: the left face */
+.book-spine {
   position: absolute;
   top: 0;
   bottom: 0;
   left: 0;
   width: var(--book-t);
   transform: translateX(calc(var(--book-t) / -2)) rotateY(-90deg);
+  border-right: 1px solid color-mix(in srgb, var(--text-1) 34%, transparent);
   background: linear-gradient(
     90deg,
     color-mix(in srgb, var(--accent-strong) calc(var(--book-shade, 74) * 1%), var(--text-1)) 0%,
     var(--accent-strong) 46%,
     color-mix(in srgb, var(--accent) calc(var(--book-shade, 74) * 1%), var(--text-1)) 100%
   );
-  /* hinge: the joint where the cover meets the spine catches a thin bright edge */
-  border-right: 1px solid color-mix(in srgb, var(--text-1) 34%, transparent);
 }
 
-/* fore-edge — right face, ruled like stacked paper */
-.book-3d::after {
-  content: "";
+/* the head of the text block, seen because the slab tilts back a little */
+.book-top {
   position: absolute;
-  top: 4px;
-  bottom: 4px;
+  top: 0;
+  left: 6px;
+  width: calc(100% - 12px);
+  height: var(--book-t);
+  transform: translateY(calc(var(--book-t) / -2)) rotateX(90deg);
+  background: repeating-linear-gradient(0deg, #ded8cf 0 1px, #fbfaf8 1px 6px);
+  box-shadow: inset 0 -3px 5px -4px color-mix(in srgb, var(--text-1) 30%, transparent);
+}
+
+/* fore-edge: the text block, inset because the boards overhang it */
+.book-fore-edge {
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
   right: 0;
   width: var(--book-t);
   transform: translateX(calc(var(--book-t) / 2)) rotateY(90deg);
   background: repeating-linear-gradient(90deg, #ded8cf 0 1px, #fbfaf8 1px 6px);
 }
 
+/* the front cover, which now carries every piece of information */
 .book-face {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  transform: translateZ(calc(var(--book-t) / 2));
+  border-radius: 2px 5px 5px 2px;
+  overflow: hidden;
+  background: linear-gradient(
+    112deg,
+    color-mix(in srgb, var(--accent) 22%, var(--surface)) 0%,
+    color-mix(in srgb, var(--accent) 7%, var(--surface)) 44%,
+    var(--surface) 100%
+  );
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text-1) 10%, transparent),
+    inset 10px 0 18px -13px color-mix(in srgb, var(--text-1) 45%, transparent);
+}
+
+.book-cover-img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  display: grid;
-  place-items: center;
   object-fit: cover;
-  transform: translateZ(calc(var(--book-t) / 2));
-  border-radius: 1px 3px 3px 1px;
-  background: linear-gradient(
-    112deg,
-    color-mix(in srgb, var(--accent) 20%, var(--surface)) 0%,
-    color-mix(in srgb, var(--accent) 7%, var(--surface)) 46%,
-    var(--surface) 100%
-  );
-  box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, var(--text-1) 9%, transparent),
-    inset 7px 0 12px -9px color-mix(in srgb, var(--text-1) 34%, transparent);
 }
 
-/* The letter cover is a span that itself carries .book-face, so the selector
-   has to be span.book-face - ".book-face span" would match nothing. */
-span.book-face {
-  font-family: "Noto Serif SC", serif;
-  font-size: 56px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-/* top face: the stacked pages seen from above (needs the negative rotateX) */
-.book-top {
+.book-monogram {
   position: absolute;
-  top: 0;
-  left: 4px;
-  width: calc(100% - 8px);
-  height: var(--book-t);
-  transform: translateY(calc(var(--book-t) / -2)) rotateX(90deg);
-  background: repeating-linear-gradient(
-    0deg,
-    #ded8cf 0 1px,
-    #fcfbf9 1px 6px
-  );
-  /* the cover overhangs the text block at the head, so shade the far end */
-  box-shadow: inset 0 -3px 4px -3px color-mix(in srgb, var(--text-1) 26%, transparent);
-}
-
-.book-card:hover .book-3d,
-.book-card:focus-visible .book-3d {
-  transform: rotateY(29deg) rotateX(-13deg) translateY(-4px);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  /* The book keeps its 3D pose; only the turn on hover is dropped. */
-  .book-3d {
-    transition: none;
-  }
-}
-
-.cover-change-btn {
-  position: absolute;
+  top: 6%;
   right: 10px;
-  bottom: 10px;
-  display: inline-flex;
-  align-items: center;
+  font-family: "Noto Serif SC", serif;
+  font-size: 104px;
+  line-height: 1;
+  color: var(--accent);
+  opacity: 0.14;
+  pointer-events: none;
+}
+
+.book-meta {
+  position: relative;
+  grid-row: 2;
+  display: grid;
   gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 15px;
+  padding: 16px;
+  background: linear-gradient(
+    transparent,
+    color-mix(in srgb, var(--surface) 82%, transparent) 30%,
+    color-mix(in srgb, var(--surface) 94%, transparent) 60%
+  );
+}
+
+.book-meta h3 {
+  margin: 0;
+  font-family: "Noto Serif SC", serif;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-1);
+}
+
+/* scoped through .book-meta p on purpose: a bare class loses to the rule above it */
+.book-meta p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.book-meta p.book-stats {
+  display: flex;
+  gap: 6px;
+  -webkit-line-clamp: unset;
+  color: var(--text-1);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.book-meta p.book-updated {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.book-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-1) 12%, transparent);
+  overflow: hidden;
+}
+
+.book-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
   background: var(--accent);
+}
+
+.book-continue {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--accent-strong);
   color: #fff;
   font-size: 12px;
   font-weight: 500;
   opacity: 0;
-  transform: translateY(4px);
+  transition: opacity 160ms ease-out;
+  pointer-events: none;
+}
+
+.book-card:hover .book-continue,
+.book-card:focus-visible .book-continue {
+  opacity: 1;
+}
+
+.cover-change-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text-1);
+  font-size: 12px;
+  box-shadow: inset 0 0 0 1px var(--border);
+  opacity: 0;
+  transform: translateY(-4px);
   transition: opacity 150ms ease-out, transform 150ms ease-out;
   pointer-events: none;
 }
@@ -2189,102 +2276,31 @@ span.book-face {
   pointer-events: auto;
 }
 
-.cover-change-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* the create slot keeps the same silhouette but stays an empty outline */
+.book-new-card::before {
+  display: none;
 }
 
-.book-card-body {
-  display: grid;
-  gap: 6px;
-  padding: 14px 16px 16px;
-}
-
-.book-card-body h3 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.book-card-body p {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-/* 帧 25: one summary line, a progress rail, tabular figures, and a hover affordance.
-   These are scoped through .book-card-body p because that selector is (0,1,1) -
-   a bare .book-desc at (0,1,0) loses to it and the rules never apply. */
-.book-card-body p.book-desc {
-  -webkit-line-clamp: 1;
-}
-
-.book-progress {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--surface-alt);
-  overflow: hidden;
-}
-
-.book-progress > span {
-  display: block;
-  height: 100%;
-  border-radius: 2px;
-  background: var(--accent);
-}
-
-.book-card-body p.book-stats {
-  -webkit-line-clamp: 1;
+.book-new-card .book-face {
   display: flex;
-  gap: 6px;
-  color: var(--text-1);
-  font-variant-numeric: tabular-nums;
-}
-
-.book-card-body p.book-updated {
-  -webkit-line-clamp: 1;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* The row is always reserved: revealing it on hover only would reflow the grid and
-   make every neighbour card jump. */
-.book-continue {
-  height: 18px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--accent);
-  opacity: 0;
-  transition: opacity 150ms ease-out;
-}
-
-.book-card:hover .book-continue,
-.book-card:focus-within .book-continue {
-  opacity: 1;
-}
-
-.book-new-card {
-  display: grid;
-  place-content: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   gap: 10px;
-  min-height: 296px;
+  background: none;
   border: 1px dashed var(--border-strong);
-  background: transparent;
+  box-shadow: none;
   color: var(--text-2);
 }
 
-.book-new-card:hover,
-.book-new-card:focus-visible {
+.book-new-card:hover .book-face,
+.book-new-card:focus-visible .book-face {
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .book-new-plus {
-  font-size: 28px;
+  font-size: 26px;
   line-height: 1;
 }
 
@@ -2298,6 +2314,13 @@ span.book-face {
   gap: 8px;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .book-card,
+  .book-slot::after,
+  .book-continue {
+    transition: none;
+  }
+}
 .wizard-backdrop {
   position: fixed;
   inset: 0;
