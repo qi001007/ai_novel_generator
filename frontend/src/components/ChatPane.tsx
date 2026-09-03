@@ -791,7 +791,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       <div className="chat-dock" style={{ height: dockHeight }}>
         <button
           type="button"
-          className="chat-dock-handle"
+          className="drag-line chat-dock-handle"
           aria-label="调整输入框高度"
           title="拖动调整输入框高度"
           onPointerDown={startDockDrag}

@@ -1016,17 +1016,14 @@ select:focus-visible {
 .editor-scroll {
   flex: 1;
   min-width: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-}
-
-.editor-scroll::-webkit-scrollbar {
-  display: none;
+  overflow: hidden;
 }
 
 /* VSCode-style minimap: the whole page scaled to fit, with one transparent
    slider that tracks the scroll 1:1 and is dragged to turn the page. */
 .minimap {
+  --view-top: 0;
+  --view-height: 1;
   position: relative;
   flex: none;
   width: 56px;
@@ -1041,31 +1038,20 @@ select:focus-visible {
   inset: 0;
 }
 
-.minimap-viewport {
-  position: absolute;
-  right: 3px;
-  left: 3px;
-  top: calc(var(--view-top) * 100%);
-  height: calc(var(--view-height) * 100%);
-  border: 1px solid color-mix(in srgb, var(--text-2) 42%, transparent);
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--accent) 8%, transparent);
-  pointer-events: none;
-}
-
 .editor-body textarea {
   display: block;
   width: min(720px, 100%);
-  min-height: 100%;
+  height: 100%;
   margin: 0 auto;
   padding: 28px 24px 48px;
   border: 0;
   background: transparent;
   border-radius: 0;
   resize: none;
-  /* Grown to its full text height in EditorPane: .editor-scroll owns scrolling,
-     which is what lets the minimap slider be the only scroll control. */
-  overflow: hidden;
+  /* The textarea is the scroller, but its own scrollbar stays hidden: the
+     minimap slider is the single visible control, and it scrolls this element. */
+  overflow-y: auto;
+  scrollbar-width: none;
   font-family: "Noto Serif SC", "Source Han Serif SC", serif;
   font-size: 17px;
   /* 17 * 1.9 = 32.3 matches LINE_PX in EditorPane.tsx. */
@@ -1076,6 +1062,10 @@ select:focus-visible {
    tall as its own content puts the bottom edge off-screen, leaving three sides. */
 .editor-body:focus-within {
   box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.editor-body textarea::-webkit-scrollbar {
+  display: none;
 }
 
 .editor-body textarea:focus-visible {
@@ -1104,11 +1094,39 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex: none;
   padding: 4px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
   font-size: 12px;
   color: var(--text-2);
+}
+
+/* The panel under the editor: its own top border, a drag line above it, and a
+   height the user sets — the records list used to eat 200px that could not go. */
+.editor-bottom {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.footer-toggle {
+  margin-left: auto;
+  min-height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.footer-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .editor-empty {
@@ -1153,10 +1171,10 @@ select:focus-visible {
 }
 
 .records {
-  max-height: 200px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 10px 16px;
-  border-top: 1px solid var(--border);
   background: var(--surface);
 }
 
@@ -2855,11 +2873,14 @@ body.chat-dock-resizing {
 }
 
 /* The canvas fades everything the slider does not cover, so the slider frames
-   the live region instead of hiding it. top/height come from the scroll ratio. */
+   the live region instead of hiding it. The draft editor drives --view-top and
+   --view-height from its scroll ratio; the file editor sets px inline. */
 .minimap-viewport {
   position: absolute;
   right: 2px;
   left: 2px;
+  top: calc((100% - (var(--view-height) * 100%)) * var(--view-top));
+  height: calc(var(--view-height) * 100%);
   border: 1px solid color-mix(in srgb, var(--text-2) 26%, transparent);
   border-radius: 3px;
   background: var(--minimap-thumb-bg);
@@ -3170,30 +3191,44 @@ body.chat-dock-resizing {
   background: var(--surface);
 }
 
-.chat-dock-handle {
-  position: absolute;
-  top: -1px;
-  left: 0;
-  right: 0;
-  height: 1px;
+/* A drag line is a line, not a bar: 2px visible, ~10px of invisible hit area.
+   min-height:0 is load-bearing — the global button rule would inflate this
+   into a slab that lights up as a rectangle the moment you hover it. */
+.drag-line {
+  position: relative;
+  flex: none;
+  height: 2px;
+  min-height: 0;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   cursor: ns-resize;
   touch-action: none;
-  padding: 0;
   outline: none;
 }
 
-.chat-dock-handle::after {
+.drag-line::after {
   content: "";
   position: absolute;
   inset: -4px 0;
 }
 
-.chat-dock-handle:hover,
-.chat-dock-handle:focus-visible {
+.drag-line:hover,
+.drag-line:focus-visible {
   background: var(--accent);
   box-shadow: none;
+}
+
+.drag-line:active {
+  transform: none;
+}
+
+.chat-dock-handle {
+  position: absolute;
+  top: -1px;
+  right: 0;
+  left: 0;
 }
 
 .toc-toolbar {

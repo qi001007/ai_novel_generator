@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,6 +36,7 @@ function seed(chapters: Chapter[], content = "") {
 
 describe("EditorPane", () => {
   beforeEach(() => {
+    window.localStorage.removeItem("novelgen.editor-bottom");
     seed([]);
   });
   afterEach(() => {
@@ -85,15 +86,45 @@ describe("EditorPane", () => {
     expect(drawn).toEqual(["第一段正文。", "第二段带缩进。", "结尾一句。"]);
   });
 
-  it("sizes the slider from the scroll ratio instead of a separate scrollbar", () => {
+  it("drives the slider from the scroll ratio, not from JS-measured pixels", () => {
     seed([emptyChapter], emptyChapter.content);
     render(<MemoryRouter><EditorPane /></MemoryRouter>);
 
-    const slider = document.querySelector(".minimap-viewport") as HTMLElement;
-    expect(slider.style.top).toMatch(/px$/);
-    expect(slider.style.height).toMatch(/px$/);
-    // The textarea is grown by JS, so the page scrolls in .editor-scroll.
+    // The textarea is the scroller and the slider follows it through CSS vars:
+    // a cached pixel height once went stale and collapsed the map to 1px.
+    const map = document.querySelector(".minimap") as HTMLElement;
+    expect(map.style.getPropertyValue("--view-top")).not.toBe("");
+    expect(map.style.getPropertyValue("--view-height")).not.toBe("");
     expect(document.querySelector(".editor-scroll textarea")).toBeTruthy();
+  });
+
+  it("collapses the records panel but keeps the save state on screen", () => {
+    seed([emptyChapter], emptyChapter.content);
+    useWorkbench.setState({
+      generationRuns: [{
+        id: 7,
+        chapter_id: 1,
+        task_type: "draft",
+        model: "MiniMax-M2.5",
+        prompt_version: "v1",
+        input_summary: "",
+        output: "",
+        token_input: 10,
+        token_output: 20,
+        cost_estimate: 0,
+        status: "done",
+        created_at: "2026-09-03T03:16:58",
+      }],
+    });
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+    expect(screen.getByText("调用记录")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "收起调用记录" }));
+    expect(screen.queryByText("调用记录")).toBeNull();
+    expect(screen.getByRole("button", { name: "展开调用记录" })).toBeTruthy();
+    // The status line is the one thing that must survive collapsing.
+    expect(screen.getByText("与服务器一致")).toBeTruthy();
+    expect(window.localStorage.getItem("novelgen.editor-bottom")).toContain("true");
   });
 
   it("shows the empty-state placeholder without a chapter", () => {

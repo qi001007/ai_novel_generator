@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { useNavigate } from "react-router-dom";
+
+type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
 /* Editor line metrics, mirrored in CSS below: the minimap scales the real page
    by these numbers, so the slider maps 1:1 onto the scroll position. */
@@ -7,6 +10,27 @@ const MM_PAD = 8;
 const TEXT_PX = 17;
 const LINE_PX = 32.3;
 const TEXT_BOX = 672;
+
+/* The records panel keeps its size between reloads: it is the one region every
+   run gets read in, and the default is too tall for a quick glance. */
+const BOTTOM_KEY = "novelgen.editor-bottom";
+const BOTTOM_MIN = 96;
+const BOTTOM_MAX = 420;
+
+function readBottomPref() {
+  const fallback = { height: 168, collapsed: false };
+  try {
+    const raw = window.localStorage.getItem(BOTTOM_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Partial<typeof fallback>;
+    return {
+      height: Math.min(BOTTOM_MAX, Math.max(BOTTOM_MIN, Math.round(parsed.height ?? 168))),
+      collapsed: Boolean(parsed.collapsed),
+    };
+  } catch {
+    return fallback;
+  }
+}
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -34,34 +58,17 @@ export default function EditorPane() {
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
   const brief = briefs.find((item) => item.id === chapter?.brief_id) ?? null;
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // The textarea is the scroller: it keeps the browser's caret-into-view work,
+  // and the minimap reads and writes its scrollTop. Growing it to its full
+  // content height instead once produced 41707px, because scrollHeight is taken
+  // while the flex row is still laid out a few dozen pixels wide.
+  const scrollRef = useRef<HTMLTextAreaElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const grabRef = useRef<number | null>(null);
   const [view, setView] = useState({ progress: 0, height: 1 });
-  const [mmSize, setMmSize] = useState({ w: 1, h: 1 });
-
-  // The textarea is grown to its full content height, which hands scrolling to
-  // .editor-scroll. Without this the textarea scrolls itself and the minimap
-  // slider can never follow it.
-  const autosize = useCallback(() => {
-    const node = textareaRef.current;
-    if (!node) return;
-    node.style.height = "auto";
-    node.style.height = `${node.scrollHeight}px`;
-  }, []);
-
-  const measure = useCallback(() => {
-    const host = minimapRef.current;
-    if (!host) return;
-    const rect = host.getBoundingClientRect();
-    const next = {
-      w: Math.max(1, Math.round(rect.width)),
-      h: Math.max(1, Math.round(rect.height)),
-    };
-    setMmSize((prev) => (prev.w === next.w && prev.h === next.h ? prev : next));
-  }, []);
+  const [redraw, setRedraw] = useState(0);
+  const [bottom, setBottom] = useState(readBottomPref);
 
   const syncView = useCallback(() => {
     const node = scrollRef.current;
@@ -83,28 +90,26 @@ export default function EditorPane() {
     setSavedAt(null);
   }, [chapter?.id]);
 
-  // Re-measure after the browser has laid out the new text.
+  // The canvas is sized from live layout, so it must be repainted once the
+  // browser has settled the new text and again whenever a box changes size.
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      autosize();
-      measure();
       syncView();
+      setRedraw((count) => count + 1);
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [draftContent, selectedChapterId, autosize, measure, syncView]);
+  }, [draftContent, selectedChapterId, syncView]);
 
-  // Keep the minimap canvas and the grown textarea in step with layout changes.
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return undefined;
     const observer = new ResizeObserver(() => {
-      autosize();
-      measure();
       syncView();
+      setRedraw((count) => count + 1);
     });
     if (minimapRef.current) observer.observe(minimapRef.current);
     if (scrollRef.current) observer.observe(scrollRef.current);
     return () => observer.disconnect();
-  }, [autosize, measure, syncView, selectedChapterId]);
+  }, [syncView, selectedChapterId]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -122,6 +127,14 @@ export default function EditorPane() {
   }, [state]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem(BOTTOM_KEY, JSON.stringify(bottom));
+    } catch {
+      // A full or blocked storage must not break the editor.
+    }
+  }, [bottom]);
+
+  useEffect(() => {
     if (!dirty) return;
     function onBeforeUnload(event: BeforeUnloadEvent) {
       event.preventDefault();
@@ -131,8 +144,9 @@ export default function EditorPane() {
   }, [dirty]);
 
   // The slider is the viewport: same proportions as the page it mirrors.
-  function thumbGeometry() {
-    const track = Math.max(1, mmSize.h - MM_PAD * 2);
+  // The map height is measured where it is used and never cached in state.
+  function thumbGeometry(mapHeight: number) {
+    const track = Math.max(1, mapHeight - MM_PAD * 2);
     const height = Math.max(18, Math.min(track, track * view.height));
     return {
       track,
@@ -146,9 +160,8 @@ export default function EditorPane() {
     const host = minimapRef.current;
     const scroller = scrollRef.current;
     if (!canvas || !host) return;
-    const rect = host.getBoundingClientRect();
-    const width = mmSize.w || Math.max(1, Math.round(rect.width));
-    const height = mmSize.h || Math.max(1, Math.round(rect.height));
+    const width = Math.max(1, host.clientWidth);
+    const height = Math.max(1, host.clientHeight);
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(width * dpr);
     canvas.height = Math.round(height * dpr);
@@ -194,11 +207,11 @@ export default function EditorPane() {
     }
 
     // Fade whatever the slider does not cover: the bright band is the page you see.
-    const geo = thumbGeometry();
+    const geo = thumbGeometry(height);
     ctx.fillStyle = dark ? "rgba(22,22,24,.6)" : "rgba(252,252,251,.62)";
     ctx.fillRect(0, 0, width, Math.max(0, geo.top));
     ctx.fillRect(0, geo.top + geo.height, width, Math.max(0, height - geo.top - geo.height));
-  }, [draftContent, mmSize, view]);
+  }, [draftContent, view, redraw]);
 
   if (!chapter) {
     return (
@@ -212,7 +225,6 @@ export default function EditorPane() {
   }
 
   const liveCount = draftContent.replace(/\s/g, "").length;
-  const thumb = thumbGeometry();
 
   // Dragging the slider keeps the offset you grabbed it at; clicking bare track
   // centres it under the cursor. Either way it scrolls the page, not the map.
@@ -221,7 +233,7 @@ export default function EditorPane() {
     const map = minimapRef.current;
     if (!node || !map) return;
     const rect = map.getBoundingClientRect();
-    const geo = thumbGeometry();
+    const geo = thumbGeometry(rect.height);
     const span = Math.max(1, geo.track - geo.height);
     const offset = clientY - rect.top - (grabRef.current ?? geo.height / 2);
     const progress = Math.min(1, Math.max(0, (offset - MM_PAD) / span));
@@ -231,7 +243,7 @@ export default function EditorPane() {
   function onMinimapPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const geo = thumbGeometry();
+    const geo = thumbGeometry(rect.height);
     const offset = event.clientY - rect.top;
     const inside = offset >= geo.top && offset <= geo.top + geo.height;
     grabRef.current = inside ? offset - geo.top : geo.height / 2;
@@ -248,6 +260,29 @@ export default function EditorPane() {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+  }
+
+  function startBottomDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = bottom.height;
+
+    function onMove(moveEvent: PointerEvent) {
+      const next = Math.min(
+        BOTTOM_MAX,
+        Math.max(BOTTOM_MIN, Math.round(startHeight + startY - moveEvent.clientY)),
+      );
+      setBottom((prev) => (prev.height === next ? prev : { ...prev, height: next }));
+    }
+    function onUp() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.classList.remove("chat-dock-resizing");
+    }
+    document.body.classList.add("chat-dock-resizing");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   }
 
   return (
@@ -283,15 +318,12 @@ export default function EditorPane() {
         </div>
       </header>
       <div className="editor-body">
-        <div
-          className="editor-scroll"
-          ref={scrollRef}
-          onScroll={syncView}
-        >
+        <div className="editor-scroll">
           <textarea
-            ref={textareaRef}
+            ref={scrollRef}
             value={draftContent}
             onChange={(event) => state.setDraftContent(event.target.value)}
+            onScroll={syncView}
             aria-label="章节正文"
             spellCheck={false}
           />
@@ -299,6 +331,7 @@ export default function EditorPane() {
         <div
           className="minimap"
           ref={minimapRef}
+          style={{ "--view-top": view.progress, "--view-height": view.height } as MapVars}
           aria-hidden="true"
           title="缩略栏：拖动透明滑块翻页"
           onPointerDown={onMinimapPointerDown}
@@ -307,20 +340,37 @@ export default function EditorPane() {
           onPointerCancel={endMinimapScrub}
         >
           <canvas ref={minimapCanvasRef} className="minimap-canvas" />
-          <i
-            className="minimap-viewport"
-            style={{ top: `${thumb.top}px`, height: `${thumb.height}px` }}
-          />
+          <i className="minimap-viewport" />
         </div>
       </div>
-      <div className="editor-footer" aria-live="polite">
-        <span className="save-state">
-          {dirty ? "未保存" : savedAt ? `已保存 ${savedAt}` : "与服务器一致"}
-        </span>
-        {notice ? <span className="notice">{notice}</span> : null}
-        {state.error ? <span className="status-error">{state.error}</span> : null}
-      </div>
-      {generationRuns.length > 0 && (
+      <div
+        className="editor-bottom"
+        style={bottom.collapsed ? undefined : { height: bottom.height }}
+      >
+        <button
+          type="button"
+          className="drag-line bottom-resize"
+          aria-label="调整调用记录区高度"
+          title="拖动调整调用记录区高度"
+          hidden={bottom.collapsed}
+          onPointerDown={startBottomDrag}
+        />
+        <div className="editor-footer" aria-live="polite">
+          <span className="save-state">
+            {dirty ? "未保存" : savedAt ? `已保存 ${savedAt}` : "与服务器一致"}
+          </span>
+          {notice ? <span className="notice">{notice}</span> : null}
+          {state.error ? <span className="status-error">{state.error}</span> : null}
+          <button
+            type="button"
+            className="footer-toggle"
+            aria-expanded={!bottom.collapsed}
+            onClick={() => setBottom((prev) => ({ ...prev, collapsed: !prev.collapsed }))}
+          >
+            {bottom.collapsed ? "展开调用记录" : "收起调用记录"}
+          </button>
+        </div>
+      {generationRuns.length > 0 && !bottom.collapsed && (
         <section className="records" aria-label="生成与审稿记录">
           <header className="records-head">
             <h3>调用记录</h3>
@@ -359,6 +409,7 @@ export default function EditorPane() {
           </ul>
         </section>
       )}
+      </div>
     </section>
   );
 }
