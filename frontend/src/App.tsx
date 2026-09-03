@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import BookshelfPage from "./pages/BookshelfPage";
+import PreferencesPage from "./pages/PreferencesPage";
 import WorkbenchPage from "./pages/WorkbenchPage";
 import GenerationRunDetailPage from "./pages/GenerationRunDetailPage";
 import PaintingDetailPanel from "./components/PaintingDetailPanel";
@@ -17,6 +18,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<BookshelfPage />} />
+      <Route path="/settings" element={<PreferencesPage />} />
       <Route path="/novels/:novelId" element={<WorkbenchPage />} />
       <Route
         path="/novels/:novelId/chapters/:chapterId/runs/:runId"
