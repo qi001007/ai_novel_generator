@@ -250,8 +250,15 @@
 - [ ] **帧 25 的后端前置（决定工作量，先对齐再动手）**：现无任何配置写接口。需 AppConfig 表 + Alembic
        迁移 + GET/PUT /api/config/llm + POST /api/config/llm/test + GET/PUT /api/config/generation，`.env`
        降为首次种子/兜底；api_key 只写不读，GET 返掩码尾 4 位，PUT 收到掩码串＝不修改，不进日志与导出。
- - [ ] **帧 25 书架数据缺口**：`GET /api/novels` 现只回 title/description，卡上的「N/M 章 · X 万字 · 最近
-       编辑」需新增聚合（扩响应或加 /api/novels/cards）。数据缺就显示「—」，禁止编造。
+ - [x] **帧 25 书架部分已实现**（主人指出：批准的设计稿一直没落地，这本就是原始任务）
+       GET /api/novels 现返回 NovelCard（chapter_count / done_count / total_words /
+       last_edited_at，status=final 计为已完成），前端书卡按稿呈现：一行简介、4px 进度轨、
+       tabular-nums 数据行、相对时间、hover 出「继续写作」、网格末尾固定虚线新建卡；
+       顶栏两个空 div 占位换成「设置 + 主题」两枚图标钮。缺聚合就显示「—」，不编数（有测试钉住）。
+       落地时抓到并修掉两个真缺陷：.book-card-body p 优先级 (0,1,1) 把 .book-stats 等 (0,1,0)
+       三条规则整组压掉（计算样式实测 display 由 flex 退回 -webkit-box）；以及 JSX 文本节点里
+       误写模板字面量的 dollar-brace，界面出现字面「$—」。
+       新增 BookshelfPage.test.tsx —— 此前书架零测试，正是它能长期漂移的原因。
 - [ ] 全局控件尺寸/对齐继续按界面走查，发现一处修一处并补可复现步骤
 - [x] 死样式类扫描：`34f36ef` 已清除，2026-09-03 实测 `styles.css` 与代码零命中，结案（Q-01）
 - [x] 帧 20 四项规格装饰：**裁定不补**——是给主人看的标注，不是界面元素（Q-03）

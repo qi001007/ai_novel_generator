@@ -1,8 +1,10 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import SQLModel, Session, select
 
 from app.db import get_session
-from app.models import Novel, utc_now
+from app.models import Chapter, Novel, utc_now
 
 
 router = APIRouter(prefix="/novels", tags=["novels"])
@@ -23,9 +25,48 @@ class NovelUpdate(SQLModel):
     cover_image: str | None = None
 
 
-@router.get("", response_model=list[Novel])
-def list_novels(session: Session = Depends(get_session)) -> list[Novel]:
-    return list(session.exec(select(Novel)).all())
+class NovelCard(Novel):
+    """A novel plus the numbers the bookshelf shows.
+
+    The shelf cannot derive these itself without pulling every chapter, and it must not
+    invent them: a missing figure stays zero and the UI renders an em dash.
+    """
+
+    chapter_count: int = 0
+    done_count: int = 0
+    total_words: int = 0
+    last_edited_at: datetime | None = None
+
+
+@router.get("", response_model=list[NovelCard])
+def list_novels(session: Session = Depends(get_session)) -> list[NovelCard]:
+    novels = list(session.exec(select(Novel).order_by(Novel.id)).all())
+    # one pass over chapters, grouped here: a single-user desktop app has no reason to
+    # carry a SQL aggregate that the caller then has to join back anyway
+    tallies: dict[int, list] = {}
+    for chapter in session.exec(select(Chapter)).all():
+        row = tallies.setdefault(chapter.novel_id, [0, 0, 0, None])
+        row[0] += 1
+        if chapter.status == "final":
+            row[1] += 1
+        row[2] += chapter.word_count
+        if row[3] is None or chapter.updated_at > row[3]:
+            row[3] = chapter.updated_at
+
+    cards = []
+    for novel in novels:
+        count, done, words, latest = tallies.get(novel.id, [0, 0, 0, None])
+        stamps = [stamp for stamp in (latest, novel.updated_at) if stamp is not None]
+        cards.append(
+            NovelCard(
+                **novel.model_dump(),
+                chapter_count=count,
+                done_count=done,
+                total_words=words,
+                last_edited_at=max(stamps) if stamps else None,
+            )
+        )
+    return cards
 
 
 @router.post("", response_model=Novel, status_code=201)

@@ -2216,6 +2216,88 @@ span.book-face {
   overflow: hidden;
 }
 
+/* 帧 25: one summary line, a progress rail, tabular figures, and a hover affordance.
+   These are scoped through .book-card-body p because that selector is (0,1,1) -
+   a bare .book-desc at (0,1,0) loses to it and the rules never apply. */
+.book-card-body p.book-desc {
+  -webkit-line-clamp: 1;
+}
+
+.book-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface-alt);
+  overflow: hidden;
+}
+
+.book-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.book-card-body p.book-stats {
+  -webkit-line-clamp: 1;
+  display: flex;
+  gap: 6px;
+  color: var(--text-1);
+  font-variant-numeric: tabular-nums;
+}
+
+.book-card-body p.book-updated {
+  -webkit-line-clamp: 1;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The row is always reserved: revealing it on hover only would reflow the grid and
+   make every neighbour card jump. */
+.book-continue {
+  height: 18px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.book-card:hover .book-continue,
+.book-card:focus-within .book-continue {
+  opacity: 1;
+}
+
+.book-new-card {
+  display: grid;
+  place-content: center;
+  gap: 10px;
+  min-height: 296px;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.book-new-card:hover,
+.book-new-card:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.book-new-plus {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.book-new-label {
+  font-size: 13px;
+}
+
+.topbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .wizard-backdrop {
   position: fixed;
   inset: 0;

@@ -64,3 +64,25 @@ def test_update_missing_novel_returns_404(client: TestClient) -> None:
     response = client.put("/api/novels/999", json={"description": "x"})
 
     assert response.status_code == 404
+
+
+def test_bookshelf_cards_carry_real_totals(client: TestClient) -> None:
+    """The shelf shows counts, so they must come from the database, not from the UI."""
+    from tests.planning_helpers import create_chapter
+
+    novel_id = client.post("/api/novels", json={"title": "书架聚合"}).json()["id"]
+    create_chapter(client, novel_id, chapter_number=1, content="一" * 120)
+    create_chapter(client, novel_id, chapter_number=2, content="二" * 80, status="final")
+
+    card = next(n for n in client.get("/api/novels").json() if n["id"] == novel_id)
+    assert card["chapter_count"] == 2
+    assert card["total_words"] == 200
+    assert card["done_count"] == 1
+    assert card["last_edited_at"] is not None
+
+
+def test_bookshelf_card_of_an_empty_novel_is_zero_not_missing(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "空白书架"}).json()["id"]
+
+    card = next(n for n in client.get("/api/novels").json() if n["id"] == novel_id)
+    assert (card["chapter_count"], card["done_count"], card["total_words"]) == (0, 0, 0)

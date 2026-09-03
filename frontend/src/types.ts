@@ -5,6 +5,12 @@ export type Novel = {
   target_chapters: number;
   style_constraints: string;
   cover_image: string;
+  /* Bookshelf aggregates. Absent on the create/update responses, which return a bare
+     novel, so the shelf must render an em dash rather than invent a number. */
+  chapter_count?: number;
+  done_count?: number;
+  total_words?: number;
+  last_edited_at?: string | null;
 };
 
 export type NovelUpdatePayload = Partial<

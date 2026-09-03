@@ -1,11 +1,46 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { ImagePlus, Upload, X } from "lucide-react";
+import { ImagePlus, Moon, Settings, Sun, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useWorkbench } from "../store/workbench";
+import type { Novel } from "../types";
 
 const STEPS = ["书名与简介", "篇幅与文风", "确认创建"];
+
+/* The stamps come back as naive UTC, so without an explicit zone the browser reads
+   them as local and every "3 天前" is off by eight hours. */
+function parseStamp(iso: string): Date {
+  return /(?:Z|[+-]\d{2}:\d{2})$/.test(iso) ? new Date(iso) : new Date(iso + "Z");
+}
+
+function relativeTime(iso?: string | null): string {
+  if (!iso) return "—";
+  const then = parseStamp(iso).getTime();
+  if (Number.isNaN(then)) return "—";
+  const minutes = Math.round((Date.now() - then) / 60000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days} 天前`;
+  const date = parseStamp(iso);
+  return `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+}
+
+function formatWords(count?: number): string {
+  if (count === undefined) return "—";
+  return count >= 10000 ? `${(count / 10000).toFixed(1)} 万字` : `${count} 字`;
+}
+
+function progressPercent(novel: Novel): number | null {
+  const done = novel.done_count;
+  const span = novel.target_chapters || novel.chapter_count;
+  if (done === undefined || !span) return null;
+  return Math.min(100, Math.round((done / span) * 100));
+}
+
 
 // Same trick EditorPane uses for inline custom properties.
 type BookVars = CSSProperties & Record<`--${string}`, string | number>;
@@ -74,11 +109,14 @@ export default function BookshelfPage() {
           <strong>墨阁</strong>
           <span>AI 长篇连载工作台</span>
         </div>
-        <div />
-        <div />
-        <button type="button" onClick={toggleTheme}>
-          {theme === "dark" ? "浅色" : "深色"}
-        </button>
+        <div className="topbar-actions">
+          <button type="button" aria-label="设置" title="设置" onClick={() => navigate("/settings")}>
+            <Settings size={16} />
+          </button>
+          <button type="button" aria-label="切换主题" title="切换主题" onClick={toggleTheme}>
+            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+        </div>
       </header>
       <main className="bookshelf-main">
         <div className="bookshelf-header">
@@ -100,6 +138,7 @@ export default function BookshelfPage() {
               <article
                 key={novel.id}
                 className="book-card"
+                data-novel-id={novel.id}
                 style={{ "--book-shade": 58 + ((novel.id * 23) % 42) } as BookVars}
                 tabIndex={0}
                 onKeyDown={(event) => {
@@ -144,11 +183,37 @@ export default function BookshelfPage() {
                 </div>
                 <div className="book-card-body">
                   <h3>{novel.title}</h3>
-                  <p>{novel.description || "暂无简介"}</p>
-                  <p>目标 {novel.target_chapters} 章</p>
+                  <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句。"}</p>
+                  {progressPercent(novel) === null ? null : (
+                    <div
+                      className="book-progress"
+                      role="progressbar"
+                      aria-valuenow={progressPercent(novel) ?? 0}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`已完成 ${novel.done_count ?? 0} 章，共 ${novel.target_chapters || novel.chapter_count || 0} 章目标`}
+                    >
+                      <span style={{ width: `${progressPercent(novel)}%` }} />
+                    </div>
+                  )}
+                  <p className="book-stats">
+                    <span>
+                      {novel.chapter_count === undefined
+                        ? "—"
+                        : `${novel.chapter_count}${novel.target_chapters ? " / " + novel.target_chapters : ""} 章`}
+                    </span>
+                    <span aria-hidden="true">·</span>
+                    <span>{formatWords(novel.total_words)}</span>
+                  </p>
+                  <p className="book-updated">最近编辑 {relativeTime(novel.last_edited_at)}</p>
+                  <span className="book-continue" aria-hidden="true">继续写作</span>
                 </div>
               </article>
             ))}
+            <button type="button" className="book-card book-new-card" onClick={openWizard}>
+              <span className="book-new-plus" aria-hidden="true">+</span>
+              <span className="book-new-label">新建作品</span>
+            </button>
           </div>
         )}
       </main>
