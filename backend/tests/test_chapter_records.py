@@ -1,12 +1,11 @@
 from fastapi.testclient import TestClient
 
+from tests.planning_helpers import create_chapter
+
 
 def test_list_chapter_generation_runs_and_reviews(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "记录测试"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "主角推开院门。"},
-    ).json()
+    chapter = create_chapter(client, novel_id, content="主角推开院门。")
     client.post(
         f"/api/novels/{novel_id}/generation-runs",
         json={

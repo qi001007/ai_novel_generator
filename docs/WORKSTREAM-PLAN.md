@@ -14,9 +14,9 @@
 
 ## 状态看板
 
-当前进行到：**S3 写通路与帧 21/22 前端已落地，旧编辑器直写正文待迁移**（2026-09-03）。
+当前进行到：**S3 写通路、正文投影与帧 21/22 前端已落地**（2026-09-03）。
 
-- 后端 103 passed / 前端 51 passed / build 干净（2026-09-03 实测）。
+- 后端 104 passed / 前端 52 passed / build 干净（2026-09-03 实测）。
 - 主干与 UI 支线**可并行**，但 S3 必须早于 S2，理由见 `ARCHITECTURE.md` §5。
 
 ---
@@ -51,13 +51,14 @@
 - [x] 新建章节改走文件层：一次写入同事务建 `Chapter` 与 `chapters/{N}/brief.md`
 - [x] 文件层补齐「新建文件」能力：`chapters/{N}/brief.md` 首写自动建简报与正文行
 - [x] `resolve_path` 支持 `chapters/0042/brief.md`，**读旧写新**，旧 `briefs/0042.md` 仍可读
-- [ ] 正文投影成 `chapters/0042/draft.md`（`EditorPane` 与文件层同一条写通路）
+- [x] 正文投影成 `chapters/0042/draft.md`（`EditorPane` / 对话 `/save` 与文件层同一条写通路；
+      旧 `POST / PUT /chapters...` 已返回 410）
 - [x] `routers/planning.py` 退役写端点，只读 GET 按需保留
 - [x] 前端 `store/files.ts` 路径常量与左树 `briefs/` 分组换成按章归组
 - [ ] 因退役而变无用的导入/助手删掉（不顺手删既有死样式 → 归 U7）
 
 验收：全仓只剩一条写四层规划的路径；`/planning/*` 只剩 GET；新旧路径往返测试通过；
-后端测试数不降（≥101），前端 51 全绿，build 干净。
+后端测试数不降（≥101），前端 52 全绿，build 干净。
 
 ### S2 agentic 内核
 

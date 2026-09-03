@@ -43,7 +43,7 @@ blueprint.md            A 全书蓝图
 toc.md                  B 目录
 arcs.md                 C 剧情弧
 chapters/0042/brief.md  D 单章简报
-chapters/0042/draft.md  正文投影     ← 旧 `EditorPane` 的直写迁移仍待完成
+chapters/0042/draft.md  正文投影     ← 旧编辑器与终审编辑均写这条路径
 ```
 
 兼容：`resolve_path` 同时认新旧两种写法，**读旧写新**，不迁数据、不断链。
@@ -87,7 +87,7 @@ chapters/0042/draft.md  正文投影     ← 旧 `EditorPane` 的直写迁移仍
  --.   [填充]   chapter     123 字  未注入：正文 · 第 42 章（与已注入的上一章结尾重复）
 ```
 
-清单里看不到伏笔档不等于机制漏了：novel 1 没有伏笔行，伏笔尚无写入端点（见 §4 缺口 6）。
+清单里看不到伏笔档不等于机制漏了：novel 1 没有伏笔行，伏笔尚无写入端点（见 §4 缺口 4）。
 
 
 ## 3. 模块完成度（不粉饰）
@@ -102,7 +102,7 @@ chapters/0042/draft.md  正文投影     ← 旧 `EditorPane` 的直写迁移仍
 | `app/models.py` | 303 | 15 张表：novel / blueprint / toc / arc / brief / chapter / setting / character / appearance / foreshadow / summary / feedback / generation_run / review / chat_message | 可用 |
 | 前端 | 约 5.6k | 书架 / 工作台三栏 / 双根树 / MD 文件编辑器（CodeMirror 6）/ 对话坞 / 提案卡 / 人物卡库 | 设计已定，UI 迭代未完 |
 
-实测门禁：后端 **103 passed**，前端 **51 passed / 12 files**，`npm run build` 干净。
+实测门禁：后端 **104 passed**，前端 **52 passed / 13 files**，`npm run build` 干净。
 **测试通过只代表已有代码自洽，不代表主人要的功能已实现**——两者在本文件里分开写（§3 与 §4）。
 
 ## 4. 缺口清单（明确没有什么，而不是「差不多」）
@@ -111,13 +111,12 @@ chapters/0042/draft.md  正文投影     ← 旧 `EditorPane` 的直写迁移仍
 |---|---|---|---|
 | 1 | **Agent 没有 agentic 内核**：无工具调用、无联网搜索、无自主多步循环 | `tool_call` / `function_call` / `web_search` 在整个 backend **零命中**；一次请求＝一次 LLM 调用＝一路文本回来即结束 | S2 |
 | 2 | `/search` 斜杠命令不存在（曾被文档列为 v1 需求） | 实际只有 `/generate /review /check /summary /save /plan /feedback`（`ChatPane.tsx:76`） | S2 |
-| 3 | 旧章节编辑器仍直写 `PUT /chapters/{id}` | `EditorPane.tsx` 保存仍走 `workbench.saveChapter()`；`chapters/NNNN/draft.md` 投影已可用但未替换旧编辑器 | S3 / S1 |
-| 5 | 双栏对照生成 + 逐段合并、选区 Diff 修改 | WORKSTREAM C4 全节未勾；Figma 帧 05 已批但代码未做（T-12） | S1 之后 |
-| 6 | 伏笔没有写入端点 | 注入清单里伏笔档为空，novel 1 无 `foreshadow` 行 | P2 |
-| 7 | 绘画 / AI 生图是**纯前端假数据** | `artwork` / `painting` 在后端零命中；`PaintingDetailPanel.tsx` 无后端来源 | P3 |
-| 8 | **删除作品功能整体缺失**（不是只缺端点） | 前端 `BookshelfPage`／`workbench` 里 `删除`／`del(` 零命中，`api.ts` 的 `del` 无人调用；后端 `routers/novels.py` 只 GET/POST/PUT；而 PRD §2 与 UI-DESIGN §1 都要它 | S3 之后（DECISIONS 5.2） |
-| 9 | 磁盘导出镜像未做 | D-02 列 P2 且只单向导出 | P2 |
-| 10 | 对话侧与写作侧的预算常量与裁剪循环仍是两份 | REQUIREMENTS 10.1 最后一条因此保持未勾 | S1 |
+| 3 | 双栏对照生成 + 逐段合并、选区 Diff 修改 | WORKSTREAM C4 全节未勾；Figma 帧 05 已批但代码未做（T-12） | S1 之后 |
+| 4 | 伏笔没有写入端点 | 注入清单里伏笔档为空，novel 1 无 `foreshadow` 行 | P2 |
+| 5 | 绘画 / AI 生图是**纯前端假数据** | `artwork` / `painting` 在后端零命中；`PaintingDetailPanel.tsx` 无后端来源 | P3 |
+| 6 | **删除作品功能整体缺失**（不是只缺端点） | 前端 `BookshelfPage`／`workbench` 里 `删除`／`del(` 零命中，`api.ts` 的 `del` 无人调用；后端 `routers/novels.py` 只 GET/POST/PUT；而 PRD §2 与 UI-DESIGN §1 都要它 | S3 之后（DECISIONS 5.2） |
+| 7 | 磁盘导出镜像未做 | D-02 列 P2 且只单向导出 | P2 |
+| 8 | 对话侧与写作侧的预算常量与裁剪循环仍是两份 | REQUIREMENTS 10.1 最后一条因此保持未勾 | S1 |
 
 ## 5. 推进主干（S 系列）
 
@@ -152,14 +151,14 @@ S4 合流
    对话式管理接上写作环；Ctrl+K 命令面板；编辑器高级能力（帧 05 双栏 / 选区 Diff）。
 ```
 
-当前进度：**S0 代码就绪待演示 → S3 写通路后端与帧 21/22 前端已落地（旧正文编辑器迁移待补）→
+当前进度：**S0 代码就绪待演示 → S3 写通路、正文投影与帧 21/22 前端已落地 →
 S1 待办 → S2 未开始 → S4 未开始**。逐项勾选在 `WORKSTREAM-PLAN.md`。
 
 ## 6. 验证命令
 
 ```powershell
 # 后端（必须用 .venv 里的 python，不是系统 python）
-cd E:\novel-generator\backend; .venv\Scripts\python.exe -m pytest -q         # 期望 103 passed
+cd E:\novel-generator\backend; .venv\Scripts\python.exe -m pytest -q         # 期望 104 passed
 
 # 带注入清单起后端（可见终端；控制台需 UTF-8 防中文乱码）
 cd E:\novel-generator\backend
@@ -167,7 +166,7 @@ $env:NOVEL_CONTEXT_DEBUG = '1'
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 
 # 前端
-cd E:\novel-generator\frontend; npm run test -- --run                        # 期望 51 passed
+cd E:\novel-generator\frontend; npm run test -- --run                        # 期望 52 passed
 cd E:\novel-generator\frontend; npm run build
 ```
 

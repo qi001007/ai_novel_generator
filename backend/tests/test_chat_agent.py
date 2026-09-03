@@ -12,7 +12,7 @@ from app.services.llm import (
     LLMUnavailableError,
     get_llm_client,
 )
-from tests.planning_helpers import create_brief
+from tests.planning_helpers import create_brief, create_chapter
 
 
 @pytest.fixture(autouse=True)
@@ -416,10 +416,7 @@ def test_every_candidate_mention_resolves_back(client: TestClient) -> None:
     character = client.post(
         f"/api/novels/{novel_id}/characters", json={"name": "陈九思"}
     ).json()
-    client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 5, "title": "破镜", "content": "星图亮了。"},
-    )
+    create_chapter(client, novel_id, chapter_number=5, content="星图亮了。")
 
     items = client.get(f"/api/novels/{novel_id}/chat/context").json()
     mentions = {item["ref"]: item["mention"] for item in items}

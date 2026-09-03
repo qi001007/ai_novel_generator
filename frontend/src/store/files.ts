@@ -12,6 +12,16 @@ export const briefPath = (chapter: number) =>
 export const draftPath = (chapter: number) =>
   `chapters/${String(chapter).padStart(4, "0")}/draft.md`;
 
+export const draftDocument = (chapter: number, content: string) =>
+  [
+    `# 第 ${chapter} 章正文`,
+    "",
+    "> 标题是投影结构；标题下方全部是正文内容。",
+    "",
+    content.trimEnd(),
+    "",
+  ].join("\n");
+
 export const briefChapter = (path: string) => {
   const m = /^(?:briefs\/([0-9]{4})\.md|chapters\/([0-9]{4})\/brief\.md)$/.exec(path);
   return m ? Number(m[1]) : null;

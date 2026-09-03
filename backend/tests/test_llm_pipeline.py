@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.services.llm import LLMResult, get_llm_client
 from app.main import app
 from tests.planning_helpers import create_brief as make_brief
+from tests.planning_helpers import create_chapter
 
 
 class FakeLLMClient:
@@ -82,18 +83,7 @@ def test_auto_ai_review_creates_complete_review(client: TestClient) -> None:
     app.dependency_overrides[get_llm_client] = lambda: fake
 
     novel_id = client.post("/api/novels", json={"title": "自动自检"}).json()["id"]
-    brief = create_brief(client, novel_id)
-    existing = client.get(f"/api/novels/{novel_id}/chapters").json()[0]
-    chapter = client.put(
-        f"/api/novels/{novel_id}/chapters/{existing['id']}",
-        json={
-            "chapter_number": 1,
-            "brief_id": brief["id"],
-            "title": existing["title"],
-            "content": content,
-            "status": existing["status"],
-        },
-    ).json()
+    chapter = create_chapter(client, novel_id, content=content)
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/auto-ai-review"
@@ -119,10 +109,9 @@ def test_auto_summary_extracts_final_chapter_facts(client: TestClient) -> None:
     app.dependency_overrides[get_llm_client] = lambda: fake
 
     novel_id = client.post("/api/novels", json={"title": "自动摘要"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "主角推开了石门。", "status": "final"},
-    ).json()
+    chapter = create_chapter(
+        client, novel_id, content="主角推开了石门。", status="final"
+    )
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/auto-summary"

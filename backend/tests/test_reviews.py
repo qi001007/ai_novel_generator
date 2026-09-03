@@ -1,5 +1,8 @@
 from fastapi.testclient import TestClient
 
+from app.services.markdown_doc import render
+from tests.planning_helpers import create_chapter
+
 
 AI_REVIEW_DIMENSIONS = [
     "consistency",
@@ -23,10 +26,7 @@ def complete_ai_review_payload(content: str) -> dict:
 
 def test_ai_review_requires_complete_seven_dimensions(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "自检测试"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "主角推开院门。"},
-    ).json()
+    chapter = create_chapter(client, novel_id, content="主角推开院门。")
     payload = complete_ai_review_payload("主角推开院门。")
     payload["scores"].pop("continuity")
 
@@ -41,10 +41,7 @@ def test_ai_review_requires_complete_seven_dimensions(client: TestClient) -> Non
 
 def test_complete_ai_review_records_result(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "自检入库"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "主角推开院门。"},
-    ).json()
+    chapter = create_chapter(client, novel_id, content="主角推开院门。")
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/ai-review",
@@ -63,10 +60,7 @@ def test_complete_ai_review_records_result(client: TestClient) -> None:
 
 def test_human_review_accepts_chapter(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "终审通过"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "正文。"},
-    ).json()
+    chapter = create_chapter(client, novel_id, content="正文。")
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/final-review",
@@ -85,15 +79,22 @@ def test_human_review_accepts_chapter(client: TestClient) -> None:
 
 def test_human_review_edit_updates_content_and_finalizes(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "终审编辑"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "旧正文。"},
-    ).json()
+    create_chapter(client, novel_id, content="旧正文。")
     new_content = "编辑后的终稿正文。"
+    draft = client.get(f"/api/novels/{novel_id}/files/chapters/0001/draft.md").json()
+    saved = client.put(
+        f"/api/novels/{novel_id}/files/chapters/0001/draft.md",
+        json={
+            "text": render("draft", {"content": new_content}),
+            "base_revision": draft["revision"],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    chapter = client.get(f"/api/novels/{novel_id}/chapters").json()[0]
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/final-review",
-        json={"decision": "edit", "comments": "改了结尾。", "content": new_content},
+        json={"decision": "accept", "comments": "改了结尾。"},
     )
 
     assert response.status_code == 201
@@ -108,10 +109,7 @@ def test_human_review_edit_updates_content_and_finalizes(client: TestClient) -> 
 
 def test_human_review_rejects_chapter(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "终审打回"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "正文。"},
-    ).json()
+    chapter = create_chapter(client, novel_id, content="正文。")
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/final-review",

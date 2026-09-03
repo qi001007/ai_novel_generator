@@ -274,17 +274,18 @@ def test_draft_file_projects_and_writes_chapter_prose(client: TestClient) -> Non
     novel_id = seed_novel(client, "正文投影")
     doc = read(client, novel_id, "chapters/0042/draft.md")
 
-    edited = doc["text"] + "沈曜推开了石门。\n"
+    edited = doc["text"] + "沈曜推开了石门。\n\n## 场景\n碑门后是旧阶。\n"
     saved = write(client, novel_id, "chapters/0042/draft.md", edited)
 
     assert saved.status_code == 200, saved.text
     assert saved.json()["changed"] == ["content"]
     chapter = client.get(f"/api/novels/{novel_id}/chapters").json()[0]
-    assert chapter["content"].endswith("沈曜推开了石门。\n")
+    assert "沈曜推开了石门。" in chapter["content"]
+    assert "## 场景\n碑门后是旧阶。" in chapter["content"]
     assert chapter["word_count"] == len(chapter["content"])
     projected = read(client, novel_id, "chapters/0042/draft.md")["text"]
     assert projected.startswith("# 第 42 章正文")
-    assert projected.endswith("沈曜推开了石门。\n")
+    assert projected.endswith("碑门后是旧阶。\n")
 
 
 @pytest.mark.parametrize(

@@ -1,12 +1,13 @@
 from fastapi.testclient import TestClient
 
+from tests.planning_helpers import create_chapter
+
 
 def test_mechanical_check_reports_all_issues(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "机械校验测试"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "这段正文太短，还有无聊的敏感词描写。"},
-    ).json()
+    chapter = create_chapter(
+        client, novel_id, content="这段正文太短，还有无聊的敏感词描写。"
+    )
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/machine-check",
@@ -32,10 +33,9 @@ def test_mechanical_check_reports_all_issues(client: TestClient) -> None:
 
 def test_mechanical_check_passes_valid_chapter(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "机械校验通过"}).json()["id"]
-    chapter = client.post(
-        f"/api/novels/{novel_id}/chapters",
-        json={"chapter_number": 1, "content": "主角握住钥匙，走进荒宅。"},
-    ).json()
+    chapter = create_chapter(
+        client, novel_id, content="主角握住钥匙，走进荒宅。"
+    )
 
     response = client.post(
         f"/api/novels/{novel_id}/chapters/{chapter['id']}/machine-check",

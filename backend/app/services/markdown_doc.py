@@ -272,12 +272,23 @@ def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
     """Parse Markdown back into the same shape the YAML parser produced."""
     blocks = _blocks(text)
     if kind == "draft":
-        body = [
-            line
-            for line in blocks[0][1]
-            if line.strip() and not line.startswith(("#", ">"))
-        ]
-        return {"content": "\n".join(body).strip() + "\n"}
+        # Draft prose may legitimately contain Markdown headings. Unlike the
+        # planning codecs, its body is not split into semantic sections.
+        lines = text.split("\n")
+        start = 0
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        # Drop only the generated preamble, not headings inside the prose.
+        if start < len(lines) and lines[start].startswith("# "):
+            start += 1
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        if start < len(lines) and lines[start].startswith(">"):
+            start += 1
+        while start < len(lines) and not lines[start].strip():
+            start += 1
+        body = lines[start:]
+        return {"content": "\n".join(body).strip()}
     if kind == "blueprint":
         return _read_sections(blocks, _BLUEPRINT_SECTIONS, "blueprint.md")
     if kind == "brief":

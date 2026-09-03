@@ -102,7 +102,7 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
 | X-04 | 正文编辑器用 TipTap | 2026-09-02 拍板 2 | 改 CodeMirror 6（D-08） |
 | X-05 | 表单式规划编辑面板 `PlanningPanel.tsx` | commit `34f36ef` 前后 | 「一切规划皆文档」，A/B/C 徽章改为直接打开对应 `.md` |
 | X-06 | HANDOFF《待我拍板》三件 | 已全部裁定 | 拍板 1 = B→D 按字段映射跳转（`plot_function→goal`、`notes→events`，不动后端不丢数据）；拍板 2 = CodeMirror 6；拍板 3 = D 层是文件节点 |
-| X-07 | 「后端 pytest 99 条」 | 2026-09-03 实测 | 当日先确认 **101 passed**；S3 收口后为 **103 passed**（前端 51） |
+| X-07 | 「后端 pytest 99 条」 | 2026-09-03 实测 | 当日先确认 **101 passed**；S3 收口后为 **104 passed**（前端 52） |
 
 ---
 

@@ -70,3 +70,48 @@ def create_brief(client: TestClient, novel_id: int, chapter_number: int, **paylo
     }
     write_document(client, novel_id, f"chapters/{chapter_number:04d}/brief.md", "brief", values, chapter=chapter_number)
     return client.get(f"/api/novels/{novel_id}/planning/briefs").json()[-1]
+
+
+def create_chapter(
+    client: TestClient,
+    novel_id: int,
+    *,
+    chapter_number: int = 1,
+    content: str = "",
+    status: str = "draft",
+) -> dict:
+    """Create a chapter through the file layer for API tests."""
+    create_brief(client, novel_id, chapter_number=chapter_number)
+    chapter = next(
+        item
+        for item in client.get(f"/api/novels/{novel_id}/chapters").json()
+        if item["chapter_number"] == chapter_number
+    )
+    if content:
+        path = f"chapters/{chapter_number:04d}/draft.md"
+        current = client.get(f"/api/novels/{novel_id}/files/{path}").json()
+        saved = client.put(
+            f"/api/novels/{novel_id}/files/{path}",
+            json={
+                "text": current["text"] + content,
+                "base_revision": current["revision"],
+            },
+        )
+        assert saved.status_code == 200, saved.text
+        chapter = next(
+            item
+            for item in client.get(f"/api/novels/{novel_id}/chapters").json()
+            if item["chapter_number"] == chapter_number
+        )
+    if status != "draft":
+        reviewed = client.post(
+            f"/api/novels/{novel_id}/chapters/{chapter['id']}/final-review",
+            json={"decision": "accept" if status == "final" else "reject"},
+        )
+        assert reviewed.status_code == 201, reviewed.text
+        chapter = next(
+            item
+            for item in client.get(f"/api/novels/{novel_id}/chapters").json()
+            if item["chapter_number"] == chapter_number
+        )
+    return chapter

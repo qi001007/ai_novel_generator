@@ -28,7 +28,6 @@ class AIReviewCreate(SQLModel):
 class HumanReviewCreate(SQLModel):
     decision: str
     comments: str = ""
-    content: str | None = None
 
 
 def _to_http(cause: ChapterDomainError) -> HTTPException:
@@ -122,7 +121,7 @@ def create_final_review(
             chapter,
             decision=payload.decision,
             comments=payload.comments,
-            content=payload.content,
+            content=None,
         )
     except ChapterDomainError as cause:
         raise _to_http(cause) from cause

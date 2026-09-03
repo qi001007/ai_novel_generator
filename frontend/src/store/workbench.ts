@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import { api } from "../api";
-import { briefPath } from "../store/files";
+import { briefPath, draftDocument, draftPath } from "../store/files";
 import type {
   Chapter,
   ChapterBrief,
@@ -231,18 +231,17 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
     set({ busy: true, error: null });
     try {
-      const updated = await api.put<Chapter>(
+      const path = draftPath(chapter.chapter_number);
+      const doc = await api.readFile(selectedNovelId, path);
+      await api.writeFile(selectedNovelId, path, draftDocument(chapter.chapter_number, draftContent), {
+        baseRevision: doc.revision,
+      });
+      const updated = await api.get<Chapter>(
         `/api/novels/${selectedNovelId}/chapters/${chapter.id}`,
-        {
-          brief_id: chapter.brief_id,
-          chapter_number: chapter.chapter_number,
-          title: chapter.title,
-          content: draftContent,
-          status: chapter.status,
-        },
       );
       set({
         chapters: get().chapters.map((item) => (item.id === updated.id ? updated : item)),
+        draftContent: updated.content,
       });
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "保存失败" });

@@ -6,7 +6,6 @@ from app.models import Chapter, ChapterBrief
 from app.routers.planning import get_novel_or_404
 from app.services.chapters import (
     ChapterDomainError,
-    ensure_chapter_number_free,
     generate_from_brief,
     get_chapter_or_error,
     machine_check,
@@ -15,14 +14,6 @@ from app.services.llm import LLMClient, get_llm_client
 
 
 router = APIRouter(prefix="/novels", tags=["chapters"])
-
-
-class ChapterCreate(SQLModel):
-    brief_id: int | None = None
-    chapter_number: int
-    title: str = ""
-    content: str = ""
-    status: str = "draft"
 
 
 class MachineCheckRequest(SQLModel):
@@ -35,6 +26,10 @@ class MachineCheckRequest(SQLModel):
 
 def _to_http(cause: ChapterDomainError) -> HTTPException:
     return HTTPException(status_code=cause.status_code, detail=cause.detail)
+
+
+def _retired_write(message: str) -> HTTPException:
+    return HTTPException(status_code=410, detail=message)
 
 
 @router.get("/{novel_id}/chapters", response_model=list[Chapter])
@@ -53,26 +48,8 @@ def list_chapters(
 
 
 @router.post("/{novel_id}/chapters", response_model=Chapter, status_code=201)
-def create_chapter(
-    novel_id: int,
-    payload: ChapterCreate,
-    session: Session = Depends(get_session),
-) -> Chapter:
-    get_novel_or_404(novel_id, session)
-    try:
-        ensure_chapter_number_free(session, novel_id, payload.chapter_number)
-    except ChapterDomainError as cause:
-        raise _to_http(cause) from cause
-
-    chapter = Chapter(
-        novel_id=novel_id,
-        word_count=len(payload.content),
-        **payload.model_dump(),
-    )
-    session.add(chapter)
-    session.commit()
-    session.refresh(chapter)
-    return chapter
+def create_chapter() -> None:
+    raise _retired_write("章节创建已收口到首写 chapters/{N}/brief.md")
 
 
 @router.post("/{novel_id}/chapters/{chapter_id}/machine-check")
@@ -122,23 +99,5 @@ def get_chapter(
 
 
 @router.put("/{novel_id}/chapters/{chapter_id}", response_model=Chapter)
-def update_chapter(
-    novel_id: int,
-    chapter_id: int,
-    payload: ChapterCreate,
-    session: Session = Depends(get_session),
-) -> Chapter:
-    get_novel_or_404(novel_id, session)
-    try:
-        chapter = get_chapter_or_error(session, novel_id, chapter_id)
-        ensure_chapter_number_free(session, novel_id, payload.chapter_number, exclude_id=chapter_id)
-    except ChapterDomainError as cause:
-        raise _to_http(cause) from cause
-
-    for field, value in payload.model_dump().items():
-        setattr(chapter, field, value)
-    chapter.word_count = len(payload.content)
-    session.add(chapter)
-    session.commit()
-    session.refresh(chapter)
-    return chapter
+def update_chapter() -> None:
+    raise _retired_write("正文写入已收口到 chapters/{N}/draft.md")
