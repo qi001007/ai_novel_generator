@@ -37,7 +37,7 @@
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 104 passed
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 106 passed
 cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 52 passed
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 ```
@@ -64,8 +64,8 @@ S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scrip
 ```text
 S0 上下文可观测   代码已就绪，待跑给主人看一次
 S3 写通路收口     后端、正文投影、按章树、帧 21/22 前端已落地
-S1 最小写作环     待办
-S2 agentic 内核   未开始（必须在 S3 完全收口后）
+S1 最小写作环     隔离脚本与统一预算裁剪已落地
+S2 agentic 内核   下一步；工具调用 / 联网搜索 / 多步循环仍为 0
 S4 合流           未开始
 ```
 

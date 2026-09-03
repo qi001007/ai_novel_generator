@@ -22,10 +22,14 @@ from app.models import (
     TocEntry,
 )
 from app.services.context import (
+    ContextBlock,
+    ContextItem,
     TIER_CORE,
     TIER_CONTINUITY,
     TIER_FILL,
     TIER_NEARBY,
+    apply_context_budget,
+    build_chat_context,
     build_writing_context,
     injection_report,
     log_injection,
@@ -200,6 +204,38 @@ def test_core_blocks_survive_a_one_char_budget(session):
     assert all(block.tier == TIER_CORE for block in ctx.selected)
     assert any("预算不足" in block.reason for block in ctx.dropped)
     assert all(block.reason for block in ctx.dropped), "每个被裁块都要有可解释的原因"
+
+
+def test_one_budget_trimmer_serves_both_context_modes():
+    blocks = [
+        ContextBlock(ContextItem("blueprint", "A 蓝图", "主线", ref="blueprint"), TIER_CORE),
+        ContextBlock(
+            ContextItem("chapter", "上一章结尾", "上一章结尾文本", ref="tail"),
+            TIER_CONTINUITY,
+        ),
+        ContextBlock(ContextItem("setting", "设定", "设定资料内容", ref="setting"), TIER_FILL),
+    ]
+
+    trimmed = apply_context_budget(blocks, budget=6)
+
+    assert [block.item.ref for block in trimmed.selected] == ["blueprint"]
+    assert trimmed.used == 2
+    assert [block.item.ref for block in trimmed.dropped] == ["tail", "setting"]
+    assert all("预算不足" in block.reason for block in trimmed.dropped)
+    assert "必注入" not in trimmed.selected[0].reason
+
+
+def test_chat_budget_uses_the_same_core_invariant(session):
+    novel, _brief = _book(session)
+
+    ctx, _unknown = build_chat_context(
+        session, novel.id, "续写第 25 章", budget=1
+    )
+
+    assert ctx.selected, "核心上下文在预算 1 时仍必须保留"
+    assert all(block.tier == TIER_CORE for block in ctx.selected)
+    assert all(block.tier != TIER_CORE for block in ctx.dropped)
+    assert all("预算不足" in block.reason for block in ctx.dropped)
 
 
 def test_previous_chapter_text_is_not_injected_twice(session):

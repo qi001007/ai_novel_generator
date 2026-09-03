@@ -571,26 +571,7 @@ def build_chat_context(
         )
 
     ranked.sort(key=lambda block: (-block.item.score, block.item.label))
-
-    selected: list[ContextBlock] = []
-    dropped: list[ContextBlock] = []
-    used = 0
-    for index, block in enumerate(ranked):
-        if used + block.chars > budget and selected:
-            block.reason = f"预算不足：已注入 {used} 字 / 预算 {budget} 字"
-            dropped.append(block)
-            continue
-        selected.append(block)
-        used += block.chars
-        if used >= budget:
-            for tail in ranked[index + 1:]:
-                tail.reason = f"预算不足：已注入 {used} 字 / 预算 {budget} 字"
-                dropped.append(tail)
-            break
-    return (
-        WritingContext(budget=budget, used=used, selected=selected, dropped=dropped),
-        unknown,
-    )
+    return apply_context_budget(ranked, budget=budget), unknown
 
 
 def build_context(
@@ -703,6 +684,34 @@ class WritingContext:
 
     def manifest_json(self) -> str:
         return json.dumps(self.manifest(), ensure_ascii=False)
+
+
+def apply_context_budget(blocks: list[ContextBlock], *, budget: int) -> WritingContext:
+    """The only budget trimmer for ranked chat and fixed writing windows."""
+    selected: list[ContextBlock] = []
+    dropped: list[ContextBlock] = []
+    used = 0
+
+    for block in blocks:
+        if block.tier == TIER_CORE or used + block.chars <= budget:
+            selected.append(block)
+            used += block.chars
+            continue
+
+        block.reason = f"预算不足：已注入 {used} 字 / 预算 {budget} 字"
+        dropped.append(block)
+
+    if used > budget:
+        for block in selected:
+            if block.tier == TIER_CORE:
+                block.reason = f"必注入，超出预算 {used - budget} 字仍保留"
+
+    return WritingContext(
+        budget=budget,
+        used=used,
+        selected=selected,
+        dropped=dropped,
+    )
 
 
 def _chapter_refs(rows: list[Any], prefix: str) -> set[str]:
@@ -834,27 +843,13 @@ def build_writing_context(
             "必注入档内容为空，本章实际缺少该资料" if block.tier == TIER_CORE else "内容为空，未注入"
         )
 
-    selected: list[ContextBlock] = []
-    dropped: list[ContextBlock] = []
-    used = 0
-    for block in blocks:
-        if block.tier == TIER_CORE or used + block.chars <= budget:
-            selected.append(block)
-            used += block.chars
-            continue
-        block.reason = f"预算不足：已注入 {used} 字 / 预算 {budget} 字"
-        dropped.append(block)
-
-    if used > budget:
-        for block in selected:
-            if block.tier == TIER_CORE:
-                block.reason = f"必注入，超出预算 {used - budget} 字仍保留"
+    trimmed = apply_context_budget(blocks, budget=budget)
 
     return WritingContext(
         budget=budget,
-        used=used,
-        selected=selected,
-        dropped=[*dropped, *empties, *duplicated],
+        used=trimmed.used,
+        selected=trimmed.selected,
+        dropped=[*trimmed.dropped, *empties, *duplicated],
     )
 
 

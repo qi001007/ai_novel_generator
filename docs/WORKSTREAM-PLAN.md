@@ -14,9 +14,9 @@
 
 ## 状态看板
 
-当前进行到：**S1 写作环 smoke 已跑通；剩对话/写作预算裁剪合并**（2026-09-03）。
+当前进行到：**S1 最小写作环已完成，下一步 S2 agentic 内核**（2026-09-03）。
 
-- 后端 104 passed / 前端 52 passed / build 干净（2026-09-03 实测）。
+- 后端 106 passed / 前端 52 passed / build 干净（2026-09-03 实测）。
 - 主干与 UI 支线**可并行**，但 S3 必须早于 S2，理由见 `ARCHITECTURE.md` §5。
 
 ---
@@ -38,7 +38,8 @@
 
 - [x] 一个隔离脚本：空临时库 → 建一部小说 → 文件层写规划 → 一次注入 → 出正文
 - [x] 脚本中途打印注入清单；2026-09-03 实测 9 块 / 354 字，`PASS`
-- [ ] 对话侧与写作侧的预算常量、裁剪循环合并成一份（REQUIREMENTS 10.1 末条）
+- [x] 对话侧与写作侧的预算常量、裁剪循环合并成一份（REQUIREMENTS 10.1 末条）：
+      两种排序结果统一交给 `apply_context_budget()`
 - [x] 脚本入库为 `backend/scripts/writing_ring_smoke.py`，可重复执行；
       默认 `offline-template` 不耗 token，`--live` 才调真实 draft 模型
 

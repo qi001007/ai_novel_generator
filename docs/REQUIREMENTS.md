@@ -215,11 +215,9 @@ LLM 调用＝一路文本回来即结束。已有的是外壳（多轮窗口 8�
   `build_draft_user_prompt()` 退化为渲染器，不再自行挑选资料
 - [x] v1 废除第二真源：`generate_from_brief` 取蓝图必须用 `documents._blueprint()`
   （最新 active 版本）；现状 `order_by(version)` 升序取**最旧**，属缺陷
-- [ ] v1 对话侧 `build_context()` 与写作侧 `build_writing_context()` 共享预算常量与裁剪
-  逻辑，只有排序规则不同
-  2026-09-02 进度：两侧已共用**同一份清单报告器**（`build_chat_context()` 与
-  `build_writing_context()` 都产出 `WritingContext`，档位词表、`dropped` 记录、终端打印一致）；
-  仍未做的是把两份预算常量与裁剪循环合并成一份，故本条保持未勾。
+- [x] v1 对话侧 `build_context()` 与写作侧 `build_writing_context()` 共享预算常量与裁剪
+  逻辑，只有排序规则不同：两侧排序后都交给 `apply_context_budget()`；
+  `TIER_CORE` 恒注入，非核心块放不下即裁并写明原因。
 
 ### 10.2 写作优先级窗口（PRD 4.1 的落地）
 

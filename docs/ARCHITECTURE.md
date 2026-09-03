@@ -116,7 +116,6 @@ chapters/0042/draft.md  正文投影     ← 旧编辑器与终审编辑均写�
 | 5 | 绘画 / AI 生图是**纯前端假数据** | `artwork` / `painting` 在后端零命中；`PaintingDetailPanel.tsx` 无后端来源 | P3 |
 | 6 | **删除作品功能整体缺失**（不是只缺端点） | 前端 `BookshelfPage`／`workbench` 里 `删除`／`del(` 零命中，`api.ts` 的 `del` 无人调用；后端 `routers/novels.py` 只 GET/POST/PUT；而 PRD §2 与 UI-DESIGN §1 都要它 | S3 之后（DECISIONS 5.2） |
 | 7 | 磁盘导出镜像未做 | D-02 列 P2 且只单向导出 | P2 |
-| 8 | 对话侧与写作侧的预算常量与裁剪循环仍是两份 | REQUIREMENTS 10.1 最后一条因此保持未勾 | S1 |
 
 ## 5. 推进主干（S 系列）
 
@@ -130,7 +129,8 @@ S0 上下文可观测
    验收：NOVEL_CONTEXT_DEBUG 打开后生成一章，终端打印清单，主人能指出哪项多余、哪项缺失。
 
 S1 最小写作环
-   空库 → 一部小说 → 一份简报 → 一次注入 → 出正文。
+   空临时库 → 文件层写 A/B/C/D → 一次注入 → 出正文。
+   对话与写作预算统一交给 `apply_context_budget()`；只有排序规则不同。
    验收：一个只读脚本跑通全链，中途打印清单，可与 §2 那份 novel 1 清单逐项对比。
 
 S3 写通路收口 + 路径迁移（一次做完）
@@ -152,13 +152,13 @@ S4 合流
 ```
 
 当前进度：**S0 代码就绪待演示 → S3 写通路、正文投影与帧 21/22 前端已落地 →
-S1 待办 → S2 未开始 → S4 未开始**。逐项勾选在 `WORKSTREAM-PLAN.md`。
+S1 隔离写作环已跑通 → S2 未开始 → S4 未开始**。逐项勾选在 `WORKSTREAM-PLAN.md`。
 
 ## 6. 验证命令
 
 ```powershell
 # 后端（必须用 .venv 里的 python，不是系统 python）
-cd E:\novel-generator\backend; .venv\Scripts\python.exe -m pytest -q         # 期望 104 passed
+cd E:\novel-generator\backend; .venv\Scripts\python.exe -m pytest -q         # 期望 106 passed
 
 # 带注入清单起后端（可见终端；控制台需 UTF-8 防中文乱码）
 cd E:\novel-generator\backend
