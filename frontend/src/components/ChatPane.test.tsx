@@ -204,25 +204,26 @@ describe("ChatPane", () => {
     expect(screen.getAllByText("还在吗")).toHaveLength(1);
   });
 
-  it("stacks the dock the way frame 14 draws it: field first, tools below", async () => {
+  it("nests the dock as one floating composer card: field first, tools below", async () => {
     vi.stubGlobal("fetch", vi.fn(() => json([])));
     const { container } = render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     let field!: HTMLElement;
     await waitFor(() => {
-      const dock = container.querySelector(".chat-dock") as HTMLElement;
-      const input = dock.querySelector(".chat-input");
-      if (!input) throw new Error("dock not mounted");
+      const card = container.querySelector(".composer");
+      const input = card?.querySelector(".chat-input");
+      if (!input) throw new Error("composer not mounted");
       field = input as HTMLElement;
     });
-    const tools = container.querySelector(".chat-dock .chat-toolbar") as HTMLElement;
-    expect(field).toBeTruthy();
-    expect(tools).toBeTruthy();
+    const tools = container.querySelector(".composer .chat-toolbar") as HTMLElement;
     expect(field.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
-    // The send button belongs to the field row, and there is no mechanism
-    // caption above it: that line described pre-Agent retrieval rules.
-    expect(field.querySelector(".chat-send")).toBeTruthy();
+    // Frame 24 moves the send button into the tools row, and every control
+    // (mode, attach, model, send) now lives inside the single card.
+    expect(tools.querySelector(".chat-send")).toBeTruthy();
+    expect(tools.querySelector(".mode-switch")).toBeTruthy();
+    expect(tools.querySelector(".model-pill")).toBeTruthy();
     expect(container.querySelector(".chat-context")).toBeNull();
   });
+
 });

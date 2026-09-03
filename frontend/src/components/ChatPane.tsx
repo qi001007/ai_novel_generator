@@ -786,13 +786,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         })}
       </div>
       <div className="chat-dock" style={{ height: dockHeight }}>
-        <button
-          type="button"
-          className="drag-line chat-dock-handle"
-          aria-label="调整输入框高度"
-          title="拖动调整输入框高度"
-          onPointerDown={startDockDrag}
-        />
         {showMentions ? (
           <ul className="chat-hints mentions" role="listbox" aria-label="引用资料">
             {candidates.length ? (
@@ -830,145 +823,154 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             ))}
           </ul>
         ) : null}
-        <div className="chat-input">
-          <textarea
-            value={input}
-            rows={2}
-            placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"
-            aria-label="对话输入"
-            onChange={(event) => {
-              setInput(event.target.value);
-              syncMention(event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Escape" && mentionQuery !== null) {
-                setMentionQuery(null);
-                return;
-              }
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-          />
+        <div className="composer">
           <button
             type="button"
-            className={`chat-send ${running ? "danger" : "primary"}`}
-            disabled={!running && !input.trim()}
-            onClick={() => {
-              if (running) {
-                stop();
-                return;
-              }
-              submit();
-            }}
-            aria-label={running ? "停止生成" : "发送"}
-          >
-            {running ? <Square size={14} /> : <CornerDownLeft size={14} />}
-          </button>
-        </div>
-        {attachments.length ? (
-          <ul className="chat-attachments" aria-label="已选附件">
-            {attachments.map((file, index) => (
-              <li key={`${file.name}-${index}`}>
-                <span title={`${file.name} · ${(file.size / 1024).toFixed(1)} KB`}>
-                  {file.name}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`移除附件 ${file.name}`}
-                  onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-        <div className="chat-toolbar">
-          <div className="mode-switch" role="radiogroup" aria-label="对话模式">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={mode === "plan"}
-              className={mode === "plan" ? "selected" : ""}
-              onClick={() => setMode("plan")}
-            >
-              计划
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={mode === "write"}
-              className={mode === "write" ? "selected" : ""}
-              onClick={() => setMode("write")}
-            >
-              写作
-            </button>
+            className="drag-line chat-dock-handle"
+            aria-label="调整输入框高度"
+            title="拖动调整输入框高度"
+            onPointerDown={startDockDrag}
+          />
+          <div className="chat-input">
+            <textarea
+              value={input}
+              rows={2}
+              placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"
+              aria-label="对话输入"
+              onChange={(event) => {
+                setInput(event.target.value);
+                syncMention(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && mentionQuery !== null) {
+                  setMentionQuery(null);
+                  return;
+                }
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+            />
           </div>
-          <button
-            type="button"
-            className="chat-attach"
-            aria-label="上传附件"
-            onClick={() => attachmentInputRef.current?.click()}
-          >
-            <Paperclip size={15} />
-          </button>
-          <input
-            ref={attachmentInputRef}
-            type="file"
-            className="chat-attachment-input"
-            multiple
-            aria-label="选择附件文件"
-            accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.html,.htm,.doc,.docx"
-            onChange={(event) => {
-              addAttachments(event.target.files);
-              event.target.value = "";
-            }}
-          />
-          <span className="spacer" />
-          <div className="model-menu-wrap" ref={modelMenuRef}>
+          {attachments.length ? (
+            <ul className="chat-attachments" aria-label="已选附件">
+              {attachments.map((file, index) => (
+                <li key={`${file.name}-${index}`}>
+                  <span title={`${file.name} · ${(file.size / 1024).toFixed(1)} KB`}>
+                    {file.name}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={`移除附件 ${file.name}`}
+                    onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="chat-toolbar">
+            <div className="mode-switch" role="radiogroup" aria-label="对话模式">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "plan"}
+                className={mode === "plan" ? "selected" : ""}
+                onClick={() => setMode("plan")}
+              >
+                计划
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "write"}
+                className={mode === "write" ? "selected" : ""}
+                onClick={() => setMode("write")}
+              >
+                写作
+              </button>
+            </div>
             <button
               type="button"
-              className="model-pill"
-              onClick={() => setModelMenuOpen(!modelMenuOpen)}
-              aria-expanded={modelMenuOpen}
-              aria-haspopup="listbox"
+              className="chat-attach"
+              aria-label="上传附件"
+              onClick={() => attachmentInputRef.current?.click()}
             >
-              {activeModel}
-              <ChevronDown size={12} />
+              <Paperclip size={15} />
             </button>
-            {modelMenuOpen ? (
-              <div className="model-menu" role="listbox" aria-label="选择模型">
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={selectedModel === null}
-                  className={`model-menu-item ${selectedModel === null ? "selected" : ""}`}
-                  onClick={() => {
-                    setSelectedModel(null);
-                    setModelMenuOpen(false);
-                  }}
-                >
-                  默认（后端 NOVEL_LLM_CHAT_MODEL）
-                </button>
-                {availableModels.map((name) => (
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              className="chat-attachment-input"
+              multiple
+              aria-label="选择附件文件"
+              accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.html,.htm,.doc,.docx"
+              onChange={(event) => {
+                addAttachments(event.target.files);
+                event.target.value = "";
+              }}
+            />
+            <span className="spacer" />
+            <div className="model-menu-wrap" ref={modelMenuRef}>
+              <button
+                type="button"
+                className="model-pill"
+                onClick={() => setModelMenuOpen(!modelMenuOpen)}
+                aria-expanded={modelMenuOpen}
+                aria-haspopup="listbox"
+              >
+                {activeModel}
+                <ChevronDown size={12} />
+              </button>
+              {modelMenuOpen ? (
+                <div className="model-menu" role="listbox" aria-label="选择模型">
                   <button
-                    key={name}
                     type="button"
                     role="option"
-                    aria-selected={activeModel === name}
-                    className={`model-menu-item ${activeModel === name ? "selected" : ""}`}
+                    aria-selected={selectedModel === null}
+                    className={`model-menu-item ${selectedModel === null ? "selected" : ""}`}
                     onClick={() => {
-                      setSelectedModel(name);
+                      setSelectedModel(null);
                       setModelMenuOpen(false);
                     }}
                   >
-                    {name}
+                    默认（后端 NOVEL_LLM_CHAT_MODEL）
                   </button>
-                ))}
-              </div>
-            ) : null}
+                  {availableModels.map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      role="option"
+                      aria-selected={activeModel === name}
+                      className={`model-menu-item ${activeModel === name ? "selected" : ""}`}
+                      onClick={() => {
+                        setSelectedModel(name);
+                        setModelMenuOpen(false);
+                      }}
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              className={`chat-send ${running ? "danger" : "primary"}`}
+              disabled={!running && !input.trim()}
+              onClick={() => {
+                if (running) {
+                  stop();
+                  return;
+                }
+                submit();
+              }}
+              aria-label={running ? "停止生成" : "发送"}
+            >
+              {running ? <Square size={14} /> : <CornerDownLeft size={14} />}
+            </button>
           </div>
         </div>
       </div>

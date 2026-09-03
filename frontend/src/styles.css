@@ -502,7 +502,7 @@ select:focus-visible {
 .chat-messages {
   min-height: 0;
   overflow-y: auto;
-  padding: 16px;
+  padding: 16px 16px 96px;
   display: grid;
   gap: 12px;
   align-content: start;
@@ -635,14 +635,64 @@ select:focus-visible {
   }
 }
 
+/* Frame 24: the dock no longer paints its own panel. It only positions a
+   floating composer card, and lets the message list fade into it instead of
+   meeting a hard divider. */
 .chat-dock {
   position: relative;
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 8px 16px 10px;
-  border-top: 1px solid var(--border);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 8px 16px 12px;
+  background: transparent;
+}
+
+.chat-dock::before {
+  content: "";
+  position: absolute;
+  top: -88px;
+  right: 0;
+  left: 0;
+  height: 88px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--bg));
+}
+
+.composer {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  min-height: 96px;
+  padding: 10px 12px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--surface);
+  box-shadow: var(--shadow-lift);
+  transition:
+    border-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+
+/* Focus lives on the card, in the same language as the prose editor:
+   border colour only, no outline and no ring. */
+.composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-pop);
+}
+
+/* Controls stop competing with the field: ghost by default, filled only
+   when they carry state. */
+.composer .chat-attach,
+.composer .model-pill {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.composer .chat-attach:hover,
+.composer .model-pill:hover {
+  background: var(--surface-alt);
+  color: var(--text-1);
 }
 
 .chat-toolbar {
@@ -650,6 +700,8 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   min-height: 32px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
 }
 
 .chat-toolbar .spacer {
@@ -661,10 +713,10 @@ select:focus-visible {
   align-items: center;
   gap: 2px;
   height: 28px;
-  padding: 2px;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
-  background: var(--surface-alt);
+  background: transparent;
 }
 
 .mode-switch button {
@@ -681,9 +733,13 @@ select:focus-visible {
   line-height: 20px;
 }
 
+.mode-switch button:hover:not(.selected) {
+  color: var(--text-1);
+}
+
 .mode-switch button.selected {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .model-pill {
@@ -814,19 +870,15 @@ select:focus-visible {
 }
 
 /* Frame 14 measures the dock as a 44px field row over a 28px tools row. */
+/* Frame 24: no box inside a box. The composer card is the only surface
+   here, so the field drops its own border and fill. */
 .chat-input {
   display: flex;
   align-items: stretch;
-  gap: 8px;
-  min-height: 44px;
-  padding: 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.chat-input:focus-within {
-  border-color: var(--accent);
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .chat-input textarea {
@@ -834,20 +886,21 @@ select:focus-visible {
   height: 100%;
   min-width: 0;
   min-height: 44px;
-  padding: 4px 8px;
+  max-height: 220px;
+  padding: 2px 0;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--surface-alt);
+  background: transparent;
+  color: var(--text-1);
   font-size: 13px;
-  line-height: 1;
+  line-height: 1.6;
   overflow-y: auto;
   resize: none;
 }
 
 .chat-input textarea:focus-visible {
   outline: 0;
-  background: var(--surface-alt);
-  box-shadow: inset 0 0 0 1px var(--accent-soft);
+  background: transparent;
+  box-shadow: none;
 }
 
 .chat-attachment-input {
@@ -3241,11 +3294,35 @@ body.chat-dock-resizing {
   transform: none;
 }
 
+/* Frame 24: a 24px notch centred on the card top edge, hidden until the
+   pointer is near. The old full-width bar read as a fourth divider. */
 .chat-dock-handle {
   position: absolute;
   top: -1px;
-  right: 0;
-  left: 0;
+  left: 50%;
+  width: 24px;
+  height: 2px;
+  margin-left: -12px;
+  border-radius: 2px;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.composer:hover .chat-dock-handle,
+.chat-dock-handle:hover,
+.chat-dock-handle:focus-visible {
+  opacity: 1;
+}
+
+/* Grab area stays generous without painting a rectangle. */
+.chat-dock-handle::after {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: -40px;
+  bottom: -6px;
+  left: -40px;
 }
 
 .toc-toolbar {
