@@ -1024,16 +1024,15 @@ select:focus-visible {
   display: none;
 }
 
-/* VSCode-style minimap: the whole document scaled to fit, viewport block
-   tracking the scroll 1:1, revealed on hover, draggable to scrub. */
+/* VSCode-style minimap: the whole page scaled to fit, with one transparent
+   slider that tracks the scroll 1:1 and is dragged to turn the page. */
 .minimap {
   position: relative;
   flex: none;
   width: 56px;
   overflow: hidden;
-  cursor: pointer;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  cursor: ns-resize;
+  background: var(--bg);
   touch-action: none;
 }
 
@@ -1064,14 +1063,23 @@ select:focus-visible {
   background: transparent;
   border-radius: 0;
   resize: none;
+  /* Grown to its full text height in EditorPane: .editor-scroll owns scrolling,
+     which is what lets the minimap slider be the only scroll control. */
+  overflow: hidden;
   font-family: "Noto Serif SC", "Source Han Serif SC", serif;
   font-size: 17px;
+  /* 17 * 1.9 = 32.3 matches LINE_PX in EditorPane.tsx. */
   line-height: 1.9;
+}
+
+/* The ring sits on the wrapper, not the textarea: an inset shadow on a box as
+   tall as its own content puts the bottom edge off-screen, leaving three sides. */
+.editor-body:focus-within {
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .editor-body textarea:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--accent);
   caret-color: var(--accent);
 }
 
@@ -2839,20 +2847,21 @@ body.chat-dock-resizing {
   border-left-color: var(--text-1);
 }
 
-/* ---------- 缩略栏：帧 17 的 2px 条 + 3px 间距 ---------- */
+/* ---------- 缩略栏：内容缩小版 + 透明滑块 ---------- */
 
 .minimap-canvas {
   position: absolute;
   inset: 0;
 }
 
-/* Viewport is positioned from the editor's scroll ratio; canvas owns the text bars. */
+/* The canvas fades everything the slider does not cover, so the slider frames
+   the live region instead of hiding it. top/height come from the scroll ratio. */
 .minimap-viewport {
   position: absolute;
-  right: 3px;
-  left: 3px;
-  border: 1px solid var(--hairline);
-  border-radius: 2px;
+  right: 2px;
+  left: 2px;
+  border: 1px solid color-mix(in srgb, var(--text-2) 26%, transparent);
+  border-radius: 3px;
   background: var(--minimap-thumb-bg);
   pointer-events: none;
 }

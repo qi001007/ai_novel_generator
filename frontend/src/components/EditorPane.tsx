@@ -1,8 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-type MapVars = CSSProperties & Record<`--${string}`, string | number>;
+/* Editor line metrics, mirrored in CSS below: the minimap scales the real page
+   by these numbers, so the slider maps 1:1 onto the scroll position. */
+const MM_PAD = 8;
+const TEXT_PX = 17;
+const LINE_PX = 32.3;
+const TEXT_BOX = 672;
 
 function formatTime(value: string) {
   const date = new Date(value);
@@ -31,25 +35,46 @@ export default function EditorPane() {
   const brief = briefs.find((item) => item.id === chapter?.brief_id) ?? null;
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
-  const scrubRef = useRef(false);
-  const [view, setView] = useState({ top: 0, height: 1 });
+  const grabRef = useRef<number | null>(null);
+  const [view, setView] = useState({ progress: 0, height: 1 });
+  const [mmSize, setMmSize] = useState({ w: 1, h: 1 });
+
+  // The textarea is grown to its full content height, which hands scrolling to
+  // .editor-scroll. Without this the textarea scrolls itself and the minimap
+  // slider can never follow it.
+  const autosize = useCallback(() => {
+    const node = textareaRef.current;
+    if (!node) return;
+    node.style.height = "auto";
+    node.style.height = `${node.scrollHeight}px`;
+  }, []);
+
+  const measure = useCallback(() => {
+    const host = minimapRef.current;
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    const next = {
+      w: Math.max(1, Math.round(rect.width)),
+      h: Math.max(1, Math.round(rect.height)),
+    };
+    setMmSize((prev) => (prev.w === next.w && prev.h === next.h ? prev : next));
+  }, []);
 
   const syncView = useCallback(() => {
     const node = scrollRef.current;
     if (!node) return;
     const { scrollTop, scrollHeight, clientHeight } = node;
-    const next =
-      scrollHeight <= 0
-        ? { top: 0, height: 1 }
-        : {
-            top: scrollTop / scrollHeight,
-            height: Math.min(1, clientHeight / scrollHeight),
-          };
+    const span = scrollHeight - clientHeight;
+    const next = {
+      progress: span > 0 ? Math.min(1, Math.max(0, scrollTop / span)) : 0,
+      height: scrollHeight > 0 ? Math.min(1, clientHeight / scrollHeight) : 1,
+    };
     // Scroll fires per pixel; only re-render when the ratio actually moves.
     setView((prev) =>
-      prev.top === next.top && prev.height === next.height ? prev : next,
+      prev.progress === next.progress && prev.height === next.height ? prev : next,
     );
   }, []);
   const dirty = chapter ? draftContent !== (chapter.content ?? "") : false;
@@ -60,9 +85,26 @@ export default function EditorPane() {
 
   // Re-measure after the browser has laid out the new text.
   useEffect(() => {
-    const frame = window.requestAnimationFrame(syncView);
+    const frame = window.requestAnimationFrame(() => {
+      autosize();
+      measure();
+      syncView();
+    });
     return () => window.cancelAnimationFrame(frame);
-  }, [draftContent, selectedChapterId, syncView]);
+  }, [draftContent, selectedChapterId, autosize, measure, syncView]);
+
+  // Keep the minimap canvas and the grown textarea in step with layout changes.
+  useEffect(() => {
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      autosize();
+      measure();
+      syncView();
+    });
+    if (minimapRef.current) observer.observe(minimapRef.current);
+    if (scrollRef.current) observer.observe(scrollRef.current);
+    return () => observer.disconnect();
+  }, [autosize, measure, syncView, selectedChapterId]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -88,28 +130,28 @@ export default function EditorPane() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
-  const minimapBars = useMemo(() => {
-    const raw = draftContent.split("\n").slice(0, 1200);
-    const longest = Math.max(1, ...raw.map((line) => line.trim().length));
-    return raw.map((line) => {
-      const body = line.trim();
-      return {
-        indent: Math.min(line.length - line.trimStart().length, 24),
-        width: body ? Math.max(6, Math.min(100, (body.length / longest) * 100)) : 0,
-      };
-    });
-  }, [draftContent]);
+  // The slider is the viewport: same proportions as the page it mirrors.
+  function thumbGeometry() {
+    const track = Math.max(1, mmSize.h - MM_PAD * 2);
+    const height = Math.max(18, Math.min(track, track * view.height));
+    return {
+      track,
+      height,
+      top: MM_PAD + view.progress * Math.max(0, track - height),
+    };
+  }
 
   useEffect(() => {
     const canvas = minimapCanvasRef.current;
     const host = minimapRef.current;
+    const scroller = scrollRef.current;
     if (!canvas || !host) return;
     const rect = host.getBoundingClientRect();
-    const width = Math.max(1, Math.round(rect.width));
-    const height = Math.max(1, Math.round(rect.height));
+    const width = mmSize.w || Math.max(1, Math.round(rect.width));
+    const height = mmSize.h || Math.max(1, Math.round(rect.height));
     const dpr = window.devicePixelRatio || 1;
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
     canvas.style.width = `${width}px`;
     canvas.style.height = `${height}px`;
     const ctx = canvas.getContext("2d");
@@ -117,23 +159,46 @@ export default function EditorPane() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
-    const pitch = Math.min(3, height / Math.max(1, minimapBars.length));
-    minimapBars.forEach((bar, index) => {
-      const raw = draftContent.split("\n")[index]?.trim() ?? "";
-      if (!bar.width || !raw) return;
-      const y = index * pitch;
-      const barHeight = Math.max(0.8, pitch * 0.62);
-      const indent = Math.min(bar.indent * 1.1, 30);
-      const barWidth = Math.min(width - indent - 8, 2 + Math.min(42, bar.width * 0.36));
-      const dark = document.documentElement.dataset.theme === "dark";
-      ctx.fillStyle = raw.startsWith("#")
-        ? (dark ? "#e06a4e" : "#c2492f")
-        : raw.startsWith(">")
-          ? (dark ? "rgba(157,155,150,.42)" : "rgba(115,113,108,.38)")
+    // Scale the real page: one minimap row is one wrapped editor row.
+    const track = Math.max(1, height - MM_PAD * 2);
+    const docHeight = scroller?.scrollHeight ?? 0;
+    // TEXT_BOX already nets out the textarea's 24px side padding.
+    const client = scroller?.clientWidth ?? 0;
+    const box = client > 96 ? Math.min(TEXT_BOX, client - 48) : TEXT_BOX;
+    const perLine = Math.max(8, Math.floor(box / TEXT_PX));
+    const scale = docHeight > 0 ? track / docHeight : 1;
+    const row = Math.max(1, LINE_PX * scale);
+    const fontSize = Math.max(1.6, Math.min(7, TEXT_PX * scale));
+    const dark = document.documentElement.dataset.theme === "dark";
+    ctx.font = `${fontSize}px "Noto Serif SC", "Source Han Serif SC", serif`;
+    ctx.textBaseline = "top";
+
+    let index = 0;
+    for (const line of draftContent.split("\n")) {
+      const body = line.trim();
+      if (body) {
+        const indent = line.length - line.trimStart().length ? 2 : 0;
+        ctx.fillStyle = body.startsWith("#")
+          ? (dark ? "#e06a4e" : "#c2492f")
           : (dark ? "rgba(157,155,150,.66)" : "rgba(115,113,108,.62)");
-      ctx.fillRect(5 + indent, y, barWidth, barHeight);
-    });
-  }, [draftContent, minimapBars, view]);
+        for (let at = 0; at < body.length; at += perLine, index += 1) {
+          ctx.fillText(
+            body.slice(at, at + perLine),
+            5 + indent,
+            MM_PAD + index * row + Math.max(0, (row - fontSize) / 2),
+          );
+        }
+        continue;
+      }
+      index += 1;
+    }
+
+    // Fade whatever the slider does not cover: the bright band is the page you see.
+    const geo = thumbGeometry();
+    ctx.fillStyle = dark ? "rgba(22,22,24,.6)" : "rgba(252,252,251,.62)";
+    ctx.fillRect(0, 0, width, Math.max(0, geo.top));
+    ctx.fillRect(0, geo.top + geo.height, width, Math.max(0, height - geo.top - geo.height));
+  }, [draftContent, mmSize, view]);
 
   if (!chapter) {
     return (
@@ -147,29 +212,39 @@ export default function EditorPane() {
   }
 
   const liveCount = draftContent.replace(/\s/g, "").length;
+  const thumb = thumbGeometry();
+
+  // Dragging the slider keeps the offset you grabbed it at; clicking bare track
+  // centres it under the cursor. Either way it scrolls the page, not the map.
   function scrubTo(clientY: number) {
     const node = scrollRef.current;
     const map = minimapRef.current;
     if (!node || !map) return;
     const rect = map.getBoundingClientRect();
-    if (rect.height <= 0) return;
-    const ratio = Math.min(1, Math.max(0, (clientY - rect.top) / rect.height));
-    node.scrollTop = ratio * (node.scrollHeight - node.clientHeight);
+    const geo = thumbGeometry();
+    const span = Math.max(1, geo.track - geo.height);
+    const offset = clientY - rect.top - (grabRef.current ?? geo.height / 2);
+    const progress = Math.min(1, Math.max(0, (offset - MM_PAD) / span));
+    node.scrollTop = progress * Math.max(0, node.scrollHeight - node.clientHeight);
   }
 
   function onMinimapPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
-    scrubRef.current = true;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const geo = thumbGeometry();
+    const offset = event.clientY - rect.top;
+    const inside = offset >= geo.top && offset <= geo.top + geo.height;
+    grabRef.current = inside ? offset - geo.top : geo.height / 2;
     event.currentTarget.setPointerCapture(event.pointerId);
     scrubTo(event.clientY);
   }
 
   function onMinimapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    if (scrubRef.current) scrubTo(event.clientY);
+    if (grabRef.current !== null) scrubTo(event.clientY);
   }
 
   function endMinimapScrub(event: React.PointerEvent<HTMLDivElement>) {
-    scrubRef.current = false;
+    grabRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -214,6 +289,7 @@ export default function EditorPane() {
           onScroll={syncView}
         >
           <textarea
+            ref={textareaRef}
             value={draftContent}
             onChange={(event) => state.setDraftContent(event.target.value)}
             aria-label="章节正文"
@@ -223,16 +299,18 @@ export default function EditorPane() {
         <div
           className="minimap"
           ref={minimapRef}
-          style={{ "--lines": minimapBars.length, "--view-top": view.top, "--view-height": view.height } as MapVars}
           aria-hidden="true"
-          title="缩略栏：点击或拖动可跳转正文"
+          title="缩略栏：拖动透明滑块翻页"
           onPointerDown={onMinimapPointerDown}
           onPointerMove={onMinimapPointerMove}
           onPointerUp={endMinimapScrub}
           onPointerCancel={endMinimapScrub}
         >
           <canvas ref={minimapCanvasRef} className="minimap-canvas" />
-          <i className="minimap-viewport" />
+          <i
+            className="minimap-viewport"
+            style={{ top: `${thumb.top}px`, height: `${thumb.height}px` }}
+          />
         </div>
       </div>
       <div className="editor-footer" aria-live="polite">

@@ -60,8 +60,8 @@ describe("EditorPane", () => {
     expect(screen.getByLabelText("章节正文")).toBeTruthy();
   });
 
-  it("draws one minimap bar per non-blank line", () => {
-    const fillCalls: Array<{ x: number }> = [];
+  it("renders the minimap as one scaled row per content line", () => {
+    const drawn: string[] = [];
     canvasGetContext = Object.getOwnPropertyDescriptor(
       window.HTMLCanvasElement.prototype,
       "getContext",
@@ -71,7 +71,8 @@ describe("EditorPane", () => {
         return {
           setTransform: () => undefined,
           clearRect: () => undefined,
-          fillRect: (x: number) => fillCalls.push({ x }),
+          fillRect: () => undefined,
+          fillText: (text: string) => drawn.push(text),
         };
       },
       configurable: true,
@@ -79,10 +80,20 @@ describe("EditorPane", () => {
     seed([emptyChapter], emptyChapter.content);
     render(<MemoryRouter><EditorPane /></MemoryRouter>);
 
-    // Five lines, two of them blank, so three bars carry content.
+    // Five lines, two of them blank, so three rows carry text.
     expect(document.querySelector(".minimap-canvas")).toBeTruthy();
-    expect(document.querySelector(".minimap-viewport")).toBeTruthy();
-    expect(fillCalls).toHaveLength(3);
+    expect(drawn).toEqual(["第一段正文。", "第二段带缩进。", "结尾一句。"]);
+  });
+
+  it("sizes the slider from the scroll ratio instead of a separate scrollbar", () => {
+    seed([emptyChapter], emptyChapter.content);
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+
+    const slider = document.querySelector(".minimap-viewport") as HTMLElement;
+    expect(slider.style.top).toMatch(/px$/);
+    expect(slider.style.height).toMatch(/px$/);
+    // The textarea is grown by JS, so the page scrolls in .editor-scroll.
+    expect(document.querySelector(".editor-scroll textarea")).toBeTruthy();
   });
 
   it("shows the empty-state placeholder without a chapter", () => {
