@@ -32,6 +32,7 @@ type WorkbenchState = {
   machineCheck: MachineCheckResult | null;
   generationRuns: GenerationRun[];
   reviews: Review[];
+  lastGenerationRunId: number | null;
   recordVersion: number;
   error: string | null;
   notice: string | null;
@@ -72,6 +73,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   machineCheck: null,
   generationRuns: [],
   reviews: [],
+  lastGenerationRunId: null,
   recordVersion: 0,
   error: null,
   notice: null,
@@ -215,6 +217,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         chapters,
         selectedChapterId: result.chapter.id,
         machineCheck: result.machine_check,
+        lastGenerationRunId: result.generation_run.id,
         recordVersion: get().recordVersion + 1,
       });
     } catch (cause) {

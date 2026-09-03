@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPane from "./ChatPane";
@@ -97,7 +98,7 @@ describe("ChatPane", () => {
       }),
     );
 
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     await user.type(screen.getByLabelText("对话输入"), "开场怎么写？");
     await user.keyboard("{Enter}");
@@ -138,7 +139,7 @@ describe("ChatPane", () => {
       }),
     );
 
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     const box = screen.getByLabelText("对话输入") as HTMLTextAreaElement;
     await user.type(box, "@陈");
@@ -184,7 +185,7 @@ describe("ChatPane", () => {
       }),
     );
 
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     await user.type(screen.getByLabelText("对话输入"), "还在吗");
     await user.keyboard("{Enter}");
@@ -205,7 +206,7 @@ describe("ChatPane", () => {
 
   it("stacks the dock the way frame 14 draws it: field first, tools below", async () => {
     vi.stubGlobal("fetch", vi.fn(() => json([])));
-    const { container } = render(<ChatPane />);
+    const { container } = render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     let field!: HTMLElement;
     await waitFor(() => {

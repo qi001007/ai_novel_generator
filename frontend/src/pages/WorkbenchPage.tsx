@@ -65,7 +65,8 @@ function loadPanes(): Panes {
 export default function WorkbenchPage() {
   const navigate = useNavigate();
   const { novelId: novelIdParam } = useParams();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const chapterIdParam = searchParams.get("chapter");
   const state = useWorkbench();
   const [rightView, setRightView] = useState<RightView>("editor");
   const [charactersOpen, setCharactersOpen] = useState(false);
@@ -155,6 +156,22 @@ export default function WorkbenchPage() {
       state.selectNovel(novelId);
     }
   }, [novelIdParam, state.selectedNovelId]);
+
+  // Deep links from run detail return with ?chapter=N, so the requested prose
+  // wins over selectNovel's first-chapter default.
+  useEffect(() => {
+    const chapterId = Number(chapterIdParam);
+    if (
+      Number.isFinite(chapterId) &&
+      chapterIdParam !== null &&
+      state.chapters.some((item) => item.id === chapterId) &&
+      chapterId !== state.selectedChapterId
+    ) {
+      state.selectChapter(chapterId);
+      setRightView("editor");
+      setSearchParams({}, { replace: true });
+    }
+  }, [chapterIdParam, state.chapters, state.selectedChapterId, setSearchParams]);
 
   useEffect(() => {
     state.loadChapterRecords();

@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPane from "./ChatPane";
@@ -105,7 +106,7 @@ describe("ChatPane proposals", () => {
 
   it("turns a streamed markdown block into a diff card, and applies it as actor=ai", async () => {
     const user = userEvent.setup();
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     await user.type(document.querySelector(".chat-input textarea") as HTMLElement, "把第二条收紧一点");
     await user.keyboard("{Enter}");
@@ -134,7 +135,7 @@ describe("ChatPane proposals", () => {
 
   it("drops the card without writing when discarded", async () => {
     const user = userEvent.setup();
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     await user.type(document.querySelector(".chat-input textarea") as HTMLElement, "改一下");
     await user.keyboard("{Enter}");
@@ -164,7 +165,7 @@ describe("ChatPane proposals", () => {
         proposals: [{ path: "blueprint.md", text: NEW, valid: true, error: "" }],
       },
     ];
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     await screen.findByText("我改好了");
     await waitFor(() => expect(document.querySelector(".proposal")).toBeTruthy());
@@ -191,7 +192,7 @@ describe("ChatPane proposals", () => {
         proposals: [{ path: "blueprint.md", text: OLD, valid: true, error: "" }],
       },
     ];
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     await screen.findByText("已按你的确认写入");
     await new Promise((resolve) => window.setTimeout(resolve, 40));
@@ -216,7 +217,7 @@ describe("ChatPane proposals", () => {
         proposals: [{ path: "blueprint.yaml", text: NEW, valid: true, error: "" }],
       },
     ];
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
   
     await screen.findByText("上一轮的旧格式提案");
     await new Promise((resolve) => window.setTimeout(resolve, 40));
@@ -225,7 +226,7 @@ describe("ChatPane proposals", () => {
   
   it("opens the file in the editor instead of writing", async () => {
     const user = userEvent.setup();
-    render(<ChatPane />);
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
 
     await user.type(document.querySelector(".chat-input textarea") as HTMLElement, "改一下");
     await user.keyboard("{Enter}");

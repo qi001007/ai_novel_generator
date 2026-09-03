@@ -1,4 +1,5 @@
 import { act, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import EditorPane from "./EditorPane";
@@ -38,18 +39,18 @@ describe("EditorPane", () => {
   });
 
   it("keeps hook order when a chapter arrives after the empty state", () => {
-    const { rerender } = render(<EditorPane />);
+    const { rerender } = render(<MemoryRouter><EditorPane /></MemoryRouter>);
     expect(screen.getByText("左侧选择或新建一章开始写作。")).toBeTruthy();
 
     act(() => seed([emptyChapter], emptyChapter.content));
-    rerender(<EditorPane />);
+    rerender(<MemoryRouter><EditorPane /></MemoryRouter>);
 
     expect(screen.getByLabelText("章节正文")).toBeTruthy();
   });
 
   it("draws one minimap bar per non-blank line", () => {
     seed([emptyChapter], emptyChapter.content);
-    render(<EditorPane />);
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
 
     // Five lines, two of them blank, so three bars carry content.
     expect(document.querySelectorAll(".minimap > span")).toHaveLength(3);
@@ -57,7 +58,7 @@ describe("EditorPane", () => {
 
   it("shows the empty-state placeholder without a chapter", () => {
     seed([]);
-    render(<EditorPane />);
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
     expect(screen.queryByLabelText("章节正文")).toBeNull();
     expect(document.querySelector(".minimap")).toBeNull();
   });

@@ -1,21 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { useNavigate } from "react-router-dom";
 
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
+
+function formatTime(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? "—"
+    : date.toLocaleString("zh-CN", { hour12: false });
+}
 
 import StatusBadge from "./StatusBadge";
 import { useWorkbench } from "../store/workbench";
 
 export default function EditorPane() {
+  const navigate = useNavigate();
   const state = useWorkbench();
   const {
     selectedChapterId,
     chapters,
     briefs,
     draftContent,
-    machineCheck,
     generationRuns,
-    reviews,
     busy,
     notice,
   } = state;
@@ -212,35 +219,40 @@ export default function EditorPane() {
         {notice ? <span className="notice">{notice}</span> : null}
         {state.error ? <span className="status-error">{state.error}</span> : null}
       </div>
-      {machineCheck ? (
-        <section className={`check-result ${machineCheck.passed ? "passed" : "failed"}`}>
-          <strong>{machineCheck.passed ? "机械校验通过" : "机械校验未通过"}</strong>
-          <span className="tabular">{machineCheck.word_count} 字</span>
-          {machineCheck.issues.length > 0 && (
-            <ul>
-              {machineCheck.issues.map((issue, index) => (
-                <li key={`${issue.type}-${index}`}>{issue.message}</li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ) : null}
-      {(generationRuns.length > 0 || reviews.length > 0) && (
+      {generationRuns.length > 0 && (
         <section className="records" aria-label="生成与审稿记录">
-          <h3>生成与审稿记录</h3>
+          <header className="records-head">
+            <h3>调用记录</h3>
+            {generationRuns.length ? (
+              <button
+                type="button"
+                className="primary"
+                onClick={() =>
+                  navigate(
+                    `/novels/${chapter.novel_id}/chapters/${chapter.id}/runs/${generationRuns[generationRuns.length - 1].id}`,
+                  )
+                }
+              >
+                查看调用详情
+              </button>
+            ) : null}
+          </header>
           <ul className="record-list">
             {generationRuns.map((run) => (
               <li key={`run-${run.id}`}>
-                <strong>{run.model}</strong>
-                <span>{run.task_type}</span>
-                <span className="tabular">{run.token_input} / {run.token_output} token</span>
-              </li>
-            ))}
-            {reviews.map((review) => (
-              <li key={`review-${review.id}`}>
-                <strong>{review.reviewer}</strong>
-                <span>{review.decision}</span>
-                {review.comments ? <p>{review.comments}</p> : null}
+                <div>
+                  <strong>{run.model}</strong>
+                  <span>{run.task_type} · {formatTime(run.created_at)}</span>
+                  <span className="tabular">{run.token_input} / {run.token_output} token</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/novels/${chapter.novel_id}/chapters/${chapter.id}/runs/${run.id}`)
+                  }
+                >
+                  详情
+                </button>
               </li>
             ))}
           </ul>

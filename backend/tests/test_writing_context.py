@@ -258,6 +258,7 @@ def test_manifest_records_injected_and_cut_blocks(session):
     assert injected and cut
     assert [block["index"] for block in injected] == list(range(1, len(injected) + 1))
     assert all(block["chars"] > 0 for block in manifest["blocks"])
+    assert all(block["excerpt"] for block in manifest["blocks"] if block["injected"])
     assert all(block["reason"] for block in cut)
 
 

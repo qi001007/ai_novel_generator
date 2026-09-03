@@ -654,6 +654,7 @@ class ContextBlock:
             "ref": self.item.ref,
             "tier": TIER_NAMES[self.tier],
             "chars": self.chars,
+            "excerpt": self.item.text,
             "injected": index is not None,
         }
         if index is not None:

@@ -62,6 +62,25 @@ export type GenerationRun = {
   token_output: number;
   cost_estimate: number;
   status: string;
+  created_at: string;
+};
+
+export type ContextManifestBlock = {
+  kind: string;
+  label: string;
+  ref: string;
+  tier?: string;
+  chars: number;
+  excerpt?: string;
+  injected?: boolean;
+  index?: number;
+  reason?: string;
+};
+
+export type ContextManifest = {
+  budget: number;
+  used: number;
+  blocks: ContextManifestBlock[];
 };
 
 export type ChapterGenerationResponse = {

@@ -7,6 +7,7 @@ import {
   RotateCcw,
   Square,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import ProposalCard from "./ProposalCard";
@@ -52,6 +53,8 @@ type Row =
       status: CommandStatus;
       detail: string;
       startedAt: number;
+      runId?: number;
+      chapterId?: number;
     };
 
 const commands = [
@@ -108,6 +111,7 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
 }
 
 export default function ChatPane({ className = "" }: { className?: string }) {
+  const navigate = useNavigate();
   const selectedNovelId = useWorkbench((s) => s.selectedNovelId);
   const selectedChapterId = useWorkbench((s) => s.selectedChapterId);
   const llmStatus = useWorkbench((s) => s.llmStatus);
@@ -494,6 +498,8 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         } else if (chapter) {
           patchCommand(id, {
             status: "done",
+            runId: snapshot.lastGenerationRunId ?? undefined,
+            chapterId: chapter.id,
             detail: `第 ${chapter.chapter_number} 章《${chapter.title || "未命名"}》· ${chapter.word_count} 字 · 机械校验 ${
               snapshot.machineCheck?.passed ? "通过" : "未通过"
             }`,
@@ -619,6 +625,29 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       </span>
                     </header>
                     <p>{row.detail}</p>
+                    {row.status === "done" && row.runId && row.chapterId && selectedNovelId ? (
+                      <div className="command-actions">
+                        <button
+                          type="button"
+                          className="primary"
+                          onClick={() =>
+                            navigate(
+                              `/novels/${selectedNovelId}/chapters/${row.chapterId}/runs/${row.runId}`,
+                            )
+                          }
+                        >
+                          查看调用详情
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/novels/${selectedNovelId}?chapter=${row.chapterId}`)
+                          }
+                        >
+                          在正文打开
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

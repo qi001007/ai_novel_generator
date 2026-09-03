@@ -62,7 +62,8 @@ describe("App", () => {
 
     await waitFor(() => {
       expect(screen.getByText("test-model")).toBeTruthy();
-      expect(screen.getByText("整体合格。")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "详情" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "查看调用详情" })).toBeTruthy();
     });
   });
 });
