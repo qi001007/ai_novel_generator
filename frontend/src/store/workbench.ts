@@ -203,26 +203,35 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   async generateDraft() {
-    const { selectedNovelId, selectedBriefId, busy } = get();
-    if (!selectedNovelId || !selectedBriefId || busy) return;
+    const { selectedNovelId, selectedChapterId, selectedBriefId, briefs, chapters, busy } = get();
+    if (!selectedNovelId || busy) return;
+    const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
+    const brief =
+      (chapter
+        ? briefs.find((item) => item.id === chapter.brief_id) ??
+          briefs.find((item) => item.chapter_number === chapter.chapter_number)
+        : null) ??
+      briefs.find((item) => item.id === selectedBriefId) ??
+      null;
+    if (!chapter || !brief) {
+      set({ error: "请先选择章节；该章还需要一份 D 层简报" });
+      return;
+    }
 
     set({ busy: true, error: null });
     try {
       let streamed = "";
       await api.streamGeneration(
         selectedNovelId,
-        selectedBriefId,
+        brief.id,
         (event) => {
           if (event.event === "delta") {
             streamed += event.data.text;
-            const chapter = get().chapters.find((item) => item.id === get().selectedChapterId);
             set({ draftContent: streamed });
-            if (chapter) {
-              useFiles.getState().setDraft(
-                draftPath(chapter.chapter_number),
-                draftDocument(chapter.chapter_number, streamed),
-              );
-            }
+            useFiles.getState().setDraft(
+              draftPath(chapter.chapter_number),
+              draftDocument(chapter.chapter_number, streamed),
+            );
             return;
           }
           if (event.event === "done") {

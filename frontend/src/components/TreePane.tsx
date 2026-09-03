@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronsDownUp, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus } from "lucide-react";
 
 import StatusBadge from "./StatusBadge";
 import type { Chapter } from "../types";
@@ -98,6 +98,11 @@ export default function TreePane({
   };
 
   const menuPath = menu?.target.kind === "file" ? menu.target.path : null;
+  const allCollapsed =
+    collapsed.plan &&
+    collapsed.library &&
+    chapters.every((chapter) => collapsed[`chapter-${chapter.chapter_number}`]);
+  const collapseLabel = allCollapsed ? "展开全部" : "折叠全部";
 
   return (
     <nav className="tree" aria-label="项目结构">
@@ -248,11 +253,22 @@ export default function TreePane({
         <button
           type="button"
           className="tree-action ghost"
-          title="折叠全部"
-          aria-label="折叠全部"
-          onClick={() => setCollapsed({ plan: true, library: true })}
+          title={collapseLabel}
+          aria-label={collapseLabel}
+          onClick={() => {
+            if (allCollapsed) {
+              setCollapsed({});
+              return;
+            }
+            const next: Record<string, boolean> = { plan: true, library: true };
+            chapters.forEach((chapter) => {
+              next[`chapter-${chapter.chapter_number}`] = true;
+            });
+            setCollapsed(next);
+          }}
         >
-          <ChevronsDownUp size={13} />
+          {allCollapsed ? <ChevronsUpDown size={13} /> : <ChevronsDownUp size={13} />}
+          {collapseLabel}
         </button>
       </div>
       {createError && <p className="tree-action-error">{createError}</p>}

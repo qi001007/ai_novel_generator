@@ -83,7 +83,7 @@ def generate_chapter_from_brief(
     novel = get_novel_or_404(novel_id, session)
     brief = session.get(ChapterBrief, brief_id)
     if brief is None or brief.novel_id != novel_id:
-        raise HTTPException(status_code=404, detail="Chapter brief not found")
+        raise HTTPException(status_code=404, detail="没有找到这份 D 层简报")
 
     try:
         return generate_from_brief(session, llm, novel, brief)
@@ -110,7 +110,7 @@ def stream_generate_chapter_from_brief(
         )
     ).first()
     if existing is not None and existing.content.strip():
-        raise HTTPException(status_code=409, detail="This chapter already has prose")
+        raise HTTPException(status_code=409, detail="该章已有正文；请先打回或清空后再生成")
 
     writing_context = build_writing_context(
         session, novel.id, brief.chapter_number, brief_id=brief.id
@@ -181,7 +181,7 @@ def stream_generate_chapter_from_brief(
                     status="draft",
                 )
             elif chapter.content.strip():
-                yield sse("error", {"message": "This chapter already has prose", "partial": content})
+                yield sse("error", {"message": "该章已有正文；请先打回或清空后再生成", "partial": content})
                 return
 
             chapter.content = content

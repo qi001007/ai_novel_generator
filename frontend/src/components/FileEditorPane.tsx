@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
@@ -20,7 +21,7 @@ import {
   TOC_PATH,
   useFiles,
 } from "../store/files";
-import TocListView from "./TocListView";
+import TocListView, { parseToc, renderToc } from "./TocListView";
 import { useWorkbench } from "../store/workbench";
 
 // The rail says "this line is structure": section headings and primary keys are
@@ -33,19 +34,14 @@ const LOCKED_FIELDS: Record<string, string[]> = {
 };
 
 const MM_PAD = 8;
-const MM_PITCH = 5; // 2px bar + 3px gap, per frame 17
-
-function barWidth(text: string) {
-  const trimmed = text.trim();
-  if (!trimmed) return 10;
-  return Math.min(30, Math.max(10, [...trimmed].length));
-}
+const MM_PITCH = 5;
 
 export default function FileEditorPane() {
   const novelTitle = useWorkbench((state) => {
     const found = state.novels.find((item) => item.id === state.selectedNovelId);
     return found?.title ?? "未选择作品";
   });
+  const chapters = useWorkbench((state) => state.chapters);
   const tabs = useFiles((state) => state.tabs);
   const active = useFiles((state) => state.active);
   const entries = useFiles((state) => state.entries);
@@ -60,14 +56,42 @@ export default function FileEditorPane() {
 
   const hostRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activeRef = useRef<string | null>(null);
   activeRef.current = active;
+  const minimapDraggingRef = useRef(false);
 
   const [scroll, setScroll] = useState<ScrollInfo>({ top: 0, height: 1, lines: 0 });
   const [caretLine, setCaretLine] = useState(1);
   const [mmHeight, setMmHeight] = useState(0);
   const [tocSource, setTocSource] = useState(false);
+
+  // Switching to source must show the same draft the list just rendered,
+  // including chapter rows that exist before their B-layer entry is saved.
+  function handleUseTocSource() {
+    const entry = active ? entries[active] : undefined;
+    if (active !== TOC_PATH || !entry?.doc) {
+      setTocSource(true);
+      return;
+    }
+    const parsed = parseToc(entry.draft);
+    const rows = new Map(parsed.rows.map((row) => [row.chapter, row]));
+    chapters.forEach((chapter) => {
+      if (!rows.has(chapter.chapter_number)) {
+        rows.set(chapter.chapter_number, {
+          chapter: chapter.chapter_number,
+          title: chapter.title || "未命名",
+          plot_function: "",
+          notes: "",
+        });
+      }
+    });
+    const ordered = [...rows.values()].sort((a, b) => a.chapter - b.chapter);
+    const text = renderToc(parsed.preamble, ordered);
+    if (text !== entry.draft) setDraft(TOC_PATH, text);
+    setTocSource(true);
+  }
 
   const entry = active ? entries[active] : undefined;
   const proposal = active ? pending[active] : undefined;
@@ -177,6 +201,40 @@ export default function FileEditorPane() {
   }, [focus, active, entry?.doc]);
 
   // --- minimap geometry ---------------------------------------------------
+  const lines = useMemo(() => draft.split("\n"), [draft]);
+
+  function scrollEditorToRatio(ratio: number) {
+    const view = viewRef.current;
+    if (!view) return;
+    const clamped = Math.min(1, Math.max(0, ratio));
+    view.scrollDOM.scrollTop =
+      clamped * (view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight);
+  }
+
+  function onMinimapPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    minimapDraggingRef.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    scrollEditorToRatio((event.clientY - rect.top) / rect.height);
+  }
+
+  function onMinimapPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!minimapDraggingRef.current) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.height <= 0) return;
+    scrollEditorToRatio((event.clientY - rect.top) / rect.height);
+  }
+
+  function onMinimapPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
+    if (!minimapDraggingRef.current) return;
+    minimapDraggingRef.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
   useLayoutEffect(() => {
     const body = bodyRef.current;
     if (!body || typeof ResizeObserver === "undefined") return undefined;
@@ -188,9 +246,40 @@ export default function FileEditorPane() {
     return () => observer.disconnect();
   }, []);
 
-  const lines = useMemo(() => draft.split("\n"), [draft]);
+  useEffect(() => {
+    const canvas = minimapCanvasRef.current;
+    if (!canvas) return;
+    const width = 56;
+    const height = Math.max(1, mmHeight);
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    const track = Math.max(1, height - MM_PAD * 2);
+    const pitch = Math.min(MM_PITCH, track / Math.max(1, lines.length));
+    const dark = document.documentElement.dataset.theme === "dark";
+    lines.forEach((text, index) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      const y = MM_PAD + index * pitch;
+      const barHeight = Math.max(0.8, Math.min(2, pitch * 0.7));
+      const indent = Math.min((text.length - text.trimStart().length) * 0.8, 18);
+      const lineWidth = Math.min(56 - indent - 8, Math.max(3, trimmed.length * 0.42));
+      ctx.fillStyle = trimmed.startsWith("#")
+        ? (dark ? "#e06a4e" : "#c2492f")
+        : trimmed.startsWith(">")
+          ? (dark ? "rgba(157,155,150,.35)" : "rgba(115,113,108,.32)")
+          : (dark ? "rgba(157,155,150,.62)" : "rgba(115,113,108,.58)");
+      ctx.fillRect(5 + indent, y, lineWidth, barHeight);
+    });
+  }, [lines, mmHeight, caretLine, scroll]);
+
   const track = Math.max(0, mmHeight - MM_PAD * 2);
-  const pitch = lines.length ? Math.min(MM_PITCH, Math.max(2, track / lines.length)) : MM_PITCH;
   const thumbHeight = Math.max(20, Math.min(track, track * scroll.height));
   const thumbTop = MM_PAD + scroll.top * Math.max(0, track - thumbHeight);
 
@@ -305,39 +394,25 @@ export default function FileEditorPane() {
           {entry?.loading && !entry.doc ? <p className="file-loading">读取中…</p> : null}
           <div ref={hostRef} className="file-cm" />
         </div>
-        <div className="minimap file-minimap" aria-hidden="true">
+        <div
+          className="minimap file-minimap"
+          aria-hidden="true"
+          onPointerDown={onMinimapPointerDown}
+          onPointerMove={onMinimapPointerMove}
+          onPointerUp={onMinimapPointerEnd}
+          onPointerCancel={onMinimapPointerEnd}
+        >
+          <canvas ref={minimapCanvasRef} className="minimap-canvas" />
           <i
-            className="minimap-thumb"
+            className="minimap-viewport"
             style={{ top: `${thumbTop}px`, height: `${thumbHeight}px` }}
           />
-          {lines.map((text, index) => {
-            const trimmed = text.trim();
-            const tone = trimmed.startsWith("#")
-              ? "heading"
-              : trimmed.startsWith(">")
-                ? "comment"
-                : index + 1 === caretLine
-                  ? "active"
-                  : "";
-            return (
-              <i
-                key={index}
-                className={`minimap-ln ${tone}`}
-                style={{
-                  top: `${MM_PAD + index * pitch}px`,
-                  left: 4,
-                  width: `${barWidth(text)}px`,
-                  height: `${Math.min(2, pitch)}px`,
-                }}
-              />
-            );
-          })}
         </div>
       </div>
 
       {showTocList ? (
         <div className="toc-list-overlay">
-          <TocListView onUseSource={() => setTocSource(true)} />
+          <TocListView onUseSource={handleUseTocSource} />
         </div>
       ) : null}
 

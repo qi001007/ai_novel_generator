@@ -9,7 +9,7 @@ type TocRow = { chapter: number; title: string; plot_function: string; notes: st
 
 const PREAMBLE_END = "\n\n";
 
-function parseToc(text: string): { preamble: string; rows: TocRow[] } {
+export function parseToc(text: string): { preamble: string; rows: TocRow[] } {
   const firstHeading = text.indexOf("\n## 第");
   const preamble = firstHeading === -1 ? text : text.slice(0, firstHeading + 1);
   const body = firstHeading === -1 ? "" : text.slice(firstHeading + 1);
@@ -35,7 +35,7 @@ function parseToc(text: string): { preamble: string; rows: TocRow[] } {
   return { preamble, rows };
 }
 
-function renderToc(preamble: string, rows: TocRow[]) {
+export function renderToc(preamble: string, rows: TocRow[]) {
   const body = rows
     .map(
       (row) =>

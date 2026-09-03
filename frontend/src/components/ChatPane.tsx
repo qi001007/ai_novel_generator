@@ -367,12 +367,12 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     );
   }
 
-  async function ask(question: string, replaceId?: number) {
+  async function ask(question: string, replaceId?: number, suppressUser = false) {
     const text = question.trim();
     if (!text || !selectedNovelId || running) return;
     const agentId = replaceId ?? nextId++;
 
-    if (replaceId === undefined) {
+    if (replaceId === undefined && !suppressUser) {
       appendMessage({ kind: "user", id: nextId++, text });
     }
     const fresh: AgentRow = {
@@ -434,7 +434,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     function onUp() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      document.body.classList.remove("chat-dock-resizing");
     }
+    document.body.classList.add("chat-dock-resizing");
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   }
@@ -477,7 +479,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       return;
     }
     setMode("plan");
-    void ask(`请盘点${target.label}当前的缺口与内部冲突，并列出下一步待办清单。${target.mention}`);
+    void ask(
+      `请盘点${target.label}当前的缺口与内部冲突，并列出下一步待办清单。${target.mention}`,
+      undefined,
+      true,
+    );
   }
 
   async function runCommand(raw: string) {
@@ -486,6 +492,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     const state = useWorkbench.getState();
     if (!command || !state.selectedNovelId || running) return;
     const argument = rest.join(" ");
+    appendMessage({ kind: "user", id: nextId++, text: raw });
 
     if (command.name === "/plan") {
       runPlan(argument);

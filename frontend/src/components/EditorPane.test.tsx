@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import EditorPane from "./EditorPane";
 import type { Chapter } from "../types";
@@ -18,6 +18,7 @@ const emptyChapter = {
   final_decision: "",
   final_comment: "",
 };
+let canvasGetContext: PropertyDescriptor | null | undefined = null;
 
 function seed(chapters: Chapter[], content = "") {
   useWorkbench.setState({
@@ -37,6 +38,17 @@ describe("EditorPane", () => {
   beforeEach(() => {
     seed([]);
   });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    if (canvasGetContext) {
+      Object.defineProperty(
+        window.HTMLCanvasElement.prototype,
+        "getContext",
+        canvasGetContext,
+      );
+      canvasGetContext = null;
+    }
+  });
 
   it("keeps hook order when a chapter arrives after the empty state", () => {
     const { rerender } = render(<MemoryRouter><EditorPane /></MemoryRouter>);
@@ -49,11 +61,28 @@ describe("EditorPane", () => {
   });
 
   it("draws one minimap bar per non-blank line", () => {
+    const fillCalls: Array<{ x: number }> = [];
+    canvasGetContext = Object.getOwnPropertyDescriptor(
+      window.HTMLCanvasElement.prototype,
+      "getContext",
+    );
+    Object.defineProperty(window.HTMLCanvasElement.prototype, "getContext", {
+      value() {
+        return {
+          setTransform: () => undefined,
+          clearRect: () => undefined,
+          fillRect: (x: number) => fillCalls.push({ x }),
+        };
+      },
+      configurable: true,
+    });
     seed([emptyChapter], emptyChapter.content);
     render(<MemoryRouter><EditorPane /></MemoryRouter>);
 
     // Five lines, two of them blank, so three bars carry content.
-    expect(document.querySelectorAll(".minimap > span")).toHaveLength(3);
+    expect(document.querySelector(".minimap-canvas")).toBeTruthy();
+    expect(document.querySelector(".minimap-viewport")).toBeTruthy();
+    expect(fillCalls).toHaveLength(3);
   });
 
   it("shows the empty-state placeholder without a chapter", () => {

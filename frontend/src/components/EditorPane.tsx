@@ -32,6 +32,7 @@ export default function EditorPane() {
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
+  const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const scrubRef = useRef(false);
   const [view, setView] = useState({ top: 0, height: 1 });
 
@@ -98,6 +99,41 @@ export default function EditorPane() {
       };
     });
   }, [draftContent]);
+
+  useEffect(() => {
+    const canvas = minimapCanvasRef.current;
+    const host = minimapRef.current;
+    if (!canvas || !host) return;
+    const rect = host.getBoundingClientRect();
+    const width = Math.max(1, Math.round(rect.width));
+    const height = Math.max(1, Math.round(rect.height));
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const pitch = Math.min(3, height / Math.max(1, minimapBars.length));
+    minimapBars.forEach((bar, index) => {
+      const raw = draftContent.split("\n")[index]?.trim() ?? "";
+      if (!bar.width || !raw) return;
+      const y = index * pitch;
+      const barHeight = Math.max(0.8, pitch * 0.62);
+      const indent = Math.min(bar.indent * 1.1, 30);
+      const barWidth = Math.min(width - indent - 8, 2 + Math.min(42, bar.width * 0.36));
+      const dark = document.documentElement.dataset.theme === "dark";
+      ctx.fillStyle = raw.startsWith("#")
+        ? (dark ? "#e06a4e" : "#c2492f")
+        : raw.startsWith(">")
+          ? (dark ? "rgba(157,155,150,.42)" : "rgba(115,113,108,.38)")
+          : (dark ? "rgba(157,155,150,.66)" : "rgba(115,113,108,.62)");
+      ctx.fillRect(5 + indent, y, barWidth, barHeight);
+    });
+  }, [draftContent, minimapBars, view]);
 
   if (!chapter) {
     return (
@@ -195,21 +231,8 @@ export default function EditorPane() {
           onPointerUp={endMinimapScrub}
           onPointerCancel={endMinimapScrub}
         >
-          {minimapBars.map((bar, index) =>
-            bar.width > 0 ? (
-              <span
-                key={index}
-                style={
-                  {
-                    "--i": index,
-                    left: `${8 + Math.min(bar.indent * 1.2, 40)}%`,
-                    width: `${Math.max(2, Math.min(bar.width * 0.84, 88 - Math.min(bar.indent * 1.2, 40)))}%`,
-                  } as MapVars
-                }
-              />
-            ) : null,
-          )}
-          <i className="minimap-thumb" />
+          <canvas ref={minimapCanvasRef} className="minimap-canvas" />
+          <i className="minimap-viewport" />
         </div>
       </div>
       <div className="editor-footer" aria-live="polite">
