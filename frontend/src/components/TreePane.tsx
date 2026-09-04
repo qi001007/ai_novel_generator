@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Search, X } from "lucide-react";
+import type { RailPage } from "./ActivityRail";
 
 import StatusBadge from "./StatusBadge";
 import type { Chapter, FileMeta } from "../types";
@@ -16,6 +17,8 @@ type MenuTarget = { kind: "group" } | { kind: "file"; path: string };
 type MenuState = { x: number; y: number; target: MenuTarget } | null;
 
 type TreePaneProps = {
+  /** 帧 27: the sidebar holds three pages; only one is on screen at a time. */
+  page: RailPage;
   chapters: Chapter[];
   selectedChapterId: number | null;
   activeFile: string | null;
@@ -37,10 +40,10 @@ type TreePaneProps = {
   foreshadowOpen: boolean;
 };
 
-const planningNodes: { layer: PlanningLayer; path: string; label: string; hint: string }[] = [
-  { layer: "A", path: BLUEPRINT_PATH, label: "全本蓝图", hint: "长期" },
-  { layer: "B", path: TOC_PATH, label: "目录", hint: "中期" },
-  { layer: "C", path: ARCS_PATH, label: "卷 / 剧情弧", hint: "10-30 章" },
+const planningNodes: { layer: PlanningLayer; path: string; label: string }[] = [
+  { layer: "A", path: BLUEPRINT_PATH, label: "全本蓝图" },
+  { layer: "B", path: TOC_PATH, label: "目录" },
+  { layer: "C", path: ARCS_PATH, label: "剧情弧" },
 ];
 
 /** One 设定库 panel plus the documents that back it. `kind` matches the server's. */
@@ -55,7 +58,10 @@ type LibraryGroup = {
 
 const MENU_WIDTH = 232;
 
+const PAGE_TITLES: Record<RailPage, string> = { plan: "规划", library: "设定库", chat: "对话" };
+
 export default function TreePane({
+  page,
   chapters,
   selectedChapterId,
   activeFile,
@@ -76,6 +82,9 @@ export default function TreePane({
   foreshadowOpen,
 }: TreePaneProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // 帧 27: search and the new/collapse actions are not furniture. The field only
+  // exists once the reader asks for it.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [chapterQuery, setChapterQuery] = useState("");
   const [menu, setMenu] = useState<MenuState>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -131,7 +140,7 @@ export default function TreePane({
     },
     {
       kind: "worldview",
-      label: "世界观 / 地图",
+      label: "世界观",
       open: worldMapOpen,
       onOpen: onOpenWorldMap,
       fileName: bookName,
@@ -166,10 +175,91 @@ export default function TreePane({
   const collapseLabel = allCollapsed ? "展开全部" : "折叠全部";
 
   return (
-    <nav className="tree" aria-label="项目结构">
+    <nav className="tree" data-page={page} aria-label="项目结构">
+      <header className="tree-page-head">
+        <h2 className="tree-page-title">{PAGE_TITLES[page]}</h2>
+        <span className="tree-page-count tabular">
+          {page === "plan"
+            ? `${chapters.length} 章`
+            : page === "library"
+              ? `${settingFiles.length} 份`
+              : "-"}
+        </span>
+        <div className="tree-page-actions">
+          {page !== "chat" ? (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={searchOpen ? "关闭搜索" : "搜索"}
+              title={searchOpen ? "关闭搜索" : "搜索"}
+              aria-pressed={searchOpen}
+              onClick={() => setSearchOpen((open) => !open)}
+            >
+              {searchOpen ? <X size={14} /> : <Search size={14} />}
+            </button>
+          ) : null}
+          {page === "plan" ? (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="新建章节"
+              title={creatingChapter ? "正在新建" : "新建下一章简报（Ctrl+Alt+N）"}
+              disabled={creatingChapter}
+              onClick={onCreateChapter}
+            >
+              <Plus size={14} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="icon-button"
+            title={collapseLabel}
+            aria-label={collapseLabel}
+            onClick={() => {
+              if (allCollapsed) {
+                setCollapsed({});
+                return;
+              }
+              // Scoped to the page you are on (帧 27 批注 5): collapsing 规划 should
+              // not quietly fold the 设定库 you cannot even see.
+              const next: Record<string, boolean> = { ...collapsed };
+              if (page === "plan") {
+                chapters.forEach((chapter) => {
+                  next[`chapter-${chapter.chapter_number}`] = true;
+                });
+              } else {
+                LIBRARY_GROUPS.forEach((group) => {
+                  next[`lib-${group.kind}`] = true;
+                });
+              }
+              setCollapsed(next);
+            }}
+          >
+            {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+          </button>
+        </div>
+      </header>
+      {searchOpen && page !== "chat" ? (
+        <label className="tree-search-row">
+          <input
+            className="tree-search"
+            type="search"
+            value={chapterQuery}
+            placeholder={page === "plan" ? "章号 / 章名" : "设定名"}
+            aria-label="搜索"
+            onChange={(event) => setChapterQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setChapterQuery("");
+                setSearchOpen(false);
+              }
+            }}
+          />
+        </label>
+      ) : null}
       <button
         type="button"
-        className="tree-root"
+        className="tree-root tree-root-plan"
         onClick={() => toggle("plan")}
         aria-expanded={!collapsed.plan}
       >
@@ -177,7 +267,7 @@ export default function TreePane({
         规划
       </button>
       {!collapsed.plan && (
-        <div className="tree-children">
+        <div className="tree-children tree-section-plan">
           {planningNodes.map((node) => (
             <div
               key={node.layer}
@@ -196,7 +286,6 @@ export default function TreePane({
               <button type="button" className="tree-label" onClick={() => onOpenFile(node.path)}>
                 {node.label}
               </button>
-              <span className="tree-hint">{node.hint}</span>
             </div>
           ))}
 
@@ -204,17 +293,6 @@ export default function TreePane({
             <span>章节</span>
             {/* 几百章时「翻」不是办法。这里沿用帧 21 已批准的搜索语言：输入即筛、
                 匹配计数、Esc 清空、无结果给空态，而不是另发明一套交互。 */}
-            <input
-              className="tree-search"
-              type="search"
-              value={chapterQuery}
-              placeholder="搜章号 / 章名"
-              aria-label="搜索章节"
-              onChange={(event) => setChapterQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") setChapterQuery("");
-              }}
-            />
             {filtering ? (
               <span className="tree-count tabular">
                 匹配 {shownChapters.length} / 共 {chapters.length} 章
@@ -254,8 +332,11 @@ export default function TreePane({
                   >
                     {String(chapter.chapter_number).padStart(4, "0")}
                   </button>
-                  <span className="tree-hint">正文 + 简报</span>
-                  <StatusBadge status={chapter.status} />
+                  <StatusBadge
+                    status={chapter.status}
+                    dot
+                    scope={`第 ${chapter.chapter_number} 章`}
+                  />
                 </div>
                 {!isCollapsed(key) && (
                   <div className="tree-children nested">
@@ -305,7 +386,7 @@ export default function TreePane({
 
       <button
         type="button"
-        className="tree-root"
+        className="tree-root tree-root-library"
         onClick={() => toggle("library")}
         aria-expanded={!collapsed.library}
       >
@@ -313,9 +394,15 @@ export default function TreePane({
         设定库
       </button>
       {!collapsed.library && (
-        <div className="tree-children">
+        <div className="tree-children tree-section-library">
           {LIBRARY_GROUPS.map((group) => {
-            const files = settingFiles.filter((meta) => meta.kind === group.kind);
+            const files = settingFiles.filter(
+              (meta) =>
+                meta.kind === group.kind &&
+                (!needle ||
+                  group.fileName(meta).toLowerCase().includes(needle) ||
+                  meta.path.toLowerCase().includes(needle)),
+            );
             return (
               <div className="tree-library" key={group.kind}>
                 <div className={`tree-row ${group.open ? "selected" : ""}`}>
@@ -357,39 +444,17 @@ export default function TreePane({
         </div>
       )}
 
-      <div className="tree-actions">
-        <button
-          type="button"
-          className="tree-action"
-          disabled={creatingChapter}
-          title={creatingChapter ? "正在新建" : "新建下一章简报（Ctrl+Alt+N）"}
-          aria-label="新建章节"
-          onClick={onCreateChapter}
-        >
-          <Plus size={13} />
-          {creatingChapter ? "新建中" : "新建章节"}
-        </button>
-        <button
-          type="button"
-          className="tree-action ghost"
-          title={collapseLabel}
-          aria-label={collapseLabel}
-          onClick={() => {
-            if (allCollapsed) {
-              setCollapsed({});
-              return;
-            }
-            const next: Record<string, boolean> = { plan: true, library: true };
-            chapters.forEach((chapter) => {
-              next[`chapter-${chapter.chapter_number}`] = true;
-            });
-            setCollapsed(next);
-          }}
-        >
-          {allCollapsed ? <ChevronsUpDown size={13} /> : <ChevronsDownUp size={13} />}
-          {collapseLabel}
-        </button>
-      </div>
+      {/* The footer bar is gone (帧 27 批注 1): a row of framed buttons under a
+          tree is the loudest possible way to say "you can add one". The same two
+          actions are icons in the page header now, revealed with the pointer. */}
+      {page === "chat" ? (
+        /* 帧 27: the shell, not a mock. A conversation list needs a conversation
+           table, which is S3 work - until then this says so rather than showing
+           invented threads. */
+        <p className="tree-empty">
+          还没有会话记录。中栏的对话目前按章保存，要在这里列出来，得先有会话表那一层。
+        </p>
+      ) : null}
       {createError && <p className="tree-action-error">{createError}</p>}
 
       {menu && (

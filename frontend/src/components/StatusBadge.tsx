@@ -6,7 +6,18 @@ const LABELS: Record<string, { label: string; tone: string }> = {
   final: { label: "定稿", tone: "filled" },
 };
 
-export default function StatusBadge({ status, dot }: { status: string; dot?: boolean }) {
+export default function StatusBadge({
+  status,
+  dot,
+  scope,
+}: {
+  status: string;
+  dot?: boolean;
+  /** Qualifies the accessible name when two dots on one screen describe the same
+   *  value for different things - the tree row and the editor tab both show a
+   *  chapter, and identical names make them unaddressable. */
+  scope?: string;
+}) {
   const meta = LABELS[status] ?? { label: status, tone: "" };
   if (dot) {
     // The word still exists - for the pointer (title) and for a screen reader -
@@ -14,8 +25,8 @@ export default function StatusBadge({ status, dot }: { status: string; dot?: boo
     return (
       <i
         className={`status-dot ${meta.tone}`}
-        title={meta.label}
-        aria-label={`状态：${meta.label}`}
+        title={`${scope ? scope + " " : ""}${meta.label}`}
+        aria-label={`${scope ? scope + " " : ""}状态：${meta.label}`}
         data-status={status}
       />
     );

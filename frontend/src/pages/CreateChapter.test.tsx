@@ -123,7 +123,8 @@ async function openWorkbench() {
     </MemoryRouter>,
   );
   await waitFor(() => {
-    expect(document.querySelector(".tree-actions")).toBeTruthy();
+    // The footer bar is gone (帧 27); the page header is what says the tree is up.
+    expect(document.querySelector(".tree-page-head")).toBeTruthy();
   });
 }
 
@@ -135,7 +136,7 @@ beforeEach(() => {
 });
 
 describe("新建章节三通道", () => {
-  it("树底按钮一次文件写入同事务建出 Chapter 与简报，并打开该简报", async () => {
+  it("页头的加号图标一次文件写入同事务建出 Chapter 与简报，并打开该简报", async () => {
     const server = makeServer();
     const user = userEvent.setup();
     await openWorkbench();

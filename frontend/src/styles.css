@@ -398,6 +398,104 @@ select:focus-visible {
   background: var(--bg);
 }
 
+/* ---------- 活动条（帧 27） ---------- */
+
+.activity-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 44px;
+  min-width: 44px;
+  padding-top: 8px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+}
+
+.activity-rail-item {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-height: 0;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.activity-rail-item:hover {
+  background: var(--surface-alt);
+  color: var(--text-1);
+}
+
+/* No bar down one edge: the colour and the fill say which page is open, and
+   four agreeing edges is what keeps it quiet. */
+.activity-rail-item.active {
+  background: var(--surface);
+  color: var(--accent);
+}
+
+.tree-page-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 6px 0 8px;
+}
+
+.tree-page-title {
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+
+.tree-page-count {
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.tree-page-actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.sidebar:hover .tree-page-actions,
+.tree:focus-within .tree-page-actions,
+.tree-page-actions:focus-within {
+  opacity: 1;
+}
+
+.tree-search-row {
+  display: block;
+  padding: 0 8px 6px;
+}
+
+/* The section root used to be the only place that named the group. Now the rail
+   and the page header both do, so a third "规划" underneath is the same word
+   three times down one edge - hidden here rather than deleted so the collapse
+   state it keys on keeps working. */
+.tree > .tree-root {
+  display: none;
+}
+
+/* One page at a time; the rail decides which. */
+.tree[data-page="plan"] .tree-root-library,
+.tree[data-page="plan"] .tree-section-library,
+.tree[data-page="library"] .tree-root-plan,
+.tree[data-page="library"] .tree-section-plan,
+.tree[data-page="chat"] .tree-root-plan,
+.tree[data-page="chat"] .tree-section-plan,
+.tree[data-page="chat"] .tree-root-library,
+.tree[data-page="chat"] .tree-section-library {
+  display: none;
+}
+
 /* ---------- 左栏双根树 ---------- */
 
 .tree {
@@ -459,6 +557,9 @@ select:focus-visible {
   color: var(--text-1);
 }
 
+/* 帧 27 批注 4: no box, no fill. The letter and the chevron carry the meaning on
+   their own; a grey square behind every one of them is what turned the tree into
+   "a box inside a box". */
 .tree-prefix {
   min-height: 0;
   display: inline-grid;
@@ -467,8 +568,8 @@ select:focus-visible {
   width: 15px;
   height: 15px;
   margin-right: 8px;
-  border-radius: 4px;
-  background: var(--surface-alt);
+  border-radius: 0;
+  background: transparent;
   color: var(--text-2);
   font-size: 11px;
   font-style: normal;

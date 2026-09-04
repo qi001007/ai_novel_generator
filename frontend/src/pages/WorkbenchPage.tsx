@@ -11,6 +11,7 @@ import FileEditorPane from "../components/FileEditorPane";
 import ForeshadowWall from "../components/ForeshadowWall";
 import SettingsPanel from "../components/SettingsPanel";
 import Splitter, { type PaneKey } from "../components/Splitter";
+import ActivityRail, { type RailPage } from "../components/ActivityRail";
 import TreePane, { type BriefRow } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
 import { briefChapter, briefPath, useFiles } from "../store/files";
@@ -21,9 +22,11 @@ type RightView = "editor" | "files" | "feedback" | "settings" | "worldmap" | "fo
 type Panes = { sidebar: number; chat: number };
 
 // Defaults follow UI-DESIGN.md and the approved frames: 280 / 470 / rest.
-const SIDEBAR_MIN = 200;
+// 帧 27: the tree lost its right of way to the rail, and the rows need the width
+// they had. 260 is the narrowest a row like "0001  草稿" still fits.
+const SIDEBAR_MIN = 260;
 const SIDEBAR_MAX = 520;
-const SIDEBAR_DEFAULT = 280;
+const SIDEBAR_DEFAULT = 300;
 const CHAT_MIN = 400;
 const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 const PANE_STORAGE_KEY = "workbench.panes";
@@ -89,6 +92,7 @@ export default function WorkbenchPage() {
   const state = useWorkbench();
   const [rightView, setRightView] = useState<RightView>("editor");
   const [charactersOpen, setCharactersOpen] = useState(false);
+  const [railPage, setRailPage] = useState<RailPage>("plan");
   const [panes, setPanes] = useState<Panes>(loadPanes);
   // 批注 14: any of the three columns can be put away, and the choice survives a
   // reload - the layout you settle on is yours, not a default to re-fight.
@@ -148,7 +152,8 @@ export default function WorkbenchPage() {
   // Tracks are built to match what is actually rendered: hidden panels become
   // display:none, and a track left over with no item in it is a dead gap.
   const columns = (() => {
-    const tracks: string[] = [];
+    const tracks: string[] = ["44px"];
+    // The rail never collapses: it is how you get a page back.
     if (!hidden.sidebar) tracks.push(`${sidebarWidth}px`, "1px");
     if (charactersOpen) {
       tracks.push("minmax(0, 1fr)");
@@ -388,8 +393,10 @@ export default function WorkbenchPage() {
         style={{ gridTemplateColumns: columns }}
         data-hidden-panels={hiddenAttr || undefined}
       >
+        <ActivityRail page={railPage} onSelect={setRailPage} />
         <aside className="sidebar" aria-label="结构栏">
           <TreePane
+            page={railPage}
             chapters={state.chapters}
             selectedChapterId={state.selectedChapterId}
             activeFile={rightView === "files" ? activeFile : null}

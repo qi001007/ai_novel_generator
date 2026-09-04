@@ -113,6 +113,8 @@ function workspace() {
   return document.querySelector(".workspace") as HTMLElement;
 }
 
+const SIDEBAR_DEFAULT = 300;
+
 function columns() {
   return workspace().style.gridTemplateColumns;
 }
@@ -125,7 +127,10 @@ async function openWorkbench() {
     </MemoryRouter>,
   );
   await waitFor(() => {
-    expect(columns()).toContain("280px");
+    // 帧 27: a 44px rail outside the panel, and the panel widened to 300 so the
+    // rows keep the room they had before the rail took its share.
+    expect(columns()).toContain("44px");
+    expect(columns()).toContain("300px");
   });
 }
 
@@ -146,10 +151,14 @@ describe("workbench layout", () => {
     separators[0].focus();
     await user.keyboard("{ArrowRight}{ArrowRight}");
 
+    // Two nudges of 16px from the default, stated as a sum rather than a literal:
+    // the last time this hard-coded 312 the default moved to 300 and the test
+    // failed for the wrong reason.
+    const wanted = `${SIDEBAR_DEFAULT + 32}px`;
     await waitFor(() => {
-      expect(columns()).toContain("312px");
+      expect(columns()).toContain(wanted);
     });
-    expect(JSON.parse(localStorage.getItem("workbench.panes") ?? "{}").sidebar).toBe(312);
+    expect(JSON.parse(localStorage.getItem("workbench.panes") ?? "{}").sidebar).toBe(SIDEBAR_DEFAULT + 32);
   });
 
   it("keeps the separator a 1px hairline with no buttons on it", async () => {
