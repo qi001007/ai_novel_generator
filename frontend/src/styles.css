@@ -2144,11 +2144,17 @@ select:focus-visible {
 .bookshelf-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(214px, 1fr));
-  gap: 38px 28px;
+  /* Rows need room for the cast shadow, not only for the book. Measured at 38px
+     the blur bled 7px into the row below, so rows read as one grey mass. */
+  gap: 56px 34px;
 }
 
 .book-slot {
   position: relative;
+  /* The slab is rotated, so its projected bottom hangs ~21px past the slot box.
+     Padding the slot moves that edge out of the way and lets the shadow be
+     anchored to a line we control, instead of to whatever the camera leaves. */
+  padding-bottom: 26px;
   perspective: 1500px;
   /* Owner: a book lies flat or leans BACK, never forward. So the slab stays vertical
      and the top face is revealed by putting the camera above it instead of tilting
@@ -2159,15 +2165,15 @@ select:focus-visible {
 .book-slot::after {
   content: "";
   position: absolute;
-  left: 20%;
-  right: 2%;
+  left: 16%;
+  right: 4%;
   bottom: -30px;
-  height: 26px;
+  height: 20px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--text-1) 46%, transparent);
-  filter: blur(15px);
+  filter: blur(13px);
   transform: skewX(-20deg);
-  opacity: 0.32;
+  opacity: 0.3;
   transition: opacity 180ms ease-out, transform 180ms ease-out;
   pointer-events: none;
 }
