@@ -772,21 +772,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             <div key={row.id} className="chat-row assistant">
               <div className="chat-message">
                 <div className={`chat-card agent ${row.status}`}>
-                  <header className="chat-card-head">
-                    <span className="chat-who">
-                      Agent · {mode === "plan" ? "计划模式" : "写作模式"}
-                      {row.meta.model ? ` · ${row.meta.model}` : ""}
-                    </span>
-                    {row.status === "streaming" ? (
-                      <span className="chat-state">
-                        <i className="spinner" aria-hidden="true" />
-                        <span>生成中</span>
-                      </span>
-                    ) : null}
-                  {row.status === "error" ? (
-                      <span className="chat-state">回复失败</span>
-                    ) : null}
-                  </header>
                   {row.text ? (
                     <MarkdownText
                       text={row.text}
@@ -826,41 +811,61 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       ) : null}
                     </div>
                   ) : null}
-                  {row.status !== "streaming" && row.text ? (
-                    <div className="chat-actions">
+                  {/* 批注 3, 4, 5: one quiet row at the end of the answer - copy,
+                      download, the token fold, and the model that answered - and it
+                      appears with the pointer. While an answer is still arriving the
+                      row stays on screen because 生成中 is the only status left.
+                      (Written without the braces this is JSX text, not a comment -
+                      it printed on screen until the screenshot caught it.) */}
+                  <div className={`chat-actions ${row.status === "streaming" ? "live" : ""}`}>
+                    {row.status === "streaming" ? (
+                      <span className="chat-state">
+                        <i className="spinner" aria-hidden="true" />
+                        <span>生成中</span>
+                      </span>
+                    ) : null}
+                    {row.status !== "streaming" && row.text ? (
+                      <>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label="复制这条回复"
+                          title="复制"
+                          onClick={() => copyReply(row)}
+                        >
+                          <Copy size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label="下载为 .md"
+                          title="下载为 .md"
+                          onClick={() => downloadReply(row)}
+                        >
+                          <Download size={13} />
+                        </button>
+                        {copiedId === row.id ? <span className="chat-copied">已复制</span> : null}
+                      </>
+                    ) : null}
+                    {row.status !== "streaming" && (usage || refs.length) ? (
                       <button
                         type="button"
-                        className="icon-button"
-                        aria-label="复制这条回复"
-                        title="复制"
-                        onClick={() => copyReply(row)}
+                        className="chat-meta"
+                        aria-expanded={expanded === row.id}
+                        onClick={() => setExpanded(expanded === row.id ? null : row.id)}
                       >
-                        <Copy size={13} />
+                        <Gauge size={11} />
+                        <span className="tabular">{usage ?? `引用 ${refs.length} 份资料`}</span>
+                        <ChevronDown size={11} />
                       </button>
-                      <button
-                        type="button"
-                        className="icon-button"
-                        aria-label="下载为 .md"
-                        title="下载为 .md"
-                        onClick={() => downloadReply(row)}
-                      >
-                        <Download size={13} />
-                      </button>
-                      {copiedId === row.id ? <span className="chat-copied">已复制</span> : null}
-                    </div>
-                  ) : null}
-                  {row.status !== "streaming" && (usage || refs.length) ? (
-                    <button
-                      type="button"
-                      className="chat-meta"
-                      aria-expanded={expanded === row.id}
-                      onClick={() => setExpanded(expanded === row.id ? null : row.id)}
-                    >
-                      <Gauge size={11} />
-                      <span className="tabular">{usage ?? `引用 ${refs.length} 份资料`}</span>
-                      <ChevronDown size={11} />
-                    </button>
-                  ) : null}
+                    ) : null}
+                    {/* 批注 4: what is left of the speaker line is the model - the
+                        mode is already on the composer toggle, and "Agent" is only
+                        ever one of two voices in here. */}
+                    {row.status !== "streaming" && row.meta.model ? (
+                      <span className="chat-who">{row.meta.model}</span>
+                    ) : null}
+                  </div>
                   {expanded === row.id ? (
                     <div className="chat-detail">
                       <p className="chat-detail-line">

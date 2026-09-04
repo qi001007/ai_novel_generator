@@ -161,6 +161,10 @@ describe("ChatPane", () => {
     // and a finished reply ends with what you can do with it
     expect(screen.getByRole("button", { name: "复制这条回复" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "下载为 .md" })).toBeTruthy();
+    // 批注 3, 4: no header row above the answer any more; what is left of the
+    // speaker line is the model, and it lives beside the icons.
+    expect(card?.querySelector(".chat-card-head")).toBeNull();
+    expect(card?.querySelector(".chat-actions .chat-who")?.textContent).toBe("MiniMax-M2.5");
   });
 
   it("offers reference candidates while typing an @mention", async () => {

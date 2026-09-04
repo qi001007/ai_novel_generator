@@ -57,8 +57,12 @@
 [data-theme="dark"] {
   color-scheme: dark;
   --bg: #131314;
-  --surface: #1c1c1e;
-  --surface-alt: #26262a;
+  /* 批注 1: the owner's swatch measures #191A1B and Codex's own dark canvas is
+     #181818, while this theme's grey sat at #26262a - thirteen RGB points too
+     light, everywhere at once. The panel tone is the swatch now, and the raised
+     tone is the only thing that steps above it. */
+  --surface: #1f2023;
+  --surface-alt: #191a1b;
   --border: #313134;
   --border-strong: #3e3e42;
   --text-1: #ecebe9;
@@ -93,13 +97,16 @@
   --diff-minus-bg: #3a221d;
   --diff-plus: #7fc99a;
   --diff-plus-bg: #1e3324;
-  --minimap-line: #313134;
-  --minimap-comment: #3e3e42;
-  --minimap-active: #5a3a31;
-  --minimap-thumb-bg: rgb(255 255 255 / 0.08);
+  /* 批注 7: .minimap and .editor-body are both --bg - the band was painted, not
+     declared. Line marks at #313134 packed into 56px read as a lighter column.
+     They now sit four to six points above the page instead of thirty. */
+  --minimap-line: #232427;
+  --minimap-comment: #2a2b2e;
+  --minimap-active: #4a3129;
+  --minimap-thumb-bg: rgb(255 255 255 / 0.06);
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.4);
   --shadow-lift: 0 4px 12px rgb(0 0 0 / 0.3);
-  --chat-bubble: #303036;
+  --chat-bubble: #232428;
 }
 
 * {
@@ -424,7 +431,9 @@ select:focus-visible {
   width: 44px;
   min-width: 44px;
   padding-top: 8px;
-  background: var(--bg);
+  /* 批注 1: the rail took --bg, i.e. the prose black, so it read as a black bar
+     beside a grey panel. Same colour family as the sidebar now. */
+  background: var(--surface-alt);
   border-right: 1px solid var(--border);
 }
 
@@ -447,11 +456,11 @@ select:focus-visible {
   color: var(--text-1);
 }
 
-/* No bar down one edge: the colour and the fill say which page is open, and
-   four agreeing edges is what keeps it quiet. The fill is the panel's own tone,
-   which the sidebar moved onto with 批注 4. */
+/* No bar down one edge: the colour and the fill say which page is open. The fill
+   has to be the raised tone now that the rail itself is the panel tone (批注 1) -
+   a chip the same colour as the bar it sits in says nothing. */
 .activity-rail-item.active {
-  background: var(--surface-alt);
+  background: var(--surface);
   color: var(--accent);
 }
 
@@ -467,11 +476,6 @@ select:focus-visible {
   margin: 0;
   font-size: 12.5px;
   font-weight: 500;
-}
-
-.tree-page-count {
-  color: var(--text-2);
-  font-size: 11px;
 }
 
 .tree-page-actions {
@@ -739,6 +743,14 @@ select:focus-visible {
   display: grid;
   gap: 12px;
   align-content: start;
+  /* 批注 3 ("回答应该居中"): the thread is centred with margin-inline:auto, but a
+     10px scrollbar on the right made the content box asymmetric, so the column sat
+     10px left of centre. Same rule as the other strips - the bar is not furniture. */
+  scrollbar-width: none;
+}
+
+.chat-messages:hover {
+  scrollbar-width: thin;
 }
 
 .chat-messages > .chat-row {
@@ -821,7 +833,8 @@ select:focus-visible {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--surface-alt);
+  /* the pane is --surface-alt now, so a block quoted from it needs the raised tone */
+  background: var(--surface);
   overflow-x: auto;
 }
 
@@ -859,12 +872,32 @@ select:focus-visible {
   color: var(--danger);
 }
 
-/* What you can do with a finished reply. */
+/* What you can do with a finished reply - and (批注 4, 5) the only place the
+   speaker line and the token line live now. Hidden until the pointer is on the
+   answer, the same language as the tree's page actions. */
 .chat-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   margin-top: 8px;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.chat-actions:empty {
+  display: none;
+}
+
+.chat-row:hover .chat-actions,
+.chat-actions:focus-within,
+.chat-actions.live {
+  opacity: 1;
+}
+
+.chat-actions .chat-who {
+  margin-left: auto;
+  font-weight: 400;
+  letter-spacing: 0;
 }
 
 .chat-copied {
@@ -887,6 +920,16 @@ select:focus-visible {
   font-size: 13px;
   color: var(--text-1);
   white-space: pre-wrap;
+}
+
+/* 批注 3: no box around the answer. The column is its space, so a border and a
+   fill put a page inside the page; the prose now sits on the pane itself. */
+.chat-card.agent {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .chat-card .chat-who {
@@ -2990,13 +3033,6 @@ select:focus-visible {
 
 /* ---------- 对话 Agent：流式卡片 / token 展开 / 引用候选 ---------- */
 
-.chat-card-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
 .chat-card.agent.streaming .chat-state {
   color: var(--warning);
 }
@@ -3055,7 +3091,7 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-top: 8px;
+  margin-top: 0;
   padding: 0;
   border: 0;
   background: transparent;
@@ -3587,7 +3623,7 @@ body.resizing {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  background: var(--surface);
+  background: var(--bg);
 }
 
 .file-loading {
@@ -3608,7 +3644,9 @@ body.resizing {
 }
 
 .file-cm .cm-editor {
-  background: var(--surface);
+  /* 批注 6: the chapter page renders on --bg and this one on --surface, so moving
+     between two documents changed the colour under the text. One black now. */
+  background: var(--bg);
 }
 
 .file-cm .cm-scroller {
@@ -4083,7 +4121,11 @@ body.resizing {
 .drag-line::after {
   content: "";
   position: absolute;
-  inset: -4px 0;
+  /* 6px each side, not 11: this line runs along the top of the records panel and
+     above the composer, so the band is allowed to grow only into their padding -
+     48px below the textarea, 96px below the thread - and never over text, where it
+     would move the caret. Measured hit height 14px. */
+  inset: -6px 0;
 }
 
 /* Same rule as the vertical splitter: a full-width accent bar read as a fourth

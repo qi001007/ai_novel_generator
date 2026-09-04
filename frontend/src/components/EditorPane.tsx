@@ -163,6 +163,19 @@ export default function EditorPane() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
 
+  // The map is painted with theme-dependent ink, and nothing in the redraw key
+  // changes when the theme does - so after a theme switch the canvas kept the old
+  // marks (measured: light-theme ink left the 56px column at #AAAAAA on a dark
+  // page) until the next scroll. Watch the attribute that carries the theme.
+  useEffect(() => {
+    const observer = new MutationObserver(() => setRedraw((count) => count + 1));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme"],
+    });
+    return () => observer.disconnect();
+  }, []);
+
   // The slider is the viewport: same proportions as the page it mirrors.
   // The map height is measured where it is used and never cached in state.
   function thumbGeometry(mapHeight: number) {
@@ -205,9 +218,14 @@ export default function EditorPane() {
       const body = line.trim();
       if (body) {
         const indent = line.length - line.trimStart().length ? 2 : 0;
+        // 批注 7: the map is a raster of the text itself. A whole page of glyphs
+        // compressed into 56px composites to the mark colour no matter the alpha -
+        // measured #A3A3A3 on a #131314 page, which is the "明显分界线" the owner
+        // pointed at. So the mark colour itself has to sit near the page; the shape
+        // stays readable as texture, and the slider's inset edge is the affordance.
         ctx.fillStyle = body.startsWith("#")
-          ? (dark ? "#e06a4e" : "#c2492f")
-          : (dark ? "rgba(157,155,150,.66)" : "rgba(115,113,108,.62)");
+          ? (dark ? "rgba(224,106,78,.6)" : "rgba(194,73,47,.6)")
+          : (dark ? "#202124" : "#e6e4e1");
         for (let at = 0; at < body.length; at += perLine, index += 1) {
           ctx.fillText(
             body.slice(at, at + perLine),

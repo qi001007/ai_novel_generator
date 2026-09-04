@@ -125,6 +125,10 @@ async function openWorkbench() {
   await waitFor(() => {
     // The footer bar is gone (帧 27); the page header is what says the tree is up.
     expect(document.querySelector(".tree-page-head")).toBeTruthy();
+    // 批注 2: the header names the page and nothing else - "6 章" / "3 份" are gone.
+    expect(document.querySelector(".tree-page-count")).toBeNull();
+    expect(document.querySelector(".tree-page-head")?.textContent).toContain("规划");
+    expect(document.querySelector(".tree-page-head")?.textContent).not.toMatch(/\d/);
   });
 }
 

@@ -200,13 +200,6 @@ export default function TreePane({
     <nav className="tree" data-page={page} aria-label="项目结构">
       <header className="tree-page-head">
         <h2 className="tree-page-title">{PAGE_TITLES[page]}</h2>
-        <span className="tree-page-count tabular">
-          {page === "plan"
-            ? `${chapters.length} 章`
-            : page === "library"
-              ? `${settingFiles.length} 份`
-              : "-"}
-        </span>
         <div className="tree-page-actions">
           {page !== "chat" ? (
             <button
