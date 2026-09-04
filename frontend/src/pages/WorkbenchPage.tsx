@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeft, Moon, Settings, Sun } from "lucide-react";
+import { ArrowLeft, MessagesSquare, Moon, PanelLeft, PanelRight, Settings, Sun } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import CharacterLibrary from "../components/CharacterLibrary";
@@ -27,6 +27,25 @@ const SIDEBAR_DEFAULT = 280;
 const CHAT_MIN = 400;
 const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 const PANE_STORAGE_KEY = "workbench.panes";
+const HIDDEN_STORAGE_KEY = "workbench.hidden";
+
+type HiddenKey = "sidebar" | "chat" | "editor";
+type Hidden = Record<HiddenKey, boolean>;
+
+function readHidden(): Hidden {
+  const base: Hidden = { sidebar: false, chat: false, editor: false };
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_STORAGE_KEY);
+    if (!raw) return base;
+    const parsed = JSON.parse(raw) as Partial<Hidden>;
+    const next = { ...base, ...parsed };
+    // A stored state that hides both remaining columns is unreadable, so it is
+    // refused rather than honoured.
+    return next.chat && next.editor ? base : next;
+  } catch {
+    return base;
+  }
+}
 
 function chatMax() {
   return Math.max(CHAT_MIN, window.innerWidth - 560);
@@ -71,6 +90,9 @@ export default function WorkbenchPage() {
   const [rightView, setRightView] = useState<RightView>("editor");
   const [charactersOpen, setCharactersOpen] = useState(false);
   const [panes, setPanes] = useState<Panes>(loadPanes);
+  // 批注 14: any of the three columns can be put away, and the choice survives a
+  // reload - the layout you settle on is yours, not a default to re-fight.
+  const [hidden, setHidden] = useState<Hidden>(readHidden);
 
   const metas = useFiles((store) => store.metas);
   const activeFile = useFiles((store) => store.active);
@@ -108,11 +130,39 @@ export default function WorkbenchPage() {
     localStorage.setItem(PANE_STORAGE_KEY, JSON.stringify(panes));
   }, [panes]);
 
+  useEffect(() => {
+    localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(hidden));
+  }, [hidden]);
+
+  function toggleHidden(key: HiddenKey) {
+    setHidden((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      // Chat and editor between them must keep at least one column standing.
+      if (next.chat && next.editor) return prev;
+      return next;
+    });
+  }
+
   const sidebarWidth = clampPane("sidebar", panes.sidebar);
   const chatWidth = charactersOpen ? 0 : clampPane("chat", panes.chat);
-  const columns = charactersOpen
-    ? `${sidebarWidth}px 1px minmax(0, 1fr)`
-    : `${sidebarWidth}px 1px ${chatWidth}px 1px minmax(0, 1fr)`;
+  // Tracks are built to match what is actually rendered: hidden panels become
+  // display:none, and a track left over with no item in it is a dead gap.
+  const columns = (() => {
+    const tracks: string[] = [];
+    if (!hidden.sidebar) tracks.push(`${sidebarWidth}px`, "1px");
+    if (charactersOpen) {
+      tracks.push("minmax(0, 1fr)");
+    } else if (hidden.editor) {
+      if (!hidden.chat) tracks.push("minmax(0, 1fr)");
+    } else {
+      if (!hidden.chat) tracks.push(`${chatWidth}px`, "1px");
+      tracks.push("minmax(0, 1fr)");
+    }
+    return tracks.join(" ");
+  })();
+  const hiddenAttr = (["sidebar", "chat", "editor"] as HiddenKey[])
+    .filter((key) => hidden[key])
+    .join(" ");
 
   function writePane(pane: PaneKey, width: number) {
     setPanes((prev) => ({
@@ -265,6 +315,41 @@ export default function WorkbenchPage() {
           </button>
           <strong className="topbar-title">{novel?.title ?? "未选择作品"}</strong>
         </div>
+        {/* Icons in the title bar, not a bar under each column: a collapse
+            control that lives inside the thing it hides cannot be reached once
+            that thing is gone. */}
+        <div className="panel-toggles" role="group" aria-label="栏目显示">
+          <button
+            type="button"
+            className="icon-button"
+            aria-pressed={!hidden.sidebar}
+            aria-label="显示或隐藏结构栏"
+            title="结构栏"
+            onClick={() => toggleHidden("sidebar")}
+          >
+            <PanelLeft size={15} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-pressed={!hidden.chat}
+            aria-label="显示或隐藏对话栏"
+            title="对话栏"
+            onClick={() => toggleHidden("chat")}
+          >
+            <MessagesSquare size={15} />
+          </button>
+          <button
+            type="button"
+            className="icon-button"
+            aria-pressed={!hidden.editor}
+            aria-label="显示或隐藏编辑栏"
+            title="编辑栏"
+            onClick={() => toggleHidden("editor")}
+          >
+            <PanelRight size={15} />
+          </button>
+        </div>
         <div className="topbar-right">
           {/* 批注 19: health moved up to where a reader already looks for it, and
               it only speaks when the pointer asks. */}
@@ -298,7 +383,11 @@ export default function WorkbenchPage() {
         </div>
       </header>
 
-      <main className="workspace" style={{ gridTemplateColumns: columns }}>
+      <main
+        className="workspace"
+        style={{ gridTemplateColumns: columns }}
+        data-hidden-panels={hiddenAttr || undefined}
+      >
         <aside className="sidebar" aria-label="结构栏">
           <TreePane
             chapters={state.chapters}

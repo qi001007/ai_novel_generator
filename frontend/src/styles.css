@@ -352,7 +352,36 @@ select:focus-visible {
   background: var(--bg);
 }
 
-/* Column widths come from the splitter state in WorkbenchPage. */
+/* Column widths and which columns exist come from WorkbenchPage; the hidden set
+   is published as a space-separated attribute so the grid tracks and the items
+   cannot drift out of step - the tracks are built from the same flag. */
+.workspace[data-hidden-panels~="sidebar"] > .sidebar,
+.workspace[data-hidden-panels~="sidebar"] > .splitter[data-pane="sidebar"],
+.workspace[data-hidden-panels~="chat"] > .chat-pane,
+.workspace[data-hidden-panels~="chat"] > .splitter[data-pane="chat"],
+.workspace[data-hidden-panels~="editor"] > .right-column {
+  display: none;
+}
+
+/* A splitter only makes sense between two live panels. Measured without this:
+   hiding the editor left three tracks but four visible items, so the chat
+   splitter fell into an implicit column and hung 1419px past the right edge. */
+.workspace[data-hidden-panels~="editor"] > .splitter[data-pane="chat"] {
+  display: none;
+}
+
+.panel-toggles {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 10px;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+}
+
+.panel-toggles .icon-button[aria-pressed="false"] {
+  opacity: 0.42;
+}
 
 .sidebar {
   min-height: 0;

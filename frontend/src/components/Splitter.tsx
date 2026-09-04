@@ -30,6 +30,7 @@ export default function Splitter({
   return (
     <div
       className="splitter"
+      data-pane={pane}
       role="separator"
       tabIndex={0}
       aria-orientation="vertical"
