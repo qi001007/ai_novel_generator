@@ -213,6 +213,7 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
 | `docs/REQUIREMENTS.md` | PRD 的功能拆解勾选 | 设计令牌、架构决策 |
 | `docs/UI-DESIGN.md` | 视觉与交互规格 | 后端契约、进度 |
 | `docs/WORKSTREAM-PLAN.md` | 当前主干进度与勾选 | 已完成的历史纪要（去 DECISIONS）、后端契约（去 ARCHITECTURE） |
+| `docs/UI-BACKLOG.md` | **未完成条目的可勾选清单**，做完一条勾掉并把结论写进 WORKSTREAM-PLAN | 已完成的历史、理由、视觉规格 |
 | `docs/HANDOFF.md` | 开新对话所需的最小信息：环境、验证命令、指向 | 上面任何一类的正文 |
 
 一句旧账：「AI 不自觉补后端」的根因不是模型手贱，是**没有任何一份文档写着「不许新增写通路」**。

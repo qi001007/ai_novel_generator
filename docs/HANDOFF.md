@@ -3,6 +3,9 @@
 
 # 交接索引 — AI 网文工作台（novel-generator）
 
+
+**界面待清账在 `docs/UI-BACKLOG.md`**：新会话开工前先读它，做完一条勾一条，并把结论同步一行到 `WORKSTREAM-PLAN.md`。
+
 ## 工作方式（必须遵守）
 
 - 称呼主人，全程中文。
