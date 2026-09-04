@@ -30,9 +30,11 @@
    DB 仍是唯一真源，`chapters/NNNN/{draft.md,brief.md}` 是投影（D-02 / D-03）。
    **人物档案同理**（D-15）：`settings/characters/{id}.md` 走同一入口，`POST/PUT /characters`
    已 410；`portrait` 是 base64 资产、不进文档，走只写它自己的窄端点。
-2. **不许把「测试全绿」说成「功能已实现」**。谈 Agent 能力前先 grep 取证。
-   2026-09-04 起 S2 第 1 步已落地（工具注册表 / 多步循环 / `web_search` / 步数与 token 上限），
+2. **不许把「测试全绿」说成「功能已实现」**。谈 Agent 能力前先 grep 取证，改完再拿真模型 / 真浏览器跑一遍。
+   2026-09-04 S2 第 1 步落地（工具注册表 / 多步循环 / `web_search` / 步数与 token 上限），
    但**它仍然没有写文件的工具**：改规划只有「提案 → 主人点应用」这一条（缺口现状见 ARCHITECTURE §4）。
+   本轮三个真缺陷全是**跑出来的、不是测出来的**：模型换工具方言导致控制块上屏、重复读文件烧光预算、
+   改主键的提案卡片点了才 422。见 DECISIONS T-15 / T-16 / T-17。
 3. **上下文注入只有一个构造器**，改注入内容只改对应 collector，不改调用方、不改提示词模板、
    不改前端（D-04 / D-06）。
 
@@ -57,8 +59,8 @@
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 162 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 72 passed / 15 files
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 180 passed
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 75 passed / 15 files
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 ```
 
@@ -85,7 +87,8 @@ S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scrip
 S0 上下文可观测   代码已就绪，待跑给主人看一次
 S3 写通路收口     已落地，并按 D-15 延伸到设定库
 S1 最小写作环     隔离脚本与统一预算裁剪已落地
-S2 agentic 内核   第 1 步已落地（注册表 / 多步循环 / web_search / 超限报错）；S4 接写作环未开始
+S2 agentic 内核   第 1 步已落地并**在真模型上跑通读→提案→应用→生正文**；S4 接写作环未开始
+UI  支线          帧 26 已清账（C 区长字段 + A 区设定库树 + ④在文件中新建）；三册中伏笔/世界观已进文件层，反馈册待 Q-07
 S4 合流           未开始
 UI  支线          批准的设计帧仍有未清账项，逐条见 WORKSTREAM-PLAN 的 U 系列
 ```
