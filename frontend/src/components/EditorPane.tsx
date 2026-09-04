@@ -404,7 +404,9 @@ export default function EditorPane() {
       </div>
       <div
         className="editor-bottom"
-        style={bottom.collapsed ? undefined : { height: bottom.height }}
+        // 批注: one record should not cost 168px of panel. The dragged number is a
+        // ceiling now, not a fixed height, so the region is as tall as its content.
+        style={bottom.collapsed ? undefined : { maxHeight: bottom.height }}
       >
         <button
           type="button"

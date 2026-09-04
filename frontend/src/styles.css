@@ -841,6 +841,24 @@ select:focus-visible {
   text-underline-offset: 2px;
 }
 
+/* The bottom foot bar is gone (批注): the tab already carries a dirty ring and a
+   pending dot, so that strip was a third and fourth copy of one fact. What the tab
+   cannot say stays - a failed write, and a save that is locked until the pending
+   proposal is applied or dropped - and it says itself here, in the row that already
+   names the file. */
+.file-bar-note {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-bar-note.error {
+  color: var(--danger);
+}
+
 /* What you can do with a finished reply. */
 .chat-actions {
   display: flex;
@@ -1614,6 +1632,7 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: auto;
   overflow: hidden;
   border-top: 1px solid var(--border);
   background: var(--surface);
@@ -3579,24 +3598,6 @@ body.resizing {
   margin: 0;
   color: var(--text-2);
   font-size: 12px;
-}
-
-.file-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  height: 15px;
-  padding: 0 16px;
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  color: var(--text-2);
-  font-size: 11px;
-  line-height: 15px;
-}
-
-.file-foot-right {
-  margin-left: auto;
 }
 
 /* ---------- CodeMirror 主题（对齐帧 17 的度量） ---------- */

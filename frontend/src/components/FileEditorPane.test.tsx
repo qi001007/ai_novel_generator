@@ -59,7 +59,7 @@ describe("FileEditorPane", () => {
     vi.mocked(api.readFile).mockResolvedValue({ ...BLUEPRINT, revision: "rev-2" });
   });
 
-  it("shows the tab strip, file bar and a clean footer", async () => {
+  it("shows the tab strip and file bar, with no footer at all", async () => {
     seed();
     render(<FileEditorPane />);
 
@@ -74,7 +74,10 @@ describe("FileEditorPane", () => {
     expect(crumb?.querySelectorAll("svg")).toHaveLength(2);
     // Owner 2026-09-02: internal shorthand must not reach the reader.
     expect(document.querySelectorAll(".file-chip")).toHaveLength(0);
-    expect(document.querySelector(".file-foot")?.textContent).not.toContain("与服务器一致");
+    // 批注 2026-09-04: the bottom bar is retired, so nothing may come back - and
+    // with nothing pending and no error, the toolbar says nothing either.
+    expect(document.querySelector(".file-foot")).toBeNull();
+    expect(document.querySelector(".file-bar-note")).toBeNull();
     await waitFor(() => {
       expect(document.querySelector(".file-cm .cm-content")).toBeTruthy();
     });
@@ -108,7 +111,7 @@ describe("FileEditorPane", () => {
     });
   });
 
-  it("locks saving and warns in the footer while a proposal is pending", async () => {
+  it("locks saving and says so in the file bar while a proposal is pending", async () => {
     seed();
     useFiles.setState({
       pending: {
@@ -125,7 +128,10 @@ describe("FileEditorPane", () => {
     });
     render(<FileEditorPane />);
 
-    expect(document.querySelector(".file-foot")?.textContent).toContain("1 处提案待应用 · 尚未写入服务器");
+    expect(document.querySelector(".file-bar-note")?.textContent).toContain(
+      "1 处提案待应用 · 保存已锁定",
+    );
+    expect(document.querySelector(".file-foot")).toBeNull();
     expect(document.querySelector(".pending-dot")).toBeTruthy();
     // Ctrl+S must not write over a pending proposal.
     const content = document.querySelector(".file-cm .cm-content") as HTMLElement;

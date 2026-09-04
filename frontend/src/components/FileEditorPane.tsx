@@ -336,21 +336,10 @@ export default function FileEditorPane() {
     scrollProgress,
   );
 
-  const dirty = isDirty(entry);
-  const saving = entry?.saving ?? false;
   const conflict = entry?.conflict ?? false;
-  const error = entry?.error ?? null;
   const pendingCount = Object.keys(pending).length;
+  const error = entry?.error ?? null;
   const showTocList = active === TOC_PATH && Boolean(entry?.doc) && !tocSource;
-
-  let foot: string;
-  if (pendingCount) foot = `${pendingCount} 处提案待应用 · 尚未写入服务器`;
-  else if (saving) foot = "写入中…";
-  else if (error) foot = error;
-  else if (dirty) foot = "有未保存改动 · Ctrl+S 保存";
-  else if (entry?.savedAt) foot = `已保存 ${entry.savedAt}`;
-  // Nothing to report is nothing to print.
-  else foot = "";
 
   if (!tabs.length) {
     return (
@@ -438,10 +427,18 @@ export default function FileEditorPane() {
           {active}
         </span>
         <span className="file-spacer" />
-
-        {/* Ctrl+S is bound, the tab already carries a dirty ring, and the foot
-            says 有未保存改动 · Ctrl+S 保存. A permanent button said the same
-            thing a third time. */}
+        {/* 批注: the bottom foot bar is gone. Everything it said is already on the
+            tab - a dirty ring, a pending dot - so repeating it in a permanent strip
+            was the fourth copy of one fact. The one thing with no other home is a
+            failed write, and that speaks here instead. */}
+        {error || pendingCount ? (
+          <span
+            className={`file-bar-note ${error ? "error" : ""}`}
+            role={error ? "alert" : undefined}
+          >
+            {error ?? `${pendingCount} 处提案待应用 · 保存已锁定`}
+          </span>
+        ) : null}
       </div>
 
       {jump ? (
@@ -497,12 +494,6 @@ export default function FileEditorPane() {
         </div>
       ) : null}
 
-      <div className="file-foot" aria-live="polite">
-        <span>{foot}</span>
-        <span className="file-foot-right tabular">
-          第 {caretLine} / {lines.length} 行
-        </span>
-      </div>
     </section>
   );
 }

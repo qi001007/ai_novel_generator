@@ -187,7 +187,7 @@ describe("workbench layout", () => {
     expect(screen.getByText("blueprint.md")).toBeTruthy();
     expect(document.querySelector(".file-path")?.textContent).toContain("blueprint.md");
     expect(document.querySelectorAll(".file-chip")).toHaveLength(0);
-    expect(document.querySelector(".file-foot")?.textContent).not.toContain("与服务器一致");
+    expect(document.querySelector(".file-foot")).toBeNull();
   });
 
   it("groups chapter prose and brief files under one chapter node", async () => {
