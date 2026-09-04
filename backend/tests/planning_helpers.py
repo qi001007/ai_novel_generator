@@ -171,6 +171,87 @@ def create_character(client, novel_id: int, **fields) -> dict:
     return _character_by_id(client, novel_id, character_id)
 
 
+def setting_record(
+    name: str = "",
+    category: str = "",
+    content: str = "",
+    current_state: str = "",
+    is_confirmed: bool = False,
+    source_chapter: int | None = None,
+    setting: int | None = None,
+) -> str:
+    """One `## 设定 N 名` record, shaped the way the server projects it.
+
+    `setting=None` means `?`: the database assigns the key, same as `弧 N`.
+    """
+    dash = "\u2014"
+
+    def cell(value) -> str:
+        return dash if value is None or value == "" else str(value)
+
+    key = "?" if setting is None else str(setting)
+    return "\n".join(
+        [
+            ("## 设定 " + key + " " + name).rstrip(),
+            "- **类别**：" + cell(category),
+            "- **已确认**：" + ("是" if is_confirmed else "否"),
+            "- **来源章**：" + cell(source_chapter),
+            "- **现况**：" + cell(current_state),
+            "- **内容**：" + cell(content),
+            "",
+        ]
+    )
+
+
+def worldview_text(client, novel_id: int) -> dict:
+    return client.get(f"/api/novels/{novel_id}/files/settings/worldview.md").json()
+
+
+def create_setting(client, novel_id: int, **fields) -> dict:
+    """Append one record through the one file-layer entry point (D-15)."""
+    current = worldview_text(client, novel_id)
+    text = current["text"].rstrip("\n") + "\n\n" + setting_record(**fields)
+    result = client.put(
+        f"/api/novels/{novel_id}/files/settings/worldview.md",
+        json={"text": text, "actor": "human", "base_revision": current["revision"]},
+    )
+    assert result.status_code == 200, result.text
+    return _setting_by_name(client, novel_id, fields.get("name", ""))
+
+
+def write_setting(client, novel_id: int, setting_id: int, **fields) -> dict:
+    """Replace the whole book with this record's values on its existing key."""
+    current = worldview_text(client, novel_id)
+    rows = client.get(f"/api/novels/{novel_id}/settings").json()
+    body = []
+    for row in rows:
+        merged = {**row, **fields, "setting": row["id"]}
+        merged.pop("id", None)
+        merged.pop("novel_id", None)
+        merged.pop("created_at", None)
+        merged.pop("updated_at", None)
+        body.append(setting_record(**{k: v for k, v in merged.items() if k in {
+            "name", "category", "content", "current_state", "is_confirmed",
+            "source_chapter", "setting"}}))
+    # Replace the whole book: keeping the old body and appending the new one would
+    # put the same key on the page twice.
+    head = current["text"].split("\n## ", 1)[0].rstrip("\n")
+    text = head + "\n\n" + "\n".join(body) if body else head + "\n"
+    result = client.put(
+        f"/api/novels/{novel_id}/files/settings/worldview.md",
+        json={"text": text, "actor": "human", "base_revision": current["revision"]},
+    )
+    assert result.status_code == 200, result.text
+    wanted = fields.get("name") or next(r["name"] for r in rows if r["id"] == setting_id)
+    return _setting_by_name(client, novel_id, wanted)
+
+
+def _setting_by_name(client, novel_id: int, name: str) -> dict:
+    rows = [row for row in client.get(f"/api/novels/{novel_id}/settings").json() if row["name"] == name]
+    assert rows, f"设定 {name!r} 写入后读不回来"
+    return rows[-1]
+
+
 def write_character(client, novel_id: int, character_id: int, **fields) -> dict:
     result = client.put(
         f"/api/novels/{novel_id}/files/settings/characters/{character_id}.md",

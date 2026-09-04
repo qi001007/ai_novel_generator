@@ -12,7 +12,12 @@ from app.services.llm import (
     LLMUnavailableError,
     get_llm_client,
 )
-from tests.planning_helpers import create_brief, create_chapter, create_character
+from tests.planning_helpers import (
+    create_brief,
+    create_chapter,
+    create_character,
+    create_setting,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -301,10 +306,7 @@ def test_unknown_mention_is_reported_to_the_model(client: TestClient) -> None:
 def test_context_endpoint_filters_candidates(client: TestClient) -> None:
     novel_id = make_novel(client)
     create_character(client, novel_id, name="陈九思", goals="查清真相")
-    client.post(
-        f"/api/novels/{novel_id}/settings",
-        json={"category": "力量体系", "name": "星图", "content": "观星台所藏星图"},
-    )
+    create_setting(client, novel_id, category="力量体系", name="星图", content="观星台所藏星图")
 
     by_kind = client.get(
         f"/api/novels/{novel_id}/chat/context", params={"kind": "character"}

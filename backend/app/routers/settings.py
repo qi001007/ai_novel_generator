@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, SQLModel, select
+from sqlmodel import Session, select
 
 from app.db import get_session
 from app.models import Setting
@@ -9,13 +9,12 @@ from app.routers.planning import get_novel_or_404
 router = APIRouter(prefix="/novels", tags=["settings"])
 
 
-class SettingCreate(SQLModel):
-    category: str
-    name: str
-    content: str = ""
-    current_state: str = ""
-    is_confirmed: bool = False
-    source_chapter: int | None = None
+def _retired_write() -> None:
+    """The worldview book is the only writer for this table now (DECISIONS D-15)."""
+    raise HTTPException(
+        status_code=410,
+        detail="设定写入口已收口到 PUT /files/settings/worldview.md（见 DECISIONS D-15）",
+    )
 
 
 @router.get("/{novel_id}/settings", response_model=list[Setting])
@@ -33,56 +32,11 @@ def list_settings(
     )
 
 
-@router.post("/{novel_id}/settings", response_model=Setting, status_code=201)
-def create_setting(
-    novel_id: int,
-    payload: SettingCreate,
-    session: Session = Depends(get_session),
-) -> Setting:
-    get_novel_or_404(novel_id, session)
-    existing = session.exec(
-        select(Setting).where(
-            Setting.novel_id == novel_id,
-            Setting.category == payload.category,
-            Setting.name == payload.name,
-        )
-    ).first()
-    if existing is not None:
-        raise HTTPException(status_code=409, detail="This setting already exists")
-
-    setting = Setting(novel_id=novel_id, **payload.model_dump())
-    session.add(setting)
-    session.commit()
-    session.refresh(setting)
-    return setting
+@router.post("/{novel_id}/settings")
+def create_setting() -> None:
+    raise _retired_write()
 
 
-@router.put("/{novel_id}/settings/{setting_id}", response_model=Setting)
-def update_setting(
-    novel_id: int,
-    setting_id: int,
-    payload: SettingCreate,
-    session: Session = Depends(get_session),
-) -> Setting:
-    get_novel_or_404(novel_id, session)
-    setting = session.get(Setting, setting_id)
-    if setting is None or setting.novel_id != novel_id:
-        raise HTTPException(status_code=404, detail="Setting not found")
-
-    duplicate = session.exec(
-        select(Setting).where(
-            Setting.novel_id == novel_id,
-            Setting.category == payload.category,
-            Setting.name == payload.name,
-            Setting.id != setting_id,
-        )
-    ).first()
-    if duplicate is not None:
-        raise HTTPException(status_code=409, detail="This setting already exists")
-
-    for field, value in payload.model_dump().items():
-        setattr(setting, field, value)
-    session.add(setting)
-    session.commit()
-    session.refresh(setting)
-    return setting
+@router.put("/{novel_id}/settings/{setting_id}")
+def update_setting(setting_id: int) -> None:
+    raise _retired_write()
