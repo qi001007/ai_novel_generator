@@ -739,7 +739,9 @@ select:focus-visible {
 .chat-messages {
   min-height: 0;
   overflow-y: auto;
-  padding: 16px 16px 96px;
+  /* 批注 2: an answer that starts at the pixel next to the border reads as a
+     spreadsheet. 30px of air on both sides. */
+  padding: 20px 30px 96px;
   display: grid;
   gap: 12px;
   align-content: start;
@@ -776,7 +778,9 @@ select:focus-visible {
 }
 
 .chat-bubble {
-  max-width: 78%;
+  /* 批注 9: yours ends where the answer ends - both sit in the same centred
+     column, so 78% of a row you do not share was a ragged right edge. */
+  max-width: 100%;
   padding: 8px 12px;
   border-radius: var(--radius-md);
   /* 批注 5: the pane went grey, so the bubble moves one step up off it. */
@@ -788,21 +792,51 @@ select:focus-visible {
 /* The reply is prose, so it is laid out like prose: one block per line the model
    wrote, with the markup rendered instead of shown. */
 .chat-md {
+  /* 批注 8: an answer is read, not scanned. One line of prose needs more air than
+     a UI row does, so the thread sets its own measure instead of inheriting 1.5. */
   display: grid;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
+  font-size: 13px;
+  line-height: 1.75;
 }
 
 .chat-md p {
   margin: 0;
+  color: var(--text-1);
 }
 
-.chat-md h2,
-.chat-md h3,
-.chat-md h4 {
-  margin: 2px 0 0;
-  font-size: 13.5px;
+.chat-md strong {
+  font-weight: 600;
+}
+
+/* 批注 8: three levels, three sizes. Everything in here used to be 13.5px, which
+   is how a heading became invisible and the answer read as one grey wall. */
+.chat-md h2 {
+  margin: 12px 0 2px;
+  font-size: 15px;
+  font-weight: 600;
   line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+.chat-md h3 {
+  margin: 10px 0 2px;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.chat-md h4 {
+  margin: 8px 0 2px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.chat-md li::marker {
+  color: var(--text-2);
 }
 
 .chat-md ul,
@@ -832,7 +866,8 @@ select:focus-visible {
   margin: 0;
   padding: 8px 10px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   /* the pane is --surface-alt now, so a block quoted from it needs the raised tone */
   background: var(--surface);
   overflow-x: auto;
@@ -841,6 +876,39 @@ select:focus-visible {
 .chat-md pre code {
   padding: 0;
   background: none;
+}
+
+.chat-code {
+  display: grid;
+  min-width: 0;
+}
+
+.chat-code-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 6px 0 10px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--surface-alt);
+}
+
+.chat-code-name {
+  overflow: hidden;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-code-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .chat-md hr {
@@ -870,6 +938,28 @@ select:focus-visible {
 
 .file-bar-note.error {
   color: var(--danger);
+}
+
+/* 主请求: the tool calls the model made, folded above the answer instead of
+   printed through it as if it were something the owner should read. */
+.chat-trace {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.chat-trace-body {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-x: auto;
 }
 
 /* What you can do with a finished reply - and (批注 4, 5) the only place the
@@ -1007,7 +1097,7 @@ select:focus-visible {
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  padding: 10px 16px 14px;
+  padding: 10px 30px 14px;
   background: transparent;
 }
 
@@ -1239,8 +1329,8 @@ select:focus-visible {
 
 .chat-hints {
   position: absolute;
-  left: 16px;
-  right: 16px;
+  left: 30px;
+  right: 30px;
   bottom: calc(100% - 4px);
   margin: 0;
   padding: 4px;
@@ -3071,16 +3161,16 @@ select:focus-visible {
 }
 
 .chat-retry {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 24px;
-  padding: 0 8px;
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  min-height: 0;
+  padding: 0;
   border: 1px solid currentColor;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--danger);
-  font-size: 12px;
 }
 
 .chat-retry:hover {
@@ -3897,49 +3987,47 @@ body.resizing {
 
 .proposal-foot {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 9px 10px;
+  justify-content: flex-end;
+  padding: 6px 8px;
   background: var(--editor-gutter);
   border-top: 1px solid var(--border);
 }
 
-.proposal-note {
-  color: var(--warning);
-  font-size: 11px;
-}
-
 .proposal-acts {
   display: flex;
-  gap: 6px;
+  gap: 2px;
 }
 
+/* 批注 6, written into UI-DESIGN §0.8: an action is a mark, not a sentence. The
+   words live in aria-label and title, where they help a screen reader and a hover
+   instead of filling the row. */
 .proposal-btn {
-  padding: 5px 10px;
-  border: 1px solid var(--hairline);
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-sm);
-  background: var(--surface);
+  background: transparent;
   color: var(--text-2);
-  font-size: 11px;
   cursor: pointer;
 }
 
-.proposal-btn:hover {
-  border-color: var(--accent);
-  color: var(--accent);
+.proposal-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
+  color: var(--text-1);
 }
 
 .proposal-btn.apply {
-  border-color: transparent;
   background: var(--accent);
   color: #fff;
-  font-weight: 500;
 }
 
-.proposal-btn.apply:hover {
-  border-color: transparent;
-  color: #fff;
+.proposal-btn.apply:hover:not(:disabled) {
   background: var(--accent-strong);
+  color: #fff;
 }
 
 .proposal-btn.apply:disabled {
@@ -4999,22 +5087,23 @@ body.resizing {
 }
 
 .command-actions button {
-  min-height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-alt);
-  color: var(--text-1);
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
   font: inherit;
-  font-size: 11px;
   cursor: pointer;
 }
 
 .command-actions .primary {
   background: var(--accent);
-  border-color: var(--accent);
   color: #fff;
-  font-weight: 500;
 }
 
 

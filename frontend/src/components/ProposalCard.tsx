@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ArrowRight, Check, Trash2 } from "lucide-react";
 
 import type { FileProposal } from "../types";
 import { diffFile } from "../utils/lineDiff";
@@ -58,22 +59,39 @@ export default function ProposalCard({
         <p className="proposal-error">{proposal.error || "提案未通过后端校验"}</p>
       )}
 
+      {/* 批注 3, 4, 5, 6: the three words were three sentences standing where three
+          marks belong. Icons now, with the words kept where they do no damage - the
+          accessible name and the tooltip. The note line was deleted outright: the
+          lock it described is a property of the diff above, not a caption for it. */}
       <div className="proposal-foot">
-        <span className="proposal-note">小节标题与主键锁定 · AI 只改值</span>
         <span className="proposal-acts">
-          <button type="button" className="proposal-btn" onClick={onOpen}>
-            在编辑器中打开
+          <button
+            type="button"
+            className="proposal-btn"
+            aria-label="在编辑器中打开"
+            title="在编辑器中打开"
+            onClick={onOpen}
+          >
+            <ArrowRight size={14} />
           </button>
-          <button type="button" className="proposal-btn" onClick={onDiscard}>
-            丢弃
+          <button
+            type="button"
+            className="proposal-btn"
+            aria-label="丢弃提案"
+            title="丢弃提案"
+            onClick={onDiscard}
+          >
+            <Trash2 size={14} />
           </button>
           <button
             type="button"
             className="proposal-btn apply"
+            aria-label={applying ? "正在写入" : "应用提案"}
+            title={applying ? "正在写入" : "应用提案"}
             disabled={!proposal.valid || applying}
             onClick={onApply}
           >
-            {applying ? "写入中" : "应用"}
+            {applying ? <i className="spinner" aria-hidden="true" /> : <Check size={15} />}
           </button>
         </span>
       </div>

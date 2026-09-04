@@ -49,6 +49,53 @@ export function progressFromPointer(
   return Math.min(1, Math.max(0, (offset - MM_PAD) / travel));
 }
 
+/** Row pitch of the picture when the document is short enough to show every line
+    at full size; longer documents compress below it. */
+export const MM_PITCH = 5;
+
+/**
+ * One row per source line, drawn as miniature text - the picture the owner can
+ * actually read. The two editors each kept their own painter: the chapter one
+ * re-wrapped every line into the 56px column, which turned a page of prose into an
+ * undifferentiated band, and when that band was called a seam it got dimmed to
+ * near-invisible and the map stopped saying anything at all. One painter now, so
+ * the two maps cannot drift apart again.
+ */
+export function paintMinimap(
+  ctx: CanvasRenderingContext2D,
+  lines: string[],
+  height: number,
+  dark: boolean,
+  family: string,
+): void {
+  const track = Math.max(1, height - MM_PAD * 2);
+  const pitch = Math.min(MM_PITCH, track / Math.max(1, lines.length));
+  const fontSize = Math.max(2, Math.min(5, pitch * 0.92));
+  ctx.font = `${fontSize}px ${family}`;
+  ctx.textBaseline = "top";
+  lines.forEach((text, index) => {
+    const body = text.trim();
+    if (!body) return;
+    const indent = Math.min((text.length - text.trimStart().length) * 0.8, 18);
+    ctx.fillStyle = body.startsWith("#")
+      ? dark
+        ? "#e06a4e"
+        : "#c2492f"
+      : body.startsWith(">")
+        ? dark
+          ? "rgba(157,155,150,.35)"
+          : "rgba(115,113,108,.32)"
+        : dark
+          ? "rgba(157,155,150,.62)"
+          : "rgba(115,113,108,.58)";
+    ctx.fillText(
+      body.slice(0, 46),
+      6 + indent,
+      MM_PAD + index * pitch + Math.max(0, (pitch - fontSize) / 2),
+    );
+  });
+}
+
 /** True when a pointer is on the thumb rather than on bare track. */
 export function isOnThumb(
   mapHeight: number,

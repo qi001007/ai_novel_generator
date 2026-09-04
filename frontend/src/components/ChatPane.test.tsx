@@ -243,7 +243,7 @@ describe("ChatPane", () => {
       expect(screen.getByText("LLM 未配置")).toBeTruthy();
     });
 
-    await user.click(screen.getByRole("button", { name: "重试" }));
+    await user.click(screen.getByRole("button", { name: "重试这一问" }));
 
     await waitFor(() => {
       expect(screen.getByText("好的")).toBeTruthy();

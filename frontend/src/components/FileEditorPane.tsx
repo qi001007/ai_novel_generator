@@ -23,7 +23,7 @@ import {
 } from "../store/files";
 import {
   isOnThumb,
-  MM_PAD,
+  paintMinimap,
   progressFromPointer,
   thumbGeometry,
 } from "./minimap";
@@ -43,7 +43,6 @@ const LOCKED_FIELDS: Record<string, string[]> = {
   worldview: ["setting"],
 };
 
-const MM_PITCH = 5;
 
 /* Which documents have a rendered view beside their source. Adding a kind is one
    entry here; the tab-bar icon picks it up. */
@@ -310,24 +309,13 @@ export default function FileEditorPane() {
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    const track = Math.max(1, height - MM_PAD * 2);
-    const pitch = Math.min(MM_PITCH, track / Math.max(1, lines.length));
-    const dark = document.documentElement.dataset.theme === "dark";
-    const fontSize = Math.max(2, Math.min(5, pitch * 0.92));
-    ctx.font = `${fontSize}px "Noto Sans SC", "Microsoft YaHei", sans-serif`;
-    ctx.textBaseline = "top";
-    lines.forEach((text, index) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-      const y = MM_PAD + index * pitch;
-      const indent = Math.min((text.length - text.trimStart().length) * 0.8, 18);
-      ctx.fillStyle = trimmed.startsWith("#")
-        ? (dark ? "#e06a4e" : "#c2492f")
-        : trimmed.startsWith(">")
-          ? (dark ? "rgba(157,155,150,.35)" : "rgba(115,113,108,.32)")
-          : (dark ? "rgba(157,155,150,.62)" : "rgba(115,113,108,.58)");
-      ctx.fillText(trimmed.slice(0, 46), 6 + indent, y + Math.max(0, (pitch - fontSize) / 2));
-    });
+    paintMinimap(
+      ctx,
+      lines,
+      height,
+      document.documentElement.dataset.theme === "dark",
+      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+    );
   }, [lines, mmHeight, caretLine, scroll]);
 
   const { height: thumbHeight, top: thumbTop } = thumbGeometry(

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  ArrowRight,
+  Brain,
   ChevronDown,
   CornerDownLeft,
   Copy,
@@ -8,12 +10,14 @@ import {
   Gauge,
   Paperclip,
   RotateCcw,
+  ScrollText,
   Square,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import MarkdownText from "./MarkdownText";
+import { splitTrace } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
 import type {
@@ -142,6 +146,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [traceOpen, setTraceOpen] = useState<number | null>(null);
   // A copy button that says nothing is a fake control, so the row remembers that
   // it worked for a moment.
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -743,21 +748,25 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <button
                           type="button"
                           className="primary"
+                          aria-label="查看调用详情"
+                          title="查看调用详情"
                           onClick={() =>
                             navigate(
                               `/novels/${selectedNovelId}/chapters/${row.chapterId}/runs/${row.runId}`,
                             )
                           }
                         >
-                          查看调用详情
+                          <ScrollText size={14} />
                         </button>
                         <button
                           type="button"
+                          aria-label="在正文打开"
+                          title="在正文打开"
                           onClick={() =>
                             navigate(`/novels/${selectedNovelId}?chapter=${row.chapterId}`)
                           }
                         >
-                          在正文打开
+                          <ArrowRight size={14} />
                         </button>
                       </div>
                     ) : null}
@@ -768,13 +777,32 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           }
           const usage = tokens(row.meta.tokenInput, row.meta.tokenOutput);
           const refs = row.meta.refs ?? [];
+          // The trace is not prose. Fold it above the answer instead of printing it.
+          const { prose, trace } = splitTrace(row.text);
           return (
             <div key={row.id} className="chat-row assistant">
               <div className="chat-message">
                 <div className={`chat-card agent ${row.status}`}>
-                  {row.text ? (
+                  {trace.length ? (
+                    <div className="chat-trace">
+                      <button
+                        type="button"
+                        className="chat-meta"
+                        aria-expanded={traceOpen === row.id}
+                        onClick={() => setTraceOpen(traceOpen === row.id ? null : row.id)}
+                      >
+                        <Brain size={11} />
+                        <span>思考过程 · {trace.length} 步</span>
+                        <ChevronDown size={11} />
+                      </button>
+                      {traceOpen === row.id ? (
+                        <pre className="chat-trace-body">{trace.join("\n\n")}</pre>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {prose || row.status !== "streaming" ? (
                     <MarkdownText
-                      text={row.text}
+                      text={prose}
                       tail={
                         row.status === "streaming" ? (
                           <span className="chat-caret" aria-hidden="true" />
@@ -782,7 +810,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       }
                     />
                   ) : (
-                    <p>{row.status === "streaming" ? "正在思考…" : ""}</p>
+                    <p>正在思考…</p>
                   )}
                   {(row.proposals ?? []).map((item) =>
                     pendingFiles[item.path]?.id === item.id ? (
@@ -803,10 +831,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <button
                           type="button"
                           className="chat-retry"
+                          aria-label="重试这一问"
+                          title="重试这一问"
                           onClick={() => void ask(row.question, row.id)}
                         >
                           <RotateCcw size={12} />
-                          重试
                         </button>
                       ) : null}
                     </div>
@@ -824,7 +853,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <span>生成中</span>
                       </span>
                     ) : null}
-                    {row.status !== "streaming" && row.text ? (
+                    {row.status !== "streaming" && prose ? (
                       <>
                         <button
                           type="button"

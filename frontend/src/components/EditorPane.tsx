@@ -5,18 +5,15 @@ import { useNavigate } from "react-router-dom";
 
 import {
   isOnThumb,
-  MM_PAD,
+  paintMinimap,
   progressFromPointer,
   thumbGeometry as sharedThumbGeometry,
 } from "./minimap";
 
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
-/* Editor line metrics, mirrored in CSS below: the minimap scales the real page
-   by these numbers, so the slider maps 1:1 onto the scroll position. */
-const TEXT_PX = 17;
-const LINE_PX = 32.3;
-const TEXT_BOX = 672;
+/* The face the prose is set in, so the map's miniature lines match the page. */
+const PROSE_FONT = "\"Noto Serif SC\", \"Source Han Serif SC\", serif";
 
 /* The records panel keeps its size between reloads: it is the one region every
    run gets read in, and the default is too tall for a quick glance. */
@@ -185,7 +182,6 @@ export default function EditorPane() {
   useEffect(() => {
     const canvas = minimapCanvasRef.current;
     const host = minimapRef.current;
-    const scroller = scrollRef.current;
     if (!canvas || !host) return;
     const width = Math.max(1, host.clientWidth);
     const height = Math.max(1, host.clientHeight);
@@ -200,43 +196,12 @@ export default function EditorPane() {
     ctx.clearRect(0, 0, width, height);
 
     // Scale the real page: one minimap row is one wrapped editor row.
-    const track = Math.max(1, height - MM_PAD * 2);
-    const docHeight = scroller?.scrollHeight ?? 0;
-    // TEXT_BOX already nets out the textarea's 24px side padding.
-    const client = scroller?.clientWidth ?? 0;
-    const box = client > 96 ? Math.min(TEXT_BOX, client - 48) : TEXT_BOX;
-    const perLine = Math.max(8, Math.floor(box / TEXT_PX));
-    const scale = docHeight > 0 ? track / docHeight : 1;
-    const row = Math.max(1, LINE_PX * scale);
-    const fontSize = Math.max(1.6, Math.min(7, TEXT_PX * scale));
     const dark = document.documentElement.dataset.theme === "dark";
-    ctx.font = `${fontSize}px "Noto Serif SC", "Source Han Serif SC", serif`;
-    ctx.textBaseline = "top";
-
-    let index = 0;
-    for (const line of draftContent.split("\n")) {
-      const body = line.trim();
-      if (body) {
-        const indent = line.length - line.trimStart().length ? 2 : 0;
-        // 批注 7: the map is a raster of the text itself. A whole page of glyphs
-        // compressed into 56px composites to the mark colour no matter the alpha -
-        // measured #A3A3A3 on a #131314 page, which is the "明显分界线" the owner
-        // pointed at. So the mark colour itself has to sit near the page; the shape
-        // stays readable as texture, and the slider's inset edge is the affordance.
-        ctx.fillStyle = body.startsWith("#")
-          ? (dark ? "rgba(224,106,78,.6)" : "rgba(194,73,47,.6)")
-          : (dark ? "#202124" : "#e6e4e1");
-        for (let at = 0; at < body.length; at += perLine, index += 1) {
-          ctx.fillText(
-            body.slice(at, at + perLine),
-            5 + indent,
-            MM_PAD + index * row + Math.max(0, (row - fontSize) / 2),
-          );
-        }
-        continue;
-      }
-      index += 1;
-    }
+    // 批注 1: this used to re-wrap every line into the 56px column, so the map was
+    // a band of glyph soup rather than text - and when the band was reported as a
+    // seam, dimming the ink made it unreadable. It draws like the file editor's map
+    // now: one row per line, the same painter in both places.
+    paintMinimap(ctx, draftContent.split("\n"), height, dark, PROSE_FONT);
 
     // Fade whatever the slider does not cover: the bright band is the page you see.
     const geo = thumbGeometry(height);

@@ -118,12 +118,18 @@ describe("ChatPane proposals", () => {
     expect(card.querySelector(".proposal-file")?.textContent).toBe("blueprint.md");
     expect(card.querySelector(".proposal-line.minus")?.textContent).toContain("皇朝命轨");
     expect(card.querySelector(".proposal-line.plus")?.textContent).toContain("凡人命轨");
-    expect(card.querySelector(".proposal-note")?.textContent).toContain("AI 只改值");
+    // 批注 3: that caption is deleted - the lock it described is a property of the
+    // diff above, not a subtitle. 批注 4/5/6: the three actions are marks now, and
+    // the words survive where they do no damage: the accessible name.
+    expect(card.querySelector(".proposal-note")).toBeNull();
+    for (const name of ["在编辑器中打开", "丢弃提案", "应用提案"]) {
+      expect(card.querySelector(`button[aria-label="${name}"]`)).toBeTruthy();
+    }
 
     // The offer also reaches the editor: the amber band and the disabled save.
     expect(useFiles.getState().pending["blueprint.md"]).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: "应用" }));
+    await user.click(screen.getByRole("button", { name: "应用提案" }));
     await waitFor(() => {
       expect(writes).toHaveLength(1);
     });
@@ -141,7 +147,7 @@ describe("ChatPane proposals", () => {
     await user.keyboard("{Enter}");
     await waitFor(() => expect(document.querySelector(".proposal")).toBeTruthy());
 
-    await user.click(screen.getByRole("button", { name: "丢弃" }));
+    await user.click(screen.getByRole("button", { name: "丢弃提案" }));
     await waitFor(() => {
       expect(document.querySelector(".proposal")).toBeNull();
     });

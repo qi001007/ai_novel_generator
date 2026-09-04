@@ -1,4 +1,5 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
+import { Copy } from "lucide-react";
 
 /**
  * The reply is prose, so it must not arrive with its markup showing: the owner has
@@ -50,6 +51,46 @@ function inline(raw: string, key: string): ReactNode[] {
   return parts;
 }
 
+/**
+ * A quoted block is code the reader may want to take away, so it gets a bar with
+ * what it is (the fence's own info string - a language, or the file it belongs to)
+ * and a copy button. The text is kept verbatim, including the trailing newline the
+ * model put inside the fence.
+ */
+function CodeBlock({ text, info }: { text: string; info: string }) {
+  const [copied, setCopied] = useState(false);
+  const parts = info.split(/\s+/).filter(Boolean);
+  const label = parts.find((one) => /\.[a-z0-9]+$/i.test(one)) ?? parts[0] ?? null;
+  const copy = () => {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    });
+  };
+  return (
+    <div className="chat-code">
+      <div className="chat-code-bar">
+        <span className="chat-code-name">{label ?? "代码"}</span>
+        <span className="chat-code-tools">
+          {copied ? <span className="chat-copied">已复制</span> : null}
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="复制这段代码"
+            title="复制"
+            onClick={copy}
+          >
+            <Copy size={12} />
+          </button>
+        </span>
+      </div>
+      <pre>
+        <code>{text}</code>
+      </pre>
+    </div>
+  );
+}
+
 export default function MarkdownText({ text, tail }: { text: string; tail?: ReactNode }) {
   const lines = text.split("\n");
   // the caret belongs at the end of the last thing with words in it
@@ -75,17 +116,14 @@ export default function MarkdownText({ text, tail }: { text: string; tail?: Reac
     const line = lines[i];
     if (/^```/.test(line)) {
       flushList();
+      const info = line.slice(3).trim();
       const body: string[] = [];
       i += 1;
       while (i < lines.length && !/^```/.test(lines[i])) {
         body.push(lines[i]);
         i += 1;
       }
-      nodes.push(
-        <pre key={`c${i}`}>
-          <code>{body.join("\n")}</code>
-        </pre>,
-      );
+      nodes.push(<CodeBlock key={`c${i}`} info={info} text={body.join("\n")} />);
       continue;
     }
     const heading = line.match(/^(#{1,4})\s+(.*)$/);
