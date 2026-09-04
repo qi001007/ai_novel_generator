@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -65,7 +65,13 @@ describe("FileEditorPane", () => {
 
     expect(screen.getAllByRole("tab")).toHaveLength(2);
     expect(document.querySelector(".file-tab.active")?.textContent).toContain("blueprint.md");
-    expect(document.querySelector(".file-path")?.textContent).toContain("九霄观星录 / 规划 / blueprint.md");
+    // 批注 11, 2026-09-04: the path is a chain of chevrons, not slashes inside a
+    // sentence. The svg count is the separator, so assert it rather than the join.
+    const crumb = document.querySelector(".file-path");
+    expect(crumb?.textContent).toContain("九霄观星录");
+    expect(crumb?.textContent).toContain("blueprint.md");
+    expect(crumb?.textContent).not.toContain(" / ");
+    expect(crumb?.querySelectorAll("svg")).toHaveLength(2);
     // Owner 2026-09-02: internal shorthand must not reach the reader.
     expect(document.querySelectorAll(".file-chip")).toHaveLength(0);
     expect(document.querySelector(".file-foot")?.textContent).not.toContain("与服务器一致");
@@ -74,23 +80,26 @@ describe("FileEditorPane", () => {
     });
   });
 
-  it("hides the save button until the buffer differs from the server", async () => {
+  it("keeps no permanent save control in the file bar", async () => {
     const user = userEvent.setup();
     seed();
     render(<FileEditorPane />);
-    const save = document.querySelector(".file-save") as HTMLButtonElement;
-    expect(save.disabled).toBe(true);
+    // 批注 12: Ctrl+S is bound, the tab carries a dirty ring and the foot names the
+    // shortcut, so the button only repeated a third time what was already said.
+    expect(document.querySelector(".file-save")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "toc.md" }));
     expect(useFiles.getState().active).toBe("toc.md");
   });
 
   it("saves the draft as actor=human with the revision it read", async () => {
-    const user = userEvent.setup();
     seed({ draft: "# 全书蓝图（A 层 · 长期）\n\n> 小节标题是结构标识。\n\n## 主线\n新\n\n## 终局\n" });
     render(<FileEditorPane />);
 
-    await user.click(document.querySelector(".file-save") as HTMLElement);
+    // The shortcut is now the only path, so the test drives the shortcut.
+    const content = document.querySelector(".file-cm .cm-content") as HTMLElement;
+    content.focus();
+    fireEvent.keyDown(content, { key: "s", ctrlKey: true, code: "KeyS" });
     await waitFor(() => {
       expect(api.writeFile).toHaveBeenCalledWith(1, "blueprint.md", expect.stringContaining("## 主线\n新"), {
         actor: "human",
@@ -99,7 +108,7 @@ describe("FileEditorPane", () => {
     });
   });
 
-  it("locks saving and warns in the footer while a proposal is pending", () => {
+  it("locks saving and warns in the footer while a proposal is pending", async () => {
     seed();
     useFiles.setState({
       pending: {
@@ -116,9 +125,15 @@ describe("FileEditorPane", () => {
     });
     render(<FileEditorPane />);
 
-    expect((document.querySelector(".file-save") as HTMLButtonElement).disabled).toBe(true);
     expect(document.querySelector(".file-foot")?.textContent).toContain("1 处提案待应用 · 尚未写入服务器");
     expect(document.querySelector(".pending-dot")).toBeTruthy();
+    // Ctrl+S must not write over a pending proposal.
+    const content = document.querySelector(".file-cm .cm-content") as HTMLElement;
+    content.focus();
+    fireEvent.keyDown(content, { key: "s", ctrlKey: true, code: "KeyS" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(api.writeFile).not.toHaveBeenCalled();
   });
 
   it("names the source in reader-facing words when the reader arrived through a B→D jump", () => {

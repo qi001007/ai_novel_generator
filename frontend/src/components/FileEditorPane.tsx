@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { AlertTriangle, FileCode2, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ChevronRight, FileCode2, RefreshCw, X } from "lucide-react";
 
 import {
   cursorReport,
@@ -377,8 +377,15 @@ export default function FileEditorPane() {
       <div className="file-bar">
         {/* The group comes from the layer the server sent, not from a per-kind
             special case: every 设定 document must stop claiming to be planning. */}
+        {/* A slash reads as part of the path text; a chevron reads as "goes
+            inside". Same colour and size as the tab above, so the line stops
+            competing with the prose underneath it. */}
         <span className="file-path">
-          {novelTitle} / {entry?.doc?.layer === "设定" ? "设定库" : "规划"} / {active}
+          {novelTitle}
+          <ChevronRight size={11} aria-hidden="true" />
+          {entry?.doc?.layer === "设定" ? "设定库" : "规划"}
+          <ChevronRight size={11} aria-hidden="true" />
+          {active}
         </span>
         <span className="file-spacer" />
         {active === TOC_PATH && tocSource ? (
@@ -390,15 +397,9 @@ export default function FileEditorPane() {
             返回列表
           </button>
         ) : null}
-        <button
-          type="button"
-          className="file-save"
-          disabled={!dirty || saving || Boolean(proposal)}
-          title={proposal ? "先处理提案" : "保存（Ctrl+S）"}
-          onClick={() => active && void save(active)}
-        >
-          {saving ? "写入中" : "保存"}
-        </button>
+        {/* Ctrl+S is bound, the tab already carries a dirty ring, and the foot
+            says 有未保存改动 · Ctrl+S 保存. A permanent button said the same
+            thing a third time. */}
       </div>
 
       {jump ? (

@@ -3039,16 +3039,30 @@ body.chat-dock-resizing {
   flex: none;
   height: 26px;
   padding: 0 16px;
+  /* Measured: this band was already the same colour as the prose behind it,
+     so the only thing separating them was this border. Dropping it makes the
+     breadcrumb a line of the editor rather than a boxed header. */
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 0;
 }
 
+/* Same tone and size as the tab name above it - the owner asked for the path to
+   read like the file name, not like a heading competing with the prose. */
 .file-path {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
   overflow: hidden;
-  color: var(--text-1);
-  font-size: 13px;
+  color: var(--text-2);
+  font-size: 12px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.file-path > svg {
+  flex: none;
+  color: var(--editor-comment);
 }
 
 .file-chip {
@@ -3234,10 +3248,13 @@ body.chat-dock-resizing {
   display: none;
 }
 
+/* There was never an actual border here - border-right measured 0px. What read
+   as a divider was the two-tone step: gutter rgb(26,26,28) against content
+   rgb(28,28,30). Transparent makes the numbers part of the same block. */
 .file-cm .cm-gutters {
   min-width: 46px;
   border: 0;
-  background: var(--editor-gutter);
+  background: transparent;
 }
 
 .file-cm .cm-lineNumbers .cm-gutterElement {
