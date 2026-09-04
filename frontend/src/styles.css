@@ -874,10 +874,10 @@ select:focus-visible {
     box-shadow 150ms ease-out;
 }
 
-/* Focus lives on the card, in the same language as the prose editor:
-   border colour only, no outline and no ring. */
+/* 批注 16: lighting the card border in the accent colour the instant the field is
+   clicked is the cheapest-looking thing this screen does. The caret and the raised
+   shadow already say focus; keep the colour out of it. */
 .composer:focus-within {
-  border-color: var(--accent);
   box-shadow: var(--shadow-pop);
 }
 

@@ -127,10 +127,6 @@ export default function PreferencesPage() {
           {!config && !error ? <p className="prefs-muted">正在读取后端配置……</p> : null}
           {config ? (
             <>
-              <p className="prefs-muted">
-                这些值原本只写在 backend/.env 里，现在存在数据库，保存后后端立即生效。
-                .env 仍然是首次启动的种子：没在这里存过的项，继续读 .env。
-              </p>
               <label className="prefs-field">
                 Base URL
                 <input
@@ -196,9 +192,6 @@ export default function PreferencesPage() {
                   保存
                 </button>
               </div>
-              <p className="prefs-muted">
-                测试连接只访问网关的模型列表，不产生任何 token 费用。
-              </p>
             </>
           ) : null}
         </section>

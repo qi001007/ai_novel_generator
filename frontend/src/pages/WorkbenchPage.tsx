@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeft, MessagesSquare, Moon, PanelLeft, PanelRight, Settings, Sun } from "lucide-react";
+import { ArrowLeft, MessagesSquare, PanelLeft, PanelRight, Settings } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import CharacterLibrary from "../components/CharacterLibrary";
@@ -323,39 +323,39 @@ export default function WorkbenchPage() {
         {/* Icons in the title bar, not a bar under each column: a collapse
             control that lives inside the thing it hides cannot be reached once
             that thing is gone. */}
-        <div className="panel-toggles" role="group" aria-label="栏目显示">
-          <button
+        <div className="topbar-right">
+            <div className="panel-toggles" role="group" aria-label="栏目显示">
+            <button
             type="button"
             className="icon-button"
             aria-pressed={!hidden.sidebar}
             aria-label="显示或隐藏结构栏"
             title="结构栏"
             onClick={() => toggleHidden("sidebar")}
-          >
+            >
             <PanelLeft size={15} />
-          </button>
-          <button
+            </button>
+            <button
             type="button"
             className="icon-button"
             aria-pressed={!hidden.chat}
             aria-label="显示或隐藏对话栏"
             title="对话栏"
             onClick={() => toggleHidden("chat")}
-          >
+            >
             <MessagesSquare size={15} />
-          </button>
-          <button
+            </button>
+            <button
             type="button"
             className="icon-button"
             aria-pressed={!hidden.editor}
             aria-label="显示或隐藏编辑栏"
             title="编辑栏"
             onClick={() => toggleHidden("editor")}
-          >
+            >
             <PanelRight size={15} />
-          </button>
-        </div>
-        <div className="topbar-right">
+            </button>
+            </div>
           {/* 批注 19: health moved up to where a reader already looks for it, and
               it only speaks when the pointer asks. */}
           <span
@@ -381,9 +381,6 @@ export default function WorkbenchPage() {
             }}
           >
             <Settings size={16} />
-          </button>
-          <button type="button" className="icon-button" aria-label="切换主题" onClick={() => state.toggleTheme()}>
-            {state.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
           </button>
         </div>
       </header>

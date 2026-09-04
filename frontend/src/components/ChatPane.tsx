@@ -894,7 +894,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
               ref={inputRef}
               value={input}
               rows={2}
-              placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"
+              placeholder="/ 命令 · @ 资料"
               aria-label="对话输入"
               onChange={(event) => {
                 setInput(event.target.value);

@@ -137,9 +137,8 @@ export default function BookshelfPage() {
       <main className="bookshelf-main">
         <div className="bookshelf-header">
           <h1>我的作品</h1>
-          <button type="button" className="primary" onClick={openWizard}>
-            新建作品
-          </button>
+          {/* 批注 1: the grid already ends with a 新建作品 card, so a filled button
+              up here said the same thing twice and was the loudest object on the page. */}
         </div>
         {novels.length === 0 ? (
           <section className="panel empty-state">
@@ -197,7 +196,7 @@ export default function BookshelfPage() {
                     <ImagePlus size={14} />
                     更换封面
                   </button>
-                  <span className="book-continue" aria-hidden="true">继续写作</span>
+                  {/* 批注 24: the whole cover is the target and already navigates. */}
                   <div className="book-meta">
                     <h3>{novel.title}</h3>
                     <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句。"}</p>
