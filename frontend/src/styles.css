@@ -402,24 +402,19 @@ select:focus-visible {
 /* A bar that appears on hover must not move the page. Chrome's classic scrollbar
    takes layout the moment it exists, so toggling `scrollbar-width` between none and
    thin cost the thread 10px of content width every time the pointer arrived -
-   measured 470 -> 460, and the owner reported it as the page "动一下". The track is
-   therefore always sized and only the thumb fades in. */
+   measured 470 -> 460, and the owner reported it as the page "动一下".
+   Vertical regions reserve their track on both edges, so the thumb can fade in
+   without moving anything. A horizontal strip cannot: reserving 10px of its 40px
+   height is what shrank the tabs (批注 3). Those two keep no bar at all and scroll
+   from the wheel instead - the handler is already wired. */
 .chat-messages::-webkit-scrollbar,
 .sidebar::-webkit-scrollbar {
   width: 10px;
   background: transparent;
 }
 
-.file-tabs::-webkit-scrollbar,
-.editor-tabs::-webkit-scrollbar {
-  height: 10px;
-  background: transparent;
-}
-
 .chat-messages::-webkit-scrollbar-thumb,
-.sidebar::-webkit-scrollbar-thumb,
-.file-tabs::-webkit-scrollbar-thumb,
-.editor-tabs::-webkit-scrollbar-thumb {
+.sidebar::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -427,9 +422,7 @@ select:focus-visible {
 }
 
 .chat-messages:hover::-webkit-scrollbar-thumb,
-.sidebar:hover::-webkit-scrollbar-thumb,
-.file-tabs:hover::-webkit-scrollbar-thumb,
-.editor-tabs:hover::-webkit-scrollbar-thumb {
+.sidebar:hover::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--text-2) 62%, transparent);
   background-clip: content-box;
 }
@@ -795,7 +788,10 @@ select:focus-visible {
    when the speaker changes, that is a paragraph break, not another line. */
 .chat-row.user + .chat-row.assistant,
 .chat-row.assistant + .chat-row.user {
-  margin-top: 14px;
+  /* 批注 5, 7: with the card gone, 26px was not enough to show where one turn ends
+     - the owner read the thread as user bubbles scattered through an answer.
+     12 + 40 = 52px between turns, 12px within one. */
+  margin-top: 40px;
 }
 
 /* 批注 9: yours sits on the right, which is the convention every chat has used
@@ -1470,7 +1466,8 @@ select:focus-visible {
      tab was cut: measured on an 860px viewport its right edge was 864.8. */
   overflow-x: auto;
   overflow-y: hidden;
-  /* 批注 6: same rule as .file-tabs - the bar is not furniture. */
+  /* No bar here, on purpose: see the shared scrollbar note above. */
+  scrollbar-width: none;
 }
 
 .editor-tab {
@@ -1527,6 +1524,10 @@ select:focus-visible {
 .editor-tab > button:not(.editor-tab-close),
 .file-tab > button:not(.file-tab-close) {
   align-self: stretch;
+  /* 批注 3: the tab is floored at 8.5rem, so a short name left the slack on the
+     right and the close button sat 1 / 19 / 38px from the edge depending on the
+     file name. The label takes the slack; the close keeps one fixed distance. */
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
   min-width: 0;
@@ -1596,7 +1597,7 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
   padding: 4px 12px;
-  background: var(--surface);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -3486,7 +3487,8 @@ body.resizing {
   overflow-x: auto;
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border-strong);
-  /* 批注 1: the bar is not furniture - see the shared thumb-fade rules. */
+  /* 批注 1: no bar here, on purpose - see the shared scrollbar note above. */
+  scrollbar-width: none;
 }
 
 .file-tab {
@@ -3554,7 +3556,7 @@ body.resizing {
   place-items: center;
   width: 26px;
   height: 26px;
-  margin: 0 -7px 0 -5px;
+  margin: 0 -4px 0 -5px;
   border: 0;
   border-radius: 4px;
   background: none;
@@ -3584,7 +3586,7 @@ body.resizing {
   /* Measured: this band was already the same colour as the prose behind it,
      so the only thing separating them was this border. Dropping it makes the
      breadcrumb a line of the editor rather than a boxed header. */
-  background: var(--surface);
+  background: var(--bg);
   border-bottom: 0;
 }
 
@@ -3726,6 +3728,7 @@ body.resizing {
 }
 
 .file-body {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
@@ -4043,14 +4046,17 @@ body.resizing {
   color: var(--text-1);
 }
 
+/* 批注: no accent block, no accent ring. A filled orange square was the loudest
+   thing in the thread and the owner asked for it twice. The mark carries the
+   meaning; the accent survives as the icon's colour, which is the same language
+   as .icon-button.active elsewhere in the app. */
 .proposal-btn.apply {
-  background: var(--accent);
-  color: #fff;
+  color: var(--accent);
 }
 
 .proposal-btn.apply:hover:not(:disabled) {
-  background: var(--accent-strong);
-  color: #fff;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent-strong);
 }
 
 .proposal-btn.apply:disabled {
@@ -4197,8 +4203,11 @@ body.resizing {
 }
 
 .toc-list-overlay {
+  /* 批注 1: this used to hang off the top of the whole editor at a hardcoded 70px,
+     which left a 4px seam showing the CodeMirror underneath - "后面还覆盖着别的
+     东西". It now covers exactly the body it belongs to, so no offset can drift. */
   position: absolute;
-  inset: 70px 0 0;
+  inset: 0;
   z-index: 8;
   background: var(--bg);
 }
@@ -4413,11 +4422,6 @@ body.resizing {
   font-size: 12px;
 }
 
-.toc-lock {
-  color: var(--text-2);
-  font-size: 11px;
-}
-
 .toc-row input,
 .toc-row textarea {
   width: 100%;
@@ -4479,20 +4483,6 @@ body.resizing {
   background: var(--surface);
   color: var(--text-1);
   cursor: pointer;
-}
-
-.toc-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex: none;
-  min-height: 30px;
-  padding: 0 16px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-2);
-  font-size: 11px;
 }
 
 /* ---------- 绘画详情整屏页（帧 22） ---------- */

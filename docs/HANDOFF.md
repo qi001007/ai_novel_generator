@@ -17,6 +17,9 @@
 - 调 `use_figma` 前先读 `skill://figma/figma-use/SKILL.md`，skillNames 传 `resource:figma-use`。
   本项目 Figma 报错几乎都是脚本层（SCRIPT 桶），见 AGENTS.md 四桶与 DECISIONS 第 4 节 T-01～T-04。
 - 遇到主人批评，先复述你理解的问题点再动手。
+- **改任何界面之前先读 `docs/UI-DESIGN.md` §0.9 不可回退清单**，改完在
+      `frontend/src/uiInvariants.test.ts` 里补/改一条断言，**同一提交**。主人 2026-09-05
+      一次指出四处「你改回去了」，靠记忆保不住已定稿的东西，只有门禁能保住。
 - **效果类改动必须真机截图、自己看过之后才说完成**。只看 diff 不算验证：本项目靠看渲染图
   抓到过「三条 CSS 被更高优先级选择器整组压掉」「JSX 文本节点里混进字面 dollar-brace」
   「设置页一行样式都没写」。取证通道见 AGENTS.md《前端取证通道》（本机无 Chrome，裸 Edge + CDP）。

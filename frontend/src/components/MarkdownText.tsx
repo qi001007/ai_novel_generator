@@ -16,7 +16,7 @@ import { Copy } from "lucide-react";
  */
 
 const INLINE =
-  /(`[^`]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\((?:https?:\/\/|mailto:)[^)\s]*\))/g;
+  /(`[^`]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\((?:https?:\/\/|mailto:)[^)\s]*\)|https?:\/\/[^\s)）】」，。；]+)/g;
 
 function inline(raw: string, key: string): ReactNode[] {
   const parts: ReactNode[] = [];
@@ -34,11 +34,19 @@ function inline(raw: string, key: string): ReactNode[] {
       parts.push(<strong key={id}>{inline(token.slice(2, -2), id)}</strong>);
     } else if (token.startsWith("*")) {
       parts.push(<em key={id}>{token.slice(1, -1)}</em>);
-    } else {
+    } else if (token.startsWith("[")) {
       const bar = token.indexOf("](");
       parts.push(
         <a key={id} href={token.slice(bar + 2, -1)} target="_blank" rel="noreferrer noopener">
           {token.slice(1, bar)}
+        </a>,
+      );
+    } else {
+      // A bare url the model typed out is still a link - "来源：https://…" was plain
+      // grey text, and the owner asked why the links have no colour.
+      parts.push(
+        <a key={id} href={token} target="_blank" rel="noreferrer noopener">
+          {token}
         </a>,
       );
     }
@@ -173,6 +181,14 @@ export default function MarkdownText({ text, tail }: { text: string; tail?: Reac
     }
     flushList();
     if (line.trim() === "") continue;
+    // A whole line that is only **bold** is how this model writes a sub-heading
+    // ("**查证结果：**"), and it used to render as one bold sentence in the middle of
+    // the body - which is what "没有标题和正文的区别" was about.
+    const lead = /^\*\*([^*]+?)\*\*[：:]?$/.exec(line.trim());
+    if (lead) {
+      nodes.push(<h4 key={`p${i}`}>{inline(lead[1].replace(/[：:]$/, ""), `p${i}`)}</h4>);
+      continue;
+    }
     nodes.push(
       <p key={`p${i}`}>
         {inline(line, `p${i}`)}

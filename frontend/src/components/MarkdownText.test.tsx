@@ -50,6 +50,19 @@ describe("MarkdownText", () => {
     expect(container.textContent).toContain("[坏](javascript:1)");
   });
 
+  it("links a bare url the model typed out, not only [text](url)", () => {
+    const { container } = render(<MarkdownText text="- 来源：https://zh.wikipedia.org?curid=1397" />);
+    const link = container.querySelector("a");
+    expect(link?.getAttribute("href")).toBe("https://zh.wikipedia.org?curid=1397");
+    expect(link?.textContent).toContain("wikipedia");
+  });
+
+  it("treats a line that is only bold as a sub-heading", () => {
+    const { container } = render(<MarkdownText text={"**查证结果：**\n「司天监」是官署名。"} />);
+    expect(container.querySelector("h4")?.textContent).toBe("查证结果");
+    expect(container.querySelectorAll("p")).toHaveLength(1);
+  });
+
   it("appends the caret to the last line with words in it", () => {
     const { container } = render(<MarkdownText text={"第一段\n\n"} tail={<i data-testid="caret" />} />);
     const paragraphs = container.querySelectorAll("p");

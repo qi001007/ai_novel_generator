@@ -243,6 +243,39 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 
 ---
 
+## 0.9 不可回退清单（机器看，不靠我记得）
+
+2026-09-05 凌晨，主人在浏览器里一次指出四处「你改回去了」：标签条滚动条又占布局把 tab
+压矮、关闭按钮到右边界的距离随文件名在 1 / 19 / 38px 之间跳、面包屑行比正文亮一档、
+目录页脚还挂着「共 6 章」。每一条都是他**以前点名定过**的。
+
+结论：**文字规则拦不住遗忘**（AGENTS.md 对本项目全局规则已经承认过同一件事）。
+所以已定稿的界面决定一律同时变成 `frontend/src/uiInvariants.test.ts` 里的一条断言——
+它就跑在门禁的 `npm run test` 里，谁改回去谁红。2026-09-05 做过变异验证：把
+`.file-tabs` 的 `scrollbar-width: none` 改回 `thin`，该套件立刻失败。
+
+| 已定稿 | 判据（断言名） | 定它的批注 |
+|---|---|---|
+| 横向标签条**永不含滚动条**，靠滚轮横滚 | `.file-tabs` / `.editor-tabs` 有 `scrollbar-width: none`，且没有它们的 `::-webkit-scrollbar` | 第十轮批注 6、第十二批批注 3 |
+| 对话列滚动条**淡入但不占位** | `.chat-messages` 有 `scrollbar-gutter: stable both-edges` | 第十二批批注 2.1 |
+| 关闭按钮到 tab 右边界**只有一个距离** | 标签文字 `flex: 1 1 auto`（吃掉富余） | 第十二批批注 3 |
+| 编辑页所有面**都是正文那种黑** | `.file-editor/.file-code/.file-bar/.editor-toolbar/.editor-body/.minimap` 全 `var(--bg)` | 第十批批注 6、第十二批批注 2 |
+| 渲染视图**盖住它自己的 body**，不用魔法偏移 | `.toc-list-overlay{inset:0}` 且文件里不存在 `inset: 70px` | 第十二批批注 1 |
+| **不数东西给主人看** | 无 `.tree-page-count`、无 `.toc-foot`、目录里不出现「共 N 章」 | 第十轮批注 2、第十二批批注 4 |
+| 章号格**只有数字** | 无 `toc-lock`、无 `<Lock` | 第十二批批注 4 |
+| 文件栏**除写失败外不说话** | `FileEditorPane` 里不含「保存已锁定」「处提案待应用 ·」 | 第十二批批注 2 |
+| 回答**无框、无头像、无抬头行** | `.chat-card.agent` 无 border/background；`ChatPane` 无 `chat-avatar`/`chat-card-head` | 第十轮批注 3、4 |
+| 工具轨迹**折叠**，不混进正文 | `ChatPane` 含 `splitTrace` 与 `chat-trace` | 第十一轮主请求 |
+| 动作是**记号不是句子** | 提案卡无 `proposal-note`，三个 `aria-label` 在；apply 无主色色块 | 第十一轮批注 3-6、第十二批批注 6 |
+| 章节标签**只有一个点** | `EditorPane` 不含 `StatusBadge` | 第十二批批注 1 |
+| 换人**留 52px** | `.chat-row.user + .chat-row.assistant` 的 `margin-top: 40px` | 第十三批批注 5、7 |
+| 深色「灰」= 主人给的 #191A1B | `--surface-alt: #191a1b`、`--surface: #1f2023` | 第十轮批注 1 |
+
+**给下一个接手的人**：新增或推翻一条界面决定时，**同一提交里**改这张表和那个测试文件。
+只改代码不改断言，就是下一次「你怎么越改越回去了」。
+
+---
+
 ## 1. 书架首页 `/`
 
 **框架**：极简单页。顶栏 56px（左字标，右主题切换 + 设置）；内容区最大宽 1280 居中；书卡 CSS Grid `repeat(auto-fill, minmax(260px, 1fr))`，间距 24。

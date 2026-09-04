@@ -325,7 +325,6 @@ export default function FileEditorPane() {
   );
 
   const conflict = entry?.conflict ?? false;
-  const pendingCount = Object.keys(pending).length;
   const error = entry?.error ?? null;
   const showTocList = active === TOC_PATH && Boolean(entry?.doc) && !tocSource;
 
@@ -415,16 +414,12 @@ export default function FileEditorPane() {
           {active}
         </span>
         <span className="file-spacer" />
-        {/* 批注: the bottom foot bar is gone. Everything it said is already on the
-            tab - a dirty ring, a pending dot - so repeating it in a permanent strip
-            was the fourth copy of one fact. The one thing with no other home is a
-            failed write, and that speaks here instead. */}
-        {error || pendingCount ? (
-          <span
-            className={`file-bar-note ${error ? "error" : ""}`}
-            role={error ? "alert" : undefined}
-          >
-            {error ?? `${pendingCount} 处提案待应用 · 保存已锁定`}
+        {/* 批注 2: the pending-proposal sentence is deleted outright - moving the old
+            foot bar's words up here was still printing words where the tab already
+            shows a dot. A failed write keeps one line because nothing else says it. */}
+        {error ? (
+          <span className="file-bar-note error" role="alert">
+            {error}
           </span>
         ) : null}
       </div>
@@ -456,6 +451,13 @@ export default function FileEditorPane() {
       ) : null}
 
       <div className="file-body" ref={bodyRef}>
+        {/* 批注 1: the rendered directory sits inside the body it replaces, so it
+            covers it exactly instead of floating over the editor at a guessed 70px. */}
+        {showTocList ? (
+          <div className="toc-list-overlay">
+            <TocListView />
+          </div>
+        ) : null}
         <div className="file-code">
           {entry?.loading && !entry.doc ? <p className="file-loading">读取中…</p> : null}
           <div ref={hostRef} className="file-cm" />
@@ -475,12 +477,6 @@ export default function FileEditorPane() {
           />
         </div>
       </div>
-
-      {showTocList ? (
-        <div className="toc-list-overlay">
-          <TocListView />
-        </div>
-      ) : null}
 
     </section>
   );

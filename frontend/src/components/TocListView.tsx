@@ -125,9 +125,9 @@ export default function TocListView() {
           const chapter = chapters.find((item) => item.chapter_number === row.chapter);
           return (
             <div className="toc-row" role="row" key={row.chapter}>
-              <span className="tabular">
-                {row.chapter} <Lock />
-              </span>
+              {/* 批注 4: 42 is 42. The lock said "this number is the key", which is
+                  a fact about the schema, not something to print inside a cell. */}
+              <span className="tabular">{row.chapter}</span>
               <input
                 value={row.title}
                 className={
@@ -156,15 +156,7 @@ export default function TocListView() {
         )}
       </div>
 
-      <footer className="toc-foot">
-        <span className="tabular">
-          {query ? `匹配 ${rows.length} / 共 ${allRows.length} 章 · Esc 清除搜索` : `共 ${allRows.length} 章`}
-        </span>
-      </footer>
     </section>
   );
 }
 
-function Lock() {
-  return <span aria-hidden="true" className="toc-lock">锁</span>;
-}

@@ -111,7 +111,7 @@ describe("FileEditorPane", () => {
     });
   });
 
-  it("locks saving and says so in the file bar while a proposal is pending", async () => {
+  it("locks saving while a proposal is pending, without printing it", async () => {
     seed();
     useFiles.setState({
       pending: {
@@ -128,9 +128,10 @@ describe("FileEditorPane", () => {
     });
     render(<FileEditorPane />);
 
-    expect(document.querySelector(".file-bar-note")?.textContent).toContain(
-      "1 处提案待应用 · 保存已锁定",
-    );
+    // 批注 2 (第十二批): the lock is real, the sentence is not. The tab already shows
+    // a pending dot, so the words were a fourth copy of one fact.
+    expect(document.querySelector(".file-bar-note")).toBeNull();
+    expect(document.body.textContent).not.toContain("保存已锁定");
     expect(document.querySelector(".file-foot")).toBeNull();
     expect(document.querySelector(".pending-dot")).toBeTruthy();
     // Ctrl+S must not write over a pending proposal.
