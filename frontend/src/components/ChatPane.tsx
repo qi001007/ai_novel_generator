@@ -140,8 +140,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [elapsed, setElapsed] = useState(0);
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
   const [dockHeight, setDockHeight] = useState(132);
-  const [attachments, setAttachments] = useState<File[]>([]);
-  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const pendingFiles = useFiles((store) => store.pending);
   const offerFile = useFiles((store) => store.offer);
   const discardFile = useFiles((store) => store.discardProposal);
@@ -452,11 +450,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
 
   function stop() {
     abortRef.current?.abort();
-  }
-
-  function addAttachments(files: FileList | null) {
-    if (!files?.length) return;
-    setAttachments((prev) => [...prev, ...Array.from(files)].slice(0, 10));
   }
 
   // The field grows with what the reader types, up to a ceiling, and the dock grows
@@ -942,24 +935,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
               }}
             />
           </div>
-          {attachments.length ? (
-            <ul className="chat-attachments" aria-label="已选附件">
-              {attachments.map((file, index) => (
-                <li key={`${file.name}-${index}`}>
-                  <span title={`${file.name} · ${(file.size / 1024).toFixed(1)} KB`}>
-                    {file.name}
-                  </span>
-                  <button
-                    type="button"
-                    aria-label={`移除附件 ${file.name}`}
-                    onClick={() => setAttachments((prev) => prev.filter((_, i) => i !== index))}
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
           <div className="chat-toolbar">
             <div className="mode-switch" role="radiogroup" aria-label="对话模式">
               <button
@@ -981,26 +956,19 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 写作
               </button>
             </div>
+            {/* The picker accepted up to ten files into state that no request ever
+                read, and the chips survived the send. A control that silently
+                throws your selection away is worse than a disabled one, so it says
+                what it is; @ already reaches every document in the book. */}
             <button
               type="button"
               className="chat-attach"
               aria-label="上传附件"
-              onClick={() => attachmentInputRef.current?.click()}
+              title="附件上传暂未开放 · 用 @ 可直接点名书里的资料"
+              disabled
             >
               <Paperclip size={15} />
             </button>
-            <input
-              ref={attachmentInputRef}
-              type="file"
-              className="chat-attachment-input"
-              multiple
-              aria-label="选择附件文件"
-              accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.txt,.md,.html,.htm,.doc,.docx"
-              onChange={(event) => {
-                addAttachments(event.target.files);
-                event.target.value = "";
-              }}
-            />
             <span className="spacer" />
             <div className="model-menu-wrap" ref={modelMenuRef}>
               <button
