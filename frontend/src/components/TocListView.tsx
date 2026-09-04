@@ -47,9 +47,10 @@ export function renderToc(preamble: string, rows: TocRow[]) {
   return `${preamble.trimEnd()}${PREAMBLE_END}${body}`;
 }
 
-type TocListViewProps = { onUseSource: () => void };
+/* Takes no props: the rendered/source switch is one icon in the file tab bar now,
+   shared by every document that has both views (批注 13). */
 
-export default function TocListView({ onUseSource }: TocListViewProps) {
+export default function TocListView() {
   const active = useFiles((store) => store.active);
   const entry = useFiles((store) => store.entries[active ?? ""]);
   const setDraft = useFiles((store) => store.setDraft);
@@ -95,18 +96,11 @@ export default function TocListView({ onUseSource }: TocListViewProps) {
     <section className="toc-list" aria-label="目录列表">
       <div className="toc-toolbar">
         <div className="toc-title-group">
-          <span className="file-path">规划 / toc.md</span>
+          {/* The path was printed here as well as in the file bar above, and it
+              said 规划 unconditionally - the same lie D-15 fixed elsewhere. */}
           <h2>目录</h2>
         </div>
         <div className="toc-toolbar-controls">
-          <div className="segmented" role="radiogroup" aria-label="目录视图">
-            <button type="button" role="radio" aria-checked className="selected" disabled>
-              列表
-            </button>
-            <button type="button" role="radio" aria-checked={false} onClick={onUseSource}>
-              源码
-            </button>
-          </div>
           <label className="toc-search">
             <Search size={14} aria-hidden="true" />
             <input

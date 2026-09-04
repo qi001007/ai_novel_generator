@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { AlertTriangle, ChevronRight, FileCode2, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, BookOpen, ChevronRight, FileCode2, RefreshCw, X } from "lucide-react";
 
 import {
   cursorReport,
@@ -44,6 +44,10 @@ const LOCKED_FIELDS: Record<string, string[]> = {
 };
 
 const MM_PITCH = 5;
+
+/* Which documents have a rendered view beside their source. Adding a kind is one
+   entry here; the tab-bar icon picks it up. */
+const RENDERED_PATHS = new Set<string>([TOC_PATH]);
 
 export default function FileEditorPane() {
   const novelTitle = useWorkbench((state) => {
@@ -372,6 +376,24 @@ export default function FileEditorPane() {
             </div>
           );
         })}
+        {/* One persistent icon in the bar that already names the file, for every
+            document that has both a rendered view and a source view. It used to
+            be a two-state control here and a 返回 button over there, so switching
+            moved the control out from under the pointer. */}
+        {RENDERED_PATHS.has(active ?? "") ? (
+          <div className="file-tabs-actions">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={tocSource ? "切到列表视图" : "切到源码视图"}
+              title={tocSource ? "切到列表视图" : "切到源码视图"}
+              aria-pressed={tocSource}
+              onClick={() => (tocSource ? setTocSource(false) : handleUseTocSource())}
+            >
+              {tocSource ? <BookOpen size={14} /> : <FileCode2 size={14} />}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="file-bar">
@@ -388,15 +410,7 @@ export default function FileEditorPane() {
           {active}
         </span>
         <span className="file-spacer" />
-        {active === TOC_PATH && tocSource ? (
-          <button
-            type="button"
-            className="file-mode-return"
-            onClick={() => setTocSource(false)}
-          >
-            返回列表
-          </button>
-        ) : null}
+
         {/* Ctrl+S is bound, the tab already carries a dirty ring, and the foot
             says 有未保存改动 · Ctrl+S 保存. A permanent button said the same
             thing a third time. */}
@@ -451,7 +465,7 @@ export default function FileEditorPane() {
 
       {showTocList ? (
         <div className="toc-list-overlay">
-          <TocListView onUseSource={handleUseTocSource} />
+          <TocListView />
         </div>
       ) : null}
 

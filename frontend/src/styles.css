@@ -202,14 +202,20 @@ button:disabled {
   color: var(--control-disabled-fg);
 }
 
+/* 40x40 came from the old 0.4 rule "hit area >= 40", which is exactly what made
+   every icon grow into a visible block. Voided on 2026-09-04: one compact 28
+   square, borderless, that only shows a background when hovered. min-height:0 so
+   the global button floor cannot quietly push it back to 32. */
 .icon-button {
   display: inline-grid;
   place-items: center;
-  width: 40px;
-  min-width: 40px;
-  height: 40px;
+  width: 28px;
+  min-width: 28px;
+  min-height: 0;
+  height: 28px;
   padding: 0;
-  border-color: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-2);
 }
@@ -3790,60 +3796,18 @@ body.resizing {
   flex: none;
 }
 
-.segmented {
-  display: inline-flex;
-  height: 32px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 9px;
-  background: var(--surface-alt);
-}
-
-.segmented button {
-  position: relative;
-  display: inline-grid;
-  place-items: center;
-  flex: 1 1 0;
-  min-width: 58px;
-  min-height: 0; /* the global button rule would overflow the 28px slot */
-  height: 100%;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 7px; /* concentric with the 9px outer minus the 2px inset */
-  background: none;
-  color: var(--text-2);
-  font: inherit;
-  font-size: 12px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.segmented button + button::before {
-  content: "";
-  position: absolute;
-  top: 7px;
-  bottom: 7px;
-  left: -1px;
-  width: 1px;
-  background: var(--border-strong);
+/* The tab bar owns the rendered/source switch (批注 13), so its controls sit at
+   the right end of the strip and never move when the view changes. */
+.file-tabs-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  margin-left: auto;
+  padding-right: 4px;
 }
 
 /* No divider should touch the selected pill from either side. */
-.segmented button.selected::before,
-.segmented button:has(+ .selected)::before {
-  display: none;
-}
-
-.segmented button.selected {
-  background: var(--surface);
-  color: var(--text-1);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
-}
-
-.segmented button:not(.selected):hover {
-  color: var(--text-1);
-}
-
 .toc-search {
   display: inline-flex;
   align-items: center;
