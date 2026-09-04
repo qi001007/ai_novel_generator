@@ -366,7 +366,19 @@ export default function FileEditorPane() {
 
   return (
     <section className="file-editor" aria-label="文件编辑器">
-      <div className="file-tabs" role="tablist">
+      <div
+        className="file-tabs"
+        role="tablist"
+        // 批注 1: a vertical wheel over a horizontal strip means "move the strip",
+        // not "scroll the page behind it".
+        onWheel={(event) => {
+          const strip = event.currentTarget;
+          if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+          const room = strip.scrollWidth - strip.clientWidth;
+          if (room <= 0) return;
+          strip.scrollLeft = Math.max(0, Math.min(room, strip.scrollLeft + event.deltaY));
+        }}
+      >
         {tabs.map((path) => {
           const item = entries[path];
           return (

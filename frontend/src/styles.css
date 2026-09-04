@@ -565,13 +565,16 @@ select:focus-visible {
 /* 帧 27 批注 4: no box, no fill. The letter and the chevron carry the meaning on
    their own; a grey square behind every one of them is what turned the tree into
    "a box inside a box". */
+/* 批注 4: 15px was the glyph, not the target. The hit box is 28px and
+   reaches into the row padding on the left, so nothing in the row shifts. */
 .tree-prefix {
   min-height: 0;
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 15px;
-  height: 15px;
+  width: 28px;
+  height: 28px;
+  margin-left: -11px;
   margin-right: 8px;
   border-radius: 0;
   background: transparent;
@@ -1529,7 +1532,14 @@ select:focus-visible {
   color: var(--accent);
 }
 
+/* 批注 5: it sat at the top of a full-height column, which reads as a heading and
+   not as an invitation. The pane gives it the whole stage. */
+.editor-pane:has(.editor-empty) {
+  grid-template-rows: 1fr;
+}
+
 .editor-empty {
+  align-self: stretch;
   display: grid;
   place-content: center;
   justify-items: center;
@@ -3188,6 +3198,12 @@ body.resizing {
   overflow-x: auto;
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border-strong);
+  /* 批注 1: the bar is not furniture. It shows while the pointer is on the strip and
+     is absent otherwise. */
+  scrollbar-width: none;
+}
+
+.file-tabs:hover {
   scrollbar-width: thin;
 }
 
@@ -3249,10 +3265,14 @@ body.resizing {
 
 .file-tab-close {
   min-height: 0;
+  /* 批注 3: a 12px glyph in a 16px box is not a target. It grows
+     to 26px and pulls back into the tab's own padding with a negative margin, so
+     the tab keeps exactly the width it had. */
   display: inline-grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  width: 26px;
+  height: 26px;
+  margin: 0 -7px 0 -5px;
   border: 0;
   border-radius: 4px;
   background: none;
@@ -3515,10 +3535,19 @@ body.resizing {
   background: transparent;
 }
 
+/* 批注 2, third time. This was never a border - border-right measured 0px on
+   every gutter. It is a 2px column painted --surface-alt against a --bg editor,
+   i.e. a lighter stripe laid exactly in the seam. The column is transparent now;
+   the locked-line marks it carries keep their colour, so the feature survives. */
 .file-cm .cm-rail {
   width: 2px;
   min-width: 2px;
-  background: var(--surface-alt);
+  /* The second background in this block is what defeated the first attempt: the
+     column stays painted --surface-alt against a --bg editor, and that 2px lighter
+     stripe in the seam is the "line" reported three times. The marks that matter
+     are .cm-rail-seg.lock / .pending, one per locked or pending line, and they are
+     untouched - so the column itself can go quiet. */
+  background: transparent;
 }
 
 .file-cm .cm-rail .cm-gutterElement {
