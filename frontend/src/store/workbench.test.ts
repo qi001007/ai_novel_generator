@@ -134,3 +134,90 @@ describe("workbench chapter writes", () => {
     expect(useWorkbench.getState().error).toBeNull();
   });
 });
+
+describe("workbench novel selection", () => {
+  const novel = (id: number) => ({
+    id,
+    title: `书 ${id}`,
+    description: "",
+    target_chapters: 0,
+    style_constraints: "",
+    cover_image: "",
+    cover_color: "",
+    created_at: "2026-09-04T00:00:00Z",
+    updated_at: "2026-09-04T00:00:00Z",
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkbench.setState({
+      novels: [],
+      selectedNovelId: null,
+      chapters: [],
+      briefs: [],
+      selectedChapterId: null,
+      selectedBriefId: null,
+      generationRuns: [],
+      reviews: [],
+      error: null,
+    });
+  });
+
+  it("keeps the book the route asked for when init resolves later", async () => {
+    // The race that made /novels/5 load novel 1's data: init() captured the store
+    // before awaiting /api/novels, then wrote `captured ?? novels[0].id` afterwards,
+    // so a selection made by the route in between was overwritten.
+    const pending: ((value: unknown) => void)[] = [];
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/api/health" || path === "/api/llm/status") return Promise.resolve({ status: "ok" });
+      if (path === "/api/novels") return new Promise((resolve) => { pending.push(resolve); });
+      const id = Number(/\/novels\/(\d+)\//.exec(path)?.[1]);
+      if (path.endsWith("/chapters")) return Promise.resolve([{ ...chapter, id, novel_id: id }]);
+      return Promise.resolve([]);
+    }) as never;
+
+    const running = useWorkbench.getState().init();
+    await useWorkbench.getState().selectNovel(5);
+    pending.forEach((release) => release([novel(1), novel(5)]));
+    await running;
+
+    expect(useWorkbench.getState().selectedNovelId).toBe(5);
+    // novel 1 was never loaded, because init must not reach past the route
+    const asked = vi.mocked(api.get).mock.calls.map(([path]) => String(path));
+    expect(asked.filter((path) => path.includes("/api/novels/1/chapters"))).toHaveLength(0);
+  });
+
+  it("does not fetch records for a chapter that is not in the selected book", async () => {
+    useWorkbench.setState({ selectedNovelId: 1, selectedChapterId: 99, chapters: [] });
+    await useWorkbench.getState().loadChapterRecords();
+    expect(api.get).not.toHaveBeenCalled();
+    expect(useWorkbench.getState().generationRuns).toEqual([]);
+  });
+
+  it("clears the previous book's slices while switching, so ids cannot disagree", async () => {
+    useWorkbench.setState({
+      selectedNovelId: 1,
+      chapters: [chapter],
+      selectedChapterId: 8,
+      briefs: [brief],
+      selectedBriefId: 2,
+    });
+    // Resolve only after we looked: the point is what the store holds mid-flight.
+    const releases: ((value: unknown) => void)[] = [];
+    vi.mocked(api.get).mockImplementation(
+      () => new Promise((resolve) => { releases.push(resolve); }),
+    ) as never;
+
+    const running = useWorkbench.getState().selectNovel(5);
+    const mid = useWorkbench.getState();
+    expect(mid.chapters).toEqual([]);
+    expect(mid.selectedChapterId).toBeNull();
+    expect(mid.briefs).toEqual([]);
+    expect(mid.selectedBriefId).toBeNull();
+
+    // both halves of the Promise.all have to settle or the switch never finishes
+    releases.forEach((release, index) => release(index === 0 ? [brief] : [chapter]));
+    await running;
+    expect(useWorkbench.getState().selectedChapterId).toBe(8);
+  });
+});

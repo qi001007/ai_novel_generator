@@ -102,7 +102,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   async init() {
     document.documentElement.dataset.theme = get().theme;
-    const state = get();
     try {
       await api.get<{ status: string }>("/api/health");
     } catch {
@@ -113,9 +112,13 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     }).catch(() => set({ llmStatus: null }));
     try {
       const novels = await api.get<Novel[]>("/api/novels");
-      set({ novels, health: "ok", selectedNovelId: state.selectedNovelId ?? novels[0]?.id ?? null });
-      const selected = get().selectedNovelId;
-      if (selected !== null && selected !== state.selectedNovelId) {
+      // Re-read the store: `state` was captured before the awaits above, and a route
+      // that already picked a book during that gap must not be overwritten by the
+      // first novel in the list. That clobber made /novels/5 briefly load novel 1.
+      const now = get();
+      const selected = now.selectedNovelId ?? novels[0]?.id ?? null;
+      set({ novels, health: "ok", selectedNovelId: selected });
+      if (selected !== null && selected !== now.selectedNovelId) {
         await get().selectNovel(selected);
       }
     } catch (cause) {
@@ -134,6 +137,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   async selectNovel(novelId) {
+    // Drop the previous book's slices before the fetch: while it is in flight the
+    // store would otherwise hold a new novel id next to old chapters, and anything
+    // that builds a URL from both would name a pair that never existed.
+    set({ chapters: [], briefs: [], selectedChapterId: null, selectedBriefId: null, generationRuns: [], reviews: [] });
     try {
       const [briefs, chapters] = await Promise.all([
         api.get<ChapterBrief[]>(`/api/novels/${novelId}/planning/briefs`),
@@ -363,8 +370,16 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   async loadChapterRecords() {
-    const { selectedNovelId, selectedChapterId } = get();
+    const { selectedNovelId, selectedChapterId, chapters } = get();
     if (!selectedNovelId || !selectedChapterId) {
+      set({ generationRuns: [], reviews: [] });
+      return;
+    }
+    // A chapter belongs to exactly one novel, and chapter ids are global. While a
+    // novel switch is in flight the two selected ids can disagree, and the request
+    // then names a pair that never existed - the server 404s it, which is the good
+    // outcome; reading another book's records would be the bad one.
+    if (!chapters.some((item) => item.id === selectedChapterId)) {
       set({ generationRuns: [], reviews: [] });
       return;
     }

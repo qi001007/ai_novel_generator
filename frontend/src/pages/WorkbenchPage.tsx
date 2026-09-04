@@ -172,7 +172,10 @@ export default function WorkbenchPage() {
 
   useEffect(() => {
     state.loadChapterRecords();
-  }, [state.selectedNovelId, state.selectedChapterId, state.recordVersion]);
+    // chapters is a dependency because the store now refuses to fetch records for a
+    // chapter it cannot place in the selected novel; without it, a load that arrived
+    // before the chapter list would never be retried.
+  }, [state.selectedNovelId, state.selectedChapterId, state.recordVersion, state.chapters]);
 
   useEffect(() => {
     if (state.selectedNovelId) void attachFiles(state.selectedNovelId);
