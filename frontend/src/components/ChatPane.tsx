@@ -81,6 +81,10 @@ const PLAN_LAYERS: Record<string, { label: string; mention: string }> = {
   D: { label: "D 章节简报", mention: "@简报" },
 };
 
+const DOCK_MAX_HEIGHT = 420;
+const INPUT_BASE_HEIGHT = 44;
+const INPUT_MAX_HEIGHT = 180;
+
 const GREETING =
   "我是这本书的写作 Agent。自然语言直接说就行，我会按相关度自动取用蓝图、目录、设定、人物、伏笔与章摘要；" +
   "用 @ 可以点名某份资料，斜杠命令走流水线：/generate /review /check /summary /save /plan /feedback /search。";
@@ -135,7 +139,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [candidates, setCandidates] = useState<ChatContextItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
-  const [dockHeight, setDockHeight] = useState(118);
+  const [dockHeight, setDockHeight] = useState(132);
   const [attachments, setAttachments] = useState<File[]>([]);
   const attachmentInputRef = useRef<HTMLInputElement>(null);
   const pendingFiles = useFiles((store) => store.pending);
@@ -455,6 +459,23 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     setAttachments((prev) => [...prev, ...Array.from(files)].slice(0, 10));
   }
 
+  // The field grows with what the reader types, up to a ceiling, and the dock grows
+  // by the same amount: a fixed two-line box that scrolls internally is the bug the
+  // owner pointed at, and an unbounded one would eat the message list.
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [typingGrow, setTypingGrow] = useState(0);
+
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    // Measure from zero: `auto` reports the height the grid row already gave it, so a
+    // cleared field would never shrink back.
+    el.style.height = "0px";
+    const used = Math.min(INPUT_MAX_HEIGHT, Math.max(INPUT_BASE_HEIGHT, el.scrollHeight));
+    el.style.height = `${used}px`;
+    setTypingGrow(Math.max(0, used - INPUT_BASE_HEIGHT));
+  }, [input]);
+
   function startDockDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     if (event.button !== 0) return;
     event.preventDefault();
@@ -463,7 +484,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     const startHeight = dockHeight;
 
     function onMove(moveEvent: PointerEvent) {
-      setDockHeight(Math.min(420, Math.max(92, Math.round(startHeight + startY - moveEvent.clientY))));
+      setDockHeight(
+        Math.min(DOCK_MAX_HEIGHT, Math.max(92, Math.round(startHeight + startY - moveEvent.clientY))),
+      );
     }
     function onUp() {
       window.removeEventListener("pointermove", onMove);
@@ -850,7 +873,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           );
         })}
       </div>
-      <div className="chat-dock" style={{ height: dockHeight }}>
+      <div className="chat-dock" style={{ height: Math.min(DOCK_MAX_HEIGHT, dockHeight + typingGrow) }}>
         {showMentions ? (
           <ul className="chat-hints mentions" role="listbox" aria-label="引用资料">
             {candidates.length ? (
@@ -898,6 +921,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           />
           <div className="chat-input">
             <textarea
+              ref={inputRef}
               value={input}
               rows={2}
               placeholder="输入 / 使用命令，@ 引用资料，或直接描述需求…"

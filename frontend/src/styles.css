@@ -473,6 +473,9 @@ select:focus-visible {
    auto/1fr/auto assignment would hand the 1fr row to the dock. Per frame 14
    the dock is input + tools. */
 .chat-pane {
+  /* One cap, shared by the thread rows and the composer: a resizable column should
+     centre its content instead of stretching a single line edge to edge. */
+  --thread-max: 56rem;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
@@ -506,6 +509,11 @@ select:focus-visible {
   display: grid;
   gap: 12px;
   align-content: start;
+}
+
+.chat-messages > .chat-row {
+  width: min(100%, var(--thread-max));
+  margin-inline: auto;
 }
 
 .chat-row {
@@ -638,11 +646,14 @@ select:focus-visible {
 /* Frame 24: the dock no longer paints its own panel. It only positions a
    floating composer card, and lets the message list fade into it instead of
    meeting a hard divider. */
+/* A resizable column must not stretch its content into a full-width bar: the thread
+   and the composer share one cap and centre inside whatever width the owner drags to.
+   Below the cap nothing changes, so the default layout is untouched. */
 .chat-dock {
   position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  padding: 8px 16px 12px;
+  padding: 10px 16px 14px;
   background: transparent;
 }
 
@@ -662,6 +673,8 @@ select:focus-visible {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto auto;
   gap: 8px;
+  width: min(100%, var(--thread-max, 56rem));
+  margin-inline: auto;
   min-height: 96px;
   padding: 10px 12px 8px;
   border: 1px solid var(--border);
@@ -2662,10 +2675,12 @@ select:focus-visible {
 
 /* The handle is invisible in the frames, so the hit area grows on hover while
    the line itself stays 1px and only changes colour. */
+/* ±5px, not ±3: the neighbour pane paints after this element, so a narrow band was
+   being clipped on one side and the grab felt offset from the line you could see. */
 .splitter::after {
   content: "";
   position: absolute;
-  inset: 0 -3px;
+  inset: 0 -5px;
   background: transparent;
   transition: background 120ms ease-out;
 }
@@ -2844,10 +2859,15 @@ body.chat-dock-resizing {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  flex: none;
-  min-width: 132px;
+  /* Width follows the name: a fixed min-width pushed the close button far from the
+     right edge and made short names mostly dead space. Long names truncate instead
+     of running the strip off, and the close button is always present so the width
+     never changes under the pointer. */
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 15rem;
   height: 100%;
-  padding: 0 10px 0 12px;
+  padding: 0 8px 0 12px;
   border: 0;
   border-right: 1px solid var(--border);
   border-radius: 9px 9px 0 0;
@@ -2884,7 +2904,7 @@ body.chat-dock-resizing {
 
 .file-tab-close {
   min-height: 0;
-  display: none;
+  display: inline-grid;
   place-items: center;
   width: 16px;
   height: 16px;
@@ -2893,11 +2913,6 @@ body.chat-dock-resizing {
   background: none;
   color: inherit;
   cursor: pointer;
-}
-
-.file-tab:hover .file-tab-close,
-.file-tab.active .file-tab-close {
-  display: inline-grid;
 }
 
 .file-tab-close:hover {
@@ -3590,33 +3605,38 @@ body.chat-dock-resizing {
 
 /* Frame 24: a 24px notch centred on the card top edge, hidden until the
    pointer is near. The old full-width bar read as a fourth divider. */
+/* The whole top edge is grabbable: a 104px window in the middle read as "you have to
+   hit the centre", which is what the owner reported. The visible mark stays 帧 24's
+   24px notch, because a full-width bar read as a fourth divider. */
 .chat-dock-handle {
   position: absolute;
-  top: -1px;
+  top: -6px;
+  left: 0;
+  width: 100%;
+  height: 12px;
+  border-radius: 0;
+  background: transparent;
+  opacity: 1;
+}
+
+.chat-dock-handle::before {
+  content: "";
+  position: absolute;
   left: 50%;
+  top: 5px;
   width: 24px;
   height: 2px;
   margin-left: -12px;
   border-radius: 2px;
-  background: transparent;
+  background: var(--accent);
   opacity: 0;
   transition: opacity 150ms ease-out;
 }
 
-.composer:hover .chat-dock-handle,
-.chat-dock-handle:hover,
-.chat-dock-handle:focus-visible {
+.composer:hover .chat-dock-handle::before,
+.chat-dock-handle:hover::before,
+.chat-dock-handle:focus-visible::before {
   opacity: 1;
-}
-
-/* Grab area stays generous without painting a rectangle. */
-.chat-dock-handle::after {
-  content: "";
-  position: absolute;
-  top: -6px;
-  right: -40px;
-  bottom: -6px;
-  left: -40px;
 }
 
 .toc-toolbar {
