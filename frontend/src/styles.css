@@ -432,6 +432,34 @@ select:focus-visible {
   background-clip: content-box;
 }
 
+/* The overlay thumb itself: absolutely positioned on the strip, so it can appear
+   and disappear without moving anything (批注 4: hover-revealed AND no squeezed tabs). */
+.h-scroll {
+  position: absolute;
+  bottom: 0;
+  height: 8px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+
+.file-tabs:hover .h-scroll,
+.editor-tabs:hover .h-scroll,
+.h-scroll.dragging {
+  opacity: 1;
+}
+
+.h-scroll-thumb {
+  position: absolute;
+  top: 2px;
+  height: 4px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-2) 78%, transparent);
+  cursor: ew-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
 /* 批注 4: --surface is nine RGB points from the editor's black, which is not a
    difference you can see; the sidebar is a shelf, so it takes the shelf grey. */
 .sidebar {
@@ -1461,17 +1489,24 @@ select:focus-visible {
 /* The strip has to be a different tone from the active tab or the tab vanishes
    into it. --surface-alt reads as the shelf, --surface as the thing lifted out. */
 .editor-tabs {
+  position: relative;
   display: flex;
-  gap: 2px;
   padding: 6px 12px 0;
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border);
-  /* Same language as .file-tabs. A tab's automatic minimum width is its own
-     text, so without this the strip simply ran past the window and the last
-     tab was cut: measured on an 860px viewport its right edge was 864.8. */
+}
+
+.editor-tabs-scroll {
+  display: flex;
+  gap: 2px;
+  /* Same language as .file-tabs: the strip frames it, this scrolls, and the
+     overlay thumb is the only bar. A tab's automatic minimum width is its own
+     text, so without an overflow here the last tab was simply cut - measured on
+     an 860px viewport its right edge was 864.8. */
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
-  /* No bar here, on purpose: see the shared scrollbar note above. */
   scrollbar-width: none;
 }
 
@@ -1481,8 +1516,9 @@ select:focus-visible {
   gap: 6px;
   max-width: 240px;
   /* Do not squeeze the label into two lines to make the strip fit; let the
-     strip scroll instead. */
-  flex: none;
+     strip scroll instead. 第十四批批注 3: it may shrink to the floor, though. */
+  flex: 0 1 auto;
+  min-width: 5.5rem;
   min-height: 30px;
   /* 2px, not 4: the close button grew to 26px and the strip must not grow with it. */
   padding: 2px 12px;
@@ -3483,17 +3519,29 @@ body.resizing {
   line-height: 1.7;
 }
 
+/* 第十四批批注 1: the strip is the frame, the scroller inside it is what moves.
+   The toggle used to be the scroller's last child, so opening a few more files
+   pushed it out of sight - "它应该是固定在这儿的". */
 .file-tabs {
+  position: relative;
   display: flex;
   align-items: stretch;
-  gap: 0;
   flex: none;
   height: 40px;
   padding: 0 8px;
-  overflow-x: auto;
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border-strong);
-  /* 批注 1: no bar here, on purpose - see the shared scrollbar note above. */
+}
+
+.file-tabs-scroll {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* the overlay thumb is the bar; a native one would take 10px of the strip's
+     height and squeeze the tabs, which is what 批注 3 and 4 disagreed about */
   scrollbar-width: none;
 }
 
@@ -3502,16 +3550,12 @@ body.resizing {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  /* Width follows the name: a fixed min-width pushed the close button far from the
-     right edge and made short names mostly dead space. Long names truncate instead
-     of running the strip off, and the close button is always present so the width
-     never changes under the pointer. */
-  /* 批注 3: `flex: 0 1 auto` with `min-width: 0` let every tab shrink to nothing
-     instead of overflowing, so the strip never scrolled and the close button was
-     clipped or gone. Tabs now hold their width; the floor is sized so the close
-     button plus a readable piece of the name always fits. */
-  flex: 0 0 auto;
-  min-width: 8.5rem;
+  /* 第十四批批注 3: with `flex: 0 0 auto` and an 8.5rem floor, eight tabs looked
+     exactly like three - the owner wants the "被挤压" feeling as files accumulate.
+     So tabs may shrink now, down to a floor that still holds the close button whole
+     (26px + its 5px offset + padding) plus a readable fragment of the name. */
+  flex: 0 1 auto;
+  min-width: 5.5rem;
   max-width: 15rem;
   height: 100%;
   padding: 0 8px 0 12px;

@@ -27,6 +27,7 @@ import {
   progressFromPointer,
   thumbGeometry,
 } from "./minimap";
+import HScrollThumb from "./HScrollThumb";
 import TocListView, { parseToc, renderToc } from "./TocListView";
 import { useWorkbench } from "../store/workbench";
 
@@ -68,6 +69,7 @@ export default function FileEditorPane() {
 
   const hostRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const activeRef = useRef<string | null>(null);
@@ -342,9 +344,11 @@ export default function FileEditorPane() {
 
   return (
     <section className="file-editor" aria-label="文件编辑器">
+      <div className="file-tabs">
       <div
-        className="file-tabs"
+        className="file-tabs-scroll"
         role="tablist"
+        ref={tabsScrollRef}
         // 批注 1: a vertical wheel over a horizontal strip means "move the strip",
         // not "scroll the page behind it".
         onWheel={(event) => {
@@ -380,6 +384,7 @@ export default function FileEditorPane() {
             </div>
           );
         })}
+      </div>
         {/* One persistent icon in the bar that already names the file, for every
             document that has both a rendered view and a source view. It used to
             be a two-state control here and a 返回 button over there, so switching
@@ -398,6 +403,7 @@ export default function FileEditorPane() {
             </button>
           </div>
         ) : null}
+        <HScrollThumb scroller={tabsScrollRef} revision={tabs.join("|")} />
       </div>
 
       <div className="file-bar">

@@ -46,10 +46,15 @@ function rule(sel: string): string {
 
 describe("settled UI decisions must not regress", () => {
   it("the two tab strips never show a scrollbar that costs layout (第十轮批注6 / 第十二批批注3)", () => {
-    expect(rule(".file-tabs")).toContain("scrollbar-width: none");
-    expect(rule(".editor-tabs")).toContain("scrollbar-width: none");
+    // 第十四批: the strip is now the frame and the scroller is inside it, so the
+    // no-bar rule lives on the scroller. Checked there rather than dropped.
+    expect(rule(".file-tabs-scroll")).toContain("scrollbar-width: none");
+    expect(rule(".editor-tabs-scroll")).toContain("scrollbar-width: none");
+    // and the toggle must sit outside the scroller, or it scrolls out of sight
+    expect(fileEditor).toMatch(/className="file-tabs"\>[\s\S]*file-tabs-scroll[\s\S]*<\/div>\s*\{\/\*|[\s\S]*file-tabs-actions/);
     // A reserved horizontal track is what shrank the 40px strip's tabs to 30px.
     expect(css).not.toMatch(/\.file-tabs::-webkit-scrollbar/);
+    expect(css).toMatch(/\.h-scroll \{[\s\S]*?position: absolute/);
     expect(css).not.toMatch(/\.editor-tabs::-webkit-scrollbar/);
     expect(css).not.toMatch(/\.file-tabs:hover \{[^}]*scrollbar-width/);
   });

@@ -55,6 +55,7 @@ function formatTime(value: string) {
     : date.toLocaleString("zh-CN", { hour12: false });
 }
 
+import HScrollThumb from "./HScrollThumb";
 import { useWorkbench } from "../store/workbench";
 
 export default function EditorPane() {
@@ -78,6 +79,7 @@ export default function EditorPane() {
   const scrollRef = useRef<HTMLTextAreaElement>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
   const grabRef = useRef<number | null>(null);
   const [view, setView] = useState({ progress: 0, height: 1 });
   const [redraw, setRedraw] = useState(0);
@@ -289,7 +291,20 @@ export default function EditorPane() {
       {/* 批注 20: chapters open side by side in the strip that already names them,
          so comparing two chapters no longer means going back to the tree each
          time. Same shape as .file-tab, including the close button. */}
-      <div className="editor-tabs" role="tablist">
+      <div className="editor-tabs">
+        <div
+          className="editor-tabs-scroll"
+          role="tablist"
+          ref={tabsScrollRef}
+          // 批注 1 (第十轮): a vertical wheel over a horizontal strip moves the strip.
+          onWheel={(event) => {
+            const strip = event.currentTarget;
+            if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+            const room = strip.scrollWidth - strip.clientWidth;
+            if (room <= 0) return;
+            strip.scrollLeft = Math.max(0, Math.min(room, strip.scrollLeft + event.deltaY));
+          }}
+        >
         {state.chapterTabs.map((id) => {
           const item = state.chapters.find((each) => each.id === id);
           if (!item) return null;
@@ -323,6 +338,8 @@ export default function EditorPane() {
             </div>
           );
         })}
+        </div>
+        <HScrollThumb scroller={tabsScrollRef} revision={state.chapterTabs.join("|")} />
       </div>
       <header className="editor-toolbar">
         {/* The tab above already says which chapter this is. Save state and the
