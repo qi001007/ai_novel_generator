@@ -54,7 +54,6 @@ export default function TocListView() {
   const active = useFiles((store) => store.active);
   const entry = useFiles((store) => store.entries[active ?? ""]);
   const setDraft = useFiles((store) => store.setDraft);
-  const save = useFiles((store) => store.save);
   const chapters = useWorkbench((store) => store.chapters);
   const [query, setQuery] = useState("");
 
@@ -110,14 +109,8 @@ export default function TocListView() {
               onKeyDown={(event) => event.key === "Escape" && setQuery("")}
             />
           </label>
-          <button
-            type="button"
-            className="primary"
-            disabled={!entry.doc || entry.saving || entry.draft === entry.doc.text}
-            onClick={() => active && void save(active)}
-          >
-            {entry.saving ? "写入中" : "保存"}
-          </button>
+          {/* No save button here: Ctrl+S is handled at window level, and the tab
+              already carries the dirty ring (批注 12). */}
         </div>
       </div>
 

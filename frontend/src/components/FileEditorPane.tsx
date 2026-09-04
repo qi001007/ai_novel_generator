@@ -115,6 +115,22 @@ export default function FileEditorPane() {
     setTocSource(false);
   }, [active]);
 
+  /* Ctrl+S lives on the window, not only on the CodeMirror keymap. The rendered
+     list is an overlay, so while it is showing the editor does not have focus and
+     a keymap-bound shortcut would silently do nothing - which is the only reason
+     the list kept its own 保存 button. */
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "s") return;
+      const path = activeRef.current;
+      if (!path) return;
+      event.preventDefault();
+      void save(path);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [save]);
+
   // --- CodeMirror lives once; the store owns which document is loaded ------
   useEffect(() => {
     const host = hostRef.current;
