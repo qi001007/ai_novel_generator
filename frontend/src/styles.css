@@ -2682,21 +2682,30 @@ select:focus-visible {
   touch-action: none;
 }
 
-/* The handle is invisible in the frames, so the hit area grows on hover while
-   the line itself stays 1px and only changes colour. */
-/* ±5px, not ±3: the neighbour pane paints after this element, so a narrow band was
-   being clipped on one side and the grab felt offset from the line you could see. */
+/* The band is only ever a grab area - it must never paint. Measured on the live
+   page: the line sits at [280,281] (centre 280.5) and the grabbable band at
+   [275,285] (centre 280), so the hit area was already centred to within 0.5px and
+   a real drag gave 1:1 from every x in the band. What the owner actually saw was
+   the 11px band lighting up solid, which is eleven times the line and slides the
+   "boundary" to wherever the cursor happens to be. */
+/* -6px: hit-testing every integer x across the seam, the grabbable range is
+   274..286 around a 1px line at x=280 - six pixels either side, symmetric.
+   (An earlier note here claimed the band was 0.5px off centre; that was a bad
+   formula, not a bad layout - getBoundingClientRect().right is exclusive, so
+   comparing it against inclusive pixel samples always loses one on the right.) */
 .splitter::after {
   content: "";
   position: absolute;
-  inset: 0 -5px;
+  inset: 0 -6px;
   background: transparent;
-  transition: background 120ms ease-out;
 }
 
-.splitter:hover::after,
-.splitter:focus-visible::after{
+/* The line itself carries the signal: 1px turns accent, plus a 1px soft halo.
+   Perceived ~3px, anchored on the seam, and it never moves the layout. */
+.splitter:hover,
+.splitter:focus-visible {
   background: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 .splitter:focus-visible {
@@ -2714,7 +2723,8 @@ body.chat-dock-resizing {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .splitter::after {
+  .splitter::after,
+  .drag-line::before {
     transition: none;
   }
 }
@@ -3603,10 +3613,32 @@ body.chat-dock-resizing {
   inset: -4px 0;
 }
 
+/* Same rule as the vertical splitter: a full-width accent bar read as a fourth
+   divider and was far too loud. The mark is the 24px notch already used by
+   .chat-dock-handle - short, centred, opacity only. */
+.drag-line::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 24px;
+  height: 2px;
+  margin-left: -12px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
 .drag-line:hover,
 .drag-line:focus-visible {
-  background: var(--accent);
+  background: transparent;
   box-shadow: none;
+}
+
+.drag-line:hover::before,
+.drag-line:focus-visible::before {
+  opacity: 1;
 }
 
 .drag-line:active {
