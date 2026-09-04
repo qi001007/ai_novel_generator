@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+
 import {
   ChevronDown,
   CornerDownLeft,
@@ -82,6 +82,10 @@ const PLAN_LAYERS: Record<string, { label: string; mention: string }> = {
 };
 
 const DOCK_MAX_HEIGHT = 420;
+// 批注 8: the field already grows with what you type, so a second, manual way to
+// size the same box was redundant - and the resting height was too short to read
+// as a writing surface. Base is now 168 instead of 132.
+const DOCK_BASE_HEIGHT = 168;
 const INPUT_BASE_HEIGHT = 44;
 const INPUT_MAX_HEIGHT = 180;
 
@@ -139,7 +143,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [candidates, setCandidates] = useState<ChatContextItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
-  const [dockHeight, setDockHeight] = useState(132);
+
   const pendingFiles = useFiles((store) => store.pending);
   const offerFile = useFiles((store) => store.offer);
   const discardFile = useFiles((store) => store.discardProposal);
@@ -469,27 +473,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     setTypingGrow(Math.max(0, used - INPUT_BASE_HEIGHT));
   }, [input]);
 
-  function startDockDrag(event: ReactPointerEvent<HTMLButtonElement>) {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const startY = event.clientY;
-    const startHeight = dockHeight;
 
-    function onMove(moveEvent: PointerEvent) {
-      setDockHeight(
-        Math.min(DOCK_MAX_HEIGHT, Math.max(92, Math.round(startHeight + startY - moveEvent.clientY))),
-      );
-    }
-    function onUp() {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-      document.body.classList.remove("chat-dock-resizing");
-    }
-    document.body.classList.add("chat-dock-resizing");
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  }
 
   async function runFeedback(rest: string, id: number) {
     if (!selectedNovelId) return;
@@ -866,7 +850,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           );
         })}
       </div>
-      <div className="chat-dock" style={{ height: Math.min(DOCK_MAX_HEIGHT, dockHeight + typingGrow) }}>
+      <div className="chat-dock" style={{ height: Math.min(DOCK_MAX_HEIGHT, DOCK_BASE_HEIGHT + typingGrow) }}>
         {showMentions ? (
           <ul className="chat-hints mentions" role="listbox" aria-label="引用资料">
             {candidates.length ? (
@@ -905,13 +889,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           </ul>
         ) : null}
         <div className="composer">
-          <button
-            type="button"
-            className="drag-line chat-dock-handle"
-            aria-label="调整输入框高度"
-            title="拖动调整输入框高度"
-            onPointerDown={startDockDrag}
-          />
           <div className="chat-input">
             <textarea
               ref={inputRef}

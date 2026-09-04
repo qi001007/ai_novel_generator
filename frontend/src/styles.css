@@ -2807,10 +2807,7 @@ body.resizing {
   user-select: none;
 }
 
-body.chat-dock-resizing {
-  cursor: row-resize;
-  user-select: none;
-}
+
 
 @media (prefers-reduced-motion: reduce) {
   .splitter::after,
@@ -3756,41 +3753,9 @@ body.chat-dock-resizing {
   transform: none;
 }
 
-/* Frame 24: a 24px notch centred on the card top edge, hidden until the
-   pointer is near. The old full-width bar read as a fourth divider. */
-/* The whole top edge is grabbable: a 104px window in the middle read as "you have to
-   hit the centre", which is what the owner reported. The visible mark stays 帧 24's
-   24px notch, because a full-width bar read as a fourth divider. */
-.chat-dock-handle {
-  position: absolute;
-  top: -6px;
-  left: 0;
-  width: 100%;
-  height: 12px;
-  border-radius: 0;
-  background: transparent;
-  opacity: 1;
-}
-
-.chat-dock-handle::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 5px;
-  width: 24px;
-  height: 2px;
-  margin-left: -12px;
-  border-radius: 2px;
-  background: var(--accent);
-  opacity: 0;
-  transition: opacity 150ms ease-out;
-}
-
-.composer:hover .chat-dock-handle::before,
-.chat-dock-handle:hover::before,
-.chat-dock-handle:focus-visible::before {
-  opacity: 1;
-}
+/* 批注 8: the composer no longer has a manual height handle. The field grows
+   with its content, so a second control for the same dimension only offered a
+   way to make the box disagree with what was in it. */
 
 .toc-toolbar {
   display: flex;
