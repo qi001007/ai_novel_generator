@@ -6,12 +6,16 @@
   --border: #e4e4e1;
   --border-strong: #d6d6d2;
   --text-1: #1c1b1a;
-  --text-2: #73716c;
+  /* Measured against --surface-alt (#f1f1ef) the old #73716c landed at 4.31:1,
+     just under the 4.5 floor, and it is the colour of every 11px secondary label
+     in the tree, badges and avatars. One token, ten failing strings. */
+  --text-2: #6d6b66;
   --accent: #c2492f;
   --accent-strong: #a83a24;
   --accent-soft: #fbede9;
   --success: #2f7d46;
-  --warning: #a8811f;
+  /* 3.45:1 on the proposal card's #fafaf9 foot. Darkened to 4.84:1. */
+  --warning: #8a6a12;
   --danger: #dc2626;
   --hairline: #d4d2ce;
   --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
@@ -3213,7 +3217,8 @@ body.chat-dock-resizing {
   content: attr(data-note);
   margin-left: 24px;
   color: var(--warning);
-  font-size: 10px;
+  /* 10px is a Latin-terminal size. These are Chinese sentences. */
+  font-size: 11px;
 }
 
 /* A description that opens a brief is marked as one all the time, not only under
@@ -3361,7 +3366,7 @@ body.chat-dock-resizing {
 
 .proposal-note {
   color: var(--warning);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .proposal-acts {
@@ -3826,7 +3831,7 @@ body.chat-dock-resizing {
 
 .toc-lock {
   color: var(--text-2);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .toc-row input,
@@ -4196,7 +4201,7 @@ body.chat-dock-resizing {
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border);
   color: var(--text-2);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .manifest-columns i {
@@ -4428,7 +4433,7 @@ body.chat-dock-resizing {
 
 .run-reviews dt {
   color: var(--text-2);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .run-reviews dd {
