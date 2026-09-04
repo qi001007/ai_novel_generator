@@ -291,6 +291,7 @@ export default function WorkbenchPage() {
             selectedChapterId={state.selectedChapterId}
             activeFile={rightView === "files" ? activeFile : null}
             briefRows={briefRows}
+            settingFiles={metas.filter((meta) => meta.layer === "设定")}
             creatingChapter={state.creatingChapter}
             createError={state.createError}
             onCreateChapter={() => void handleCreateChapter()}

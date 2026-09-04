@@ -2777,6 +2777,13 @@ body.chat-dock-resizing {
   padding-left: 40px;
 }
 
+/* 设定库：面板行下面挂它的文档行（帧 26 A 区）。缩进由 .tree-row.file 负责。 */
+.tree-library {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
 .tree-row .mono,
 .tree-hint.mono {
   font-family: var(--mono);

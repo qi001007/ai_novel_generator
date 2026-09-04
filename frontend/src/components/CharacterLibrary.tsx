@@ -6,7 +6,9 @@ import { useFiles } from "../store/files";
 import type { Character, FileDoc, FileWriteResult } from "../types";
 
 /** The one path a character document lives at (DECISIONS D-15). */
-const characterDocPath = (id: number | null) => `settings/characters/${id ?? "new"}.md`;
+const NEW_CHARACTER_PATH = "settings/characters/new.md";
+const characterDocPath = (id: number | null) =>
+  id === null ? NEW_CHARACTER_PATH : `settings/characters/${id}.md`;
 
 /** Frame 26: the long fields are prose, so the modal only previews them. */
 type LongFieldKey = "identity" | "goals" | "behavior_constraints" | "current_status";
@@ -237,6 +239,11 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
           }}
         >
           新建人物
+        </button>
+        {/* 批注 19 要跳转入口放在「新建人物」旁。写 new.md 即建档：服务端把路径换成
+            数字 id，卡片库与文件层共用同一条写通路（D-15）。 */}
+        <button type="button" onClick={() => void openFile(NEW_CHARACTER_PATH)}>
+          在文件中新建
         </button>
       </header>
 

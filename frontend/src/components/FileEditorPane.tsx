@@ -343,7 +343,11 @@ export default function FileEditorPane() {
       </div>
 
       <div className="file-bar">
-        <span className="file-path">{novelTitle} / 规划 / {active}</span>
+        {/* The server already says which group a file belongs to; a settings sheet
+            must not claim to be planning. */}
+        <span className="file-path">
+          {novelTitle} / {kind === "character" ? "设定库" : "规划"} / {active}
+        </span>
         <span className="file-spacer" />
         {active === TOC_PATH && tocSource ? (
           <button

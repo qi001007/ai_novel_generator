@@ -332,5 +332,23 @@ describe("CharacterLibrary", () => {
     expect(pencils[0].title).toContain("先保存");
     vi.unstubAllGlobals();
   });
+
+  it("offers a jump into the file layer next to 新建人物 (批注 19)", async () => {
+    const user = userEvent.setup();
+    useFiles.setState({ novelId: 1 });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = input.toString();
+      const ok = (data: unknown) =>
+        new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (url.endsWith("/files/settings/characters/new.md")) return Promise.resolve(ok(fileOk));
+      return Promise.resolve(ok(characters));
+    }));
+
+    render(<CharacterLibrary novelId={1} />);
+    await user.click(await screen.findByRole("button", { name: "在文件中新建" }));
+
+    await waitFor(() => expect(useFiles.getState().active).toBe("settings/characters/new.md"));
+    vi.unstubAllGlobals();
+  });
 });
 

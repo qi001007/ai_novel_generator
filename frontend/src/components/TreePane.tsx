@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus } from "lucide-react";
 
 import StatusBadge from "./StatusBadge";
-import type { Chapter } from "../types";
+import type { Chapter, FileMeta } from "../types";
 import { ARCS_PATH, BLUEPRINT_PATH, TOC_PATH, draftPath } from "../store/files";
 
 export type PlanningLayer = "A" | "B" | "C";
@@ -20,6 +20,8 @@ type TreePaneProps = {
   selectedChapterId: number | null;
   activeFile: string | null;
   briefRows: BriefRow[];
+  /** Every 设定库 document the server confirmed: one file per character plus the books. */
+  settingFiles: FileMeta[];
   charactersOpen: boolean;
   feedbackOpen: boolean;
   creatingChapter: boolean;
@@ -41,6 +43,16 @@ const planningNodes: { layer: PlanningLayer; path: string; label: string; hint: 
   { layer: "C", path: ARCS_PATH, label: "卷 / 剧情弧", hint: "10-30 章" },
 ];
 
+/** One 设定库 panel plus the documents that back it. `kind` matches the server's. */
+type LibraryGroup = {
+  kind: string;
+  label: string;
+  open: boolean;
+  onOpen: () => void;
+  /** Reader-facing file name; characters carry their own name, books keep the path. */
+  fileName: (meta: FileMeta) => string;
+};
+
 const MENU_WIDTH = 232;
 
 export default function TreePane({
@@ -48,6 +60,7 @@ export default function TreePane({
   selectedChapterId,
   activeFile,
   briefRows,
+  settingFiles,
   charactersOpen,
   feedbackOpen,
   creatingChapter,
@@ -103,6 +116,39 @@ export default function TreePane({
     collapsed.library &&
     chapters.every((chapter) => collapsed[`chapter-${chapter.chapter_number}`]);
   const collapseLabel = allCollapsed ? "展开全部" : "折叠全部";
+
+  const bookName = (meta: FileMeta) => meta.path.split("/").pop() ?? meta.path;
+  const LIBRARY_GROUPS: LibraryGroup[] = [
+    {
+      kind: "character",
+      label: "人物",
+      open: charactersOpen,
+      onOpen: onOpenCharacters,
+      // 帧 26 的写法：陈默 · 7.md。名字给人看，路径里的 id 才是主键。
+      fileName: (meta) => `${meta.label.replace(" 档案", "")} · ${bookName(meta)}`,
+    },
+    {
+      kind: "foreshadow",
+      label: "伏笔",
+      open: foreshadowOpen,
+      onOpen: onOpenForeshadow,
+      fileName: bookName,
+    },
+    {
+      kind: "worldview",
+      label: "世界观 / 地图",
+      open: worldMapOpen,
+      onOpen: onOpenWorldMap,
+      fileName: bookName,
+    },
+    {
+      kind: "feedback",
+      label: "反馈记录",
+      open: feedbackOpen,
+      onOpen: onOpenFeedback,
+      fileName: bookName,
+    },
+  ];
 
   return (
     <nav className="tree" aria-label="项目结构">
@@ -223,18 +269,34 @@ export default function TreePane({
       </button>
       {!collapsed.library && (
         <div className="tree-children">
-          <button type="button" className={`tree-row ${charactersOpen ? "selected" : ""}`} onClick={onOpenCharacters}>
-            人物
-          </button>
-          <button type="button" className={`tree-row ${feedbackOpen ? "selected" : ""}`} onClick={onOpenFeedback}>
-            反馈记录
-          </button>
-          <button type="button" className={`tree-row ${worldMapOpen ? "selected" : ""}`} onClick={onOpenWorldMap}>
-            世界观 / 地图
-          </button>
-          <button type="button" className={`tree-row ${foreshadowOpen ? "selected" : ""}`} onClick={onOpenForeshadow}>
-            伏笔
-          </button>
+          {LIBRARY_GROUPS.map((group) => {
+            const files = settingFiles.filter((meta) => meta.kind === group.kind);
+            return (
+              <div className="tree-library" key={group.kind}>
+                <button
+                  type="button"
+                  className={`tree-row ${group.open ? "selected" : ""}`}
+                  onClick={group.onOpen}
+                >
+                  {group.label}
+                </button>
+                {/* 帧 26 A 区：面板入口保留，文档路径嵌在下面，与「人物 → 一人一个 md」同一规则。
+                    路径只用 id，改名不换路径，同「章号是主键」。 */}
+                {files.map((meta) => (
+                  <button
+                    key={meta.path}
+                    type="button"
+                    className={`tree-row file ${fileSelected(meta.path) ? "selected" : ""}`}
+                    title={meta.path}
+                    onClick={() => onOpenFile(meta.path)}
+                    onContextMenu={(event) => openMenu(event, { kind: "file", path: meta.path })}
+                  >
+                    {group.fileName(meta)}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
 

@@ -74,7 +74,24 @@ function stubFetch() {
             layer: "D",
             label: "第 42 章简报",
           },
+          {
+            path: "settings/characters/1.md",
+            kind: "character",
+            layer: "设定",
+            label: "沈曜 档案",
+          },
         ]);
+      }
+      if (url.includes("/files/settings/characters/1.md")) {
+        return json({
+          path: "settings/characters/1.md",
+          kind: "character",
+          layer: "设定",
+          label: "沈曜 档案",
+          text: "# 沈曜（设定库 · 人物）\n\n## 身份\n观星少年\n",
+          ai_fields: ["identity"],
+          revision: "e20b3a6e5af8",
+        });
       }
       if (url.includes("/files/blueprint.md")) {
         return json({
@@ -173,4 +190,21 @@ describe("workbench layout", () => {
     expect(screen.getByText("brief.md")).toBeTruthy();
     expect(screen.queryByText("briefs/")).toBeNull();
   });
+
+  it("nests the character documents under 人物 in the settings library (帧 26)", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+    // the panel entry stays, and the document appears under it: a new path, not a
+    // replacement of the card library
+    const panel = await waitFor(() => screen.getByRole("button", { name: "人物" }));
+    const file = screen.getByRole("button", { name: "沈曜 · 1.md" });
+    expect(file.compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+
+    await user.click(file);
+    await waitFor(() => {
+      expect(screen.getByText("settings/characters/1.md")).toBeTruthy();
+    });
+    expect(useFiles.getState().active).toBe("settings/characters/1.md");
+  });
 });
+
