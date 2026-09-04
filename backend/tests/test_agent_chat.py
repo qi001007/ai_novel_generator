@@ -123,6 +123,6 @@ def test_over_budget_is_an_error_and_persists_no_reply(client: TestClient) -> No
     assert "error" in names
     assert "步" in payload_of(events, "error")["message"]
     assert "done" not in names
-    assert len(fake.seen) == 4  # the default ceiling, not eight
+    assert len(fake.seen) == 6  # the default ceiling, not eight
     stored = client.get(f"/api/novels/{novel_id}/chat/messages").json()
     assert [row for row in stored if row["role"] == "assistant"] == []

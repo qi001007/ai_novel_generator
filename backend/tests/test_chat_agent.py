@@ -13,6 +13,7 @@ from app.services.llm import (
     get_llm_client,
 )
 from tests.planning_helpers import (
+    create_arc,
     create_brief,
     create_chapter,
     create_character,
@@ -570,6 +571,33 @@ def test_a_rewrapped_untouched_section_keeps_the_file_wrapping(client: TestClien
     assert "## 目标\n揭开\n星渊碑" not in text
     # 钩子 really changed -> the new value survives.
     assert "## 钩子\n名字刻在碑上\n" in text
+
+
+def test_a_proposal_that_renumbers_a_record_is_flagged_before_the_click(client: TestClient) -> None:
+    """The writer rejects a moved primary key, so the card must too.
+
+    Measured live: the model proposed arcs.md with `弧 3` rewritten as another
+    number. The card said valid and offered 应用, and only the click found out.
+    """
+    use_fake(
+        client,
+        FakeChatClient(
+            chunks=["```markdown @arcs.md\n" + "## 弧 99 碑鸣\n- **起始章**：1\n- **结束章**：3\n"
+                    "- **目标**：\n- **冲突**：\n- **收束**：\n- **状态**：planned\n" "```"]
+        ),
+    )
+    novel_id = make_novel(client)
+    create_arc(client, novel_id, start_chapter=1, end_chapter=3, objective="让主角第一次违律")
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "重排剧情弧", "mode": "plan"},
+    )
+    events = parse_sse(response.text)
+    assert "proposal" in [name for name, _ in events]
+    proposal = payload_of(events, "proposal")
+    assert proposal["valid"] is False
+    assert "主键" in proposal["error"]
 
 
 def test_proposal_that_renames_keys_is_flagged(client: TestClient) -> None:

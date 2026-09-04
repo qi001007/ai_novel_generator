@@ -295,6 +295,33 @@ def test_the_token_cap_raises_rather_than_shipping_a_cut_answer():
     assert "token" in str(caught.value)
 
 
+def test_a_repeated_call_is_answered_without_being_run_twice() -> None:
+    """Measured live: the model read arcs.md twice in one turn and burned the budget."""
+    calls = 0
+
+    def counting(path: str) -> str:
+        nonlocal calls
+        calls += 1
+        return "[arcs contents]"
+
+    registry = ToolRegistry(
+        [Tool(name="read_file", description="", parameters={"properties": {"path": {"type": "string"}}}, handler=counting)]
+    )
+    same = call_block("read_file", path="arcs.md")
+    llm = ScriptedLLM(
+        [
+            {"content": same},
+            {"content": same},
+            {"content": "弧 1 收在 3 章。"},
+        ]
+    )
+    outcome = run_agent_turn(llm, [{"role": "user", "content": "q"}], registry)
+    assert calls == 1
+    assert len(outcome.steps) == 2
+    # the second round is told to stop looking rather than being handed the file again
+    assert "已经给过你" in outcome.steps[1].result.content
+
+
 def test_streaming_never_shows_the_control_block():
     block = call_block("read_file", path="arcs.md")
     llm = ScriptedLLM(

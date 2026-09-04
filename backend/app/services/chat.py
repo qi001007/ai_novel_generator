@@ -149,15 +149,16 @@ def extract_proposals(
     for raw_path, text in PROPOSAL_BLOCK.findall(content or ""):
         path = raw_path.strip().lstrip("/")
         entry: dict[str, Any] = {"path": path, "text": text.rstrip() + "\n", "valid": True, "error": ""}
+        # Read the file first: the shape check needs to know which keys are already
+        # taken, or a card that can only fail still offers 应用.
+        base = current(path) if current is not None else None
         try:
-            entry["error"] = validate_structure(path, entry["text"])
+            entry["error"] = validate_structure(path, entry["text"], current_text=base)
         except DocumentError as cause:
             entry["error"] = cause.detail
         entry["valid"] = not entry["error"]
-        if entry["valid"] and current is not None:
-            base = current(path)
-            if base:
-                entry["text"] = stabilize_proposal(path, base, entry["text"])
+        if entry["valid"] and base:
+            entry["text"] = stabilize_proposal(path, base, entry["text"])
         proposals.append(entry)
     return proposals
 

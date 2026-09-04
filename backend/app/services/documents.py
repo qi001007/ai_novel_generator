@@ -276,9 +276,17 @@ _FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
     "worldview": WORLDVIEW_FIELDS,
 }
 _LIST_KINDS = frozenset({"toc", "arcs", "foreshadow", "worldview"})
+# Each book of records is keyed by one field; a proposal that moves that key is
+# certain to be rejected by the writer, so the card must say so before the click.
+_KEY_BY_KIND = {
+    "toc": "chapter",
+    "arcs": "arc",
+    "foreshadow": "foreshadow",
+    "worldview": "setting",
+}
 
 
-def validate_structure(path: str, text: str) -> str:
+def validate_structure(path: str, text: str, *, current_text: str | None = None) -> str:
     """Return "" when a writer could take `text`, else why it cannot.
 
     A proposal arrives beside a diff and an 应用 button, so a shape the writer is
@@ -308,6 +316,22 @@ def validate_structure(path: str, text: str) -> str:
             _require_keys(record, fields, label)
         except DocumentError as cause:
             return cause.detail
+
+    if current_text and kind in _KEY_BY_KIND:
+        identity = _KEY_BY_KIND[kind]
+        try:
+            current = load_document(kind, current_text)
+        except DocumentError:
+            # The file itself is unreadable; the write will report that precisely.
+            return ""
+        if isinstance(current, list):
+            wanted = [row.get(identity) for row in current]
+            got = [row.get(identity) for row in parsed]
+            if wanted != got:
+                return (
+                    f"不能增删条目或改动 {identity} 主键：文件里是 {wanted}，"
+                    f"提案给了 {got}。新建记录请把主键写成 ?，由系统分配。"
+                )
     return ""
 
 

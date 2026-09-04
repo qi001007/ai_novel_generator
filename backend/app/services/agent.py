@@ -282,7 +282,9 @@ TOOL_RULES = """
 3. 需要外部资料（现实制度、地名、典故、科学事实）时用 web_search，不要用你的记忆冒充查证结果。
 4. 查回来的内容如果和主人已有设定冲突，点名冲突并说明你按主人的设定走。
 5. 本轮没拿到工具结果之前不要编造工具输出。拿到结果后照常写回答，不要再重复工具块。
-6. 要改规划文件仍然用「直接改文件」的 markdown 提案块交主人点应用，你没有写文件的工具。"""
+6. 要改规划文件仍然用「直接改文件」的 markdown 提案块交主人点应用，你没有写文件的工具。
+7. 同一份文件本轮只读一次：结果已在上下文里，再查一遍只是浪费主人等的这一轮。
+8. 读到够用的资料就收尾，按上面的提案格式给出改后的整份文件；不要为了稳妥无限查下去。"""
 
 
 def render_tool_prompt(registry: ToolRegistry) -> str:
@@ -291,7 +293,11 @@ def render_tool_prompt(registry: ToolRegistry) -> str:
     return TOOL_RULES + "\n\n## 本轮可用工具\n" + registry.catalogue()
 # --- the loop ---------------------------------------------------------------
 
-DEFAULT_MAX_STEPS = 4
+# Six, not four: a plan edit measured live needs to read the arc book, the
+# foreshadow book and the brief before it can propose anything, and a turn that
+# dies on the ceiling after doing its reading is a budget that is wrong, not a
+# model that is wrong.
+DEFAULT_MAX_STEPS = 6
 DEFAULT_MAX_TOKENS = 30_000
 
 
@@ -363,6 +369,7 @@ def stream_agent_turn(
 
     history = list(messages)
     steps: list[AgentStep] = []
+    done: set[tuple[str, str]] = set()
     spent_in = 0
     spent_out = 0
     model_name = model or ""
@@ -446,7 +453,22 @@ def stream_agent_turn(
         # markers in there only teaches the model to imitate them back at us.
         history.append({"role": "assistant", "content": visible})
         for call in calls:
-            step = AgentStep(index=index, call=call, result=registry.run(call))
+            signature = (call.name, json.dumps(call.arguments, ensure_ascii=False, sort_keys=True))
+            if signature in done:
+                # Measured live: the model re-read the arc book twice in one turn.
+                # Re-running it costs the same answer; saying so lets the round end.
+                step = AgentStep(
+                    call=call,
+                    index=index,
+                    result=ToolResult(
+                        call=call,
+                        content="这份内容本轮已经给过你了，不必再查。请基于已有资料直接回答。",
+                        ok=True,
+                    ),
+                )
+            else:
+                done.add(signature)
+                step = AgentStep(index=index, call=call, result=registry.run(call))
             steps.append(step)
             history.append(_result_message(step))
             yield ("tool", step)
