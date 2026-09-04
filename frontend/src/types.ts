@@ -183,6 +183,9 @@ export type ChatContextPayload = {
   unknown_mentions: string[];
   mode: string;
   temperature: number;
+  // What this turn was allowed to reach for, so an unused tool is distinguishable
+  // from an unimplemented one.
+  tools?: string[];
 };
 
 export type ChatStreamEvent =
@@ -191,6 +194,8 @@ export type ChatStreamEvent =
   | { event: "done"; data: { message: StoredChatMessage } }
   | { event: "error"; data: { message: string; partial: string } }
   | { event: "proposal"; data: { path: string; text: string; valid: boolean; error: string } }
+  // One executed tool call: what the agent read this round, and whether it worked.
+  | { event: "tool"; data: { step: number; name: string; arguments: Record<string, unknown>; ok: boolean } }
   | { event: "end"; data: unknown };
 
 export type GenerationStreamEvent =

@@ -2,7 +2,7 @@ import os
 import json
 import re
 from pathlib import Path
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from collections.abc import Iterator
 from typing import Any, Protocol
 
@@ -74,6 +74,9 @@ class LLMResult:
     token_input: int
     token_output: int
     cost_estimate: float
+    # The message object as it arrived. The agent loop reads `tool_calls` off it for
+    # gateways that do have that channel; nothing else is allowed to depend on it.
+    raw_message: dict[str, Any] = field(default_factory=dict)
 
 
 class LLMClient(Protocol):
@@ -87,6 +90,8 @@ class LLMClient(Protocol):
         task_type: str,
         messages: list[dict[str, str]],
         model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float | None = None,
     ) -> LLMResult:
         ...
 
@@ -97,6 +102,7 @@ class LLMClient(Protocol):
         temperature: float = 0.6,
         usage_out: dict[str, int] | None = None,
         model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> Iterator[str]:
         ...
 
@@ -135,32 +141,41 @@ class OpenAICompatibleClient:
         task_type: str,
         messages: list[dict[str, str]],
         model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
+        temperature: float | None = None,
     ) -> LLMResult:
         resolved = self._resolve_model(task_type, model)
-        response = self._client.post(
-            "/chat/completions",
-            json={
-                "model": resolved,
-                "messages": messages,
-                "temperature": 0.8 if task_type == "draft" else 0.2,
-            },
-        )
+        payload: dict[str, Any] = {
+            "model": resolved,
+            "messages": messages,
+            "temperature": temperature
+            if temperature is not None
+            else (0.8 if task_type == "draft" else 0.2),
+        }
+        # Sent when a gateway has the channel; the agent loop does not rely on the
+        # answer arriving this way, because this deployment does not use it.
+        if tools:
+            payload["tools"] = tools
+        response = self._client.post("/chat/completions", json=payload)
         if response.status_code >= 400:
             raise LLMError(f"LLM request failed with status {response.status_code}")
 
         data = response.json()
         try:
-            content = data["choices"][0]["message"]["content"]
+            message = data["choices"][0]["message"]
+            content = message.get("content")
             usage = data.get("usage", {})
-        except (KeyError, IndexError, TypeError) as cause:
+        except (KeyError, IndexError, TypeError, AttributeError) as cause:
             raise LLMError("LLM response has an unexpected shape") from cause
 
         return LLMResult(
-            content=content,
+            # A reply that is only a tool call can carry no text at all.
+            content=content if isinstance(content, str) else "",
             model=resolved,
             token_input=int(usage.get("prompt_tokens", 0)),
             token_output=int(usage.get("completion_tokens", 0)),
             cost_estimate=0.0,
+            raw_message=message if isinstance(message, dict) else {},
         )
 
     def stream_messages(
@@ -170,19 +185,23 @@ class OpenAICompatibleClient:
         temperature: float = 0.6,
         usage_out: dict[str, int] | None = None,
         model: str | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ) -> Iterator[str]:
         resolved = self._resolve_model(task_type, model)
+        payload: dict[str, Any] = {
+            "model": resolved,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+            # SCNet returns a trailing usage event only when asked for it.
+            "stream_options": {"include_usage": True},
+        }
+        if tools:
+            payload["tools"] = tools
         with self._client.stream(
             "POST",
             "/chat/completions",
-            json={
-                "model": resolved,
-                "messages": messages,
-                "temperature": temperature,
-                "stream": True,
-                # SCNet returns a trailing usage event only when asked for it.
-                "stream_options": {"include_usage": True},
-            },
+            json=payload,
         ) as response:
             if response.status_code >= 400:
                 response.read()

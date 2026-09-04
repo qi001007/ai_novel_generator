@@ -30,8 +30,9 @@
    DB 仍是唯一真源，`chapters/NNNN/{draft.md,brief.md}` 是投影（D-02 / D-03）。
    **人物档案同理**（D-15）：`settings/characters/{id}.md` 走同一入口，`POST/PUT /characters`
    已 410；`portrait` 是 base64 资产、不进文档，走只写它自己的窄端点。
-2. **不许把「测试全绿」说成「功能已实现」**。对话 Agent 目前只有外壳，工具调用 / 联网搜索 /
-   多步循环 = 0（ARCHITECTURE §4 缺口 1）。
+2. **不许把「测试全绿」说成「功能已实现」**。谈 Agent 能力前先 grep 取证。
+   2026-09-04 起 S2 第 1 步已落地（工具注册表 / 多步循环 / `web_search` / 步数与 token 上限），
+   但**它仍然没有写文件的工具**：改规划只有「提案 → 主人点应用」这一条（缺口现状见 ARCHITECTURE §4）。
 3. **上下文注入只有一个构造器**，改注入内容只改对应 collector，不改调用方、不改提示词模板、
    不改前端（D-04 / D-06）。
 
@@ -48,12 +49,16 @@
   `.scratch\run-frontend.cmd`（5173）。它们会随会话中断被回收——主人报「白屏 / 空数据 /
   你根本没改」时，**先确认服务在不在跑**，再怀疑代码。改过后端若接口 404 或 500，先重启并跑
   `alembic upgrade head`（`--reload` 只热重载代码，不跑迁移）。
+- **重启服务前先看端口上有几个监听**（本会话踩过）：`netstat -ano | Select-String ':8000\s'`。
+  直接再 `Start-Process` 一次会得到**两个进程同时听 8000**，新连接被派到那个已卡死的旧进程上，
+  表现是「health 20 秒不答」——看着像代码坏了，其实是双绑定。判据：`Get-NetTCPConnection` 查不到
+  或 `curl` 拿不到 HTTP 码时，先数监听数，再谈重启。
 
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 131 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 64 passed / 15 files
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 162 passed
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 72 passed / 15 files
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 ```
 
@@ -80,7 +85,7 @@ S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scrip
 S0 上下文可观测   代码已就绪，待跑给主人看一次
 S3 写通路收口     已落地，并按 D-15 延伸到设定库
 S1 最小写作环     隔离脚本与统一预算裁剪已落地
-S2 agentic 内核   **下一步**；工具调用 / 联网搜索 / 多步循环仍为 0
+S2 agentic 内核   第 1 步已落地（注册表 / 多步循环 / web_search / 超限报错）；S4 接写作环未开始
 S4 合流           未开始
 UI  支线          批准的设计帧仍有未清账项，逐条见 WORKSTREAM-PLAN 的 U 系列
 ```

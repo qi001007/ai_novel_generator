@@ -17,10 +17,19 @@ from app.services.documents import (
     stabilize_proposal,
     validate_structure,
 )
+from app.services.agent import (
+    AgentBudgetError,
+    AgentConfig,
+    ToolRegistry,
+    render_tool_prompt,
+    run_agent_turn,
+    stream_agent_turn,
+)
 from app.services.context import (
     DEFAULT_CONTEXT_BUDGET,
     ContextItem,
     build_chat_context,
+    context_debug_enabled,
     log_injection,
     mention_tokens,
     render_context,
@@ -157,6 +166,25 @@ def _one_line(text: str, limit: int) -> str:
     """Collapse a message into the short label the manifest header carries."""
     cleaned = " ".join((text or "").split())
     return cleaned if len(cleaned) <= limit else cleaned[:limit] + "…"
+
+
+def with_tool_prompt(messages: list[dict[str, str]], registry: ToolRegistry | None) -> list[dict[str, str]]:
+    """Append the tool rules to the system message, or leave the turn untouched.
+
+    The rules ride on the system turn because that is where the mode bodies live: a
+    second system message would be a second place to keep the contract in sync.
+    """
+    if registry is None or len(registry) == 0:
+        return messages
+    rules = render_tool_prompt(registry)
+    if not rules:
+        return messages
+    out = [dict(item) for item in messages]
+    for item in out:
+        if item.get("role") == "system":
+            item["content"] = item.get("content", "") + rules
+            return out
+    return [{"role": "system", "content": rules.strip()}] + out
 
 
 def temperature_for(mode: str) -> float:
@@ -338,24 +366,49 @@ def persist_reply(
     return message
 
 
-def complete_turn(session: Session, llm: LLMClient, turn: ChatTurn) -> ChatMessage:
-    """Non-streaming turn: one request, one persisted reply."""
+def complete_turn(
+    session: Session,
+    llm: LLMClient,
+    turn: ChatTurn,
+    *,
+    registry: ToolRegistry | None = None,
+    config: AgentConfig | None = None,
+) -> ChatMessage:
+    """Non-streaming turn, on the same loop the stream uses."""
     try:
-        result = llm.complete_messages(
-            CHAT_TASK_TYPE,
-            turn.messages,
+        outcome = run_agent_turn(
+            llm,
+            with_tool_prompt(turn.messages, registry),
+            registry or ToolRegistry(),
+            task_type=CHAT_TASK_TYPE,
             model=turn.model,
+            temperature=turn.temperature,
+            config=config,
         )
     except (LLMError, LLMUnavailableError) as cause:
         raise ChatDomainError(str(cause), status_code=503) from cause
+    except AgentBudgetError as cause:
+        raise ChatDomainError(str(cause), status_code=503) from cause
 
+    _log_steps(outcome.steps, turn.novel_id)
     return persist_reply(
         session,
         turn,
-        content=result.content,
-        model=result.model,
-        token_input=result.token_input,
-        token_output=result.token_output,
+        content=outcome.content,
+        model=outcome.model,
+        token_input=outcome.token_input,
+        token_output=outcome.token_output,
+    )
+
+
+def _log_steps(steps, novel_id: int) -> None:
+    """What the agent actually read, on the same debug channel as the injection list."""
+    if not steps or not context_debug_enabled():
+        return
+    print(
+        f"=== 本轮工具读取 · novel={novel_id} ===\n"
+        + "\n".join(f"{step.as_line()}" for step in steps),
+        flush=True,
     )
 
 
@@ -368,8 +421,11 @@ def stream_turn(
     llm: LLMClient,
     turn: ChatTurn,
     session_factory: Callable[[], Session] | None = None,
+    *,
+    registry: ToolRegistry | None = None,
+    config: AgentConfig | None = None,
 ) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Yield (event, payload) for the SSE route: context / delta / done."""
+    """Yield (event, payload) for the SSE route: context / delta / tool / proposal / done."""
     factory = session_factory or (lambda: Session(engine))
 
     yield (
@@ -382,38 +438,65 @@ def stream_turn(
             "unknown_mentions": turn.unknown_mentions,
             "mode": turn.mode,
             "temperature": turn.temperature,
+            # What this turn was allowed to reach for, so a reader can tell an
+            # unused tool apart from an unimplemented one.
+            "tools": registry.names() if registry else [],
         },
     )
 
-    buffer: list[str] = []
-    usage: dict[str, Any] = {}
+    outcome: Any = None
     try:
-        for chunk in llm.stream_messages(
-            CHAT_TASK_TYPE,
-            turn.messages,
-            temperature=turn.temperature,
-            usage_out=usage,
+        for name, payload in stream_agent_turn(
+            llm,
+            with_tool_prompt(turn.messages, registry),
+            registry or ToolRegistry(),
+            task_type=CHAT_TASK_TYPE,
             model=turn.model,
+            temperature=turn.temperature,
+            config=config,
         ):
-            buffer.append(chunk)
-            yield ("delta", {"text": chunk})
+            if name == "delta":
+                yield ("delta", {"text": payload})
+            elif name == "tool":
+                yield (
+                    "tool",
+                    {
+                        "step": payload.index,
+                        "name": payload.call.name,
+                        "arguments": payload.call.arguments,
+                        "ok": payload.result.ok,
+                    },
+                )
+            else:
+                outcome = payload
     except (LLMError, LLMUnavailableError) as cause:
-        yield ("error", {"message": str(cause), "partial": "".join(buffer)})
+        yield ("error", {"message": str(cause), "partial": ""})
         return
+    except AgentBudgetError as cause:
+        # Out of budget is a failure, not a short answer: nothing is persisted,
+        # so a truncated turn cannot be mistaken for a finished one.
+        yield ("error", {"message": str(cause), "partial": ""})
+        return
+
+    if outcome is None:
+        yield ("error", {"message": "agent loop ended without an answer", "partial": ""})
+        return
+
+    _log_steps(outcome.steps, turn.novel_id)
 
     with factory() as session:
         novel_id = _novel_id_of(session, turn.user_message_id)
         reader = current_text_reader(session, novel_id) if novel_id else None
-        for proposal in extract_proposals("".join(buffer), reader):
+        for proposal in extract_proposals(outcome.content, reader):
             yield ("proposal", proposal)
 
     with factory() as session:
         message = persist_reply(
             session,
             turn,
-            content="".join(buffer),
-            model=str(usage.get("model") or turn.model or ""),
-            token_input=int(usage.get("token_input", 0)),
-            token_output=int(usage.get("token_output", 0)),
+            content=outcome.content,
+            model=outcome.model,
+            token_input=outcome.token_input,
+            token_output=outcome.token_output,
         )
     yield ("done", {"message": message.model_dump(mode="json")})

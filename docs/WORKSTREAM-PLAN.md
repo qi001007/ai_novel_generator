@@ -64,14 +64,25 @@
 
 ### S2 agentic 内核
 
-- [ ] 工具注册表 + 多步循环（现在一次请求＝一次 LLM 调用即结束）
-- [ ] 联网搜索工具（补上文档一直承诺却没实现的 `/search`）
-- [ ] 本系统内部命令：读规划 / 按规范改规划（只能走 S3 那条通路，且 `actor=ai`）
-- [ ] `prepare_turn()` 复用为循环每圈的输入侧，不重写一遍上下文装配
-- [ ] 每圈步数与 token 上限，超限明确报错而不是静默截断
+- [x] 工具注册表 + 多步循环：`services/agent.py` 的 `ToolRegistry` 与 `stream_agent_turn`。
+      **协议是自己定义的文本块而不是 OpenAI `tools`**——本机网关实测 `finish_reason: stop` 且回包
+      **没有 `tool_calls` 字段**，MiniMax-M2.5 把调用写成私有 XML 混在 `content` 里；照原生通道写
+      循环永不触发、还会把 XML 泄漏进正文。`tool_calls` 若存在仍一并识别。
+      流式侧带 hold-back：未闭合围栏之后的文字一律先扣住，控制块永不上屏（`done` 事件不得冲掉工具轨迹，已补测试）。
+- [x] 联网搜索工具：`web_search` 走中文维基百科检索（免密钥、实测可用）；前端补 `/search <词>` 命令。
+      DuckDuckGo lite/html 本机实测 **403**，所以通用网页结果需要另配搜索 API，没有凭据时如实报失败而不是编结果。
+- [x] 本系统内部命令：`list_files` / `read_file` 读的就是文件层那一份文档（同一个 `documents.read_file`）。
+      **注册表里没有写工具**（有测试钉住名字集合）：改规划仍只有「提案 → 主人点应用 → `actor=ai`」这一条，
+      与 D-01 / D-15 不冲突。
+- [x] `prepare_turn()` 复用为循环每圈的输入侧：循环只在它给的 messages 上追加，不重建上下文装配。
+- [x] 每圈步数与 token 上限（默认 4 步 / 30000 token，`AgentConfig` 可调），**超限抛 `AgentBudgetError`**：
+      SSE 出 `error` 且**不落库半截回答**（`test_agent_chat.py` 钉住「error 有、done 无、assistant 行为空」）。
 
 验收：一句自然语言「把 45-48 章收进第二个弧并补钩子」→ Agent 自己走 读 → 提案 → 人点应用，
 全程不产生第二条写通路，且注入清单能看出它读了什么。
+**已验到**：读→提案→应用整条链（`test_agent_chat.py`，含控制块不外泄、超限不落库）；
+真机一轮 `/search` 走通两步、详情面板显示「本轮读取 · web_search(...)」、来源链接可点。
+**未验到**：主人原话那句「45-48 章收进第二个弧」没拿真实模型跑过（novel 1 只有 1 章，构造不出该场景）。
 
 ### S4 合流
 

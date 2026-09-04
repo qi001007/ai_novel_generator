@@ -31,6 +31,11 @@ type AgentMeta = {
   tokenOutput?: number;
   refs?: ChatReference[];
   unknown?: string[];
+  /** Tool calls this turn executed, in order. */
+  reads?: string[];
+  /** What the turn was allowed to reach for, so an empty round reads as
+      "did not need it" rather than "cannot". */
+  allowed?: string[];
 };
 
 type AgentRow = {
@@ -66,6 +71,7 @@ const commands = [
   { name: "/save", args: "", desc: "保存当前正文" },
   { name: "/plan", args: "A|B|C|D", desc: "切计划模式并盘点该层规划" },
   { name: "/feedback", args: "<文本>", desc: "写入剧情反馈时间线" },
+  { name: "/search", args: "<词>", desc: "联网查证本书以外的资料" },
 ] as const;
 
 const PLAN_LAYERS: Record<string, { label: string; mention: string }> = {
@@ -77,7 +83,7 @@ const PLAN_LAYERS: Record<string, { label: string; mention: string }> = {
 
 const GREETING =
   "我是这本书的写作 Agent。自然语言直接说就行，我会按相关度自动取用蓝图、目录、设定、人物、伏笔与章摘要；" +
-  "用 @ 可以点名某份资料，斜杠命令走流水线：/generate /review /check /summary /save /plan /feedback。";
+  "用 @ 可以点名某份资料，斜杠命令走流水线：/generate /review /check /summary /save /plan /feedback /search。";
 
 // Local rows start above any plausible server id, so history rows and
 // in-flight rows can never collide when patched by id.
@@ -314,6 +320,24 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                   ...row.meta,
                   refs: event.data.items.map(({ kind, label, ref }) => ({ kind, label, ref })),
                   unknown: event.data.unknown_mentions,
+                  allowed: event.data.tools ?? [],
+                },
+              }
+            : row,
+        ),
+      );
+      return;
+    }
+    if (event.event === "tool") {
+      const line = `${event.data.name}(${Object.values(event.data.arguments).join(", ") || "无参数"})`;
+      setRows((prev) =>
+        prev.map((row) =>
+          row.kind === "agent" && row.id === id
+            ? {
+                ...row,
+                meta: {
+                  ...row.meta,
+                  reads: [...(row.meta.reads ?? []), event.data.ok ? line : `${line} 未成功`],
                 },
               }
             : row,
@@ -339,6 +363,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 text: message.content,
                 status: "done",
                 meta: {
+                  // Keep what the stream reported earlier: the tool trail and the
+                  // allowed set arrive before `done`, and `done` must not erase them.
+                  ...row.meta,
                   model: message.model,
                   tokenInput: message.token_input,
                   tokenOutput: message.token_output,
@@ -493,6 +520,29 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     );
   }
 
+  function runSearch(rest: string) {
+    const query = rest.trim();
+    if (!query) {
+      appendMessage({
+        kind: "agent",
+        id: nextId++,
+        text: "",
+        status: "error",
+        question: "",
+        meta: {},
+        error: "用法：/search <要查的词>",
+      });
+      return;
+    }
+    // The command does not search by itself: it asks for the web_search tool and
+    // lets the loop report what actually came back, found or not.
+    void ask(
+      `请用 web_search 查证「${query}」。只报查到的内容和来源链接；查不到就直说查不到，不要用记忆里的印象冒充查证结果。`,
+      undefined,
+      true,
+    );
+  }
+
   async function runCommand(raw: string) {
     const [name, ...rest] = raw.split(/\s+/);
     const command = commands.find((item) => item.name === name);
@@ -503,6 +553,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
 
     if (command.name === "/plan") {
       runPlan(argument);
+      return;
+    }
+
+    if (command.name === "/search") {
+      runSearch(argument);
       return;
     }
 
@@ -761,6 +816,13 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         输入 {row.meta.tokenInput ?? 0} / 输出 {row.meta.tokenOutput ?? 0} tokens
                         {row.meta.model ? ` · ${row.meta.model}` : ""}
                       </p>
+                      {row.meta.reads?.length ? (
+                        <ul className="chat-refs">
+                          {row.meta.reads.map((line, index) => (
+                            <li key={`${index}:${line}`}>本轮读取 · {line}</li>
+                          ))}
+                        </ul>
+                      ) : null}
                       {refs.length ? (
                         <ul className="chat-refs">
                           {refs.map((ref) => (
@@ -770,7 +832,10 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                           ))}
                         </ul>
                       ) : (
-                        <p className="chat-detail-empty">本轮没有检索到资料</p>
+                        <p className="chat-detail-empty">
+                          本轮没有检索到资料
+                          {row.meta.allowed?.length ? ` · 可用工具 ${row.meta.allowed.join(" / ")}` : ""}
+                        </p>
                       )}
                       {row.meta.unknown?.length ? (
                         <p className="chat-detail-empty">

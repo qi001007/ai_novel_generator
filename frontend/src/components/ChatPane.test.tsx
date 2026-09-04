@@ -20,6 +20,12 @@ const assistantMessage = {
   created_at: "2026-09-01T10:00:00Z",
 };
 
+function stored(content: string) {
+  // The done event overwrites the streamed text with the persisted row, so a test
+  // that asserts on the answer has to put the same words in both places.
+  return { ...assistantMessage, content };
+}
+
 function json(body: unknown) {
   return Promise.resolve(
     new Response(JSON.stringify(body), {
@@ -226,4 +232,108 @@ describe("ChatPane", () => {
     expect(container.querySelector(".chat-context")).toBeNull();
   });
 
+
+  it("runs /search through the agent and shows what the tool read", async () => {
+    const user = userEvent.setup();
+    const calls: { content: string }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = input.toString();
+        if (url.includes("/chat/stream")) {
+          calls.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(
+            sse([
+              [
+                "context",
+                {
+                  items: [],
+                  unknown_mentions: [],
+                  mode: "write",
+                  temperature: 0.7,
+                  tools: ["list_files", "read_file", "web_search"],
+                },
+              ],
+              ["tool", { step: 1, name: "web_search", arguments: { query: "司天监" }, ok: true }],
+              ["delta", { text: "司天监，官署名。" }],
+              ["done", { message: stored("司天监，官署名。来源：中文维基百科") }],
+              ["end", {}],
+            ]),
+          );
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "/search 司天监");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(calls.length).toBe(1));
+    // the command asks for the tool by name instead of pretending to search itself
+    expect(calls[0].content).toContain("web_search");
+    expect(calls[0].content).toContain("司天监");
+    await waitFor(() => expect(screen.getByText(/司天监，官署名/)).toBeTruthy());
+
+    await user.click(screen.getByText(/1\.2k in/));
+    await waitFor(() => {
+      expect(screen.getByText("本轮读取 · web_search(司天监)")).toBeTruthy();
+    });
+  });
+
+  it("refuses /search with no word and sends nothing", async () => {
+    const user = userEvent.setup();
+    const fetchMock = vi.fn((_input: RequestInfo | URL) => json([]));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "/search");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(screen.getByText("用法：/search <要查的词>")).toBeTruthy());
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/chat/stream"))).toHaveLength(0);
+  });
+
+  it("says a round needed no tool rather than leaving the detail blank", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/stream")) {
+          return Promise.resolve(
+            sse([
+              [
+                "context",
+                {
+                  items: [],
+                  unknown_mentions: [],
+                  mode: "write",
+                  temperature: 0.7,
+                  tools: ["list_files", "read_file", "web_search"],
+                },
+              ],
+              ["delta", { text: "不用查。" }],
+              ["done", { message: stored("不用查。") }],
+              ["end", {}],
+            ]),
+          );
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "在吗");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.getByText("不用查。")).toBeTruthy());
+
+    await user.click(screen.getByText(/1\.2k in/));
+    await waitFor(() => {
+      expect(screen.getByText(/可用工具 list_files \/ read_file \/ web_search/)).toBeTruthy();
+    });
+  });
 });
+

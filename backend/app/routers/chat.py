@@ -19,6 +19,8 @@ from app.services.chat import (
     prepare_turn,
     stream_turn,
 )
+from app.services.agent import AgentConfig, ToolRegistry
+from app.services.agent_tools import build_registry
 from app.services.context import collect_items
 from app.services.documents import current_text_reader
 from app.services.llm import LLMClient, get_llm_client
@@ -96,11 +98,13 @@ def _event_stream(
     llm: LLMClient,
     turn: ChatTurn,
     session_factory: Callable[[], Session],
+    registry: ToolRegistry | None = None,
+    config: AgentConfig | None = None,
 ) -> Iterator[str]:
     # The request-scoped session is already closed by the time this runs,
     # so the generator owns a session of its own for persisting the reply.
     try:
-        for event, payload in stream_turn(llm, turn, session_factory):
+        for event, payload in stream_turn(llm, turn, session_factory, registry=registry, config=config):
             yield _sse(event, payload)
     except ChatDomainError as cause:
         yield _sse("error", {"message": cause.detail, "partial": ""})
@@ -165,6 +169,8 @@ def create_chat_reply(
     llm: LLMClient = Depends(get_llm_client),
 ) -> ChatMessage:
     novel = get_novel_or_404(novel_id, session)
+    bind: Engine = session.get_bind()
+    registry = build_registry(lambda: Session(bind), novel_id)
     try:
         turn = prepare_turn(
             session,
@@ -175,7 +181,7 @@ def create_chat_reply(
             model=payload.model,
             allowed_models=llm.settings.configured_models,
         )
-        return complete_turn(session, llm, turn)
+        return complete_turn(session, llm, turn, registry=registry)
     except ChatDomainError as cause:
         raise _to_http(cause) from cause
 
@@ -189,6 +195,9 @@ def stream_chat_reply(
 ) -> StreamingResponse:
     novel = get_novel_or_404(novel_id, session)
     bind: Engine = session.get_bind()
+    # Tools open their own sessions: a tool result can land after the request
+    # session that resolved the turn has already gone.
+    registry = build_registry(lambda: Session(bind), novel_id)
     try:
         turn = prepare_turn(
             session,
@@ -203,7 +212,7 @@ def stream_chat_reply(
         raise _to_http(cause) from cause
 
     return StreamingResponse(
-        _event_stream(llm, turn, lambda: Session(bind)),
+        _event_stream(llm, turn, lambda: Session(bind), registry=registry),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )

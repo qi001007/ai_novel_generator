@@ -97,7 +97,7 @@ chapters/0042/draft.md  正文投影     ← 旧编辑器与终审编辑均写�
 | `services/llm.py` | 211 | OpenAI 兼容客户端，流式带 usage，任务类型 draft/review/summary/chat 四个，未配置时明确降级 | 可用 |
 | `services/context.py` | 953 | 唯一采集池 + 两种排序 + 清单双通道 + @引用解析 + 去重 | **核心已成形** |
 | `services/documents.py` + `markdown_doc.py` | 538 + 291 | MD 投影读写、键锁、AI 白名单、乐观并发、提案稳定化、按章路径与原子建章 | 可用 |
-| `services/chat.py` | 353 | 多轮（`HISTORY_WINDOW=8`）、落库、SSE 五事件、@引用、token 记账、提案抽取 | **只是外壳，见 §4 缺口 1** |
+| `services/chat.py` | 多轮（`HISTORY_WINDOW=8`）、落库、SSE 事件、@引用、token 记账、提案抽取 | 外壳；内核在 `services/agent.py`（S2 第 1 步已落地） |
 | `services/{chapters,reviews,draft,planning,prompts}.py` | 约 550 | 机械校验、七维自检、章摘要、流水线编排 | 可用 |
 | `app/models.py` | 303 | 15 张表：novel / blueprint / toc / arc / brief / chapter / setting / character / appearance / foreshadow / summary / feedback / generation_run / review / chat_message | 可用 |
 | 前端 | 约 5.6k | 书架 / 工作台三栏 / 双根树 / MD 文件编辑器（CodeMirror 6）/ 对话坞 / 提案卡 / 人物卡库 | 设计已定，UI 迭代未完 |
@@ -109,8 +109,8 @@ chapters/0042/draft.md  正文投影     ← 旧编辑器与终审编辑均写�
 
 | # | 缺什么 | 证据 | 归属 |
 |---|---|---|---|
-| 1 | **Agent 没有 agentic 内核**：无工具调用、无联网搜索、无自主多步循环 | `tool_call` / `function_call` / `web_search` 在整个 backend **零命中**；一次请求＝一次 LLM 调用＝一路文本回来即结束 | S2 |
-| 2 | `/search` 斜杠命令不存在（曾被文档列为 v1 需求） | 实际只有 `/generate /review /check /summary /save /plan /feedback`（`ChatPane.tsx:76`） | S2 |
+| 1 | ~~Agent 没有 agentic 内核~~ **S2 第 1 步已补（2026-09-04）**：工具注册表 + 多步循环 + 联网查证 + 步数与 token 上限 | `services/agent.py`（注册表／协议／循环）+ `services/agent_tools.py`（`list_files` / `read_file` / `web_search`）；`tests/test_agent_loop.py` 19 项、`test_agent_tools.py` 9 项、`test_agent_chat.py` 3 项；真机一轮 `/search 司天监` 走通两步并回来源链接。**仍缺**：写作环触发（S4）、按规范改规划只有提案一途 | S2 已做，S4 待做 |
+| 2 | ~~`/search` 斜杠命令不存在~~ **已补**：`/search <词>` 让 Agent 调 `web_search` | 命令表在 `ChatPane.tsx` 的 `commands`；实测来源为中文维基百科（免密钥）。**免密钥通用搜索引擎不可用**：DuckDuckGo 的 lite/html 两端点本机实测 403，要通用网页结果必须配搜索 API | S2 |
 | 3 | 双栏对照生成 + 逐段合并、选区 Diff 修改 | WORKSTREAM C4 全节未勾；Figma 帧 05 已批但代码未做（T-12） | S1 之后 |
 | 4 | 伏笔没有写入端点 | 注入清单里伏笔档为空，novel 1 无 `foreshadow` 行 | P2 |
 | 5 | 绘画 / AI 生图是**纯前端假数据** | `artwork` / `painting` 在后端零命中；`PaintingDetailPanel.tsx` 无后端来源 | P3 |

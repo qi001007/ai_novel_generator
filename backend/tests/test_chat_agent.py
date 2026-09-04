@@ -56,6 +56,8 @@ class FakeChatClient:
         task_type: str,
         messages: list[dict[str, str]],
         model: str | None = None,
+        tools: list[dict] | None = None,
+        temperature: float | None = None,
     ) -> LLMResult:
         self.calls.append(
             {"kind": "complete", "messages": messages, "model": model}
@@ -77,6 +79,7 @@ class FakeChatClient:
         temperature: float = 0.6,
         usage_out: dict[str, int] | None = None,
         model: str | None = None,
+        tools: list[dict] | None = None,
     ) -> Iterator[str]:
         self.calls.append(
             {
