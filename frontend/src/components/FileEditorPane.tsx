@@ -389,7 +389,7 @@ export default function FileEditorPane() {
               aria-selected={path === active}
             >
               <button type="button" onClick={() => void open(path)}>
-                {path}
+                <span>{path}</span>
               </button>
               {isDirty(item) ? <i className="dirty-dot" aria-label="未保存" /> : null}
               {pending[path] ? <i className="pending-dot" aria-label="有提案待应用" /> : null}

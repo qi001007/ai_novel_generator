@@ -44,6 +44,10 @@
   --radius-sm: 6px;
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.12);
   --shadow-lift: 0 4px 12px rgb(0 0 0 / 0.08);
+  /* 批注 5: the chat column is grey and a message sits one step lighter on it.
+     "Lighter" points at a different token per theme (--surface in light,
+     --surface-alt in dark), so the pair cannot be derived from one variable. */
+  --chat-bubble: #ffffff;
   font-family: "Noto Sans SC", "Segoe UI", "Microsoft YaHei", sans-serif;
   font-size: 14px;
   line-height: 1.5;
@@ -95,6 +99,7 @@
   --minimap-thumb-bg: rgb(255 255 255 / 0.08);
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.4);
   --shadow-lift: 0 4px 12px rgb(0 0 0 / 0.3);
+  --chat-bubble: #303036;
 }
 
 * {
@@ -220,8 +225,11 @@ button:disabled {
   color: var(--text-2);
 }
 
+/* An overlay, not a fixed tone: these sit on --surface, --bg and --surface-alt
+   alike, and once the sidebar moved onto --surface-alt (批注 4) every hover in it
+   stopped being visible. */
 .icon-button:hover:not(:disabled) {
-  background: var(--surface-alt);
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
   color: var(--text-1);
 }
 
@@ -383,11 +391,19 @@ select:focus-visible {
   opacity: 0.42;
 }
 
+/* 批注 4: --surface is nine RGB points from the editor's black, which is not a
+   difference you can see; the sidebar is a shelf, so it takes the shelf grey.
+   批注 8: its scrollbar appears while the pointer is on it, same rule as .file-tabs. */
 .sidebar {
   min-height: 0;
   overflow-y: auto;
-  background: var(--surface);
+  background: var(--surface-alt);
   padding: 8px;
+  scrollbar-width: none;
+}
+
+.sidebar:hover {
+  scrollbar-width: thin;
 }
 
 .right-column {
@@ -427,14 +443,15 @@ select:focus-visible {
 }
 
 .activity-rail-item:hover {
-  background: var(--surface-alt);
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
   color: var(--text-1);
 }
 
 /* No bar down one edge: the colour and the fill say which page is open, and
-   four agreeing edges is what keeps it quiet. */
+   four agreeing edges is what keeps it quiet. The fill is the panel's own tone,
+   which the sidebar moved onto with 批注 4. */
 .activity-rail-item.active {
-  background: var(--surface);
+  background: var(--surface-alt);
   color: var(--accent);
 }
 
@@ -550,44 +567,55 @@ select:focus-visible {
   text-align: left;
 }
 
-.tree-row:hover{
-  background: var(--surface-alt);
+.tree-row:hover {
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
 }
 
 /* 批注 2: the ring went. A 1px accent outline around the row you clicked is the
    loudest possible answer to "where am I", and it stacked on top of every other
    box in the tree. A quiet fill is enough next to a rail that already glows. */
 .tree-row.selected {
-  background: var(--surface-alt);
+  background: color-mix(in srgb, var(--text-1) 12%, transparent);
   color: var(--text-1);
 }
 
 /* 帧 27 批注 4: no box, no fill. The letter and the chevron carry the meaning on
    their own; a grey square behind every one of them is what turned the tree into
    "a box inside a box". */
-/* 批注 4: 15px was the glyph, not the target. The hit box is 28px and
-   reaches into the row padding on the left, so nothing in the row shifts. */
+/* 批注 2: the 28px box hung on margin-left:-11px, so the glyph sat 5px outside
+   the row's left edge where the sidebar clipped it - the arrow looked crooked and
+   only answered clicks to the right of it. The box is 18px and stays inside the
+   row; the target grows to 28x28 as a centred overlay, not as a negative margin. */
 .tree-prefix {
+  position: relative;
   min-height: 0;
   display: inline-grid;
   place-items: center;
   flex: none;
-  width: 28px;
+  width: 18px;
   height: 28px;
-  margin-left: -11px;
-  margin-right: 8px;
-  border-radius: 0;
+  margin: 0 6px 0 0;
+  padding: 0;
+  border: 0;
   background: transparent;
   color: var(--text-2);
   font-size: 11px;
   font-style: normal;
   font-weight: 600;
+  cursor: pointer;
 }
 
-/* 批注 2: no lit block behind the chevron either. */
+.tree-prefix::before {
+  content: "";
+  position: absolute;
+  inset: 0 -5px;
+}
+
+/* No lit block behind the chevron, and not #fff either: on a selected row in the
+   light theme that made the arrow disappear completely. */
 .tree-row.selected .tree-prefix {
   background: transparent;
-  color: #fff;
+  color: var(--text-1);
 }
 
 .tree-hint {
@@ -646,18 +674,15 @@ select:focus-visible {
   white-space: nowrap;
 }
 
-/* The chapter list carries its own bound: with a few hundred chapters it must not
-   push the settings library and the action row off screen. The sidebar still scrolls
-   as a whole on top of this. */
+/* 批注 7: this cap is the "black mask". At six chapters the list stopped at 42vh
+   and the sidebar below it stayed empty, so chapters 5 and 6 looked covered over.
+   It existed to keep the 设定库 and the footer buttons on screen; frame 27 put the
+   pages behind the rail and retired the footer row, so the sidebar is the scroller. */
 .tree-chapter-list {
   display: grid;
   gap: 2px;
   align-content: start;
-  min-height: 0;
-  max-height: 42vh;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  min-width: 0;
 }
 
 .tree-ellipsis {
@@ -684,7 +709,7 @@ select:focus-visible {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
-  background: var(--bg);
+  background: var(--surface-alt);
 }
 
 .chat-notice {
@@ -756,7 +781,7 @@ select:focus-visible {
 }
 
 .chat-avatar.user {
-  background: var(--surface-alt);
+  background: var(--chat-bubble);
   color: var(--text-2);
   border: 1px solid var(--border);
 }
@@ -774,7 +799,8 @@ select:focus-visible {
   max-width: 78%;
   padding: 8px 12px;
   border-radius: var(--radius-md);
-  background: var(--surface-alt);
+  /* 批注 5: the pane went grey, so the bubble moves one step up off it. */
+  background: var(--chat-bubble);
   border: 1px solid var(--border);
   white-space: pre-wrap;
 }
@@ -785,7 +811,7 @@ select:focus-visible {
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--chat-bubble);
 }
 
 .chat-card p {
@@ -803,7 +829,7 @@ select:focus-visible {
 }
 
 .chat-card.command {
-  background: var(--surface-alt);
+  background: var(--chat-bubble);
 }
 
 .chat-card.command header {
@@ -882,7 +908,9 @@ select:focus-visible {
   left: 0;
   height: 88px;
   pointer-events: none;
-  background: linear-gradient(to bottom, transparent, var(--bg));
+  /* 批注 5: this fade is the layer behind the messages - it has to end on the
+     pane's own colour, and it was still fading to the old --bg black. */
+  background: linear-gradient(to bottom, transparent, var(--surface-alt));
 }
 
 .composer {
@@ -896,7 +924,7 @@ select:focus-visible {
   padding: 10px 12px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--chat-bubble);
   box-shadow: var(--shadow-lift);
   transition:
     border-color 150ms ease-out,
@@ -1207,6 +1235,11 @@ select:focus-visible {
      tab was cut: measured on an 860px viewport its right edge was 864.8. */
   overflow-x: auto;
   overflow-y: hidden;
+  /* 批注 6: same rule as .file-tabs - the bar is not furniture. */
+  scrollbar-width: none;
+}
+
+.editor-tabs:hover {
   scrollbar-width: thin;
 }
 
@@ -1219,7 +1252,8 @@ select:focus-visible {
      strip scroll instead. */
   flex: none;
   min-height: 30px;
-  padding: 4px 12px;
+  /* 2px, not 4: the close button grew to 26px and the strip must not grow with it. */
+  padding: 2px 12px;
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: var(--radius-sm) var(--radius-sm) 0 0;
@@ -1255,6 +1289,27 @@ select:focus-visible {
   background: color-mix(in srgb, var(--surface) 58%, var(--surface-alt));
 }
 
+/* The label is the thing you aim at, so it takes the tab's whole height - the box
+   was 18px of text inside a 31px tab, the same mistake 批注 1 names for the close
+   button. Both strips share the shape, so both get the fix. The text has to live in
+   a span: a flex button cannot ellipsise a bare text node, and measured without the
+   span the long name stopped truncating and ran under the close button. */
+.editor-tab > button:not(.editor-tab-close),
+.file-tab > button:not(.file-tab-close) {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.editor-tab > button > span,
+.file-tab > button > span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 .editor-tab > button {
   min-height: 0;
   padding: 0;
@@ -1276,8 +1331,12 @@ select:focus-visible {
   min-height: 0;
   display: inline-grid;
   place-items: center;
-  width: 16px;
-  height: 16px;
+  /* 批注 1: .file-tab-close got this treatment last round and this one was left at
+     16px. Same control, same target; the negative margins hold the tab's width so
+     the label does not move. */
+  width: 26px;
+  height: 26px;
+  margin: 0 -5px;
   padding: 0;
   border: 0;
   border-radius: 3px;
@@ -3135,12 +3194,17 @@ body.resizing {
   cursor: pointer;
 }
 
+/* Children line up under the label of the row above them: 6px row padding + the
+   18px prefix + its 6px + the row's 8px gap. */
 .tree-row.file {
-  padding-left: 40px;
+  padding-left: 38px;
 }
 
-/* 设定库：面板行下面挂它的文档行（帧 26 A 区）。缩进由 .tree-row.file 负责。 */
-.tree-library {
+/* 批注 3: a group is a row that folds plus its document rows, and 设定库 already drew
+   it well. 章节 carried a second implementation of the same thing - its own prefix
+   width, a nested wrapper with its own indent and guide line, and a double-click on
+   the whole row - which is why the two disagreed. One class, both trees. */
+.tree-group {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -3925,25 +3989,6 @@ body.resizing {
   height: 1px;
   margin: 4px 6px;
   background: var(--border);
-}
-
-/* ---------- 按章归组树（帧 21） ---------- */
-
-.tree-children.nested {
-  padding-left: 16px;
-  margin-left: 14px;
-  border-left: 1px solid var(--border);
-  gap: 3px;
-}
-
-.tree-chapter {
-  min-width: 0;
-}
-
-.tree-chapter .tree-prefix {
-  display: inline-grid;
-  place-items: center;
-  width: 15px;
 }
 
 /* B 层列表不是嵌套卡，它替换正文区；源码视图保留在底层切换。 */

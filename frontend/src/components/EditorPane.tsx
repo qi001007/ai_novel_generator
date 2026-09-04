@@ -320,7 +320,9 @@ export default function EditorPane() {
               aria-selected={active}
             >
               <button type="button" onClick={() => state.openChapterTab(id)}>
-                第 {item.chapter_number} 章 {item.title || "未命名"}
+                <span>
+                  第 {item.chapter_number} 章 {item.title || "未命名"}
+                </span>
               </button>
               {active ? <StatusBadge status={item.status} dot /> : null}
               {state.isChapterDirty(id) ? <i className="dirty-dot" aria-label="未保存" /> : null}

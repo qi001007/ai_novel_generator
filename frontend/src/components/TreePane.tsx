@@ -332,16 +332,12 @@ export default function TreePane({
               activeFile === draftPath(chapter.chapter_number) ||
               activeFile === brief?.path;
             return (
-              <div key={chapter.id} className="tree-chapter">
+              <div key={chapter.id} className="tree-group">
                 <div
                   className={`tree-row ${selected ? "selected" : ""}`}
                   onContextMenu={(event) =>
                     openMenu(event, { kind: "file", path: draftPath(chapter.chapter_number) })
                   }
-                  // 批注 4: single click puts the chapter on the stage, the chevron
-                  // folds its files, and a double click is the ordinary way of saying
-                  // "open this one" - so it folds too, whichever half you hit.
-                  onDoubleClick={() => toggle(key)}
                 >
                   <button
                     type="button"
@@ -367,7 +363,7 @@ export default function TreePane({
                   />
                 </div>
                 {!isCollapsed(key) && (
-                  <div className="tree-children nested">
+                  <>
                     <button
                       type="button"
                       className={`tree-row file ${activeFile === draftPath(chapter.chapter_number) ? "selected" : ""}`}
@@ -387,7 +383,7 @@ export default function TreePane({
                     >
                       brief.md
                     </button>
-                  </div>
+                  </>
                 )}
               </div>
             );
@@ -432,7 +428,7 @@ export default function TreePane({
                   meta.path.toLowerCase().includes(needle)),
             );
             return (
-              <div className="tree-library" key={group.kind}>
+              <div className="tree-group" key={group.kind}>
                 <div className={`tree-row ${group.open ? "selected" : ""}`}>
                   {files.length > 0 ? (
                     <button

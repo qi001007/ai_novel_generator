@@ -460,6 +460,35 @@
        2026-09-03 全仓 grep 只有 `chat.py` 有 delete 路由。与「删除作品功能」同属删除语义，
        一并等那条决策（级联策略未定），本批只记录不顺手改。
 - [ ] novel 3「MD探针」测试作品：等上一条有端点后删除
+- [x] **浏览器批注第九批（第八轮那 8 条）——全部落地，逐条真机量过**：
+      **1** `.editor-tab-close` 16→26px（上一轮只放大 `.file-tab-close`，漏了它）。同一次把这一类扫完：
+      标签**文字**本身也只有 18px 高（在 31px 的 tab 里），现 `align-self:stretch` 撑满整格；文字必须挪进
+      `<span>` 才保住省略号——直接给按钮上 `display:flex`，裸文本节点就没有 ellipsis（实测长名一路压到关闭键下）。
+      **2** `.tree-prefix` 不再靠负 margin：盒子收回 18px 留在行内，命中区用居中 `::before` 覆盖层扩到 28×28。
+      实测中心与左右各 ±9px 三点都能折叠，审计里 `clipped` 归 0。顺带修掉
+      `.tree-row.selected .tree-prefix{color:#fff}`——浅色主题下选中那一行的箭头一直是隐形的。
+      **3** 章节行与设定库分组行并成一套 `.tree-group`：删 `.tree-chapter`、`.tree-chapter .tree-prefix`
+      （第二套前缀宽度）、`.tree-children.nested`（第二套缩进 + 引导线）与行级 `onDoubleClick`
+      （同一个功能的第二套入口）。子文件行左边界 == 父行标签左边界（实测 90 == 90）。
+      **4** 侧栏 `--surface` → `--surface-alt`：深色下 #1c1c1e 压着编辑页 #131314 只差 9 个 RGB，等于没换。
+      连带四处必须跟着改，否则悬停反馈整片消失：`.tree-row:hover` / `.selected`、`.icon-button:hover`、
+      `.activity-rail-item:hover` 改 `color-mix(in srgb, var(--text-1) 8%/12%, transparent)` 叠加色，
+      `.activity-rail-item.active` 底色改跟侧栏同值。**留给主人一句话**：活动条本体仍是 `--bg`，
+      现在侧栏比它浅一档，谈不上「一致」——见 UI-BACKLOG 第一节第 1 条。
+      **5** 对话列 `--bg` → `--surface-alt`；气泡 / 卡片 / 输入卡统一走新 token `--chat-bubble`
+      （浅 #ffffff、深 #303036）——「比背景浅一档」在两套主题里落不到同一个 token，只能显式给两个值。
+      `.chat-dock::before` 那道渐变收口从 `--bg` 改到与列同色：主人点的「气泡背后那层是黑的」就是它，
+      不是气泡本身。
+      **6 / 8** `.editor-tabs` 与 `.sidebar` 滚动条改悬停才出（`none` → `:hover{thin}`）。
+      量这条时踩过一次：栏右 3px 已经是 splitter，指针得落在栏内才叫悬停。
+      **7** 「侧栏底部那层黑色蒙版」= `.tree-chapter-list` 的 `max-height:42vh` 自滚：六章时列表停在 388px、
+      下面整段是空的侧栏，看着就像被盖住。删掉上限、侧栏整体滚（实测列表高 586 == scrollHeight 586，六章全见）。
+      **这条上限是我第五批为「几百章」加的**，那时侧栏下面还压着设定库和页脚按钮行；帧 27 之后那些已不在
+      同一页上。记档：为不存在的场景做的优化，两个月后长成主人眼里的一个 bug。
+      **新增可复跑取证**：`.scratch/hit-area-audit.mjs`（UI-BACKLOG 第四节点名要的那一个）。它不信 CSS 盒子
+      ——那正是上一轮骗过我的东西——而是用 `elementFromPoint` 从控件中心向四向走，量「真点得到」的范围，
+      伪元素覆盖层与负 margin 都算进去；另报两类：命中框被祖先 overflow 裁掉、中心被别的东西盖住。
+      当前规划页与文件编辑器页均 0 / 0 / 0。
 
 ---
 
