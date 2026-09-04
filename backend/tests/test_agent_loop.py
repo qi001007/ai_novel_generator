@@ -158,6 +158,87 @@ def test_the_stream_holds_back_only_a_possible_control_block(text: str, expected
     assert holdback_len(text) == expected
 
 
+# --- the dialects a real model actually uses --------------------------------
+
+
+VENDOR_XML_REPLY = (
+    "先看一眼。\n\n"
+    + chr(60) + "minimax:tool_call" + chr(62) + "\n"
+    + chr(60) + "invoke name=\"read_file\"" + chr(62) + "\n"
+    + chr(60) + "parameter name=\"path\"" + chr(62) + "arcs.md" + chr(60) + "/parameter" + chr(62) + "\n"
+    + chr(60) + "/invoke" + chr(62) + "\n"
+    + chr(60) + "/minimax:tool_call" + chr(62) + "\n\n就这样。"
+)
+
+HASHROCKET_REPLY = (
+    "[TOOL_CALL]\n"
+    "{tool => \"read_file\", args => {\n  --path \"settings/foreshadow.md\"\n}}\n"
+    "[/TOOL_CALL]"
+)
+
+
+def test_the_vendor_xml_dialect_is_parsed_and_hidden() -> None:
+    visible, calls = parse_call_blocks(VENDOR_XML_REPLY)
+    assert calls == [ToolCall(name="read_file", arguments={"path": "arcs.md"})]
+    assert "minimax" not in visible
+    assert "先看一眼。" in visible and "就这样。" in visible
+
+
+def test_the_hashrocket_dialect_is_parsed_and_hidden() -> None:
+    visible, calls = parse_call_blocks(HASHROCKET_REPLY)
+    assert calls == [ToolCall(name="read_file", arguments={"path": "settings/foreshadow.md"})]
+    assert visible == ""
+
+
+def test_an_unreadable_block_is_never_shown_but_is_reported() -> None:
+    broken = "前半\n[TOOL_CALL]\ngarbage that is not a call\n[/TOOL_CALL]\n后半"
+    visible, calls = parse_call_blocks(broken)
+    assert "[TOOL_CALL]" not in visible
+    assert len(calls) == 1 and calls[0].name == ""
+    result = ToolRegistry([make_tool()]).run(calls[0])
+    assert result.ok is False
+
+
+def test_a_second_round_that_uses_another_dialect_still_loops() -> None:
+    """Measured live: round 1 answered with our fence, round 2 with a hashrocket block.
+
+    The second one must be executed, not shipped to the reader as the answer.
+    """
+    llm = ScriptedLLM(
+        [
+            {"content": "先读弧。\n\n" + call_block("read_file", path="arcs.md")},
+            {"content": HASHROCKET_REPLY},
+            {"content": "弧 1 收在 3 章，钩子建议改成碑屑带体温。"},
+        ]
+    )
+    outcome = run_agent_turn(llm, [{"role": "user", "content": "q"}], ToolRegistry([make_tool()]))
+    assert [step.call.name for step in outcome.steps] == ["read_file", "read_file"]
+    assert outcome.steps[1].call.arguments == {"path": "settings/foreshadow.md"}
+    assert outcome.content == "弧 1 收在 3 章，钩子建议改成碑屑带体温。"
+    assert "[TOOL_CALL]" not in outcome.content
+
+
+def test_streaming_holds_back_a_foreign_control_block() -> None:
+    pieces = [
+        "我查一下。\n\n",
+        HASHROCKET_REPLY[:14],
+        HASHROCKET_REPLY[14:],
+        "\n以上是过程。",
+    ]
+    llm = ScriptedLLM(
+        [
+            {"chunks": pieces, "usage": (7, 3)},
+            {"chunks": ["查完了。"], "usage": (5, 2)},
+        ]
+    )
+    events = list(stream_agent_turn(llm, [{"role": "user", "content": "q"}], ToolRegistry([make_tool()])))
+    deltas = "".join(payload for name, payload in events if name == "delta")
+    assert "[TOOL_CALL]" not in deltas
+    assert "tool =>" not in deltas
+    assert "我查一下。" in deltas
+    assert "查完了。" in deltas
+
+
 # --- the loop ---------------------------------------------------------------
 
 

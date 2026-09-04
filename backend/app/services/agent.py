@@ -110,11 +110,42 @@ class ToolRegistry:
 # see and a parser can find, instead of a channel this gateway does not have.
 CALL_BLOCK = re.compile(r"```[ \t]*tool[ \t]*\n(?P<body>.*?)\n[ \t]*```", re.S)
 
+# Models reach for whichever tool-call dialect they were trained on, and one reply
+# can mix them: this deployment produced our fence, vendor XML and a hashrocket block
+# in three consecutive rounds (measured 2026-09-04). Anything that reads as a control
+# block is taken out of what the reader sees, parsed or not - an unparsed one goes
+# back to the model as a failure instead of shipping as an answer.
+LT = chr(60)
+GT = chr(62)
+
+VENDOR_XML = re.compile(
+    LT + "minimax:tool_call" + GT + r"\s*" + LT + r"invoke name=\"(?P<name>[^\"]+)\"" + GT
+    + r"(?P<body>.*?)" + LT + "/invoke" + GT + r"\s*" + LT + "/minimax:tool_call" + GT,
+    re.S,
+)
+XML_PARAMETER = re.compile(
+    LT + r"parameter name=\"(?P<key>[^\"]+)\"" + GT + r"(?P<value>.*?)" + LT + "/parameter" + GT, re.S
+)
+VENDOR_HASHROCKET = re.compile(
+    r"\[TOOL_CALL\]\s*(?P<body>.*?)\s*\[/TOOL_CALL\]",
+    re.S,
+)
+HR_NAME = re.compile(r"tool\s*=\s*>\s*\"(?P<name>[^\"]+)\"")
+HR_PARAMETER = re.compile(r"--(?P<key>[A-Za-z_][\w-]*)\s+\"(?P<value>[^\"]*)\"")
+
 # What a streamed tool block starts with. While the tail of the text on screen could
 # still become one of these, that tail is held back instead of shown: the reader must
 # never watch our control tokens scroll past.
 FENCE = chr(96) * 3
-CALL_OPENERS = (FENCE + "tool", FENCE + " tool", FENCE + "  tool")
+# Every way a control block can begin, with the token that closes it. The streamer
+# holds back from any opener that has not been closed yet, so no dialect escapes.
+CONTROL_PAIRS: tuple[tuple[str, str], ...] = (
+    (FENCE + "tool", FENCE),
+    (FENCE + " tool", FENCE),
+    (chr(60) + "minimax:tool_call" + chr(62), chr(60) + "/minimax:tool_call" + chr(62)),
+    ("[TOOL_CALL]", "[/TOOL_CALL]"),
+)
+CALL_OPENERS = tuple(opener for opener, _ in CONTROL_PAIRS)
 HOLDBACK_LIMIT = max(len(opener) for opener in CALL_OPENERS)
 
 
@@ -131,13 +162,21 @@ def releasable_len(text: str) -> int:
     """How much of a partially streamed reply is safe to put on screen.
 
     Guarding only the opener is not enough: once the marker has streamed past, its
-    body would follow it. So anything from an unclosed fence onwards waits, and a
-    closed fence (a proposal block, which is meant to be readable) releases.
+    body would follow it. So anything from an unclosed control block onwards waits,
+    and a closed fence that is not a call (a proposal block, which the reader is
+    meant to see) releases.
     """
-    start = text.find(FENCE)
-    if start != -1 and text.find(FENCE, start + len(FENCE)) == -1:
-        return start
-    return len(text) - holdback_len(text)
+    safe = len(text) - holdback_len(text)
+    for opener, closer in CONTROL_PAIRS:
+        start = text.find(opener)
+        if start != -1 and text.find(closer, start + len(opener)) == -1:
+            safe = min(safe, start)
+    # a bare unclosed fence is also held: it may still become a call, and a proposal
+    # fence that never closes is not something to show mid-stream either
+    fence = text.find(FENCE)
+    if fence != -1 and text.find(FENCE, fence + len(FENCE)) == -1:
+        safe = min(safe, fence)
+    return safe
 
 ARGUMENT_KEYS = ("arguments", "params", "input", "args")
 
@@ -155,29 +194,60 @@ def _coerce_arguments(value: Any) -> dict[str, Any]:
     raise ToolError("工具调用缺少 arguments 对象")
 
 
-def parse_call_blocks(text: str) -> tuple[str, list[ToolCall]]:
-    """Split a reply into what the reader sees and what the loop must execute."""
-    calls: list[ToolCall] = []
-    for match in CALL_BLOCK.finditer(text or ""):
-        try:
-            payload = json.loads(match.group("body"))
-        except ValueError:
-            calls.append(ToolCall(name="", arguments={}))
-            continue
-        if not isinstance(payload, dict) or not payload.get("name"):
-            calls.append(ToolCall(name="", arguments={}))
-            continue
-        try:
-            arguments = _coerce_arguments(
-                next((payload[key] for key in ARGUMENT_KEYS if key in payload), {})
-            )
-        except ToolError:
-            calls.append(ToolCall(name="", arguments={}))
-            continue
-        calls.append(ToolCall(name=str(payload["name"]), arguments=arguments))
+def _from_fence(match: re.Match[str]) -> ToolCall:
+    try:
+        payload = json.loads(match.group("body"))
+    except ValueError:
+        return ToolCall(name="", arguments={})
+    if not isinstance(payload, dict) or not payload.get("name"):
+        return ToolCall(name="", arguments={})
+    try:
+        arguments = _coerce_arguments(
+            next((payload[key] for key in ARGUMENT_KEYS if key in payload), {})
+        )
+    except ToolError:
+        return ToolCall(name="", arguments={})
+    return ToolCall(name=str(payload["name"]), arguments=arguments)
 
-    visible = CALL_BLOCK.sub("", text or "").strip()
-    return visible, calls
+
+def _from_xml(match: re.Match[str]) -> ToolCall:
+    arguments = {
+        item.group("key"): item.group("value").strip() for item in XML_PARAMETER.finditer(match.group("body"))
+    }
+    return ToolCall(name=match.group("name"), arguments=arguments)
+
+
+def _from_hashrocket(match: re.Match[str]) -> ToolCall:
+    body = match.group("body")
+    named = HR_NAME.search(body)
+    if named is None:
+        return ToolCall(name="", arguments={})
+    arguments = {item.group("key"): item.group("value") for item in HR_PARAMETER.finditer(body)}
+    return ToolCall(name=named.group("name"), arguments=arguments)
+
+
+# order matters only in that the fence is ours and is tried first
+_DIALECTS: list[tuple[re.Pattern[str], Callable[[re.Match[str]], ToolCall]]] = [
+    (CALL_BLOCK, _from_fence),
+    (VENDOR_XML, _from_xml),
+    (VENDOR_HASHROCKET, _from_hashrocket),
+]
+
+
+def parse_call_blocks(text: str) -> tuple[str, list[ToolCall]]:
+    """Split a reply into what the reader sees and what the loop must execute.
+
+    Every dialect is removed from the visible text. A block we cannot read still
+    becomes an invalid call, so the model is told rather than the reader being shown
+    our control tokens.
+    """
+    calls: list[ToolCall] = []
+    visible = text or ""
+    for pattern, build in _DIALECTS:
+        for match in pattern.finditer(visible):
+            calls.append(build(match))
+        visible = pattern.sub("", visible)
+    return visible.strip(), calls
 
 
 def parse_native_calls(message: dict[str, Any]) -> list[ToolCall]:
