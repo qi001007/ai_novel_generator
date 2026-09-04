@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Plus, Search, X } from "lucide-react";
+import {
+  Bookmark,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Globe,
+  Plus,
+  Search,
+  StickyNote,
+  Users,
+  X,
+} from "lucide-react";
 import type { RailPage } from "./ActivityRail";
 
 import StatusBadge from "./StatusBadge";
@@ -54,6 +66,9 @@ type LibraryGroup = {
   onOpen: () => void;
   /** Reader-facing file name; characters carry their own name, books keep the path. */
   fileName: (meta: FileMeta) => string;
+  /** 批注 6: a leading mark so the row is not four characters floating in a
+   *  wide empty margin. */
+  icon: typeof Users;
 };
 
 const MENU_WIDTH = 232;
@@ -126,6 +141,7 @@ export default function TreePane({
     {
       kind: "character",
       label: "人物",
+      icon: Users,
       open: charactersOpen,
       onOpen: onOpenCharacters,
       // 帧 26 的写法：陈默 · 7.md。名字给人看，路径里的 id 才是主键。
@@ -134,6 +150,7 @@ export default function TreePane({
     {
       kind: "foreshadow",
       label: "伏笔",
+      icon: Bookmark,
       open: foreshadowOpen,
       onOpen: onOpenForeshadow,
       fileName: bookName,
@@ -141,6 +158,7 @@ export default function TreePane({
     {
       kind: "worldview",
       label: "世界观",
+      icon: Globe,
       open: worldMapOpen,
       onOpen: onOpenWorldMap,
       fileName: bookName,
@@ -148,6 +166,7 @@ export default function TreePane({
     {
       kind: "feedback",
       label: "反馈记录",
+      icon: StickyNote,
       open: feedbackOpen,
       onOpen: onOpenFeedback,
       fileName: bookName,
@@ -314,6 +333,10 @@ export default function TreePane({
                   onContextMenu={(event) =>
                     openMenu(event, { kind: "file", path: draftPath(chapter.chapter_number) })
                   }
+                  // 批注 4: single click puts the chapter on the stage, the chevron
+                  // folds its files, and a double click is the ordinary way of saying
+                  // "open this one" - so it folds too, whichever half you hit.
+                  onDoubleClick={() => toggle(key)}
                 >
                   <button
                     type="button"
@@ -417,6 +440,7 @@ export default function TreePane({
                       {collapsed[`lib-${group.kind}`] ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                     </button>
                   ) : null}
+                  <group.icon size={13} aria-hidden="true" className="tree-glyph" />
                   <button type="button" className="tree-label" onClick={group.onOpen}>
                     {group.label}
                   </button>

@@ -17,7 +17,7 @@ import WorldMapPanel from "../components/WorldMapPanel";
 import { briefChapter, briefPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
-type RightView = "editor" | "files" | "feedback" | "settings" | "worldmap" | "foreshadow";
+type RightView = "editor" | "files" | "feedback" | "settings" | "worldmap" | "foreshadow" | "characters";
 
 type Panes = { sidebar: number; chat: number };
 
@@ -91,7 +91,12 @@ export default function WorkbenchPage() {
   const chapterIdParam = searchParams.get("chapter");
   const state = useWorkbench();
   const [rightView, setRightView] = useState<RightView>("editor");
-  const [charactersOpen, setCharactersOpen] = useState(false);
+  // One source, not two. There used to be a `charactersOpen` boolean beside
+  // `rightView`, and the two could disagree: opening 伏笔 cleared the boolean but
+  // left rightView alone, and opening 人物 set the boolean without clearing
+  // rightView - so both rows stayed lit and the character files could not be
+  // reached. 批注 5 was that, reproduced.
+  const charactersOpen = rightView === "characters";
   const [railPage, setRailPage] = useState<RailPage>("plan");
   const [panes, setPanes] = useState<Panes>(loadPanes);
   // 批注 14: any of the three columns can be put away, and the choice survives a
@@ -110,7 +115,6 @@ export default function WorkbenchPage() {
     const created = await state.createNextChapter();
     if (created === null) return;
     await refreshMetas();
-    setCharactersOpen(false);
     setRightView("files");
     void openFile(briefPath(created));
   }
@@ -264,7 +268,6 @@ export default function WorkbenchPage() {
     const previous = lastReveal.current;
     lastReveal.current = revealSeq;
     if (previous === revealSeq || !revealSeq) return;
-    setCharactersOpen(false);
     setRightView("files");
   }, [revealSeq]);
 
@@ -376,7 +379,6 @@ export default function WorkbenchPage() {
             className={`icon-button ${rightView === "settings" ? "active" : ""}`}
             aria-label="设置"
             onClick={() => {
-              setCharactersOpen(false);
               setRightView(rightView === "settings" ? "editor" : "settings");
             }}
           >
@@ -406,23 +408,19 @@ export default function WorkbenchPage() {
             feedbackOpen={rightView === "feedback"}
             onOpenFile={(path) => void openFile(path)}
             onSelectChapter={(chapterId) => {
-              setCharactersOpen(false);
               setRightView("editor");
               // Open it in the strip as well as selecting it, so a chapter you
               // clicked is where a chapter you opened would be.
               state.openChapterTab(chapterId);
             }}
-            onOpenCharacters={() => setCharactersOpen(true)}
+            onOpenCharacters={() => setRightView("characters")}
             onOpenFeedback={() => {
-              setCharactersOpen(false);
               setRightView("feedback");
             }}
             onOpenWorldMap={() => {
-              setCharactersOpen(false);
               setRightView("worldmap");
             }}
             onOpenForeshadow={() => {
-              setCharactersOpen(false);
               setRightView("foreshadow");
             }}
             worldMapOpen={rightView === "worldmap"}
