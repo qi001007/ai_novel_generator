@@ -264,6 +264,15 @@ export default function WorkbenchPage() {
           <strong className="topbar-title">{novel?.title ?? "未选择作品"}</strong>
         </div>
         <div className="topbar-right">
+          {/* 批注 19: health moved up to where a reader already looks for it, and
+              it only speaks when the pointer asks. */}
+          <span
+            className={`health-dot ${state.health === "ok" ? "ok" : ""}`}
+            title={`后端${state.health === "ok" ? "已连接" : state.health === "loading" ? "检查中" : "未连接"}`}
+            aria-label={`后端${state.health === "ok" ? "已连接" : state.health === "loading" ? "检查中" : "未连接"}`}
+          >
+            <i aria-hidden="true" />
+          </span>
           <span className={`model-chip ${state.llmStatus?.configured ? "ok" : "warn"}`}>
             <i aria-hidden="true" />
             {state.llmStatus
@@ -363,14 +372,10 @@ export default function WorkbenchPage() {
         )}
       </main>
 
-      <footer className="statusbar">
-        <span>
-          <i className={`dot ${state.health === "ok" ? "ok" : ""}`} aria-hidden="true" />
-          后端 {state.health === "ok" ? "已连接" : state.health === "loading" ? "检查中" : "未连接"}
-        </span>
-        <span>{chapter ? `第 ${chapter.chapter_number} 章 ${chapter.title || "未命名"}` : "未选章节"}</span>
-        <span className="tabular">{chapter ? `${chapter.word_count} 字` : ""}</span>
-      </footer>
+      {/* 批注 19: the bar said the chapter name a second time and announced that
+          the client reached the server, which is only news when it fails. The
+          health dot moved up beside the model chip where a reader already looks;
+          the count now lives with the editor that owns it. */}
       {state.error && !chapter ? <p className="status-error global-error">{state.error}</p> : null}
     </div>
   );

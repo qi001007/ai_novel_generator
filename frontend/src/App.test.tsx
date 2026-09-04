@@ -1,4 +1,5 @@
 import { StrictMode } from "react";
+import { fireEvent } from "@testing-library/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -67,6 +68,9 @@ describe("App", () => {
     const textarea = screen.getByLabelText("章节正文") as HTMLTextAreaElement;
     expect(textarea.value).toBe("旧正文。");
 
+    // The records panel is folded on entry (批注 17), so reaching a record is
+    // now a two-step contract: open it, then the row and its detail link exist.
+    fireEvent.click(screen.getByRole("button", { name: "展开调用记录" }));
     await waitFor(() => {
       expect(screen.getByText("test-model")).toBeTruthy();
       expect(screen.getByRole("button", { name: "详情" })).toBeTruthy();

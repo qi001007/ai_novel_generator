@@ -98,7 +98,7 @@ describe("EditorPane", () => {
     expect(document.querySelector(".editor-scroll textarea")).toBeTruthy();
   });
 
-  it("collapses the records panel but keeps the save state on screen", () => {
+  it("keeps the records panel folded until the icon asks for it", () => {
     seed([emptyChapter], emptyChapter.content);
     useWorkbench.setState({
       generationRuns: [{
@@ -117,16 +117,23 @@ describe("EditorPane", () => {
       }],
     });
     render(<MemoryRouter><EditorPane /></MemoryRouter>);
-    expect(screen.getByText("调用记录")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "收起调用记录" }));
-    // The title row stays; it is what carries the control to open it again.
+    // 批注 17: token accounting was open on every entry, so it was the first
+    // thing a writer saw. 批注 18: its door is an icon now, not a bar.
+    expect(screen.queryByText("调用记录")).toBeNull();
     expect(document.querySelector(".record-list")).toBeNull();
-    expect(screen.getByRole("button", { name: "展开调用记录" })).toBeTruthy();
-    // The status line survives collapsing, but a clean document has nothing
-    // to report: whether client and server agree is implementation news.
-    expect(document.querySelector(".editor-footer .save-state")).toBeTruthy();
-    expect(screen.queryByText("与服务器一致")).toBeNull();
+    const toggle = screen.getByRole("button", { name: "展开调用记录" });
+    expect(toggle.querySelector("svg")).toBeTruthy();
+
+    fireEvent.click(toggle);
+    expect(screen.getByText("调用记录")).toBeTruthy();
+    expect(document.querySelector(".record-list")).toBeTruthy();
+
+    // One door, not two: the same icon closes it again.
+    fireEvent.click(screen.getByRole("button", { name: "收起调用记录" }));
+    expect(document.querySelector(".record-list")).toBeNull();
+    // Save state and the count moved onto the action line, so folding the panel
+    // no longer takes them with it.
+    expect(document.querySelector(".editor-status")?.textContent).toContain("字");
     expect(window.localStorage.getItem("novelgen.editor-bottom")).toContain("true");
   });
 

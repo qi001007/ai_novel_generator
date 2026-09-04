@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { History } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -25,7 +25,9 @@ const BOTTOM_MIN = 96;
 const BOTTOM_MAX = 420;
 
 function readBottomPref() {
-  const fallback = { height: 168, collapsed: false };
+  // 批注 17: the record list used to open on every entry, so the first thing a
+  // writer saw was a panel of token accounting. It is now folded unless opened.
+  const fallback = { height: 168, collapsed: true };
   try {
     const raw = window.localStorage.getItem(BOTTOM_KEY);
     if (!raw) return fallback;
@@ -309,10 +311,14 @@ export default function EditorPane() {
         </button>
       </div>
       <header className="editor-toolbar">
-        {/* The tab above already says which chapter this is, and the status bar
-            already counts the words. Repeating either here is what made the band
-            look like a form rather than an editor. 保存 is gone too: Ctrl+S is
-            wired, and the dirty dot is the reminder. */}
+        {/* The tab above already says which chapter this is. Save state and the
+            count live here as one quiet line instead of a band under the text. */}
+        <span className="editor-status tabular">
+          {dirty ? "未保存" : savedAt ? `已保存 ${savedAt}` : ""}
+          {` · ${draftContent.replace(/\s/g, "").length} 字`}
+        </span>
+        {notice ? <span className="notice">{notice}</span> : null}
+        {state.error ? <span className="status-error">{state.error}</span> : null}
         <div className="editor-actions">
           <button type="button" disabled={busy} onClick={() => void state.runMachineCheck()}>机械校验</button>
           <button type="button" disabled={busy} onClick={() => void state.runAiReview()}>AI 自检</button>
@@ -325,6 +331,19 @@ export default function EditorPane() {
             onClick={() => void state.extractChapterFacts()}
           >
             事实落库
+          </button>
+          {/* 批注 18: the entry point was a full-width bar sitting under the text
+              whether or not anyone wanted it. One icon beside the other actions
+              now opens a panel that carries its own heading. */}
+          <button
+            type="button"
+            className="icon-button"
+            aria-expanded={!bottom.collapsed}
+            aria-label={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
+            title={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
+            onClick={() => setBottom((prev) => ({ ...prev, collapsed: !prev.collapsed }))}
+          >
+            <History size={15} />
           </button>
         </div>
       </header>
@@ -370,26 +389,10 @@ export default function EditorPane() {
            document, and the chevron that folds the list under it. It used to
            be two stacked rows, and once the header shortcut went away the
            extra one read as dead space. */}
-        <header className="editor-footer" aria-live="polite">
-          <h3>调用记录</h3>
-          {/* A clean document has nothing to report. Saying the client and
-              server agree was news about the mechanism, not the manuscript. */}
-          <span className="save-state">
-            {dirty ? "未保存" : savedAt ? `已保存 ${savedAt}` : ""}
-          </span>
-          {notice ? <span className="notice">{notice}</span> : null}
-          {state.error ? <span className="status-error">{state.error}</span> : null}
-          <button
-            type="button"
-            className="footer-toggle"
-            aria-expanded={!bottom.collapsed}
-            aria-label={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
-            title={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
-            onClick={() => setBottom((prev) => ({ ...prev, collapsed: !prev.collapsed }))}
-          >
-            {bottom.collapsed ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-          </button>
-        </header>
+        {/* The heading only exists while the panel is open, and the single door
+            stays the History icon in the action row. A second "收起" button here
+            was a duplicate control with a duplicate accessible name. */}
+        {bottom.collapsed ? null : <h3 className="records-title">调用记录</h3>}
       {generationRuns.length > 0 && !bottom.collapsed && (
         <ul className="record-list" aria-label="生成与审稿记录">
             {generationRuns.map((run) => (
