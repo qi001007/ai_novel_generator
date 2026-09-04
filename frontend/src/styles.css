@@ -1048,6 +1048,12 @@ select:focus-visible {
   padding: 6px 12px 0;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+  /* Same language as .file-tabs. A tab's automatic minimum width is its own
+     text, so without this the strip simply ran past the window and the last
+     tab was cut: measured on an 860px viewport its right edge was 864.8. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
 }
 
 .editor-tab {
@@ -1055,6 +1061,9 @@ select:focus-visible {
   align-items: center;
   gap: 6px;
   max-width: 240px;
+  /* Do not squeeze the label into two lines to make the strip fit; let the
+     strip scroll instead. */
+  flex: none;
   min-height: 30px;
   padding: 4px 12px;
   border: 1px solid var(--border);
