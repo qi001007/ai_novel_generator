@@ -129,6 +129,26 @@ describe("settled UI decisions must not regress", () => {
     expect(css).toMatch(/\.chat-row\.user \+ \.chat-row\.assistant,[\s\S]*?margin-top: 40px/);
   });
 
+  it("focus never paints the brand colour on a control (第六轮批注16 / 第十一批批注2 / 第十四批批注5)", () => {
+    // Three times raised, because each time one element was fixed instead of the
+    // class. The rule is now mechanical: any rule that reacts to :focus may not use
+    // --accent for a frame, a ring or a fill. The text caret is the one allowed
+    // exception - it is the writing cursor, not a border, and it is 2px wide.
+    const offenders: string[] = [];
+    for (const match of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const sel = match[1].trim();
+      const body = match[2];
+      if (!sel.includes("focus")) continue;
+      const painted = body
+        .split(";")
+        .map((d) => d.trim())
+        .filter((d) => d.startsWith("outline") || d.startsWith("border-color") || d.startsWith("box-shadow") || d.startsWith("background"))
+        .filter((d) => d.includes("var(--accent"));
+      if (painted.length) offenders.push(sel.replace(/\s+/g, " ") + " -> " + painted.join(" / "));
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
   it("the dark theme stays at the owner's measured grey (第十轮批注1)", () => {
     expect(css).toMatch(/\[data-theme="dark"\][\s\S]*?--surface-alt: #191a1b;/);
     expect(css).toMatch(/--surface: #1f2023;/);

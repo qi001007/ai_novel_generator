@@ -74,17 +74,7 @@
 - 复用：`.file-tabs` 与 `.editor-tabs` 共用一个组件/hook，别各写一份。
 - 验收：条溢出时悬停能看到并拖动滑块；同时 tab 高度恒 39px、条恒 40px（两个都要）。
 
-### 5 目录 textarea 点击后的橙色外框（第二次点，上轮漏做）
-
-第十一批批注 2 已经说过「点击之后它还是有那个橙色的边框」，**我上轮没改这条**。
-主人本轮补了一句：「你欠了好多东西」。
-
-- 根因：全局 `input/textarea/select:focus-visible` 用主色描边。
-- 同类一次扫完，别再只改被点到的那一个：`input`、`textarea`、`select`、
-  `.tree-search`、`.toc-search:focus-within`、`.model-pill`、`.toc-hit-field`、
-  `.chat-input textarea`、`.composer` 系。规则与第六轮批注 16 一致：**聚焦不上主色**，
-  用中性 `--border-strong` 提亮即可（可访问性靠 outline-offset/对比，不靠主色）。
-- 验收：点进目录里任意单元格，计算样式 `border-color`/`outline-color` 不含 `--accent`。
+### 5 ✅ 已修（`focus` 见 §0.9 新增断言）
 
 ### 6 树里的章节状态点：不同步 + 橙色画成了圆圈
 

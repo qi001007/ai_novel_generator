@@ -618,6 +618,23 @@
       测试跟着设计走：原先钉「状态：草稿」存在的那条改成钉「**树里那一个**在、
       **标签里没有** `.status-dot`、关闭钮可及名是插值后的真章名」。
       前端 92 全绿、`tsc -b --force` 干净、build 干净、命中区审计 0/0/0。
+- [x] **第十四批·批注 5（2026-09-05）：聚焦不再上主色，且这次钉的是「一类」不是「一个」**：
+      主人第三次提同一件事（第六轮批注 16 输入框、第十一批批注 2 目录单元格、第十四批批注 5
+      同一处再说一遍「也没改，你欠了好多东西」）。前两次我都只改了被点到的那一个，
+      所以它每次都「没改」。这次把 `styles.css` 里**每一条对 `:focus` 作出反应的规则**
+      全部换成中性 `--text-2`（两套主题下都有 4.5:1 以上对比，可访问性不降级）：
+      全局 `button/input/textarea/select:focus-visible`、`input:focus-visible` 的边框、
+      `.tree-search`、`.toc-search:focus-within`、`.toc-row input/textarea:focus`、
+      `.character-modal` 三件套、`.editor-body:focus-within .editor-scroll`、
+      `.book-new-card:focus-visible`、`.splitter:focus-visible`、`.prefs-field input`。
+      **唯一保留的主色是光标 `caret-color`**——那是打字光标不是边框，2px 宽，
+      写进例外而不是偷偷漏掉。
+      闸门：`uiInvariants.test.ts` 新增一条**遍历式**断言——任何选择器含 `focus` 的规则，
+      其 `outline / border-color / box-shadow / background` 里出现 `var(--accent)` 就红，
+      并把命中的选择器与声明一起打出来。以后再有人（包括我）只改一个元素，
+      这条断言会直接把「还有哪几处」列出来。实测目录单元格聚焦后
+      `border: rgb(157,155,150)`、`box-shadow` 同色 22%，主色 rgb(224,106,78) 不再出现。
+      前端 107 → 108。
 - [x] **浏览器批注第十三批（2026-09-05，四处「你改回去了」+ 两条老要求）——全修，并装上机器闸门**：
       主人问「你是在哪个代码的基础上改的」。**逐条查到自己头上**，责任提交如下：
       **① 标签条滚动条占布局、tab 被压矮** ← `bb4cb8d`（我 01:40 的第十二批）。我把
