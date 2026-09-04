@@ -28,6 +28,12 @@ type WorkbenchState = {
   chapters: Chapter[];
   selectedChapterId: number | null;
   draftContent: string;
+  /** One buffer per chapter: `saved` is the server baseline, `draft` what is in
+   *  the field. Before this there was a single buffer reloaded from the chapter
+   *  record on every selection, so clicking another chapter discarded unsaved text
+   *  and the tab looked clean. */
+  chapterDrafts: Record<number, { saved: string; draft: string }>;
+  draftSaved: string;
   machineCheck: MachineCheckResult | null;
   generationRuns: GenerationRun[];
   reviews: Review[];
@@ -48,6 +54,7 @@ type WorkbenchState = {
   selectBrief: (briefId: number) => void;
   selectChapter: (chapterId: number) => void;
   setDraftContent: (content: string) => void;
+  isChapterDirty: (chapterId: number) => boolean;
   generateDraft: () => Promise<void>;
   saveChapter: () => Promise<void>;
   runMachineCheck: () => Promise<void>;
@@ -69,6 +76,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   chapters: [],
   selectedChapterId: null,
   draftContent: "",
+  chapterDrafts: {},
+  draftSaved: "",
   machineCheck: null,
   generationRuns: [],
   reviews: [],
@@ -140,18 +149,42 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     // Drop the previous book's slices before the fetch: while it is in flight the
     // store would otherwise hold a new novel id next to old chapters, and anything
     // that builds a URL from both would name a pair that never existed.
-    set({ chapters: [], briefs: [], selectedChapterId: null, selectedBriefId: null, generationRuns: [], reviews: [] });
+    // Drafts belong to a book. Carrying them across a switch would show one
+    // novel's text in another novel's tab, keyed by a chapter id that may exist
+    // in both.
+    set({
+      chapters: [],
+      briefs: [],
+      selectedChapterId: null,
+      selectedBriefId: null,
+      generationRuns: [],
+      reviews: [],
+      chapterDrafts: {},
+      draftContent: "",
+      draftSaved: "",
+    });
     try {
       const [briefs, chapters] = await Promise.all([
         api.get<ChapterBrief[]>(`/api/novels/${novelId}/planning/briefs`),
         api.get<Chapter[]>(`/api/novels/${novelId}/chapters`),
       ]);
+      // Seed a buffer per chapter here rather than only in selectChapter: the
+      // first chapter is chosen by assignment during load, so it never passes
+      // through selectChapter, and an unseeded buffer means an empty editor.
+      const chapterDrafts: Record<number, { saved: string; draft: string }> = {};
+      chapters.forEach((item) => {
+        chapterDrafts[item.id] = { saved: item.content ?? "", draft: item.content ?? "" };
+      });
+      const first = chapters[0] ?? null;
       set({
         selectedNovelId: novelId,
         briefs,
         selectedBriefId: briefs[0]?.id ?? null,
         chapters,
-        selectedChapterId: chapters[0]?.id ?? null,
+        selectedChapterId: first?.id ?? null,
+        chapterDrafts,
+        draftContent: first?.content ?? "",
+        draftSaved: first?.content ?? "",
       });
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "加载失败" });
@@ -202,11 +235,47 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   selectChapter(chapterId) {
-    set({ selectedChapterId: chapterId });
+    const { chapters, selectedChapterId, draftContent, chapterDrafts } = get();
+    const drafts = { ...chapterDrafts };
+    // Write the outgoing field back before leaving it, so nothing typed is lost
+    // by the act of looking at another chapter.
+    if (selectedChapterId !== null && drafts[selectedChapterId]) {
+      drafts[selectedChapterId] = { ...drafts[selectedChapterId], draft: draftContent };
+    }
+    const chapter = chapters.find((item) => item.id === chapterId);
+    if (!chapter) {
+      set({ selectedChapterId: chapterId, chapterDrafts: drafts });
+      return;
+    }
+    const existing = drafts[chapterId];
+    const entry = existing ?? { saved: chapter.content ?? "", draft: chapter.content ?? "" };
+    drafts[chapterId] = entry;
+    set({
+      selectedChapterId: chapterId,
+      chapterDrafts: drafts,
+      draftContent: entry.draft,
+      draftSaved: entry.saved,
+    });
   },
 
   setDraftContent(content) {
-    set({ draftContent: content });
+    const { selectedChapterId, chapterDrafts, draftSaved } = get();
+    if (selectedChapterId === null) {
+      set({ draftContent: content });
+      return;
+    }
+    set({
+      draftContent: content,
+      chapterDrafts: {
+        ...chapterDrafts,
+        [selectedChapterId]: { saved: chapterDrafts[selectedChapterId]?.saved ?? draftSaved, draft: content },
+      },
+    });
+  },
+
+  isChapterDirty(chapterId) {
+    const entry = get().chapterDrafts[chapterId];
+    return entry ? entry.draft !== entry.saved : false;
   },
 
   async generateDraft() {
@@ -234,7 +303,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         (event) => {
           if (event.event === "delta") {
             streamed += event.data.text;
-            set({ draftContent: streamed });
+            get().setDraftContent(streamed);
             useFiles.getState().setDraft(
               draftPath(chapter.chapter_number),
               draftDocument(chapter.chapter_number, streamed),
@@ -288,9 +357,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       const updated = await api.get<Chapter>(
         `/api/novels/${selectedNovelId}/chapters/${chapter.id}`,
       );
+      const saved = updated.content ?? "";
       set({
         chapters: get().chapters.map((item) => (item.id === updated.id ? updated : item)),
-        draftContent: updated.content,
+        draftContent: saved,
+        draftSaved: saved,
+        chapterDrafts: { ...get().chapterDrafts, [chapter.id]: { saved, draft: saved } },
       });
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "保存失败" });

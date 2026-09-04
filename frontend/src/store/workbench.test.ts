@@ -221,3 +221,50 @@ describe("workbench novel selection", () => {
     expect(useWorkbench.getState().selectedChapterId).toBe(8);
   });
 });
+
+describe("per-chapter draft buffers", () => {
+  const a: Chapter = { ...chapter, id: 8, chapter_number: 1, content: "第一章原句。", title: "甲" };
+  const b: Chapter = { ...chapter, id: 9, chapter_number: 2, content: "第二章原句。", title: "乙" };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useWorkbench.setState({
+      selectedNovelId: 1,
+      chapters: [a, b],
+      selectedChapterId: a.id,
+      chapterDrafts: {
+        [a.id]: { saved: a.content, draft: a.content },
+        [b.id]: { saved: b.content, draft: b.content },
+      },
+      draftContent: a.content,
+      draftSaved: a.content,
+    });
+  });
+
+  it("keeps unsaved text when the reader looks at another chapter", () => {
+    // Regression: one shared buffer was reloaded from the chapter record on every
+    // selection, so clicking chapter two threw away what was typed into chapter one.
+    useWorkbench.getState().setDraftContent("第一章改到一半。");
+    expect(useWorkbench.getState().isChapterDirty(a.id)).toBe(true);
+
+    useWorkbench.getState().selectChapter(b.id);
+    expect(useWorkbench.getState().draftContent).toBe("第二章原句。");
+    expect(useWorkbench.getState().isChapterDirty(b.id)).toBe(false);
+
+    useWorkbench.getState().selectChapter(a.id);
+    expect(useWorkbench.getState().draftContent).toBe("第一章改到一半。");
+    expect(useWorkbench.getState().draftSaved).toBe("第一章原句。");
+    expect(useWorkbench.getState().isChapterDirty(a.id)).toBe(true);
+  });
+
+  it("does not leak one book's drafts into the next", async () => {
+    useWorkbench.getState().setDraftContent("没保存的稿子。");
+    // selectNovel awaits briefs first, then chapters.
+    vi.mocked(api.get).mockResolvedValueOnce([]).mockResolvedValueOnce([b]);
+    await useWorkbench.getState().selectNovel(2);
+    const s = useWorkbench.getState();
+    expect(s.chapterDrafts[a.id]).toBeUndefined();
+    expect(s.draftContent).toBe("第二章原句。");
+    expect(s.isChapterDirty(b.id)).toBe(false);
+  });
+});

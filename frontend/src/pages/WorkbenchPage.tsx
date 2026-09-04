@@ -191,9 +191,11 @@ export default function WorkbenchPage() {
 
   const chapter = state.chapters.find((item) => item.id === state.selectedChapterId) ?? null;
 
-  useEffect(() => {
-    state.setDraftContent(chapter?.content ?? "");
-  }, [chapter?.id]);
+  /* This effect used to push the chapter record into the draft buffer on every
+     selection, which is what silently discarded unsaved text when the reader
+     clicked another chapter - and a chapter tab strip makes that the normal way
+     to move around. The store now owns one buffer per chapter and hydrates it in
+     selectChapter, so nothing has to sync here. */
 
   // The store decides when a file deserves the stage (tree click, AI proposal,
   // and the B→D jump all route through open()). revealSeq survives this route,

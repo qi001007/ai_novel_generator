@@ -101,7 +101,10 @@ export default function EditorPane() {
       prev.progress === next.progress && prev.height === next.height ? prev : next,
     );
   }, []);
-  const dirty = chapter ? draftContent !== (chapter.content ?? "") : false;
+  // Baseline is the buffer's own saved text, not the chapter record: the record
+  // only refreshes after a save, and comparing against it hid edits made while a
+  // generation was in flight.
+  const dirty = chapter ? draftContent !== state.draftSaved : false;
 
   useEffect(() => {
     setSavedAt(null);
