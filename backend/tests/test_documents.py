@@ -64,8 +64,16 @@ def test_file_tree_lists_the_planning_layers(client: TestClient) -> None:
         "arcs.md",
         "chapters/0042/draft.md",
         "chapters/0042/brief.md",
+        # 帧 26: the settings library sits beside the four layers, and the books are
+        # always there - an empty one is a page to fill, not a missing file.
+        "settings/foreshadow.md",
+        "settings/worldview.md",
     ]
-    assert [item["layer"] for item in files] == ["A", "B", "C", "正文", "D"]
+    assert [(item["path"], item["layer"]) for item in files][-2:] == [
+        ("settings/foreshadow.md", "设定"),
+        ("settings/worldview.md", "设定"),
+    ]
+    assert [item["layer"] for item in files] == ["A", "B", "C", "正文", "D", "设定", "设定"]
 
 
 def test_documents_render_as_markdown(client: TestClient) -> None:

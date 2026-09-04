@@ -20,7 +20,9 @@ from app.models import (
     Chapter,
     ChapterBrief,
     Character,
+    Foreshadow,
     PlanningBlueprint,
+    Setting,
     TocEntry,
     utc_now,
 )
@@ -36,6 +38,9 @@ TOC_PATH = "toc.md"
 ARCS_PATH = "arcs.md"
 CHARACTER_DIR = "settings/characters"
 CHARACTER_NEW_PATH = f"{CHARACTER_DIR}/new.md"
+# 帧 26 的三册：与四层规划同级的一份文档，DB 是真源，这里是投影（D-15）。
+FORESHADOW_PATH = "settings/foreshadow.md"
+WORLDVIEW_PATH = "settings/worldview.md"
 
 BLUEPRINT_FIELDS = ("main_line", "ending", "core_conflicts", "themes", "constraints")
 BLUEPRINT_AI_FIELDS = BLUEPRINT_FIELDS
@@ -86,10 +91,34 @@ CHARACTER_FIELDS = (
 # durable identity, so a rename stays a deliberate human act.
 CHARACTER_AI_FIELDS = tuple(name for name in CHARACTER_FIELDS if name != "name")
 
+# 埋设与收束章号只由主人调整，姓名同理不是 AI 能改的：路径里的 id 才是持久身份。
+FORESHADOW_FIELDS = (
+    "foreshadow",
+    "title",
+    "planted_chapter",
+    "expected_payoff_chapter",
+    "payoff_chapter",
+    "status",
+    "content",
+)
+FORESHADOW_AI_FIELDS = ("title", "status", "content")
+
+WORLDVIEW_FIELDS = (
+    "setting",
+    "name",
+    "category",
+    "is_confirmed",
+    "source_chapter",
+    "current_state",
+    "content",
+)
+WORLDVIEW_AI_FIELDS = ("category", "current_state", "content")
+
 # The codec owns the field vocabulary, so the type sets are read from it.
 _INT_FIELDS = markdown_doc.INT_FIELDS
 _OPTIONAL_INT_FIELDS = markdown_doc.OPTIONAL_INT_FIELDS
 _LIST_FIELDS = markdown_doc.LIST_FIELDS
+_BOOL_FIELDS = markdown_doc.BOOL_FIELDS
 
 _BRIEF_NAME = re.compile(r"^briefs/([0-9]{1,6})\.md$")
 _CHAPTER_BRIEF_NAME = re.compile(r"^chapters/([0-9]{1,6})/brief\.md$")
@@ -204,6 +233,10 @@ def resolve_path(path: str) -> tuple[str, int | None]:
     match = _CHAPTER_DRAFT_NAME.match(normalized)
     if match:
         return "draft", _chapter_number_or_404(int(match.group(1)))
+    if normalized == FORESHADOW_PATH:
+        return "foreshadow", None
+    if normalized == WORLDVIEW_PATH:
+        return "worldview", None
     if normalized == CHARACTER_NEW_PATH:
         return "character", None
     match = _CHARACTER_NAME.match(normalized)
@@ -239,8 +272,10 @@ _FIELDS_BY_KIND: dict[str, tuple[str, ...]] = {
     "brief": BRIEF_FIELDS,
     "draft": DRAFT_FIELDS,
     "character": CHARACTER_FIELDS,
+    "foreshadow": FORESHADOW_FIELDS,
+    "worldview": WORLDVIEW_FIELDS,
 }
-_LIST_KINDS = frozenset({"toc", "arcs"})
+_LIST_KINDS = frozenset({"toc", "arcs", "foreshadow", "worldview"})
 
 
 def validate_structure(path: str, text: str) -> str:
@@ -381,6 +416,54 @@ def _brief_model(brief: ChapterBrief | None, chapter_number: int) -> dict[str, A
     }
 
 
+def _foreshadow_rows(session: Session, novel_id: int) -> list[Foreshadow]:
+    return list(
+        session.exec(
+            select(Foreshadow)
+            .where(Foreshadow.novel_id == novel_id)
+            .order_by(Foreshadow.planted_chapter, Foreshadow.id)
+        ).all()
+    )
+
+
+def _worldview_rows(session: Session, novel_id: int) -> list[Setting]:
+    return list(
+        session.exec(
+            select(Setting).where(Setting.novel_id == novel_id).order_by(Setting.id)
+        ).all()
+    )
+
+
+def _foreshadow_model(rows: list[Foreshadow]) -> list[dict[str, Any]]:
+    return [
+        {
+            "foreshadow": row.id,
+            "title": _block(row.title),
+            "planted_chapter": row.planted_chapter,
+            "expected_payoff_chapter": row.expected_payoff_chapter,
+            "payoff_chapter": row.payoff_chapter,
+            "status": row.status,
+            "content": _block(row.content),
+        }
+        for row in rows
+    ]
+
+
+def _worldview_model(rows: list[Setting]) -> list[dict[str, Any]]:
+    return [
+        {
+            "setting": row.id,
+            "name": _block(row.name),
+            "category": row.category,
+            "is_confirmed": row.is_confirmed,
+            "source_chapter": row.source_chapter,
+            "current_state": _block(row.current_state),
+            "content": _block(row.content),
+        }
+        for row in rows
+    ]
+
+
 def _character_model(row: Character) -> dict[str, Any]:
     # portrait and relationships are deliberately absent: a portrait is a base64
     # data URL (an asset, not prose) and relationships are a JSON map. Neither
@@ -435,6 +518,10 @@ def list_files(session: Session, novel_id: int) -> list[FileMeta]:
         files.append(
             FileMeta(character_path(person.id), "character", "设定", f"{person.name} 档案")
         )
+    # The books always exist, like the four planning layers: an empty one is a page
+    # waiting to be filled, not a missing file.
+    files.append(FileMeta(FORESHADOW_PATH, "foreshadow", "设定", "伏笔"))
+    files.append(FileMeta(WORLDVIEW_PATH, "worldview", "设定", "世界观"))
     return files
 
 
@@ -452,6 +539,18 @@ def read_file(session: Session, novel_id: int, path: str) -> FileDoc:
         model = _arcs_model(_arc_rows(session, novel_id))
         text = render_document("arcs", model)
         return FileDoc(ARCS_PATH, kind, "C", "剧情弧", text, ARC_AI_FIELDS, _revision(text))
+    if kind == "foreshadow":
+        model = _foreshadow_model(_foreshadow_rows(session, novel_id))
+        text = render_document("foreshadow", model)
+        return FileDoc(
+            FORESHADOW_PATH, kind, "设定", "伏笔", text, FORESHADOW_AI_FIELDS, _revision(text)
+        )
+    if kind == "worldview":
+        model = _worldview_model(_worldview_rows(session, novel_id))
+        text = render_document("worldview", model)
+        return FileDoc(
+            WORLDVIEW_PATH, kind, "设定", "世界观", text, WORLDVIEW_AI_FIELDS, _revision(text)
+        )
 
     if kind == "character":
         if number is None:
@@ -535,6 +634,18 @@ def _require_ai_values(
     return [name for name in before if before[name] != after.get(name)]
 
 
+def _as_bool(value: Any, label: str) -> bool:
+    """A flag column never stores None; an empty bullet means 否."""
+    if value is None or isinstance(value, bool):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"是", "true", "yes", "1"}:
+        return True
+    if text in {"", "否", "false", "no", "0"}:
+        return False
+    raise DocumentError(f"{label} 只能写 是 或 否，收到「{value}」")
+
+
 def _coerce(mapping: dict[str, Any], expected: tuple[str, ...], label: str) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name in expected:
@@ -545,6 +656,8 @@ def _coerce(mapping: dict[str, Any], expected: tuple[str, ...], label: str) -> d
             out[name] = _as_optional_int(raw, f"{label}.{name}")
         elif name in _LIST_FIELDS:
             out[name] = _as_list(raw, f"{label}.{name}")
+        elif name in _BOOL_FIELDS:
+            out[name] = _as_bool(raw, f"{label}.{name}")
         else:
             out[name] = _as_text(raw, f"{label}.{name}")
     return out
@@ -585,6 +698,8 @@ def write_file(
         "brief": _write_brief,
         "draft": _write_draft,
         "character": _write_character,
+        "foreshadow": _write_foreshadow,
+        "worldview": _write_worldview,
     }[kind]
     changed = writer(session, novel_id, parsed, actor=actor, number=number)
     session.commit()
@@ -830,6 +945,124 @@ def _write_draft(
     _touch(chapter)
     session.add(chapter)
     return changed
+
+
+def _write_book(
+    session: Session,
+    novel_id: int,
+    parsed: Any,
+    *,
+    actor: str,
+    path: str,
+    label: str,
+    shape: str,
+    fields: tuple[str, ...],
+    ai_fields: tuple[str, ...],
+    rows: list[Any],
+    model: list[dict[str, Any]],
+    make: Any,
+) -> list[str]:
+    """One writer for every keyed book of records.
+
+    The key is the row id, so a create arrives as `?` and the database assigns it -
+    the same rule that keeps 弧 N from being renumbered by a proposal.
+    """
+    if not isinstance(parsed, list):
+        raise DocumentError(f"{path} 必须是「{shape}」的记录列表")
+
+    by_id = {row.id: row for row in rows}
+    incoming = [
+        _require_keys(row, fields, f"{path} 第 {i + 1} 条") for i, row in enumerate(parsed)
+    ]
+
+    if actor == ACTOR_AI:
+        _require_same_ids(incoming, [row[fields[0]] for row in model], fields[0], path)
+        changed: list[str] = []
+        for raw in incoming:
+            after = _coerce(raw, fields, path)
+            row = by_id[after[fields[0]]]
+            touched = _require_ai_values(
+                ai_fields, model[[m[fields[0]] for m in model].index(after[fields[0]])], after,
+                f"{label} {after[fields[0]]}",
+            )
+            for name in touched:
+                setattr(row, name, after[name])
+                changed.append(f"{row.id}.{name}")
+            _touch(row)
+            session.add(row)
+        return changed
+
+    changed = []
+    seen: set[int] = set()
+    for raw in incoming:
+        after = _coerce(raw, fields, path)
+        key = after[fields[0]]
+        if key is not None:
+            if key in seen:
+                raise DocumentError(f"{label} {key} 出现了两次")
+            seen.add(key)
+        row = by_id.get(key)
+        if row is None:
+            if actor == ACTOR_AI or key is not None:
+                raise DocumentError(
+                    f"{label} {key} 不存在；新建请写成「## {label} ? 标题」，主键由系统分配"
+                )
+            row = make(novel_id, after)
+            session.add(row)
+            session.flush()
+            by_id[row.id] = row
+            changed.append(f"{row.id}.created")
+        for name, value in after.items():
+            if name == fields[0]:
+                continue
+            if getattr(row, name) != value:
+                setattr(row, name, value)
+                changed.append(f"{row.id}.{name}")
+        _touch(row)
+    return changed
+
+
+def _make_foreshadow(novel_id: int, after: dict[str, Any]) -> Foreshadow:
+    if not after.get("planted_chapter"):
+        raise DocumentError("新建伏笔必须写埋设章")
+    return Foreshadow(
+        novel_id=novel_id,
+        title=after["title"] or "未命名伏笔",
+        planted_chapter=after["planted_chapter"],
+        status=after["status"] or "open",
+    )
+
+
+def _make_setting(novel_id: int, after: dict[str, Any]) -> Setting:
+    return Setting(
+        novel_id=novel_id,
+        name=after["name"] or "未命名设定",
+        category=after["category"] or "其他",
+    )
+
+
+def _write_foreshadow(
+    session: Session, novel_id: int, parsed: Any, *, actor: str, number: int | None
+) -> list[str]:
+    rows = _foreshadow_rows(session, novel_id)
+    return _write_book(
+        session, novel_id, parsed,
+        actor=actor, path=FORESHADOW_PATH, label="伏笔", shape="## 伏笔 1 伏笔名",
+        fields=FORESHADOW_FIELDS, ai_fields=FORESHADOW_AI_FIELDS,
+        rows=rows, model=_foreshadow_model(rows), make=_make_foreshadow,
+    )
+
+
+def _write_worldview(
+    session: Session, novel_id: int, parsed: Any, *, actor: str, number: int | None
+) -> list[str]:
+    rows = _worldview_rows(session, novel_id)
+    return _write_book(
+        session, novel_id, parsed,
+        actor=actor, path=WORLDVIEW_PATH, label="设定", shape="## 设定 1 设定名",
+        fields=WORLDVIEW_FIELDS, ai_fields=WORLDVIEW_AI_FIELDS,
+        rows=rows, model=_worldview_model(rows), make=_make_setting,
+    )
 
 
 def _write_character(

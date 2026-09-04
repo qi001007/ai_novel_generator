@@ -112,7 +112,7 @@ chapters/0042/draft.md  正文投影     ← 旧编辑器与终审编辑均写�
 | 1 | ~~Agent 没有 agentic 内核~~ **S2 第 1 步已补（2026-09-04）**：工具注册表 + 多步循环 + 联网查证 + 步数与 token 上限 | `services/agent.py`（注册表／协议／循环）+ `services/agent_tools.py`（`list_files` / `read_file` / `web_search`）；`tests/test_agent_loop.py` 19 项、`test_agent_tools.py` 9 项、`test_agent_chat.py` 3 项；真机一轮 `/search 司天监` 走通两步并回来源链接。**仍缺**：写作环触发（S4）、按规范改规划只有提案一途 | S2 已做，S4 待做 |
 | 2 | ~~`/search` 斜杠命令不存在~~ **已补**：`/search <词>` 让 Agent 调 `web_search` | 命令表在 `ChatPane.tsx` 的 `commands`；实测来源为中文维基百科（免密钥）。**免密钥通用搜索引擎不可用**：DuckDuckGo 的 lite/html 两端点本机实测 403，要通用网页结果必须配搜索 API | S2 |
 | 3 | 双栏对照生成 + 逐段合并、选区 Diff 修改 | WORKSTREAM C4 全节未勾；Figma 帧 05 已批但代码未做（T-12） | S1 之后 |
-| 4 | 伏笔没有写入端点 | 注入清单里伏笔档为空，novel 1 无 `foreshadow` 行 | P2 |
+| 4 | ~~伏笔没有写入端点~~ **已补**：`settings/foreshadow.md` 走唯一文件层写入口 | 写入后 `chat/context?kind=foreshadow` 返回真实条目；`tests/test_setting_books.py` 钉住。**仍缺删除端点**（删一行不下线，同 `弧 N`） | 已做，删除待议 |
 | 5 | 绘画 / AI 生图是**纯前端假数据** | `artwork` / `painting` 在后端零命中；`PaintingDetailPanel.tsx` 无后端来源 | P3 |
 | 6 | **删除作品功能整体缺失**（不是只缺端点） | 前端 `BookshelfPage`／`workbench` 里 `删除`／`del(` 零命中，`api.ts` 的 `del` 无人调用；后端 `routers/novels.py` 只 GET/POST/PUT；而 PRD §2 与 UI-DESIGN §1 都要它 | S3 之后（DECISIONS 5.2） |
 | 7 | 磁盘导出镜像未做 | D-02 列 P2 且只单向导出 | P2 |

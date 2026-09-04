@@ -117,6 +117,13 @@ const HEADING_RE = /^## (.+)$/;
 const BULLET_RE = /^-\s+\*\*(.+?)\*\*\s*[：:]\s*/;
 const TOC_ANCHOR_RE = /^第\s*(\d+)\s*章\s*(.*)$/;
 const ARC_ANCHOR_RE = /^弧\s*(\d+|\?)\s*(.*)$/;
+// The settings books are records too, keyed the same way, so their key line is
+// structure and gets the same rail lock.
+const RECORD_ANCHOR_RES: [RegExp, string][] = [
+  [ARC_ANCHOR_RE, "arc"],
+  [/^伏笔\s*(\d+|\?)\s*(.*)$/, "foreshadow"],
+  [/^设定\s*(\d+|\?)\s*(.*)$/, "setting"],
+];
 
 type DocEntry = {
   line: number;
@@ -147,14 +154,15 @@ export function scanDoc(view: EditorView): DocEntry[] {
     if (heading) {
       const text = heading[1];
       const toc = TOC_ANCHOR_RE.exec(text);
-      const arc = toc ? null : ARC_ANCHOR_RE.exec(text);
-      if (toc || arc) {
-        const title = (toc ?? arc)![2].trimStart();
+      const record = toc ? null : RECORD_ANCHOR_RES.find(([re]) => re.test(text));
+      if (toc || record) {
+        const [re, field] = record ?? [TOC_ANCHOR_RE, "chapter"];
+        const title = (re.exec(text) as RegExpExecArray)[2].trimStart();
         const split = 3 + text.length - title.length;
         if (toc) chapter = Number(toc[1]);
         found.push({
           line: i,
-          field: toc ? "chapter" : "arc",
+          field,
           keyFrom: line.from + 3,
           keyTo: split,
           valueFrom: split,

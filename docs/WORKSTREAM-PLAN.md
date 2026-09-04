@@ -122,7 +122,9 @@
       成本 KPI、结构化注入清单、原文摘录、输出、机械校验和审稿分 tab 展示。
       旧记录无 `excerpt` 时明确提示；耗时埋点和对全部 AI run 的统一路由待补。
 - [ ] Token 用量明细核对；汇总页（按功能/日期聚合，下钻单次调用）
-- [ ] 伏笔写入端点（当前无，注入清单里伏笔档永远空）
+- [x] 伏笔写入端点：`settings/foreshadow.md` 经唯一文件层写入口落库，注入清单里的伏笔档不再是永久空
+      （`chat/context?kind=foreshadow` 实测返回新建的两条）。**仍无删除端点**：文档里删一行不会下线伏笔，
+      与 `弧 N` / 目录同规则，需要删除时得另定策略。
 
 ### U5 整体验收（旧 C7）
 
@@ -266,7 +268,19 @@
        前端 64→**69 passed**（+5，含标签冲突那项）。另补 `src/test/setup.ts` 一个 `Range.getClientRects` 桩：
        jsdom 没有排版，CodeMirror 每帧量文字会抛 `textRange(...).getClientRects is not a function`，
        把整个 run 判成 unhandled error（与既有 canvas 桩同族，不是被测行为）。
- - [ ] **D-15 第 3 单元（未做）**：worldview / foreshadow / feedback 三册同法接入。
+ - [~] **D-15 第 3 单元（两册已做，反馈册待主人拍板）**：伏笔与世界观已按同法接入文件层。
+       `settings/foreshadow.md` 与 `settings/worldview.md` 走同一入口：resolve_path / list_files / read_file /
+       write_file 派发 / validate_structure / markdown render+parse 六处齐全，与四层规划同级、DB 仍是唯一真源。
+       记录册共用一个写手 `_write_book`：`## 伏笔 ? 标题` 的 `?` 由数据库分配主键（同 `弧 N`），
+       人类与 AI 都改不了主键行，AI 另有字段白名单（伏笔只可改 title/status/content，
+       **埋设与收束章号只有主人能动**）。`已确认` 是布尔，渲染成 是/否，解析回来必须是 bool——
+       否则 "否" 会被当真写进库。
+       前端按 kind 自动把文档挂到对应面板下（面板入口保留），导轨锁段落在主键行，
+       面包屑按服务端 layer 判定分组（此前对设定册谎报「规划」，已修）。
+       **反馈册没做，是有意的**：`POST /feedback` 不是普通记录写入，它会跑影响分析并填
+       `impact_levels` / `suggestions`；把它改成文件层一条 PUT 会静默丢掉分析结果，
+       而保留 JSON 写口又等于给同一张表开第二条通路。两个方案都要主人拍板（见 DECISIONS D-15 补记）。
+       后端 162→**171 passed**（新增 9 项 `test_setting_books.py`），前端 74→**75 passed**。
 - [x] **帧 25 后端前置之一：LLM 配置写接口已落地（决策 D-16）**
        `AppConfig` 表 + 迁移 `e8c2f4a1b930` + `GET/PUT /api/config/llm` + `POST /api/config/llm/test`；
        `get_llm_client` 改带 session 并叠加存库值，`.env` 降为首次种子。存了即覆盖（含空值），

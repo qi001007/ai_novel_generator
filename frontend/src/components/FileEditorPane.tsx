@@ -31,6 +31,10 @@ const LOCKED_FIELDS: Record<string, string[]> = {
   toc: ["chapter"],
   arcs: ["arc"],
   brief: ["chapter", "arc"],
+  // A book's key line is its primary key: the writer refuses a change to it for
+  // actor=ai, so the rail says so before the reader types.
+  foreshadow: ["foreshadow"],
+  worldview: ["setting"],
 };
 
 const MM_PAD = 8;
@@ -343,10 +347,10 @@ export default function FileEditorPane() {
       </div>
 
       <div className="file-bar">
-        {/* The server already says which group a file belongs to; a settings sheet
-            must not claim to be planning. */}
+        {/* The group comes from the layer the server sent, not from a per-kind
+            special case: every 设定 document must stop claiming to be planning. */}
         <span className="file-path">
-          {novelTitle} / {kind === "character" ? "设定库" : "规划"} / {active}
+          {novelTitle} / {entry?.doc?.layer === "设定" ? "设定库" : "规划"} / {active}
         </span>
         <span className="file-spacer" />
         {active === TOC_PATH && tocSource ? (

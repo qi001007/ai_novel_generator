@@ -208,6 +208,33 @@ describe("FileEditorPane", () => {
     await waitFor(() => expect(document.querySelectorAll(".cm-rail-seg.lock")).toHaveLength(2));
   });
 
+  it("locks a settings book the same way it locks a planning record", async () => {
+    const book: FileDoc = {
+      path: "settings/foreshadow.md",
+      kind: "foreshadow",
+      layer: "设定",
+      label: "伏笔",
+      text:
+        "# 伏笔（设定库 · 分册）\n\n> `伏笔 N` 是主键。\n\n## 伏笔 1 碑上缺名\n- **埋设章**：1\n- **内容**：磨痕是新的\n\n## 伏笔 2 守碑人的脚印\n- **埋设章**：2\n- **内容**：\n",
+      ai_fields: ["title", "status", "content"],
+      revision: "9b5597e18057",
+    };
+    useFiles.setState({
+      novelId: 1,
+      tabs: ["settings/foreshadow.md"],
+      active: "settings/foreshadow.md",
+      entries: {
+        "settings/foreshadow.md": { doc: book, draft: book.text, loading: false, saving: false, error: null, conflict: false, savedAt: null },
+      },
+    });
+    render(<FileEditorPane />);
+
+    // the key line is structure, the value bullets are not
+    await waitFor(() => expect(document.querySelectorAll(".cm-rail-seg.lock")).toHaveLength(2));
+    // and the breadcrumb must not call a settings sheet planning
+    expect(document.querySelector(".file-path")?.textContent).toContain("设定库");
+  });
+
   it("parks the caret on a character section, where 目标 is the sheet's own column", async () => {
     const character: FileDoc = {
       path: "settings/characters/1.md",

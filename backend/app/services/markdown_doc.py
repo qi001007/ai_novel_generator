@@ -12,7 +12,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-__all__ = ["MarkdownError", "INT_FIELDS", "OPTIONAL_INT_FIELDS", "LIST_FIELDS", "render", "parse"]
+__all__ = [
+    "MarkdownError",
+    "INT_FIELDS",
+    "OPTIONAL_INT_FIELDS",
+    "LIST_FIELDS",
+    "BOOL_FIELDS",
+    "render",
+    "parse",
+]
 
 
 class MarkdownError(Exception):
@@ -25,9 +33,26 @@ class MarkdownError(Exception):
 
 # Field vocabulary, so the parser knows which bullets carry numbers and which
 # carry a list. documents.py imports these instead of keeping a second copy.
-INT_FIELDS = frozenset({"chapter", "start_chapter", "end_chapter"})
-OPTIONAL_INT_FIELDS = frozenset({"arc", "expected_start_chapter", "expected_end_chapter"})
+INT_FIELDS = frozenset({"chapter", "start_chapter", "end_chapter", "planted_chapter"})
+OPTIONAL_INT_FIELDS = frozenset(
+    {
+        "arc",
+        "expected_start_chapter",
+        "expected_end_chapter",
+        "expected_payoff_chapter",
+        "payoff_chapter",
+        "source_chapter",
+        # A book's own key arrives as `?` on a create, so it is an optional int too:
+        # left as text it would come back "" and read as "that id does not exist".
+        "foreshadow",
+        "setting",
+    }
+)
 LIST_FIELDS = frozenset({"characters", "required_facts"})
+# 已确认 is a flag: it has to come back typed, or "否" would be stored as true.
+BOOL_FIELDS = frozenset({"is_confirmed"})
+_TRUE = {"是", "true", "yes", "1"}
+_FALSE = {"否", "false", "no", "0"}
 
 # (field, markdown label) in the order a document shows them.
 _BLUEPRINT_SECTIONS = (
@@ -61,6 +86,20 @@ _BRIEF_SECTIONS = (
     ("required_facts", "既定事实"),
 )
 
+_FORESHADOW_BULLETS = (
+    ("planted_chapter", "埋设章"),
+    ("expected_payoff_chapter", "预计收章"),
+    ("payoff_chapter", "已收章"),
+    ("status", "状态"),
+    ("content", "内容"),
+)
+_WORLDVIEW_BULLETS = (
+    ("category", "类别"),
+    ("is_confirmed", "已确认"),
+    ("source_chapter", "来源章"),
+    ("current_state", "现况"),
+    ("content", "内容"),
+)
 _CHARACTER_BULLETS = (
     ("name", "姓名"),
     ("level", "分级"),
@@ -75,6 +114,8 @@ _CHARACTER_SECTIONS = (
 )
 
 _TITLES = {
+    "foreshadow": "# 伏笔（设定库 · 分册）",
+    "worldview": "# 世界观（设定库 · 分册）",
     "blueprint": "# 全书蓝图（A 层 · 长期）",
     "toc": "# 目录（B 层 · 中期）",
     "arcs": "# 剧情弧（C 层）",
@@ -88,6 +129,8 @@ _RULES = {
     "brief": "> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。",
     "draft": "> 标题是投影结构；标题下方全部是正文内容。",
     "character": "> 文件名人物号即主键：改名不换路径。小节标题与字段名是结构标识，不可增删改名。",
+    "foreshadow": "> `伏笔 N` 是主键：不能改号。埋设与收束章号只由主人调整。",
+    "worldview": "> `设定 N` 是主键：不能改号，也不能靠删条目下线设定。",
 }
 
 _HEADING = re.compile(r"^##\s+(.*)$")
@@ -97,6 +140,58 @@ _TOP_BULLET = re.compile(r"^-\s+(.*)$")
 _CONTINUATION = re.compile(r"^\s{2,}\S.*$")
 _TOC_ANCHOR = re.compile(r"^第\s*(\d+)\s*章\s*(.*)$")
 _ARC_ANCHOR = re.compile(r"^弧\s*(\d+|\?)\s*(.*)$")
+_FORESHADOW_ANCHOR = re.compile(r"^伏笔\s*(\d+|\?)\s*(.*)$")
+_WORLDVIEW_ANCHOR = re.compile(r"^设定\s*(\d+|\?)\s*(.*)$")
+
+
+# Every book of records shares one shape: a keyed `## ` heading plus its bullets.
+# toc and arcs keep byte-identical headings so nothing already on file re-wraps.
+_RECORD_SPECS = {
+    "toc": {
+        "label": "toc.md",
+        "key": "chapter",
+        "title_field": "title",
+        "bullets": _TOC_BULLETS,
+        "anchor": _TOC_ANCHOR,
+        "shape": "## 第 42 章 章名",
+        "heading": lambda row: "第 {} 章 {}".format(row.get("chapter"), _text(row.get("title"))).rstrip(),
+    },
+    "arcs": {
+        "label": "arcs.md",
+        "key": "arc",
+        "title_field": "title",
+        "bullets": _ARC_BULLETS,
+        "anchor": _ARC_ANCHOR,
+        "shape": "## 弧 1 弧名",
+        "heading": lambda row: "弧 {} {}".format(
+            "?" if row.get("arc") is None else row.get("arc"), _text(row.get("title"))
+        ).rstrip(),
+    },
+    "foreshadow": {
+        "label": "foreshadow.md",
+        "key": "foreshadow",
+        "title_field": "title",
+        "bullets": _FORESHADOW_BULLETS,
+        "anchor": _FORESHADOW_ANCHOR,
+        "shape": "## 伏笔 1 伏笔名",
+        "heading": lambda row: "伏笔 {} {}".format(
+            "?" if row.get("foreshadow") is None else row.get("foreshadow"),
+            _text(row.get("title")),
+        ).rstrip(),
+    },
+    "worldview": {
+        "label": "worldview.md",
+        "key": "setting",
+        "title_field": "name",
+        "bullets": _WORLDVIEW_BULLETS,
+        "anchor": _WORLDVIEW_ANCHOR,
+        "shape": "## 设定 1 设定名",
+        "heading": lambda row: "设定 {} {}".format(
+            "?" if row.get("setting") is None else row.get("setting"),
+            _text(row.get("name")),
+        ).rstrip(),
+    },
+}
 
 _EMPTY = "—"
 
@@ -116,6 +211,10 @@ def _preamble(kind: str, chapter: int | None) -> list[str]:
 def _text(value: Any) -> str:
     if value is None:
         return _EMPTY
+    if isinstance(value, bool):
+        # A flag reads as 是/否 in the document; "True" would be a foreign language
+        # on a page the author edits by hand.
+        return "是" if value else "否"
     return str(value)
 
 
@@ -172,17 +271,12 @@ def render(kind: str, payload: Any, *, chapter: int | None = None) -> str:
             + [""]
             + _section_lines(payload, _CHARACTER_SECTIONS)
         )
-    if kind in ("toc", "arcs"):
-        spec = _TOC_BULLETS if kind == "toc" else _ARC_BULLETS
+    if kind in _RECORD_SPECS:
+        record = _RECORD_SPECS[kind]
         lines = _preamble(kind, chapter)
         for row in payload:
-            if kind == "toc":
-                anchor = f"第 {row['chapter']} 章 {_text(row.get('title'))}".rstrip()
-            else:
-                arc = row.get("arc")
-                anchor = f"弧 {arc if arc is not None else '?'} {_text(row.get('title'))}".rstrip()
-            lines.append(f"## {anchor}")
-            lines.extend(_bullet_lines(row, spec))
+            lines.append("## " + record["heading"](row))
+            lines.extend(_bullet_lines(row, record["bullets"]))
             lines.append("")
         return _doc(lines)
     raise MarkdownError(f"未知的文档层：{kind}")
@@ -204,9 +298,16 @@ def _blocks(text: str) -> list[tuple[str | None, list[str]]]:
     return out
 
 def _coerce_scalar(name: str, md_label: str, raw: str, label: str) -> Any:
-    """A bullet is always text; numbers and the absent arc have to come back typed."""
+    """A bullet is always text; numbers, flags and absent values come back typed."""
     if raw in ("", _EMPTY):
         return None
+    if name in BOOL_FIELDS:
+        lowered = raw.strip().lower()
+        if lowered in _TRUE:
+            return True
+        if lowered in _FALSE:
+            return False
+        raise MarkdownError(f"{label} 的「{md_label}」只能写 是 或 否，收到「{raw}」")
     if name in INT_FIELDS or name in OPTIONAL_INT_FIELDS:
         if not re.fullmatch(r"-?\d+", raw):
             raise MarkdownError(f"{label} 的「{md_label}」必须是整数，收到「{raw}」")
@@ -324,21 +425,21 @@ def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
         row = _read_bullets(blocks[0][1] or [], _CHARACTER_BULLETS, "人物档案")
         _merge(row, _read_sections(blocks[1:], _CHARACTER_SECTIONS, "人物档案"))
         return row
-    if kind in ("toc", "arcs"):
-        spec = _TOC_BULLETS if kind == "toc" else _ARC_BULLETS
+    if kind in _RECORD_SPECS:
+        record = _RECORD_SPECS[kind]
         records = []
         for heading, body in blocks[1:]:
-            anchor = _TOC_ANCHOR if kind == "toc" else _ARC_ANCHOR
-            match = anchor.match(heading or "")
+            match = record["anchor"].match(heading or "")
             if not match:
                 raise MarkdownError(
-                    f"标题「{heading}」不是记录：toc 要写成「## 第 42 章 章名」，"
-                    "arcs 要写成「## 弧 1 弧名」"
+                    f"标题「{heading}」不是记录：{record['label']} 要写成「{record['shape']}」"
                 )
             head, tail = match.groups()
-            key = "chapter" if kind == "toc" else "arc"
-            row: dict[str, Any] = {key: None if head == "?" else int(head), "title": tail.strip()}
-            _merge(row, _read_bullets(body, spec, f"「{heading}」"))
+            row: dict[str, Any] = {
+                record["key"]: None if head == "?" else int(head),
+                record["title_field"]: tail.strip(),
+            }
+            _merge(row, _read_bullets(body, record["bullets"], f"「{heading}」"))
             records.append(row)
         return records
     raise MarkdownError(f"未知的文档层：{kind}")
