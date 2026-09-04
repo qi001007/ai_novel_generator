@@ -3,11 +3,17 @@ import type { CSSProperties } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+import {
+  isOnThumb,
+  MM_PAD,
+  progressFromPointer,
+  thumbGeometry as sharedThumbGeometry,
+} from "./minimap";
+
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
 /* Editor line metrics, mirrored in CSS below: the minimap scales the real page
    by these numbers, so the slider maps 1:1 onto the scroll position. */
-const MM_PAD = 8;
 const TEXT_PX = 17;
 const LINE_PX = 32.3;
 const TEXT_BOX = 672;
@@ -157,13 +163,7 @@ export default function EditorPane() {
   // The slider is the viewport: same proportions as the page it mirrors.
   // The map height is measured where it is used and never cached in state.
   function thumbGeometry(mapHeight: number) {
-    const track = Math.max(1, mapHeight - MM_PAD * 2);
-    const height = Math.max(18, Math.min(track, track * view.height));
-    return {
-      track,
-      height,
-      top: MM_PAD + view.progress * Math.max(0, track - height),
-    };
+    return sharedThumbGeometry(mapHeight, view.height, view.progress);
   }
 
   useEffect(() => {
@@ -244,10 +244,13 @@ export default function EditorPane() {
     const map = minimapRef.current;
     if (!node || !map) return;
     const rect = map.getBoundingClientRect();
-    const geo = thumbGeometry(rect.height);
-    const span = Math.max(1, geo.track - geo.height);
-    const offset = clientY - rect.top - (grabRef.current ?? geo.height / 2);
-    const progress = Math.min(1, Math.max(0, (offset - MM_PAD) / span));
+    const progress = progressFromPointer(
+      rect.height,
+      view.height,
+      clientY,
+      rect.top,
+      grabRef.current,
+    );
     node.scrollTop = progress * Math.max(0, node.scrollHeight - node.clientHeight);
   }
 
@@ -256,7 +259,7 @@ export default function EditorPane() {
     const rect = event.currentTarget.getBoundingClientRect();
     const geo = thumbGeometry(rect.height);
     const offset = event.clientY - rect.top;
-    const inside = offset >= geo.top && offset <= geo.top + geo.height;
+    const inside = isOnThumb(rect.height, view.height, view.progress, offset);
     grabRef.current = inside ? offset - geo.top : geo.height / 2;
     event.currentTarget.setPointerCapture(event.pointerId);
     scrubTo(event.clientY);

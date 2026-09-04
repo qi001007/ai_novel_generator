@@ -21,6 +21,12 @@ import {
   TOC_PATH,
   useFiles,
 } from "../store/files";
+import {
+  isOnThumb,
+  MM_PAD,
+  progressFromPointer,
+  thumbGeometry,
+} from "./minimap";
 import TocListView, { parseToc, renderToc } from "./TocListView";
 import { useWorkbench } from "../store/workbench";
 
@@ -37,7 +43,6 @@ const LOCKED_FIELDS: Record<string, string[]> = {
   worldview: ["setting"],
 };
 
-const MM_PAD = 8;
 const MM_PITCH = 5;
 
 export default function FileEditorPane() {
@@ -64,7 +69,8 @@ export default function FileEditorPane() {
   const viewRef = useRef<EditorView | null>(null);
   const activeRef = useRef<string | null>(null);
   activeRef.current = active;
-  const minimapDraggingRef = useRef(false);
+  // Offset inside the thumb where the pointer grabbed it; null when not dragging.
+  const mmGrabRef = useRef(null as number | null);
 
   const [scroll, setScroll] = useState<ScrollInfo>({ top: 0, height: 1, lines: 0 });
   const [caretLine, setCaretLine] = useState(1);
@@ -207,33 +213,53 @@ export default function FileEditorPane() {
   // --- minimap geometry ---------------------------------------------------
   const lines = useMemo(() => draft.split("\n"), [draft]);
 
-  function scrollEditorToRatio(ratio: number) {
+  // Progress down the scrollable range. scrollReport reports top as
+  // scrollTop / scrollHeight, so on a document only slightly taller than the pane
+  // it tops out at 1 - height, well short of 1: the thumb could never reach the
+  // bottom of the track, which is the "只能滑一部分" that was reported. Dividing by
+  // (1 - height) normalises it. Same convention EditorPane already uses.
+  const scrollProgress =
+    scroll.height >= 1 ? 0 : scroll.top / (1 - scroll.height);
+
+  // Dragging turns the page, not the picture. Draw and drag read the same three
+  // numbers, so the thumb sits under the cursor from the first pixel instead of
+  // jumping there.
+  function scrubTo(clientY: number, mapTop: number) {
     const view = viewRef.current;
     if (!view) return;
-    const clamped = Math.min(1, Math.max(0, ratio));
-    view.scrollDOM.scrollTop =
-      clamped * (view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight);
+    const dom = view.scrollDOM;
+    const progress = progressFromPointer(
+      mmHeight,
+      scroll.height,
+      clientY,
+      mapTop,
+      mmGrabRef.current,
+    );
+    dom.scrollTop = progress * Math.max(0, dom.scrollHeight - dom.clientHeight);
   }
 
   function onMinimapPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.height <= 0) return;
-    minimapDraggingRef.current = true;
+    const geo = thumbGeometry(mmHeight, scroll.height, scrollProgress);
+    const offset = event.clientY - rect.top;
+    // On the thumb, keep the offset you grabbed; on bare track, centre it here.
+    mmGrabRef.current = isOnThumb(mmHeight, scroll.height, scrollProgress, offset)
+      ? offset - geo.top
+      : geo.height / 2;
     event.currentTarget.setPointerCapture(event.pointerId);
-    scrollEditorToRatio((event.clientY - rect.top) / rect.height);
+    scrubTo(event.clientY, rect.top);
   }
 
   function onMinimapPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (!minimapDraggingRef.current) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.height <= 0) return;
-    scrollEditorToRatio((event.clientY - rect.top) / rect.height);
+    if (mmGrabRef.current === null) return;
+    scrubTo(event.clientY, event.currentTarget.getBoundingClientRect().top);
   }
 
   function onMinimapPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
-    if (!minimapDraggingRef.current) return;
-    minimapDraggingRef.current = false;
+    if (mmGrabRef.current === null) return;
+    mmGrabRef.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -284,9 +310,11 @@ export default function FileEditorPane() {
     });
   }, [lines, mmHeight, caretLine, scroll]);
 
-  const track = Math.max(0, mmHeight - MM_PAD * 2);
-  const thumbHeight = Math.max(20, Math.min(track, track * scroll.height));
-  const thumbTop = MM_PAD + scroll.top * Math.max(0, track - thumbHeight);
+  const { height: thumbHeight, top: thumbTop } = thumbGeometry(
+    mmHeight,
+    scroll.height,
+    scrollProgress,
+  );
 
   const dirty = isDirty(entry);
   const saving = entry?.saving ?? false;
