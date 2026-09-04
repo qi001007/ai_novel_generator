@@ -280,7 +280,11 @@
        **反馈册没做，是有意的**：`POST /feedback` 不是普通记录写入，它会跑影响分析并填
        `impact_levels` / `suggestions`；把它改成文件层一条 PUT 会静默丢掉分析结果，
        而保留 JSON 写口又等于给同一张表开第二条通路。两个方案都要主人拍板（见 DECISIONS D-15 补记）。
-       后端 162→**171 passed**（新增 9 项 `test_setting_books.py`），前端 74→**75 passed**。
+       世界观的旧 JSON 写口 `POST/PUT /settings` 已转 **410**（前端只读、无调用方），`SettingCreate` 随失效删除；
+迁移波及 `test_settings.py`（整文件重写为走文件层，并补「主键不能改号」「布尔不能退化成字符串」两条旧端点从未检查的断言）
+与 `test_chat_agent.py` 一处 seed。顺手抓到 `write_setting` 助手自己的错：把新记录追加到已含记录的文本后面
+= 同键两次，改为整册替换。
+后端 162→**173 passed**（`test_setting_books.py` 9 项 + `test_settings.py` 重写 5 项），前端 74→**75 passed**。
 - [x] **帧 25 后端前置之一：LLM 配置写接口已落地（决策 D-16）**
        `AppConfig` 表 + 迁移 `e8c2f4a1b930` + `GET/PUT /api/config/llm` + `POST /api/config/llm/test`；
        `get_llm_client` 改带 session 并叠加存库值，`.env` 降为首次种子。存了即覆盖（含空值），
