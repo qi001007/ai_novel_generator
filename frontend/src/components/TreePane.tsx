@@ -17,6 +17,7 @@ import type { RailPage } from "./ActivityRail";
 import StatusBadge from "./StatusBadge";
 import type { Chapter, FileMeta } from "../types";
 import { ARCS_PATH, BLUEPRINT_PATH, TOC_PATH, draftPath } from "../store/files";
+import { useWorkbench } from "../store/workbench";
 
 export type PlanningLayer = "A" | "B" | "C";
 
@@ -97,6 +98,9 @@ export default function TreePane({
   foreshadowOpen,
 }: TreePaneProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  // 第十四批批注 6: the tree has to say what the tab says. Subscribe to the buffers
+  // themselves - `isChapterDirty` is a stable function and would never re-render.
+  const chapterDrafts = useWorkbench((state) => state.chapterDrafts);
   // 帧 27: search and the new/collapse actions are not furniture. The field only
   // exists once the reader asks for it.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -349,11 +353,22 @@ export default function TreePane({
                   >
                     {String(chapter.chapter_number).padStart(4, "0")}
                   </button>
-                  <StatusBadge
-                    status={chapter.status}
-                    dot
-                    scope={`第 ${chapter.chapter_number} 章`}
-                  />
+                  {/* One dot, one fact: unsaved outranks status, because that is the
+                      thing the tab already shouts about and the two must agree. */}
+                  {chapterDrafts[chapter.id] &&
+                  chapterDrafts[chapter.id].draft !== chapterDrafts[chapter.id].saved ? (
+                    <i
+                      className="dirty-dot"
+                      aria-label={`第 ${chapter.chapter_number} 章 未保存`}
+                      title="未保存"
+                    />
+                  ) : (
+                    <StatusBadge
+                      status={chapter.status}
+                      dot
+                      scope={`第 ${chapter.chapter_number} 章`}
+                    />
+                  )}
                 </div>
                 {!isCollapsed(key) && (
                   <>

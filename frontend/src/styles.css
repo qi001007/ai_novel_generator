@@ -1591,10 +1591,11 @@ select:focus-visible {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  /* A ring, not a fill: a solid accent dot would read the same as the status
-     dot sitting next to it. */
-  background: transparent;
-  border: 1.5px solid var(--accent);
+  /* 第十四批批注 6: it used to be a ring "so it would not read like the status dot
+     next to it" - but the status dot was removed from the tab in 第十二批批注 1, and
+     the tree shows one or the other, never both. The owner asked for a filled dot. */
+  background: var(--accent);
+  border: 0;
 }
 
 .editor-toolbar {

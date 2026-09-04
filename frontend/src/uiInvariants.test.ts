@@ -129,6 +129,15 @@ describe("settled UI decisions must not regress", () => {
     expect(css).toMatch(/\.chat-row\.user \+ \.chat-row\.assistant,[\s\S]*?margin-top: 40px/);
   });
 
+  it("unsaved is one filled dot, said the same way in the tree and the tab (第十四批批注6)", () => {
+    // It used to be a ring, and the tree never showed it at all.
+    expect(rule(".dirty-dot")).toContain("background: var(--accent)");
+    expect(rule(".dirty-dot")).not.toMatch(/border: .*var\(--accent\)/);
+    // the tree reads the same buffer the tab reads, and subscribes to it
+    expect(treePane).toContain("chapterDrafts");
+    expect(treePane).toContain("未保存");
+  });
+
   it("focus never paints the brand colour on a control (第六轮批注16 / 第十一批批注2 / 第十四批批注5)", () => {
     // Three times raised, because each time one element was fixed instead of the
     // class. The rule is now mechanical: any rule that reacts to :focus may not use
