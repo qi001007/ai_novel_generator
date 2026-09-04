@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   CornerDownLeft,
+  Copy,
+  Download,
   Gauge,
   Paperclip,
   RotateCcw,
@@ -11,6 +13,7 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import MarkdownText from "./MarkdownText";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
 import type {
@@ -139,6 +142,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
+  // A copy button that says nothing is a fake control, so the row remembers that
+  // it worked for a moment.
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ChatContextItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
@@ -662,6 +668,25 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     setMentionQuery(null);
   }
 
+  /** 批注: the reply ends with what you can do with it - copy, and the same text
+   *  as a .md file. Codex does this and the owner asked for it by name. */
+  function copyReply(row: Extract<Row, { kind: "agent" }>) {
+    void navigator.clipboard.writeText(row.text).then(() => {
+      setCopiedId(row.id);
+      window.setTimeout(() => setCopiedId((id) => (id === row.id ? null : id)), 1600);
+    });
+  }
+
+  function downloadReply(row: Extract<Row, { kind: "agent" }>) {
+    const blob = new Blob([row.text], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `对话回复-${new Date().toISOString().slice(0, 10)}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   const slashHints = input.startsWith("/") && !busy;
   const [typedName] = input.trim().split(/\s+/);
   const matched = commands.filter((item) => item.name.startsWith(typedName));
@@ -685,11 +710,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         }]).map((row) => {
           if (row.kind === "user") {
             return (
+              /* 批注: no avatars - the owner said to lay this out like Codex, which
+                 names the speaker in a line of text instead. Yours is the one on the
+                 right, so it needs no face to tell you who said it. */
               <div key={row.id} className="chat-row user">
-                <div className="chat-message">
-                  <span className="chat-avatar user" aria-hidden="true">我</span>
-                  <div className="chat-bubble">{row.text}</div>
-                </div>
+                <div className="chat-bubble">{row.text}</div>
               </div>
             );
           }
@@ -698,7 +723,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             return (
               <div key={row.id} className="chat-row assistant">
                 <div className="chat-message">
-                  <span className="chat-avatar agent" aria-hidden="true">墨</span>
                   <div className={`chat-card command ${row.status}`}>
                     <header>
                       <code>{row.command}</code>
@@ -747,7 +771,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           return (
             <div key={row.id} className="chat-row assistant">
               <div className="chat-message">
-                <span className="chat-avatar agent" aria-hidden="true">墨</span>
                 <div className={`chat-card agent ${row.status}`}>
                   <header className="chat-card-head">
                     <span className="chat-who">
@@ -764,13 +787,18 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       <span className="chat-state">回复失败</span>
                     ) : null}
                   </header>
-                  <p>
-                    {row.text}
-                    {row.status === "streaming" && !row.text ? "正在思考…" : null}
-                    {row.status === "streaming" ? (
-                      <span className="chat-caret" aria-hidden="true" />
-                    ) : null}
-                  </p>
+                  {row.text ? (
+                    <MarkdownText
+                      text={row.text}
+                      tail={
+                        row.status === "streaming" ? (
+                          <span className="chat-caret" aria-hidden="true" />
+                        ) : null
+                      }
+                    />
+                  ) : (
+                    <p>{row.status === "streaming" ? "正在思考…" : ""}</p>
+                  )}
                   {(row.proposals ?? []).map((item) =>
                     pendingFiles[item.path]?.id === item.id ? (
                       <ProposalCard
@@ -796,6 +824,29 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                           重试
                         </button>
                       ) : null}
+                    </div>
+                  ) : null}
+                  {row.status !== "streaming" && row.text ? (
+                    <div className="chat-actions">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label="复制这条回复"
+                        title="复制"
+                        onClick={() => copyReply(row)}
+                      >
+                        <Copy size={13} />
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label="下载为 .md"
+                        title="下载为 .md"
+                        onClick={() => downloadReply(row)}
+                      >
+                        <Download size={13} />
+                      </button>
+                      {copiedId === row.id ? <span className="chat-copied">已复制</span> : null}
                     </div>
                   ) : null}
                   {row.status !== "streaming" && (usage || refs.length) ? (

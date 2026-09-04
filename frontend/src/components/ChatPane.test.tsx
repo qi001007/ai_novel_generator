@@ -112,7 +112,12 @@ describe("ChatPane", () => {
     await waitFor(() => {
       expect(screen.getByText("第一章")).toBeTruthy();
     });
-    expect(screen.getByText("我")).toBeTruthy();
+    // The avatar is gone (Codex layout: no faces, your row is the one on the right),
+    // so what proves your own message is on screen is the text, in your row.
+    expect(document.querySelector(".chat-row.user .chat-bubble")?.textContent).toBe(
+      "开场怎么写？",
+    );
+    expect(document.querySelector(".chat-avatar")).toBeNull();
     expect(calls[0].content).toBe("开场怎么写？");
     expect(calls[0].mode).toBe("write");
     expect(calls[0].model).toBeNull();
@@ -122,6 +127,40 @@ describe("ChatPane", () => {
       expect(screen.getByText(/输入 1200 \/ 输出 340/)).toBeTruthy();
     });
     expect(screen.getByText("人物 · 陈九思")).toBeTruthy();
+  });
+
+  it("renders the reply as prose and ends it with copy and download", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/stream")) {
+          return Promise.resolve(
+            sse([
+              ["delta", { text: "这样收束的**代价感**" }],
+              ["done", { message: stored("这样收束的**代价感**") }],
+              ["end", {}],
+            ]),
+          );
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "开场怎么写？");
+    await user.keyboard("{Enter}");
+
+    // The complaint, verbatim: `**代价感**` reached the screen as asterisks.
+    await waitFor(() => expect(screen.getByText("代价感")).toBeTruthy());
+    const card = document.querySelector(".chat-card.agent");
+    expect(card?.querySelector("strong")?.textContent).toBe("代价感");
+    expect(card?.textContent).not.toContain("**");
+    // and a finished reply ends with what you can do with it
+    expect(screen.getByRole("button", { name: "复制这条回复" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "下载为 .md" })).toBeTruthy();
   });
 
   it("offers reference candidates while typing an @mention", async () => {

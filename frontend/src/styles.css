@@ -750,49 +750,17 @@ select:focus-visible {
   display: grid;
 }
 
-/* 批注 9: there was no rule for .user at all, so a message you sent looked exactly
-   like one the agent sent - both from the left. Yours now sits on the right, with
-   the avatar after it, which is the convention every chat has used since chats
-   existed. */
+/* 批注 9: yours sits on the right, which is the convention every chat has used
+   since chats existed.
+   批注 (Codex 呈现): the avatars are gone - the owner said that since no avatar was
+   ever designed, lay it out like Codex and name the speaker in a line of text. */
 .chat-row.user {
   justify-items: end;
-}
-
-.chat-row.user .chat-message {
-  flex-direction: row-reverse;
 }
 
 .chat-message {
   display: flex;
-  gap: 8px;
   min-width: 0;
-}
-
-.chat-avatar {
-  display: inline-grid;
-  place-items: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  margin-top: 2px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.chat-avatar.user {
-  background: var(--chat-bubble);
-  color: var(--text-2);
-  border: 1px solid var(--border);
-}
-
-.chat-avatar.agent {
-  background: var(--accent);
-  color: #fff;
-}
-
-.chat-row.user {
-  justify-items: end;
 }
 
 .chat-bubble {
@@ -803,6 +771,88 @@ select:focus-visible {
   background: var(--chat-bubble);
   border: 1px solid var(--border);
   white-space: pre-wrap;
+}
+
+/* The reply is prose, so it is laid out like prose: one block per line the model
+   wrote, with the markup rendered instead of shown. */
+.chat-md {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chat-md p {
+  margin: 0;
+}
+
+.chat-md h2,
+.chat-md h3,
+.chat-md h4 {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.chat-md ul,
+.chat-md ol {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 2px;
+}
+
+.chat-md blockquote {
+  margin: 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-2);
+}
+
+.chat-md code {
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--surface-alt);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.chat-md pre {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+  overflow-x: auto;
+}
+
+.chat-md pre code {
+  padding: 0;
+  background: none;
+}
+
+.chat-md hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 2px 0;
+}
+
+.chat-md a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+
+/* What you can do with a finished reply. */
+.chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+.chat-copied {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--text-2);
 }
 
 .chat-card {
