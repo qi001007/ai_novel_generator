@@ -244,8 +244,17 @@
        迁移波及 4 个测试文件（test_characters 重写、test_chat_agent 3 处、test_character_files
        seed 与肖像用例、planning_helpers 新增 character_doc/create_character/write_character）。
        全库 **120 passed**（原 115），前端 56 passed / 13 files，build 干净，写作环 PASS。
- - [ ] **D-15 第 2b 单元（未做）**：长字段只读预览 + 铅笔跳 `useFiles.open(path,{field})`。
-       现弹窗四个长字段仍是可编辑输入框，功能正确，只是没按帧 26 的形态呈现。
+ - [x] **D-15 第 2b 单元：长字段只读预览 + 铅笔跳 `useFiles.open(path,{field})`**
+       四个长字段改成只读预览框 + 铅笔，缺值显示「—」；铅笔走 `open("settings/characters/{id}.md", {field})`，
+       `revealSeq` 把右栏翻到文件层并把光标停在那个小节。**顺带断掉一条静默覆盖**：弹窗此前会把打开时长字段
+       的快照写回文档，谁在编辑器里先改过就被旧值盖掉——现在 `fillCharacterDoc` 只写四个短字段 bullet。
+       词表补 `identity/goals/behavior_constraints/current_status`；`目标` 一名两义（简报 `goal`、人物册 `goals`），
+       故 `focusField` 对标题改按读者可见的标签定位，不再要求字段名全局唯一。新建人物还没有文件，四支铅笔
+       禁用并说明「先保存人物，再在文件中编辑」。真机取证（Edge + CDP）：弹窗内 `.long-field` 4 个、其中
+       input/textarea 0 个；点「目标」铅笔后 `.cm-activeLine` = 找回父亲消失的真相；空小节落在 `## 行为约束` 本身。
+       前端 64→**69 passed**（+5，含标签冲突那项）。另补 `src/test/setup.ts` 一个 `Range.getClientRects` 桩：
+       jsdom 没有排版，CodeMirror 每帧量文字会抛 `textRange(...).getClientRects is not a function`，
+       把整个 run 判成 unhandled error（与既有 canvas 桩同族，不是被测行为）。
  - [ ] **D-15 第 3 单元（未做）**：worldview / foreshadow / feedback 三册同法接入。
 - [x] **帧 25 后端前置之一：LLM 配置写接口已落地（决策 D-16）**
        `AppConfig` 表 + 迁移 `e8c2f4a1b930` + `GET/PUT /api/config/llm` + `POST /api/config/llm/test`；

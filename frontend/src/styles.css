@@ -1589,9 +1589,74 @@ select:focus-visible {
   align-content: start;
 }
 
-.modal-fields textarea {
-  min-height: 64px;
-  resize: vertical;
+/* 帧 26: the long fields are prose that belongs to the file layer. The modal shows
+   a read-only preview; the pencil hands the caret to FileEditorPane at that section.
+   Only the textarea rule this replaced goes away — the modal has no textarea left. */
+.long-field-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--warning);
+}
+
+.long-field {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.long-field-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-height: 34px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-alt);
+}
+
+.long-field-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.long-field-text.blank {
+  color: var(--text-2);
+}
+
+.long-field-edit {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-2);
+}
+
+.long-field-edit:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.long-field-edit:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.long-field-edit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .character-modal footer {

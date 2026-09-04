@@ -50,6 +50,10 @@ export const FIELD_LABEL: Record<string, string> = {
   characters: "出场人物",
   chapter: "章节号",
   arc: "所属弧",
+  identity: "身份",
+  goals: "目标",
+  behavior_constraints: "行为约束",
+  current_status: "当前状态",
 };
 
 // Which field a heading or a bullet carries. 目标 is 目标 in both blueprint and
@@ -65,6 +69,9 @@ const HEADING_FIELDS: Record<string, string> = {
   冲突: "conflict",
   钩子: "hook",
   既定事实: "required_facts",
+  身份: "identity",
+  行为约束: "behavior_constraints",
+  当前状态: "current_status",
 };
 const BULLET_FIELDS: Record<string, string> = {
   章节号: "chapter",
@@ -403,7 +410,10 @@ export function focusField(view: EditorView, field: string): boolean {
   const label = FIELD_LABEL[field];
   if (!label) return false;
   for (const entry of scanDoc(view)) {
-    if (entry.field !== field) continue;
+    // One label, two columns: `目标` is `goal` in a brief and `goals` in a
+    // character sheet. A document never carries both, so the label a reader sees
+    // is the unambiguous key; every other field still matches on its own name.
+    if (entry.field !== field && FIELD_LABEL[entry.field] !== label) continue;
     const line = view.state.doc.line(entry.line);
     if (line.text.startsWith("## ")) {
       let head = line.to;

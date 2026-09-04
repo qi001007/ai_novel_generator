@@ -1,8 +1,39 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import CharacterLibrary from "./CharacterLibrary";
+import { useFiles } from "../store/files";
+
+const CHARACTER_DOC = [
+  "# 沈曜（设定库 · 人物）",
+  "",
+  "> 文件名人物号即主键。",
+  "",
+  "- **姓名**：沈曜",
+  "- **分级**：protagonist",
+  "- **起始章**：1",
+  "- **结束章**：—",
+  "",
+  "## 身份",
+  "",
+  "编辑器里改过的身份",
+  "",
+  "## 目标",
+  "",
+  "编辑器里改过的目标",
+  "",
+].join("\n");
+
+const fileOk = {
+  path: "settings/characters/1.md",
+  kind: "character",
+  layer: "设定",
+  label: "沈曜 档案",
+  text: CHARACTER_DOC,
+  ai_fields: [],
+  revision: "rev-doc",
+};
 
 const characters = [
   {
@@ -32,6 +63,20 @@ const characters = [
 ];
 
 describe("CharacterLibrary", () => {
+  beforeEach(() => {
+    useFiles.setState({
+      novelId: null,
+      metas: [],
+      tabs: [],
+      active: null,
+      entries: {},
+      pending: {},
+      jump: null,
+      focus: null,
+      revealSeq: 0,
+    });
+  });
+
   it("renders character cards, filters by level, and searches", async () => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
@@ -182,4 +227,110 @@ describe("CharacterLibrary", () => {
     await screen.findByText("照片请控制在 2MB 以内");
     vi.unstubAllGlobals();
   });
+
+  it("shows the four long fields as read-only previews with a pencil (帧 26)", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(characters), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }))));
+
+    const { container } = render(<CharacterLibrary novelId={1} />);
+    await user.click(await screen.findByRole("button", { name: /主角/ }));
+
+    const modal = container.querySelector(".character-modal") as HTMLElement;
+    // no input or textarea is left for a long field: the snapshot must not edit them
+    expect(within(modal).queryByLabelText("身份")).toBeNull();
+    expect(within(modal).queryByLabelText("目标")).toBeNull();
+    expect(within(modal).queryByLabelText("行为约束")).toBeNull();
+    expect(within(modal).queryByLabelText("当前状态")).toBeNull();
+    expect(modal.querySelectorAll(".long-field")).toHaveLength(4);
+    expect(modal.querySelectorAll("button.long-field-edit")).toHaveLength(4);
+    // the value is shown, and a missing one shows a dash instead of an invented text
+    const texts = [...modal.querySelectorAll(".long-field-text")].map((n) => n.textContent);
+    expect(texts).toEqual(["青年修士", "寻找父亲下落", "—", "—"]);
+    // the short fields keep their inputs
+    expect(within(modal).getByLabelText("姓名")).toBeTruthy();
+    vi.unstubAllGlobals();
+  });
+
+  it("hands a long field to the file editor, parked on that section", async () => {
+    const user = userEvent.setup();
+    useFiles.setState({ novelId: 1 });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.endsWith("/files/settings/characters/1.md")) {
+        return Promise.resolve(new Response(JSON.stringify(fileOk), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(characters), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    }));
+
+    const { container } = render(<CharacterLibrary novelId={1} />);
+    await user.click(await screen.findByRole("button", { name: /主角/ }));
+    const modal = container.querySelector(".character-modal") as HTMLElement;
+
+    await user.click(within(modal).getByRole("button", { name: "在文件中编辑目标" }));
+
+    await waitFor(() => expect(useFiles.getState().active).toBe("settings/characters/1.md"));
+    expect(useFiles.getState().focus).toMatchObject({
+      path: "settings/characters/1.md",
+      field: "goals",
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves the sections the editor owns alone when the modal saves (no stale overwrite)", async () => {
+    const user = userEvent.setup();
+    const writes: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      const method = String(init?.method ?? "GET");
+      const ok = (data: unknown) =>
+        new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+      if (url.endsWith("/files/settings/characters/1.md") && method === "GET") return Promise.resolve(ok(fileOk));
+      if (url.endsWith("/files/settings/characters/1.md") && method === "PUT") {
+        writes.push(String(JSON.parse(String(init?.body)).text));
+        return Promise.resolve(ok({ path: "settings/characters/1.md", changed: ["name"], revision: "rev-1" }));
+      }
+      return Promise.resolve(ok(characters));
+    }));
+
+    const { container } = render(<CharacterLibrary novelId={1} />);
+    await user.click(await screen.findByRole("button", { name: /主角/ }));
+    const modal = container.querySelector(".character-modal") as HTMLElement;
+    // the snapshot still carries the identity it read when the card was opened
+    expect(modal.textContent).toContain("青年修士");
+    await user.click(within(modal).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(writes.length).toBe(1));
+    // the document's own sections survive the write; the stale snapshot never lands
+    expect(writes[0]).toContain("编辑器里改过的身份");
+    expect(writes[0]).not.toContain("青年修士");
+    vi.unstubAllGlobals();
+  });
+
+  it("has nowhere to jump to before a new character has been saved", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify(characters), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }))));
+
+    const { container } = render(<CharacterLibrary novelId={1} />);
+    await user.click(await screen.findByRole("button", { name: "新建人物" }));
+    const modal = container.querySelector(".character-modal") as HTMLElement;
+
+    const pencils = [...modal.querySelectorAll("button.long-field-edit")] as HTMLButtonElement[];
+    expect(pencils).toHaveLength(4);
+    expect(pencils.every((button) => button.disabled)).toBe(true);
+    expect(pencils[0].title).toContain("先保存");
+    vi.unstubAllGlobals();
+  });
 });
+

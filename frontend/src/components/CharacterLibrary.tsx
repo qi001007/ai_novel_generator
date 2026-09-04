@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Pencil, X } from "lucide-react";
 
 import { api } from "../api";
+import { useFiles } from "../store/files";
 import type { Character, FileDoc, FileWriteResult } from "../types";
+
+/** The one path a character document lives at (DECISIONS D-15). */
+const characterDocPath = (id: number | null) => `settings/characters/${id ?? "new"}.md`;
+
+/** Frame 26: the long fields are prose, so the modal only previews them. */
+type LongFieldKey = "identity" | "goals" | "behavior_constraints" | "current_status";
+const LONG_FIELDS: { key: LongFieldKey; label: string }[] = [
+  { key: "identity", label: "身份" },
+  { key: "goals", label: "目标" },
+  { key: "behavior_constraints", label: "行为约束" },
+  { key: "current_status", label: "当前状态" },
+];
 
 type CharacterForm = {
   id: number | null;
@@ -57,20 +70,6 @@ function setBullet(text: string, label: string, value: string): string {
   return re.test(text) ? text.replace(re, "- **" + label + "**：" + value) : text;
 }
 
-function setSection(text: string, title: string, body: string): string {
-  const lines = text.split("\n");
-  const start = lines.findIndex((line) => line.trim() === "## " + title);
-  if (start < 0) return text;
-  let end = lines.length;
-  for (let i = start + 1; i < lines.length; i += 1) {
-    if (lines[i].startsWith("## ")) {
-      end = i;
-      break;
-    }
-  }
-  const bodyLines = body.trim() ? body.trim().split("\n") : [];
-  return [...lines.slice(0, start), "## " + title, "", ...bodyLines, "", ...lines.slice(end)].join("\n");
-}
 
 function fillCharacterDoc(text: string, form: CharacterForm): string {
   let out = text;
@@ -78,10 +77,9 @@ function fillCharacterDoc(text: string, form: CharacterForm): string {
   out = setBullet(out, "分级", form.level);
   out = setBullet(out, "起始章", form.expected_start_chapter === null ? "—" : String(form.expected_start_chapter));
   out = setBullet(out, "结束章", form.expected_end_chapter === null ? "—" : String(form.expected_end_chapter));
-  out = setSection(out, "身份", form.identity);
-  out = setSection(out, "目标", form.goals);
-  out = setSection(out, "行为约束", form.behavior_constraints);
-  out = setSection(out, "当前状态", form.current_status);
+  // The four sections are deliberately not written from here: the modal opens with a
+  // snapshot, and a snapshot saved after someone edited the file would overwrite
+  // their work with stale text. Long fields belong to the editor now (帧 26).
   return out;
 }
 
@@ -94,6 +92,14 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const portraitRef = useRef<HTMLInputElement>(null);
+  const openFile = useFiles((state) => state.open);
+
+  // Hand the caret to FileEditorPane at the matching section. revealSeq is bumped
+  // by open(), and WorkbenchPage turns that into "files" on its own.
+  function editInFile(field: LongFieldKey) {
+    if (!editing?.id) return;
+    void openFile(characterDocPath(editing.id), { field });
+  }
 
   useEffect(() => {
     if (!novelId) {
@@ -156,7 +162,7 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
       const { id, portrait } = editing;
       // One writer for content: the file layer. A create lands on new.md and the
       // result reports the numeric path it was moved to, which is how the id is found.
-      const docPath = `settings/characters/${id ?? "new"}.md`;
+      const docPath = characterDocPath(id);
       const doc = await api.get<FileDoc>(`/api/novels/${novelId}/files/${docPath}`);
       const written = await api.put<FileWriteResult>(`/api/novels/${novelId}/files/${docPath}`, {
         text: fillCharacterDoc(doc.text, editing),
@@ -375,34 +381,32 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
                 </div>
               </div>
               <div className="modal-fields">
-                <label>
-                  身份
-                  <input
-                    value={editing.identity}
-                    onChange={(event) => setEditing({ ...editing, identity: event.target.value })}
-                  />
-                </label>
-                <label>
-                  目标
-                  <textarea
-                    value={editing.goals}
-                    onChange={(event) => setEditing({ ...editing, goals: event.target.value })}
-                  />
-                </label>
-                <label>
-                  行为约束
-                  <textarea
-                    value={editing.behavior_constraints}
-                    onChange={(event) => setEditing({ ...editing, behavior_constraints: event.target.value })}
-                  />
-                </label>
-                <label>
-                  当前状态
-                  <input
-                    value={editing.current_status}
-                    onChange={(event) => setEditing({ ...editing, current_status: event.target.value })}
-                  />
-                </label>
+                <p className="long-field-hint">以下为长字段：弹窗内只读预览，编辑回文件层</p>
+                {LONG_FIELDS.map((item) => {
+                  const value = editing[item.key];
+                  return (
+                    <div className="long-field" key={item.key}>
+                      <span className="long-field-label">{item.label}</span>
+                      <div className="long-field-box">
+                        <p className={value ? "long-field-text" : "long-field-text blank"}>{value || "—"}</p>
+                        <button
+                          type="button"
+                          className="long-field-edit"
+                          aria-label={`在文件中编辑${item.label}`}
+                          title={
+                            editing.id
+                              ? `在右栏打开 ${editing.id}.md 并定位到「${item.label}」`
+                              : "先保存人物，再在文件中编辑"
+                          }
+                          disabled={!editing.id}
+                          onClick={() => editInFile(item.key)}
+                        >
+                          <Pencil size={13} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <footer>

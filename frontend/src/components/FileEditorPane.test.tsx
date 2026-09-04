@@ -2,6 +2,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { EditorView } from "@codemirror/view";
+
 import FileEditorPane from "./FileEditorPane";
 import { useFiles, type FileEntry } from "../store/files";
 import { useWorkbench } from "../store/workbench";
@@ -205,4 +207,50 @@ describe("FileEditorPane", () => {
     // one segment per `## 第 N 章` anchor; the value bullets stay unmarked
     await waitFor(() => expect(document.querySelectorAll(".cm-rail-seg.lock")).toHaveLength(2));
   });
+
+  it("parks the caret on a character section, where 目标 is the sheet's own column", async () => {
+    const character: FileDoc = {
+      path: "settings/characters/1.md",
+      kind: "character",
+      layer: "设定",
+      label: "沈曜 档案",
+      text:
+        "# 沈曜（设定库 · 人物）\n\n> 文件名人物号即主键。\n\n- **姓名**：沈曜\n\n## 身份\n\n观星少年\n\n## 目标\n\n找回父亲消失的真相\n\n## 行为约束\n\n不赌命\n\n## 当前状态\n\n碑前\n",
+      ai_fields: [],
+      revision: "9b5597e18057",
+    };
+    const entryOf = (over: Partial<FileEntry>) => ({
+      doc: character,
+      draft: character.text,
+      loading: false,
+      saving: false,
+      error: null,
+      conflict: false,
+      savedAt: null,
+      ...over,
+    });
+    useFiles.setState({
+      novelId: 1,
+      tabs: ["settings/characters/1.md"],
+      active: "settings/characters/1.md",
+      entries: { "settings/characters/1.md": entryOf({}) },
+      focus: { path: "settings/characters/1.md", field: "goals", seq: 1 },
+    });
+    render(<FileEditorPane />);
+
+    const caretLine = () => {
+      const view = EditorView.findFromDOM(document.querySelector(".cm-content") as HTMLElement);
+      if (!view) return 0;
+      return view.state.doc.lineAt(view.state.selection.main.head).number;
+    };
+    // 目标 is `goal` in a brief and `goals` in a character sheet: the pencil must
+    // still land inside the sheet's own section, on its first body line.
+    await waitFor(() => expect(caretLine()).toBe(13));
+    expect(character.text.split("\n")[12]).toBe("找回父亲消失的真相");
+
+    useFiles.setState({ focus: { path: "settings/characters/1.md", field: "current_status", seq: 2 } });
+    await waitFor(() => expect(caretLine()).toBe(21));
+    expect(character.text.split("\n")[20]).toBe("碑前");
+  });
 });
+
