@@ -310,7 +310,8 @@ export default function BookshelfPage() {
                 AI 生成
               </button>
             </div>
-            <p className="cover-hint">建议比例 3:4，最小 720×960。</p>
+            {/* 批注 11: the spec is not something to read, it is something to fail
+                against. It now shows only when the pick is the wrong shape. */}
             {coverError ? <p className="cover-error">{coverError}</p> : null}
             <footer className="cover-modal-footer">
               <button type="button" onClick={() => setCoverEditId(null)}>取消</button>

@@ -722,6 +722,18 @@ select:focus-visible {
   display: grid;
 }
 
+/* 批注 9: there was no rule for .user at all, so a message you sent looked exactly
+   like one the agent sent - both from the left. Yours now sits on the right, with
+   the avatar after it, which is the convention every chat has used since chats
+   existed. */
+.chat-row.user {
+  justify-items: end;
+}
+
+.chat-row.user .chat-message {
+  flex-direction: row-reverse;
+}
+
 .chat-message {
   display: flex;
   gap: 8px;
