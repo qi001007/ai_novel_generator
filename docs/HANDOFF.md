@@ -18,6 +18,13 @@
   抓到过「三条 CSS 被更高优先级选择器整组压掉」「JSX 文本节点里混进字面 dollar-brace」
   「设置页一行样式都没写」。取证通道见 AGENTS.md《前端取证通道》（本机无 Chrome，裸 Edge + CDP）。
 - **写类工具（use_figma / 改文件 / git）第二次失败即停**，一条消息只发一个写调用。
+
+- **CDP / 脚本里任何非 ASCII 内容，写入时禁用 `-Encoding ascii`**（2026-09-04 实测）。
+  PowerShell 的 `Set-Content -Encoding ascii` 会把 `.mjs` 里的中文**静默变成 `?`**，于是
+  `find(n => n.getAttribute("aria-label") === "展开调用记录")` 永远匹配不上，报出来的
+  「控件不存在 / row not found / doors: []」**全是脚本 bug，不是产品缺陷**。本轮被它误导三次，
+  白查两轮。**用 `-Encoding utf8`**；稳妥做法是先 `.map()` 把值读出来确认，再用中文字面量比较。
+
   机械闸门 `~/.codex/scripts/dispatch_gate.py` 已装（Pre+Post 双事件，台账在
   `%TEMP%\codex-dedupe-gate\dispatch.jsonl`），但 hook **只在会话启动时装载**：改过 hooks.json
   或尚未 trust 时，需主人重启会话并在 `/hooks` 里 trust，当前会话不会回头重读配置。
