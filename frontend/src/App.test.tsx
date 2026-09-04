@@ -63,8 +63,16 @@ describe("App", () => {
       expect(screen.getByRole("tab", { name: /第 1 章 未命名/ })).toBeTruthy();
     });
     expect(screen.queryByRole("heading", { name: "第 1 章 未命名" })).toBeNull();
-    // Status is a dot carrying its own accessible name, not a word badge.
-    expect(screen.getByLabelText("状态：草稿")).toBeTruthy();
+    // 批注 1: status is still a dot with its own accessible name, but it lives in one
+    // place only - the tree row, where chapters can be compared. The tab used to pin
+    // a permanent "draft" ring next to an unsaved dot that only appears once you type:
+    // two marks, one already obvious. And the close button now names the chapter it
+    // closes - it used to read the JSX expression out loud instead of its value.
+    expect(screen.getAllByLabelText("第 1 章 状态：草稿")).toHaveLength(1);
+    expect(
+      screen.queryByRole("tab", { name: /第 1 章 未命名/ })?.querySelector(".status-dot"),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "关闭第 1 章" })).toBeTruthy();
     const textarea = screen.getByLabelText("章节正文") as HTMLTextAreaElement;
     expect(textarea.value).toBe("旧正文。");
 

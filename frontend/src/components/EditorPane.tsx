@@ -55,7 +55,6 @@ function formatTime(value: string) {
     : date.toLocaleString("zh-CN", { hour12: false });
 }
 
-import StatusBadge from "./StatusBadge";
 import { useWorkbench } from "../store/workbench";
 
 export default function EditorPane() {
@@ -307,12 +306,16 @@ export default function EditorPane() {
                   第 {item.chapter_number} 章 {item.title || "未命名"}
                 </span>
               </button>
-              {active ? <StatusBadge status={item.status} dot /> : null}
+              {/* 批注 1: the permanent status ring is gone. It sat there whether or
+                  not anything was happening, and the moment you typed, an unsaved
+                  dot appeared next to it - two marks, one of which said "draft"
+                  to someone already looking at a draft. The chapter's status still
+                  reads in the tree, where it is comparable across chapters. */}
               {state.isChapterDirty(id) ? <i className="dirty-dot" aria-label="未保存" /> : null}
               <button
                 type="button"
                 className="editor-tab-close"
-                aria-label={`关闭第 {item.chapter_number} 章`}
+                aria-label={`关闭第 ${item.chapter_number} 章`}
                 onClick={() => state.closeChapterTab(id)}
               >
                 <X size={12} />

@@ -398,19 +398,49 @@ select:focus-visible {
   opacity: 0.42;
 }
 
+/* ---------- 悬停才现的滚动条（四处共用） ---------- */
+/* A bar that appears on hover must not move the page. Chrome's classic scrollbar
+   takes layout the moment it exists, so toggling `scrollbar-width` between none and
+   thin cost the thread 10px of content width every time the pointer arrived -
+   measured 470 -> 460, and the owner reported it as the page "动一下". The track is
+   therefore always sized and only the thumb fades in. */
+.chat-messages::-webkit-scrollbar,
+.sidebar::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+
+.file-tabs::-webkit-scrollbar,
+.editor-tabs::-webkit-scrollbar {
+  height: 10px;
+  background: transparent;
+}
+
+.chat-messages::-webkit-scrollbar-thumb,
+.sidebar::-webkit-scrollbar-thumb,
+.file-tabs::-webkit-scrollbar-thumb,
+.editor-tabs::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  background-clip: content-box;
+}
+
+.chat-messages:hover::-webkit-scrollbar-thumb,
+.sidebar:hover::-webkit-scrollbar-thumb,
+.file-tabs:hover::-webkit-scrollbar-thumb,
+.editor-tabs:hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-2) 62%, transparent);
+  background-clip: content-box;
+}
+
 /* 批注 4: --surface is nine RGB points from the editor's black, which is not a
-   difference you can see; the sidebar is a shelf, so it takes the shelf grey.
-   批注 8: its scrollbar appears while the pointer is on it, same rule as .file-tabs. */
+   difference you can see; the sidebar is a shelf, so it takes the shelf grey. */
 .sidebar {
   min-height: 0;
   overflow-y: auto;
   background: var(--surface-alt);
   padding: 8px;
-  scrollbar-width: none;
-}
-
-.sidebar:hover {
-  scrollbar-width: thin;
 }
 
 .right-column {
@@ -745,14 +775,11 @@ select:focus-visible {
   display: grid;
   gap: 12px;
   align-content: start;
-  /* 批注 3 ("回答应该居中"): the thread is centred with margin-inline:auto, but a
-     10px scrollbar on the right made the content box asymmetric, so the column sat
-     10px left of centre. Same rule as the other strips - the bar is not furniture. */
-  scrollbar-width: none;
-}
-
-.chat-messages:hover {
-  scrollbar-width: thin;
+  /* 批注 3 ("回答应该居中") and 批注 2.1 together: the bar is invisible until the
+     pointer is on the thread, but its 10px of layout is reserved on BOTH edges all
+     the time - that is what keeps the column centred and stops the page moving
+     when the thumb appears. */
+  scrollbar-gutter: stable both-edges;
 }
 
 .chat-messages > .chat-row {
@@ -762,6 +789,13 @@ select:focus-visible {
 
 .chat-row {
   display: grid;
+}
+
+/* 批注 2: turns need to read as turns. Rows from the same speaker stay tight;
+   when the speaker changes, that is a paragraph break, not another line. */
+.chat-row.user + .chat-row.assistant,
+.chat-row.assistant + .chat-row.user {
+  margin-top: 14px;
 }
 
 /* 批注 9: yours sits on the right, which is the convention every chat has used
@@ -1437,11 +1471,6 @@ select:focus-visible {
   overflow-x: auto;
   overflow-y: hidden;
   /* 批注 6: same rule as .file-tabs - the bar is not furniture. */
-  scrollbar-width: none;
-}
-
-.editor-tabs:hover {
-  scrollbar-width: thin;
 }
 
 .editor-tab {
@@ -3457,13 +3486,7 @@ body.resizing {
   overflow-x: auto;
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border-strong);
-  /* 批注 1: the bar is not furniture. It shows while the pointer is on the strip and
-     is absent otherwise. */
-  scrollbar-width: none;
-}
-
-.file-tabs:hover {
-  scrollbar-width: thin;
+  /* 批注 1: the bar is not furniture - see the shared thumb-fade rules. */
 }
 
 .file-tab {

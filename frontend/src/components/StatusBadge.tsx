@@ -14,8 +14,8 @@ export default function StatusBadge({
   status: string;
   dot?: boolean;
   /** Qualifies the accessible name when two dots on one screen describe the same
-   *  value for different things - the tree row and the editor tab both show a
-   *  chapter, and identical names make them unaddressable. */
+   *  value for different things - several chapter rows sit side by side in the
+   *  tree, and identical names make them unaddressable. */
   scope?: string;
 }) {
   const meta = LABELS[status] ?? { label: status, tone: "" };
