@@ -76,6 +76,7 @@ export default function TreePane({
   foreshadowOpen,
 }: TreePaneProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [chapterQuery, setChapterQuery] = useState("");
   const [menu, setMenu] = useState<MenuState>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -111,12 +112,6 @@ export default function TreePane({
   };
 
   const menuPath = menu?.target.kind === "file" ? menu.target.path : null;
-  const allCollapsed =
-    collapsed.plan &&
-    collapsed.library &&
-    chapters.every((chapter) => collapsed[`chapter-${chapter.chapter_number}`]);
-  const collapseLabel = allCollapsed ? "展开全部" : "折叠全部";
-
   const bookName = (meta: FileMeta) => meta.path.split("/").pop() ?? meta.path;
   const LIBRARY_GROUPS: LibraryGroup[] = [
     {
@@ -149,6 +144,26 @@ export default function TreePane({
       fileName: bookName,
     },
   ];
+
+  const needle = chapterQuery.trim().toLowerCase();
+  const filtering = needle.length > 0;
+  const shownChapters = filtering
+    ? chapters.filter(
+        (chapter) =>
+          String(chapter.chapter_number).includes(needle) ||
+          (chapter.title || "").toLowerCase().includes(needle),
+      )
+    : chapters;
+  // While a search is on, matched chapters open themselves: the point is to jump to
+  // the file, not to make the reader expand each one after finding it.
+  const isCollapsed = (key: string) => !filtering && collapsed[key] === true;
+
+  const allCollapsed =
+    collapsed.plan &&
+    collapsed.library &&
+    chapters.every((chapter) => collapsed[`chapter-${chapter.chapter_number}`]) &&
+    LIBRARY_GROUPS.every((group) => collapsed[`lib-${group.kind}`]);
+  const collapseLabel = allCollapsed ? "展开全部" : "折叠全部";
 
   return (
     <nav className="tree" aria-label="项目结构">
@@ -185,8 +200,29 @@ export default function TreePane({
             </div>
           ))}
 
-          <div className="tree-divider">章节</div>
-          {chapters.map((chapter) => {
+          <div className="tree-divider">
+            <span>章节</span>
+            {/* 几百章时「翻」不是办法。这里沿用帧 21 已批准的搜索语言：输入即筛、
+                匹配计数、Esc 清空、无结果给空态，而不是另发明一套交互。 */}
+            <input
+              className="tree-search"
+              type="search"
+              value={chapterQuery}
+              placeholder="搜章号 / 章名"
+              aria-label="搜索章节"
+              onChange={(event) => setChapterQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setChapterQuery("");
+              }}
+            />
+            {filtering ? (
+              <span className="tree-count tabular">
+                匹配 {shownChapters.length} / 共 {chapters.length} 章
+              </span>
+            ) : null}
+          </div>
+          <div className="tree-chapter-list">
+          {shownChapters.map((chapter) => {
             const key = `chapter-${chapter.chapter_number}`;
             const brief = briefRows.find((row) => row.chapter === chapter.chapter_number);
             const selected =
@@ -205,10 +241,10 @@ export default function TreePane({
                     type="button"
                     className="tree-prefix"
                     aria-label={`展开第 ${chapter.chapter_number} 章`}
-                    aria-expanded={!collapsed[key]}
+                    aria-expanded={!isCollapsed(key)}
                     onClick={() => toggle(key)}
                   >
-                    {collapsed[key] ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                    {isCollapsed(key) ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
                   </button>
                   <button
                     type="button"
@@ -221,7 +257,7 @@ export default function TreePane({
                   <span className="tree-hint">正文 + 简报</span>
                   <StatusBadge status={chapter.status} />
                 </div>
-                {!collapsed[key] && (
+                {!isCollapsed(key) && (
                   <div className="tree-children nested">
                     <button
                       type="button"
@@ -247,6 +283,15 @@ export default function TreePane({
               </div>
             );
           })}
+          </div>
+          {chapters.length > 0 && shownChapters.length === 0 && (
+            <p className="tree-empty">
+              没有匹配「{chapterQuery.trim()}」的章节{" "}
+              <button type="button" className="tree-inline-action" onClick={() => setChapterQuery("")}>
+                清除搜索
+              </button>
+            </p>
+          )}
           {chapters.length === 0 && (
             <p className="tree-empty">
               还没有章节{" "}
@@ -273,27 +318,39 @@ export default function TreePane({
             const files = settingFiles.filter((meta) => meta.kind === group.kind);
             return (
               <div className="tree-library" key={group.kind}>
-                <button
-                  type="button"
-                  className={`tree-row ${group.open ? "selected" : ""}`}
-                  onClick={group.onOpen}
-                >
-                  {group.label}
-                </button>
-                {/* 帧 26 A 区：面板入口保留，文档路径嵌在下面，与「人物 → 一人一个 md」同一规则。
-                    路径只用 id，改名不换路径，同「章号是主键」。 */}
-                {files.map((meta) => (
-                  <button
-                    key={meta.path}
-                    type="button"
-                    className={`tree-row file ${fileSelected(meta.path) ? "selected" : ""}`}
-                    title={meta.path}
-                    onClick={() => onOpenFile(meta.path)}
-                    onContextMenu={(event) => openMenu(event, { kind: "file", path: meta.path })}
-                  >
-                    {group.fileName(meta)}
+                <div className={`tree-row ${group.open ? "selected" : ""}`}>
+                  {files.length > 0 ? (
+                    <button
+                      type="button"
+                      className="tree-prefix"
+                      aria-label={`${group.label}的文件列表`}
+                      aria-expanded={!collapsed[`lib-${group.kind}`]}
+                      onClick={() => toggle(`lib-${group.kind}`)}
+                    >
+                      {collapsed[`lib-${group.kind}`] ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                    </button>
+                  ) : null}
+                  <button type="button" className="tree-label" onClick={group.onOpen}>
+                    {group.label}
                   </button>
-                ))}
+                  {files.length ? <span className="tree-hint">{files.length}</span> : null}
+                </div>
+                {/* 帧 26 A 区：面板入口保留，文档路径嵌在下面，与「人物 → 一人一个 md」同一规则。
+                    路径只用 id，改名不换路径，同「章号是主键」。列表可折叠：几百个人物时
+                    不能把整个设定库顶出屏幕。 */}
+                {!collapsed[`lib-${group.kind}`] &&
+                  files.map((meta) => (
+                    <button
+                      key={meta.path}
+                      type="button"
+                      className={`tree-row file ${fileSelected(meta.path) ? "selected" : ""}`}
+                      title={meta.path}
+                      onClick={() => onOpenFile(meta.path)}
+                      onContextMenu={(event) => openMenu(event, { kind: "file", path: meta.path })}
+                    >
+                      {group.fileName(meta)}
+                    </button>
+                  ))}
               </div>
             );
           })}

@@ -448,11 +448,59 @@ select:focus-visible {
 }
 
 .tree-divider {
-  margin: 6px 8px 2px 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 6px 8px 4px 14px;
   padding-top: 6px;
   border-top: 1px solid var(--border);
   font-size: 11px;
   color: var(--text-2);
+}
+
+.tree-search {
+  flex: 1 1 84px;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 11px;
+}
+
+.tree-search:focus-visible {
+  outline: 0;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.tree-search::placeholder {
+  color: var(--text-2);
+  opacity: 1;
+}
+
+.tree-count {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+/* The chapter list carries its own bound: with a few hundred chapters it must not
+   push the settings library and the action row off screen. The sidebar still scrolls
+   as a whole on top of this. */
+.tree-chapter-list {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  min-height: 0;
+  max-height: 42vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
 .tree-ellipsis {
