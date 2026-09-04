@@ -100,6 +100,9 @@ export default function TreePane({
   // 帧 27: search and the new/collapse actions are not furniture. The field only
   // exists once the reader asks for it.
   const [searchOpen, setSearchOpen] = useState(false);
+  // 批注 5, 6: the second press is "put it back", not "open everything". What you
+  // had open before folding is the state worth returning to.
+  const preCollapse = useRef<Record<string, boolean> | null>(null);
   const [chapterQuery, setChapterQuery] = useState("");
   const [menu, setMenu] = useState<MenuState>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -232,15 +235,16 @@ export default function TreePane({
           <button
             type="button"
             className="icon-button"
-            title={collapseLabel}
-            aria-label={collapseLabel}
+            title={preCollapse.current ? "恢复上一次的展开" : collapseLabel}
+            aria-label={preCollapse.current ? "恢复上一次的展开" : collapseLabel}
             onClick={() => {
-              if (allCollapsed) {
-                setCollapsed({});
+              if (preCollapse.current) {
+                setCollapsed(preCollapse.current);
+                preCollapse.current = null;
                 return;
               }
-              // Scoped to the page you are on (帧 27 批注 5): collapsing 规划 should
-              // not quietly fold the 设定库 you cannot even see.
+              // Scoped to the page you are on: folding 规划 must not quietly fold the
+              // 设定库 you cannot even see.
               const next: Record<string, boolean> = { ...collapsed };
               if (page === "plan") {
                 chapters.forEach((chapter) => {
@@ -251,10 +255,11 @@ export default function TreePane({
                   next[`lib-${group.kind}`] = true;
                 });
               }
+              preCollapse.current = collapsed;
               setCollapsed(next);
             }}
           >
-            {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+            {preCollapse.current ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
           </button>
         </div>
       </header>

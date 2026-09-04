@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
-import { ImagePlus, Moon, Settings, Sun, Upload, X } from "lucide-react";
+import { ImagePlus, Settings, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useWorkbench } from "../store/workbench";
@@ -62,8 +62,6 @@ type BookVars = CSSProperties & Record<`--${string}`, string | number>;
 
 export default function BookshelfPage() {
   const novels = useWorkbench((state) => state.novels);
-  const theme = useWorkbench((state) => state.theme);
-  const toggleTheme = useWorkbench((state) => state.toggleTheme);
   const selectNovel = useWorkbench((state) => state.selectNovel);
   const updateNovel = useWorkbench((state) => state.updateNovel);
   const navigate = useNavigate();
@@ -129,9 +127,8 @@ export default function BookshelfPage() {
           <button type="button" aria-label="设置" title="设置" onClick={() => navigate("/settings")}>
             <Settings size={16} />
           </button>
-          <button type="button" aria-label="切换主题" title="切换主题" onClick={toggleTheme}>
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
+          {/* 批注 4: the workbench lost this two rounds ago and this one was left
+              behind. 外观 in settings owns the theme now, from both entry points. */}
         </div>
       </header>
       <main className="bookshelf-main">

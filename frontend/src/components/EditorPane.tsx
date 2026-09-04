@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { History, X } from "lucide-react";
+import { ScrollText, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -369,7 +369,8 @@ export default function EditorPane() {
             title={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
             onClick={() => setBottom((prev) => ({ ...prev, collapsed: !prev.collapsed }))}
           >
-            <History size={15} />
+            {/* 批注 8: a clock face reads as "go back in time", not "call records". */}
+            <ScrollText size={15} />
           </button>
         </div>
       </header>

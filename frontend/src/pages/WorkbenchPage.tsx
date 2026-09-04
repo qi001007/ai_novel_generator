@@ -9,7 +9,6 @@ import EditorPane from "../components/EditorPane";
 import FeedbackPanel from "../components/FeedbackPanel";
 import FileEditorPane from "../components/FileEditorPane";
 import ForeshadowWall from "../components/ForeshadowWall";
-import SettingsPanel from "../components/SettingsPanel";
 import Splitter, { type PaneKey } from "../components/Splitter";
 import ActivityRail, { type RailPage } from "../components/ActivityRail";
 import TreePane, { type BriefRow } from "../components/TreePane";
@@ -17,7 +16,7 @@ import WorldMapPanel from "../components/WorldMapPanel";
 import { briefChapter, briefPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
-type RightView = "editor" | "files" | "feedback" | "settings" | "worldmap" | "foreshadow" | "characters";
+type RightView = "editor" | "files" | "feedback" | "worldmap" | "foreshadow" | "characters";
 
 type Panes = { sidebar: number; chat: number };
 
@@ -376,11 +375,12 @@ export default function WorkbenchPage() {
           </span>
           <button
             type="button"
-            className={`icon-button ${rightView === "settings" ? "active" : ""}`}
+            className="icon-button"
             aria-label="设置"
-            onClick={() => {
-              setRightView(rightView === "settings" ? "editor" : "settings");
-            }}
+            // 批注 1: this gear opened a right-column panel whose heading said 设定库,
+            // because the view was named "settings" but rendered the worldview editor.
+            // Both gears now open the same /settings page.
+            onClick={() => navigate("/settings")}
           >
             <Settings size={16} />
           </button>
@@ -457,7 +457,6 @@ export default function WorkbenchPage() {
             />
             <div className="right-column">
               {rightView === "feedback" && <FeedbackPanel novelId={state.selectedNovelId} />}
-              {rightView === "settings" && <SettingsPanel novelId={state.selectedNovelId} />}
               {rightView === "worldmap" && <WorldMapPanel novelId={state.selectedNovelId} />}
               {rightView === "foreshadow" && <ForeshadowWall novelId={state.selectedNovelId} />}
               {rightView === "files" && <FileEditorPane />}

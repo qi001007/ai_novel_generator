@@ -971,10 +971,13 @@ select:focus-visible {
 /* No filled pill: a tinted box on one item and nothing on its neighbour is what
    made the active one look taller. Colour plus an inset underline keeps the box
    identical in both states, so nothing can poke up. */
+/* 批注 7: no coloured edge of any kind. The selected mode is the dark one, the rest
+   are grey - the way the rest of the app already says "this one". */
 .mode-switch button.selected {
   background: transparent;
-  color: var(--accent);
-  box-shadow: inset 0 -2px 0 var(--accent);
+  color: var(--text-1);
+  font-weight: 600;
+  box-shadow: none;
 }
 
 .model-pill {
@@ -2410,8 +2413,10 @@ select:focus-visible {
 .book-slot::after {
   content: "";
   position: absolute;
-  left: 16%;
-  right: 4%;
+  /* 批注 2: 16% against 4% put the ellipse centre at 56% of the slot - visibly right
+     of the book. Symmetric now; skewX pivots on the centre so it stays put. */
+  left: 10%;
+  right: 10%;
   bottom: -30px;
   height: 20px;
   border-radius: 50%;
@@ -4960,6 +4965,7 @@ body.resizing {
 
 .cover-palette .swatch {
   width: 26px;
+  min-height: 0; /* the global 32px floor made these 26x32 ellipses */
   height: 26px;
   padding: 0;
   border: 1px solid var(--border-strong);
