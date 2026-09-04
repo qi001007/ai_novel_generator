@@ -57,8 +57,13 @@ describe("App", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "第 1 章 未命名" })).toBeTruthy();
+      // The chapter name now lives in exactly one place: the tab. The toolbar used
+      // to repeat it as an <h2>, which is what the owner called "同一信息出现两次".
+      expect(screen.getByRole("tab", { name: /第 1 章 未命名/ })).toBeTruthy();
     });
+    expect(screen.queryByRole("heading", { name: "第 1 章 未命名" })).toBeNull();
+    // Status is a dot carrying its own accessible name, not a word badge.
+    expect(screen.getByLabelText("状态：草稿")).toBeTruthy();
     const textarea = screen.getByLabelText("章节正文") as HTMLTextAreaElement;
     expect(textarea.value).toBe("旧正文。");
 

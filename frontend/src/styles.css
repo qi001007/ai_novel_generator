@@ -1062,38 +1062,90 @@ select:focus-visible {
 }
 
 .dirty-dot {
+  flex: none;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--accent);
+  /* A ring, not a fill: a solid accent dot would read the same as the status
+     dot sitting next to it. */
+  background: transparent;
+  border: 1.5px solid var(--accent);
 }
 
 .editor-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 4px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
 }
 
-.editor-title h2 {
-  margin: 0;
-  font-size: 15px;
+/* The label truncates, the dots never do. */
+.editor-tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.editor-meta {
-  font-size: 12px;
-  color: var(--text-2);
+/* Status is a dot, not a word. The progression reads left to right across the
+   pipeline: hollow = untouched, grey = drafted, amber = machine/AI looked,
+   green = final. The word is still there for the pointer and for a screen
+   reader, it just stopped shouting. */
+.status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid var(--editor-comment);
+}
+
+.status-dot[data-status="draft"],
+.status-dot[data-status="missing"] {
+  border-color: var(--editor-comment);
+}
+
+.status-dot[data-status="generated"] {
+  background: var(--editor-comment);
+  border-color: transparent;
+}
+
+.status-dot[data-status="ai_reviewed"] {
+  background: var(--warning);
+  border-color: transparent;
+}
+
+.status-dot[data-status="final"] {
+  background: var(--diff-plus);
+  border-color: transparent;
 }
 
 .editor-actions {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 2px;
+  margin-left: auto;
+}
+
+/* One framed button per view: 事实落库. Everything else is a quiet text action
+   that only shows a background when the pointer is on it. */
+.editor-actions button:not(.primary) {
+  min-height: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.editor-actions button:not(.primary):hover:not(:disabled) {
+  background: var(--surface-alt);
+  color: var(--text-1);
 }
 
 .editor-body {

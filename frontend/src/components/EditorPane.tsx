@@ -65,7 +65,6 @@ export default function EditorPane() {
   const {
     selectedChapterId,
     chapters,
-    briefs,
     draftContent,
     generationRuns,
     busy,
@@ -73,7 +72,6 @@ export default function EditorPane() {
   } = state;
 
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
-  const brief = briefs.find((item) => item.id === chapter?.brief_id) ?? null;
   const [savedAt, setSavedAt] = useState<string | null>(null);
   // The textarea is the scroller: it keeps the browser's caret-into-view work,
   // and the minimap reads and writes its scrollTop. Growing it to its full
@@ -235,7 +233,7 @@ export default function EditorPane() {
     );
   }
 
-  const liveCount = draftContent.replace(/\s/g, "").length;
+
 
   // Dragging the slider keeps the offset you grabbed it at; clicking bare track
   // centres it under the cursor. Either way it scrolls the page, not the map.
@@ -303,20 +301,19 @@ export default function EditorPane() {
     <section className="editor-pane" aria-label="章节编辑">
       <div className="editor-tabs" role="tablist">
         <button type="button" className="editor-tab active" role="tab" aria-selected="true">
-          第 {chapter.chapter_number} 章 {chapter.title || "未命名"}
+          <span className="editor-tab-label">
+            第 {chapter.chapter_number} 章 {chapter.title || "未命名"}
+          </span>
+          <StatusBadge status={chapter.status} dot />
           {dirty && <i className="dirty-dot" aria-label="未保存" />}
         </button>
       </div>
       <header className="editor-toolbar">
-        <div className="editor-title">
-          <h2>第 {chapter.chapter_number} 章 {chapter.title || "未命名"}</h2>
-          <span className="editor-meta">
-            D 简报{brief?.pov ? ` · 视角 ${brief.pov}` : ""} · <span className="tabular">{liveCount}</span> 字
-          </span>
-        </div>
+        {/* The tab above already says which chapter this is, and the status bar
+            already counts the words. Repeating either here is what made the band
+            look like a form rather than an editor. 保存 is gone too: Ctrl+S is
+            wired, and the dirty dot is the reminder. */}
         <div className="editor-actions">
-          <StatusBadge status={chapter.status} />
-          <button type="button" disabled={busy} onClick={() => void state.saveChapter()}>保存</button>
           <button type="button" disabled={busy} onClick={() => void state.runMachineCheck()}>机械校验</button>
           <button type="button" disabled={busy} onClick={() => void state.runAiReview()}>AI 自检</button>
           <button type="button" disabled={busy} onClick={() => void state.reviewChapter("accept")}>通过终审</button>
