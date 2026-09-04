@@ -764,7 +764,7 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 32px;
+  min-height: 28px;
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
@@ -788,9 +788,13 @@ select:focus-visible {
   min-height: 0;
   display: inline-flex;
   align-items: center;
-  height: 24px;
+  /* 28, matching every other control in this row. Measured before the fix, the
+     row held two heights: these buttons 24px (top 917) and the icon buttons 32px
+     (top 913), because the global button{min-height:32px} overrode their own
+     height:28px. Ragged edges are what read as "one sits higher than the other". */
+  height: 28px;
   padding: 0 10px;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 4px;
   background: transparent;
   color: var(--text-2);
@@ -802,9 +806,13 @@ select:focus-visible {
   color: var(--text-1);
 }
 
+/* No filled pill: a tinted box on one item and nothing on its neighbour is what
+   made the active one look taller. Colour plus an inset underline keeps the box
+   identical in both states, so nothing can poke up. */
 .mode-switch button.selected {
-  background: var(--accent-soft);
+  background: transparent;
   color: var(--accent);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .model-pill {
@@ -812,6 +820,7 @@ select:focus-visible {
   align-items: center;
   gap: 6px;
   max-width: 180px;
+  min-height: 0; /* the global 32px button floor would leave this one tall */
   height: 28px;
   padding: 0 10px;
   border: 1px solid var(--border);
@@ -825,26 +834,28 @@ select:focus-visible {
 }
 
 /* Paperclip lives in the tools row; the generic icon-button is 40px. */
+/* Borderless, like the mode switch. min-height:0 is what actually makes the
+   28px stick - without it the global 32px button floor wins. */
 .chat-attach {
   display: inline-grid;
   place-items: center;
   width: 28px;
   min-width: 28px;
+  min-height: 0;
   height: 28px;
   padding: 0;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-2);
 }
 
 .chat-attach:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
+  background: var(--surface-alt);
+  color: var(--text-1);
 }
 
 .chat-attach.active {
-  border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -973,6 +984,7 @@ select:focus-visible {
   place-items: center;
   width: 28px;
   min-width: 28px;
+  min-height: 0; /* otherwise the global 32px button floor overrides this */
   height: 28px;
   padding: 0;
   border: 0;
