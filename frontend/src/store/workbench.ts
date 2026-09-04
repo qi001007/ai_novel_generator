@@ -34,6 +34,8 @@ type WorkbenchState = {
    *  and the tab looked clean. */
   chapterDrafts: Record<number, { saved: string; draft: string }>;
   draftSaved: string;
+  /** Chapters opened in the editor strip, in the order they were opened. */
+  chapterTabs: number[];
   machineCheck: MachineCheckResult | null;
   generationRuns: GenerationRun[];
   reviews: Review[];
@@ -55,6 +57,8 @@ type WorkbenchState = {
   selectChapter: (chapterId: number) => void;
   setDraftContent: (content: string) => void;
   isChapterDirty: (chapterId: number) => boolean;
+  openChapterTab: (chapterId: number) => void;
+  closeChapterTab: (chapterId: number) => void;
   generateDraft: () => Promise<void>;
   saveChapter: () => Promise<void>;
   runMachineCheck: () => Promise<void>;
@@ -78,6 +82,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   draftContent: "",
   chapterDrafts: {},
   draftSaved: "",
+  chapterTabs: [],
   machineCheck: null,
   generationRuns: [],
   reviews: [],
@@ -162,6 +167,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       chapterDrafts: {},
       draftContent: "",
       draftSaved: "",
+      chapterTabs: [],
     });
     try {
       const [briefs, chapters] = await Promise.all([
@@ -185,6 +191,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         chapterDrafts,
         draftContent: first?.content ?? "",
         draftSaved: first?.content ?? "",
+        chapterTabs: first ? [first.id] : [],
       });
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "加载失败" });
@@ -276,6 +283,31 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   isChapterDirty(chapterId) {
     const entry = get().chapterDrafts[chapterId];
     return entry ? entry.draft !== entry.saved : false;
+  },
+
+  openChapterTab(chapterId) {
+    const { chapterTabs } = get();
+    if (!chapterTabs.includes(chapterId)) {
+      set({ chapterTabs: [...chapterTabs, chapterId] });
+    }
+    get().selectChapter(chapterId);
+  },
+
+  closeChapterTab(chapterId) {
+    const { chapterTabs, selectedChapterId } = get();
+    const at = chapterTabs.indexOf(chapterId);
+    if (at < 0) return;
+    const rest = chapterTabs.filter((id) => id !== chapterId);
+    // The buffer stays in chapterDrafts: closing a tab is not undoing a draft,
+    // and reopening the chapter should give the text back.
+    set({ chapterTabs: rest });
+    if (selectedChapterId !== chapterId) return;
+    const next = rest[Math.min(at, rest.length - 1)];
+    if (next === undefined) {
+      set({ selectedChapterId: null, draftContent: "", draftSaved: "" });
+      return;
+    }
+    get().selectChapter(next);
   },
 
   async generateDraft() {

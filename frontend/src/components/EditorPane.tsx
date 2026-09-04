@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { History } from "lucide-react";
+import { History, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -304,14 +304,37 @@ export default function EditorPane() {
 
   return (
     <section className="editor-pane" aria-label="章节编辑">
+      {/* 批注 20: chapters open side by side in the strip that already names them,
+         so comparing two chapters no longer means going back to the tree each
+         time. Same shape as .file-tab, including the close button. */}
       <div className="editor-tabs" role="tablist">
-        <button type="button" className="editor-tab active" role="tab" aria-selected="true">
-          <span className="editor-tab-label">
-            第 {chapter.chapter_number} 章 {chapter.title || "未命名"}
-          </span>
-          <StatusBadge status={chapter.status} dot />
-          {dirty && <i className="dirty-dot" aria-label="未保存" />}
-        </button>
+        {state.chapterTabs.map((id) => {
+          const item = state.chapters.find((each) => each.id === id);
+          if (!item) return null;
+          const active = id === chapter.id;
+          return (
+            <div
+              key={id}
+              className={`editor-tab ${active ? "active" : ""}`}
+              role="tab"
+              aria-selected={active}
+            >
+              <button type="button" onClick={() => state.openChapterTab(id)}>
+                第 {item.chapter_number} 章 {item.title || "未命名"}
+              </button>
+              {active ? <StatusBadge status={item.status} dot /> : null}
+              {state.isChapterDirty(id) ? <i className="dirty-dot" aria-label="未保存" /> : null}
+              <button
+                type="button"
+                className="editor-tab-close"
+                aria-label={`关闭第 {item.chapter_number} 章`}
+                onClick={() => state.closeChapterTab(id)}
+              >
+                <X size={12} />
+              </button>
+            </div>
+          );
+        })}
       </div>
       <header className="editor-toolbar">
         {/* The tab above already says which chapter this is. Save state and the

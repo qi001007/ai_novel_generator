@@ -165,7 +165,7 @@ export default function WorkbenchPage() {
     const chapterId = Number(chapterIdParam);
     if (!chapterIdParam || !Number.isFinite(chapterId)) return;
     if (!state.chapters.some((item) => item.id === chapterId)) return;
-    if (chapterId !== state.selectedChapterId) state.selectChapter(chapterId);
+    state.openChapterTab(chapterId);
     setRightView("editor");
     setSearchParams({}, { replace: true });
   }, [chapterIdParam, state.chapters, state.selectedChapterId, setSearchParams]);
@@ -315,7 +315,9 @@ export default function WorkbenchPage() {
             onSelectChapter={(chapterId) => {
               setCharactersOpen(false);
               setRightView("editor");
-              state.selectChapter(chapterId);
+              // Open it in the strip as well as selecting it, so a chapter you
+              // clicked is where a chapter you opened would be.
+              state.openChapterTab(chapterId);
             }}
             onOpenCharacters={() => setCharactersOpen(true)}
             onOpenFeedback={() => {

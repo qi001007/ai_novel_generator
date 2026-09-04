@@ -1067,6 +1067,42 @@ select:focus-visible {
   background: color-mix(in srgb, var(--surface) 58%, var(--surface-alt));
 }
 
+.editor-tab > button {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Mirrors .file-tab-close: always present, so the tab never changes width under
+   the pointer, and the close hit area sits against the right edge. */
+.editor-tab-close {
+  flex: none;
+  min-height: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.editor-tab-close:hover {
+  background: var(--surface-alt);
+  color: var(--text-1);
+}
+
 .dirty-dot {
   flex: none;
   width: 6px;
