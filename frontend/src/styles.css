@@ -1347,8 +1347,10 @@ select:focus-visible {
   --view-top: 0;
   --view-height: 1;
   /* --pad mirrors MM_PAD and --track the thumb floor mirrors the 18px in
-     thumbGeometry(); the two must stay word-for-word equal. */
-  --pad: 8px;
+     thumbGeometry(); the two must stay word-for-word equal. Zero because the
+     owner pointed at the seam: an 8px dead band above and below meant the slider
+     could never sit flush with the edge of the map it belongs to. */
+  --pad: 0px;
   --track: calc(100% - (2 * var(--pad)));
   position: relative;
   flex: none;
@@ -3434,17 +3436,22 @@ body.resizing {
   background: transparent;
 }
 
+/* 28px of trailing space made the numbers a channel of their own, which is what
+   still read as "the editor is split into a line-number bar and a page" after the
+   border and the two-tone step were both removed. */
 .file-cm .cm-lineNumbers .cm-gutterElement {
-  min-width: 46px;
-  padding: 0 28px 0 8px;
+  min-width: 38px;
+  padding: 0 10px 0 6px;
   color: var(--editor-linenum);
   font-size: 11px;
   line-height: 22px;
   text-align: right;
 }
 
+/* No fill: a tinted rectangle confined to the gutter column is precisely a
+   separate bar, drawn once per caret line. */
 .file-cm .cm-activeLineGutter {
-  background: var(--editor-gutter);
+  background: transparent;
 }
 
 .file-cm .cm-rail {

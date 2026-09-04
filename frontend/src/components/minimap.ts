@@ -10,8 +10,9 @@ shorter than the pane could never reach the bottom of the track.
 One implementation, two callers, draw and drag reading the same numbers.
 */
 
-/** Padding above and below the track, mirrored in CSS as `--pad`. */
-export const MM_PAD = 8;
+/** Padding above and below the track, mirrored in CSS as `--pad`. Zero: the
+    slider has to meet the edge of the map, or it reads as a gap. */
+export const MM_PAD = 0;
 
 export type Thumb = { track: number; height: number; top: number };
 
