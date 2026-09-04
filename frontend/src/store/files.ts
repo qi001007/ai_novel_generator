@@ -80,6 +80,13 @@ type FilesState = {
   active: string | null;
   entries: Record<string, FileEntry>;
   pending: Record<string, FileProposal>;
+  /**
+   * Which documents are showing their source instead of their rendered view.
+   * One map in the store, keyed by path - 第十四批批注 2: the toggle used to exist
+   * only for toc.md and only as a component-local boolean, so every other document
+   * that has the same rendered-vs-source relation had no button at all.
+   */
+  views: Record<string, boolean>;
   jump: JumpSource | null;
   focus: FileFocus | null;
   revealSeq: number;
@@ -94,6 +101,7 @@ type FilesState = {
   offer: (proposal: FileProposal) => void;
   applyProposal: (path: string) => Promise<boolean>;
   discardProposal: (path: string) => void;
+  toggleView: (path: string) => void;
   reset: () => void;
 };
 
@@ -128,6 +136,7 @@ export const useFiles = create<FilesState>((set, get) => ({
   active: null,
   entries: {},
   pending: {},
+  views: {},
   jump: null,
   focus: null,
   revealSeq: 0,
@@ -142,6 +151,7 @@ export const useFiles = create<FilesState>((set, get) => ({
       active: null,
       entries: {},
       pending: {},
+      views: {},
       jump: null,
       focus: null,
       revealSeq: 0,
@@ -281,6 +291,10 @@ export const useFiles = create<FilesState>((set, get) => ({
     return true;
   },
 
+  toggleView(path) {
+    set((state) => ({ views: { ...state.views, [path]: !state.views[path] } }));
+  },
+
   discardProposal(path) {
     const next = { ...get().pending };
     delete next[path];
@@ -295,6 +309,7 @@ export const useFiles = create<FilesState>((set, get) => ({
       active: null,
       entries: {},
       pending: {},
+      views: {},
       jump: null,
       focus: null,
       metasError: null,

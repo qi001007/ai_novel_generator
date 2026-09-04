@@ -618,6 +618,26 @@
       测试跟着设计走：原先钉「状态：草稿」存在的那条改成钉「**树里那一个**在、
       **标签里没有** `.status-dot`、关闭钮可及名是插值后的真章名」。
       前端 92 全绿、`tsc -b --force` 干净、build 干净、命中区审计 0/0/0。
+- [x] **第十四批·批注 2（2026-09-05）：渲染／源码切换不再只属于目录**：
+      这条主人点了**三次**。根因是 `RENDERED_PATHS = new Set([TOC_PATH])`——一个只装了一份
+      文档的集合，注释还写着「加一种就改这里」，于是它一直只有一种。
+      改法：① 状态从组件里的 `const [tocSource, setTocSource] = useState(false)` 搬进
+      `useFiles.views: Record<path, boolean>` + `toggleView(path)`——**一处状态**，
+      同一个文件不可能在这边是源码、在那边是渲染；② 按钮对**每一份已加载的 md 文档**都出现
+      （目录的标签是「切到列表视图」，其余是「切到渲染视图」）；③ 新增 `.file-rendered`：
+      覆盖在 `.file-body` 上、与正文编辑器同度量（`min(720px,100%)` 居中）、
+      **复用 `.chat-md` 那一套排版**（不给 markdown 再造第二种字号层级）；
+      渲染的是 `entry.draft`，所以主人没保存的字也照样渲染，切换不会吞掉编辑。
+      实测：blueprint.md 渲染后 6 个标题、draft.md 1 个、toc.md 仍是表格；
+      钮距条右 8px、`closest(".file-tabs-scroll") === null`（真的在滚动区外）。
+      **顺手抓到一条同类漏网**：`@media (max-width:900px)` 里还藏着
+      `.toc-list-overlay { inset: 112px 0 0 }`——上一轮我把 70px 改成 `inset:0` 时没搜到它，
+      窄屏下那条硬编码会把接缝带回来。删掉，并把断言从「不等于 70px」加强成
+      「`.toc-list-overlay` 的 inset 不得是任何像素值」。
+      **仍欠两半，已进清单第四节**：章节编辑器标签条自己的「正文 ↔ 原文件」钮
+      （要先取投影全文，状态仍用同一张 map）、人物卡片长字段的那一对视图。
+      闸门新增 3 条断言（不得再有 `RENDERED_PATHS`、必须有 `.file-rendered`、
+      overlay 不得有像素 inset）。前端 109 全绿、`tsc -b --force` 干净。
 - [x] **第十四批·批注 1 + 3 + 4（2026-09-05，提交 `42ec581`）：标签条三件事一起修**：
       三条结构上是同一处，所以一次改完。
       **1 切换钮被 tab 挤走**：`.file-tabs-actions` 原本是**滚动容器的最后一个子元素**，

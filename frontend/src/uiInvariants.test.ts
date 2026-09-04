@@ -79,7 +79,8 @@ describe("settled UI decisions must not regress", () => {
 
   it("the rendered directory covers its body exactly (第十二批批注1)", () => {
     expect(rule(".toc-list-overlay")).toContain("inset: 0");
-    expect(css).not.toMatch(/inset: 70px/);
+    // not 70px, and not the 112px that a media query used to bring back either
+    expect(css).not.toMatch(/\.toc-list-overlay \{[^}]*inset: [0-9]+px/);
     expect(rule(".file-body")).toContain("position: relative");
     // and it lives inside .file-body, not beside it
     expect(fileEditor.indexOf("toc-list-overlay")).toBeGreaterThan(fileEditor.indexOf('className="file-body"'));
@@ -139,6 +140,10 @@ describe("settled UI decisions must not regress", () => {
     expect(rule(".dirty-dot")).toContain("background: var(--accent)");
     expect(rule(".dirty-dot")).not.toMatch(/border: .*var\(--accent\)/);
     // the tree reads the same buffer the tab reads, and subscribes to it
+    // 第十四批批注 2: the toggle is for every document, and its state is one map
+    expect(fileEditor).not.toContain("RENDERED_PATHS");
+    expect(fileEditor).toContain("file-rendered");
+    expect(css).toMatch(/\.file-rendered \{[\s\S]*?inset: 0;/);
     expect(treePane).toContain("chapterDrafts");
     expect(treePane).toContain("未保存");
   });

@@ -28,6 +28,7 @@ import {
   thumbGeometry,
 } from "./minimap";
 import HScrollThumb from "./HScrollThumb";
+import MarkdownText from "./MarkdownText";
 import TocListView, { parseToc, renderToc } from "./TocListView";
 import { useWorkbench } from "../store/workbench";
 
@@ -45,9 +46,11 @@ const LOCKED_FIELDS: Record<string, string[]> = {
 };
 
 
-/* Which documents have a rendered view beside their source. Adding a kind is one
-   entry here; the tab-bar icon picks it up. */
-const RENDERED_PATHS = new Set<string>([TOC_PATH]);
+/* 第十四批批注 2: this used to be a set with one entry - toc.md - which is why the
+   toggle existed nowhere else. Every one of these documents is markdown with a
+   structural header and a body, so every one of them has a rendered view and a
+   source view; the directory is only special in that its rendered view is a table
+   instead of typeset prose. */
 
 export default function FileEditorPane() {
   const novelTitle = useWorkbench((state) => {
@@ -80,14 +83,18 @@ export default function FileEditorPane() {
   const [scroll, setScroll] = useState<ScrollInfo>({ top: 0, height: 1, lines: 0 });
   const [caretLine, setCaretLine] = useState(1);
   const [mmHeight, setMmHeight] = useState(0);
-  const [tocSource, setTocSource] = useState(false);
+  // One view state for every document, in the store, keyed by path - so the same
+  // file cannot be "source" in one pane and "rendered" in another.
+  const views = useFiles((state) => state.views);
+  const toggleView = useFiles((state) => state.toggleView);
+  const sourceView = active ? Boolean(views[active]) : false;
 
   // Switching to source must show the same draft the list just rendered,
   // including chapter rows that exist before their B-layer entry is saved.
-  function handleUseTocSource() {
+  function handleToSource() {
     const entry = active ? entries[active] : undefined;
     if (active !== TOC_PATH || !entry?.doc) {
-      setTocSource(true);
+      toggleView(active!);
       return;
     }
     const parsed = parseToc(entry.draft);
@@ -105,16 +112,12 @@ export default function FileEditorPane() {
     const ordered = [...rows.values()].sort((a, b) => a.chapter - b.chapter);
     const text = renderToc(parsed.preamble, ordered);
     if (text !== entry.draft) setDraft(TOC_PATH, text);
-    setTocSource(true);
+    toggleView(TOC_PATH);
   }
 
   const entry = active ? entries[active] : undefined;
   const proposal = active ? pending[active] : undefined;
   const kind = entry?.doc?.kind ?? "";
-
-  useEffect(() => {
-    setTocSource(false);
-  }, [active]);
 
   /* Ctrl+S lives on the window, not only on the CodeMirror keymap. The rendered
      list is an overlay, so while it is showing the editor does not have focus and
@@ -328,7 +331,8 @@ export default function FileEditorPane() {
 
   const conflict = entry?.conflict ?? false;
   const error = entry?.error ?? null;
-  const showTocList = active === TOC_PATH && Boolean(entry?.doc) && !tocSource;
+  const showTocList = active === TOC_PATH && Boolean(entry?.doc) && !sourceView;
+  const showRendered = Boolean(entry?.doc) && !sourceView && active !== TOC_PATH;
 
   if (!tabs.length) {
     return (
@@ -385,21 +389,28 @@ export default function FileEditorPane() {
           );
         })}
       </div>
-        {/* One persistent icon in the bar that already names the file, for every
-            document that has both a rendered view and a source view. It used to
-            be a two-state control here and a 返回 button over there, so switching
-            moved the control out from under the pointer. */}
-        {RENDERED_PATHS.has(active ?? "") ? (
+        {/* One persistent icon, pinned outside the scroller, for every document -
+            the label says which pair it is switching (a table for the directory,
+            typeset prose for everything else). */}
+        {entry?.doc ? (
           <div className="file-tabs-actions">
             <button
               type="button"
               className="icon-button"
-              aria-label={tocSource ? "切到列表视图" : "切到源码视图"}
-              title={tocSource ? "切到列表视图" : "切到源码视图"}
-              aria-pressed={tocSource}
-              onClick={() => (tocSource ? setTocSource(false) : handleUseTocSource())}
+              aria-label={
+                sourceView
+                  ? active === TOC_PATH ? "切到列表视图" : "切到渲染视图"
+                  : "切到源码视图"
+              }
+              title={
+                sourceView
+                  ? active === TOC_PATH ? "切到列表视图" : "切到渲染视图"
+                  : "切到源码视图"
+              }
+              aria-pressed={sourceView}
+              onClick={() => (sourceView ? toggleView(active!) : handleToSource())}
             >
-              {tocSource ? <BookOpen size={14} /> : <FileCode2 size={14} />}
+              {sourceView ? <BookOpen size={14} /> : <FileCode2 size={14} />}
             </button>
           </div>
         ) : null}
@@ -462,6 +473,16 @@ export default function FileEditorPane() {
         {showTocList ? (
           <div className="toc-list-overlay">
             <TocListView />
+          </div>
+        ) : null}
+        {/* 批注 2: the same relation, everywhere. Read-only typesetting of the draft
+            the reader is editing - unsaved words included, so toggling never hides
+            their own edits. Editing happens in the source view. */}
+        {showRendered && entry?.doc ? (
+          <div className="file-rendered" aria-label="渲染视图（只读）">
+            <div className="file-rendered-inner">
+              <MarkdownText text={entry.draft} />
+            </div>
           </div>
         ) : null}
         <div className="file-code">
