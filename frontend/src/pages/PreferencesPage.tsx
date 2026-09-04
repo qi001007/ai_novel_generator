@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Moon, Sun } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
@@ -26,6 +26,10 @@ const TASKS: Array<[string, string]> = [
 
 export default function PreferencesPage() {
   const navigate = useNavigate();
+  // React Router keeps the entry index in history state; 0 means the reader
+  // arrived here directly and there is nothing in-app to go back to.
+  const historyDepth =
+    (window.history.state as { idx?: number } | null | undefined)?.idx ?? 0;
   const theme = useWorkbench((state) => state.theme);
   const toggleTheme = useWorkbench((state) => state.toggleTheme);
   const [config, setConfig] = useState<LlmConfig | null>(null);
@@ -108,15 +112,17 @@ export default function PreferencesPage() {
           <span>· 偏好设置</span>
         </div>
         <div className="topbar-actions">
-          <button type="button" aria-label="返回书架" title="返回书架" onClick={() => navigate("/")}>
-            <ArrowLeft size={16} />
-          </button>
+          {/* 批注 1: the second button here duplicated the 外观 switch below and
+              crowded out the one control this bar actually needs. */}
           <button
             type="button"
-            aria-label={theme === "dark" ? "切到浅色" : "切到深色"}
-            onClick={() => pickTheme(theme === "dark" ? "light" : "dark")}
+            aria-label="返回上一页"
+            title="返回上一页"
+            // 批注 2: it always went to the shelf, so opening settings from a book
+            // threw the reader out of the workbench. Back means back.
+            onClick={() => (historyDepth > 0 ? navigate(-1) : navigate("/"))}
           >
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+            <ArrowLeft size={16} />
           </button>
         </div>
       </header>

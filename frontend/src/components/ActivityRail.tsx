@@ -1,10 +1,10 @@
-import { BookMarked, ListTree, MessagesSquare } from "lucide-react";
+import { FolderTree, MessagesSquare, Warehouse } from "lucide-react";
 
 export type RailPage = "plan" | "library" | "chat";
 
-const PAGES: { key: RailPage; label: string; icon: typeof ListTree }[] = [
-  { key: "plan", label: "规划与章节", icon: ListTree },
-  { key: "library", label: "设定库", icon: BookMarked },
+const PAGES: { key: RailPage; label: string; icon: typeof FolderTree }[] = [
+  { key: "plan", label: "规划与章节", icon: FolderTree },
+  { key: "library", label: "设定库", icon: Warehouse },
   { key: "chat", label: "对话", icon: MessagesSquare },
 ];
 

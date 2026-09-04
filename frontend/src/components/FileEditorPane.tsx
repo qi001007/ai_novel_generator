@@ -358,7 +358,7 @@ export default function FileEditorPane() {
         <div className="file-empty">
           <FileCode2 size={22} />
           <h2>规划文件</h2>
-          <p>左侧「规划」下的四层各对应一份 Markdown：小节标题与主键锁死，AI 只能改值，改动以提案出现。</p>
+          <p>在左边点一份文件就能改。改动会先作为提案出现，你确认后才写入。</p>
         </div>
       </section>
     );

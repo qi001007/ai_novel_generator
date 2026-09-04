@@ -980,6 +980,13 @@ select:focus-visible {
   box-shadow: none;
 }
 
+.model-pill:focus-visible,
+.model-pill[aria-expanded="true"] {
+  outline: 0;
+  border-color: var(--border-strong);
+  box-shadow: none;
+}
+
 .model-pill {
   display: inline-flex;
   align-items: center;
@@ -1027,6 +1034,25 @@ select:focus-visible {
 
 .model-menu-wrap {
   position: relative;
+}
+
+/* 批注 6: the pill showed an accent border once open. No rule in this file says
+   so, so rather than keep guessing at cascade order the neutral border is stated
+   for every state the control can be in, after all of them. */
+.composer .model-pill,
+.composer .model-pill:hover,
+.composer .model-pill:focus,
+.composer .model-pill:focus-visible,
+.composer .model-pill[aria-expanded="true"],
+.composer .model-pill[aria-expanded="false"] {
+  outline: 0;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.composer .model-pill[aria-expanded="true"] {
+  background: var(--surface-alt);
+  color: var(--text-1);
 }
 
 .model-menu {
@@ -3174,8 +3200,12 @@ body.resizing {
      right edge and made short names mostly dead space. Long names truncate instead
      of running the strip off, and the close button is always present so the width
      never changes under the pointer. */
-  flex: 0 1 auto;
-  min-width: 0;
+  /* 批注 3: `flex: 0 1 auto` with `min-width: 0` let every tab shrink to nothing
+     instead of overflowing, so the strip never scrolled and the close button was
+     clipped or gone. Tabs now hold their width; the floor is sized so the close
+     button plus a readable piece of the name always fits. */
+  flex: 0 0 auto;
+  min-width: 8.5rem;
   max-width: 15rem;
   height: 100%;
   padding: 0 8px 0 12px;
