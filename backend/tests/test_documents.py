@@ -233,7 +233,7 @@ def test_writing_a_new_brief_file_creates_it(client: TestClient) -> None:
     text = (
         "# 第 7 章简报（D 层 · 单章简报）\n"
         "\n"
-        "> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。\n"
+        "> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。「必要事实」按字面匹配校验，填能逐字找到的关键词，不填整句。\n"
         "\n"
         "- **章节号**：7\n"
         "- **所属弧**：—\n"

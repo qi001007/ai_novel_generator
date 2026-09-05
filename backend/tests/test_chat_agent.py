@@ -433,7 +433,7 @@ def test_every_candidate_mention_resolves_back(client: TestClient) -> None:
 
 BRIEF_DOC = """# 第 42 章简报（D 层 · 单章简报）
 
-> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。
+> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。「必要事实」按字面匹配校验，填能逐字找到的关键词，不填整句。
 
 - **章节号**：42
 - **所属弧**：—

@@ -366,7 +366,10 @@ export default function GenerationRunDetailPage() {
                 ) : (
                   <p>没有发现问题</p>
                 )}
-                <p className="run-check-note">校验按当前正文与 D 简报必要事实现算</p>
+                <p className="run-check-note">
+                  校验按当前正文与 D 简报的必要事实现算；匹配是字面的 -
+                  简报里那条事实要能在正文里逐字找到，所以填关键词而不是整句
+                </p>
               </div>
             )}
 
