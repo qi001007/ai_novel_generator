@@ -80,7 +80,7 @@
   并反向钉死 `width: 56px` 这个字面量不许再出现——第二份 56px 就是重新跑偏的方式）。
   真机复验：图标/标题/副标题三者中心都是 **1174.5**。
 
-### 17.3 「章节编辑」上面加一个书本图标（批注 3）
+### 17.3 ✅ 「章节编辑」上面加一个书本图标（批注 3）
 
 - 主人：「可以在这个上面再加一个图标，加那个书本的图标」。
 - 与 17.2 是**同一处缺陷的两面**：`§0.6 空态` 规定「lucide 图标 + 一句话」，
@@ -89,6 +89,21 @@
 - 判据：`.editor-empty` 图标在 h2 之上、`BookOpen`（书本＝正文/阅读面，与 16.2 的图标语义
   一致）；**整类**：每个空态都有且只有一个图标，图标 / 标题 / 副标题三者同轴居中；
   图标不进命中区审计的控件清单（`aria-hidden`），不新增可点区域。
+- **已做（2026-09-05 真机量过、截图看过）**。`.editor-empty` 加 `BookOpen size={22}`
+  （与同栏对的 `.file-empty` 的 `FileCode2 size={22}` 同尺寸）。
+  **整类扫出六个面板级空态**：`editor-empty`（缺）／`file-empty`（有，但缺 `aria-hidden`）／
+  `library-empty`（缺）／`page-panel-empty` 伏笔墙 `Flag 32`（有）／地图 `MapPin 32`（有）／
+  `run-detail-empty` `FileText 24`（有）→ 补齐两处缺的、给装饰性图标统一加
+  `aria-hidden="true"`（`Users 24` 用于人物面板）。
+  **刻意不加图标的**：`.tree-empty`／`.chat-detail-empty`／`.toc-empty`／`.feedback-empty`
+  ——它们是列表/明细里的一行提示，不是撑满一栏的面板级空态，加图标就成了装饰。
+- 真机（1557 视口，关掉全部章节标签）：图标 / `h2` / `p` 三者中心 **全部 1174.5**（与 17.2
+  修正后的阅读列同轴）；`svg` 的 `aria-hidden="true"`、`getComputedStyle(color)` 继承面板的
+  `--text-2`（我一开始误用从未定义的 `--text-3`，实测颜色回落才发现，已删）；
+  图标不在任何 `button`/`a` 内，命中区审计控件数不变。
+- 闸门：`uiInvariants` 27 → **28** 块——遍历六个面板级空态，逐个要求「块内第一个元素就是
+  `<Icon size={n} aria-hidden="true" />`」，缺一个就红；并单独钉死 `.editor-empty` 用的是
+  `BookOpen`。前端 147 → **148 passed / 19 files**。
 
 ---
 

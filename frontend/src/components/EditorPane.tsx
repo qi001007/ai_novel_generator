@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { ScrollText, X } from "lucide-react";
+import { BookOpen, ScrollText, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -228,6 +228,10 @@ export default function EditorPane() {
     return (
       <section className="editor-pane" aria-label="章节编辑">
         <div className="editor-empty">
+          {/* 第十七批批注 3: §0.6 wants icon + one line, and the file column already has
+              its FileCode2 - the missing block here is also why the two columns never
+              looked like they shared an axis. Same glyph as the toggle's reading side. */}
+          <BookOpen size={22} aria-hidden="true" />
           <h2>章节编辑</h2>
           <p>左侧选择或新建一章开始写作</p>
         </div>

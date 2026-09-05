@@ -33,6 +33,10 @@ import proposalCard from "./components/ProposalCard.tsx?raw";
 import chatTypes from "./types.ts?raw";
 import tocList from "./components/TocListView.tsx?raw";
 import viewToggle from "./components/ViewToggle.tsx?raw";
+import characterLibrary from "./components/CharacterLibrary.tsx?raw";
+import foreshadowWall from "./components/ForeshadowWall.tsx?raw";
+import worldMapPanel from "./components/WorldMapPanel.tsx?raw";
+import runDetailPage from "./pages/GenerationRunDetailPage.tsx?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -288,6 +292,31 @@ describe("settled UI decisions must not regress", () => {
     // theme paints `.cm-focused { outline: 1px dotted #212121 }`, which this file has
     // to out-specify; if that override is ever dropped the ring comes back silently.
     expect(css).toMatch(/\.file-cm \.cm-editor\.cm-focused\s*\{\s*outline: 0;/);
+  });
+
+  it("a panel-level empty state is icon + words, never words alone (第十七批批注 3)", () => {
+    // §0.6 has said "lucide 图标 + 一句话" since it was written, and two of these blocks
+    // had no icon at all - which is also why the editor column's empty state read as a
+    // stray heading rather than a placeholder. The owner named one; the class is checked.
+    const PANEL_EMPTIES: [string, string][] = [
+      ["editor-empty", editorPane],
+      ["file-empty", fileEditor],
+      ["library-empty", characterLibrary],
+      ["page-panel-empty", foreshadowWall],
+      ["page-panel-empty", worldMapPanel],
+      ["run-detail-empty", runDetailPage],
+    ];
+    const missing: string[] = [];
+    for (const [cls, source] of PANEL_EMPTIES) {
+      const at = source.indexOf(`className="${cls}"`);
+      if (at < 0) { missing.push(cls + " (block not found)"); continue; }
+      // the icon is the first thing inside the block, before the heading
+      const head = source.slice(at, at + 420);
+      if (!/[A-Z][A-Za-z0-9]* size=\{\d+\} aria-hidden="true"/.test(head)) missing.push(cls);
+    }
+    expect(missing, missing.join(", ")).toEqual([]);
+    // the one the owner asked for is the reading glyph, matching the toggle's meaning
+    expect(editorPane).toContain("<BookOpen size={22} aria-hidden=\"true\" />");
   });
 
   it("anything centred in the editor column subtracts the minimap gutter (第十七批批注 2)", () => {

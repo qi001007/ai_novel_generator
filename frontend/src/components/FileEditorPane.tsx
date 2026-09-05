@@ -351,7 +351,7 @@ export default function FileEditorPane() {
     return (
       <section className="file-editor" aria-label="文件编辑器">
         <div className="file-empty">
-          <FileCode2 size={22} />
+          <FileCode2 size={22} aria-hidden="true" />
           <h2>规划文件</h2>
           <p>在左边点一份文件就能改。改动会先作为提案出现，你确认后才写入</p>
         </div>

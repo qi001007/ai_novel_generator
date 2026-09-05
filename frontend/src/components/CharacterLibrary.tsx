@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Users } from "lucide-react";
 
 import { api } from "../api";
 import { useFiles } from "../store/files";
@@ -188,6 +189,9 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
 
       {filtered.length === 0 ? (
         <div className="library-empty">
+          {/* 整类: the same §0.6 rule the other panel-level empty states follow
+              (Flag / MapPin / FileText / FileCode2). This one had no icon either. */}
+          <Users size={24} aria-hidden="true" />
           <h2>{query || activeLevel !== "all" ? "没有匹配的人物" : "还没有人物"}</h2>
           <p>{query || activeLevel !== "all" ? "换个关键词或分级试试" : "从主角团开始，给故事立起第一张卡"}</p>
         </div>
