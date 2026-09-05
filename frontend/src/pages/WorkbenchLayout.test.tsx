@@ -217,6 +217,49 @@ describe("workbench layout", () => {
     );
   });
 
+  /* 第十六批批注 9: the pointer used to be dropped the moment a column vanished, so
+     pulling back moved nothing and the only way to get the column again was to let go
+     and click the top-bar icon. One reversible floor now governs both directions, and
+     both doors. */
+  it("gives a closed column back from the same boundary, and not from the same direction", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+
+    screen.getAllByRole("separator")[0].focus();
+    await user.keyboard("{ArrowLeft}".repeat(14));
+    await waitFor(() => expect(hiddenAttr()).toContain("sidebar"));
+
+    // same direction again: it stays away - the idempotence 第十五批批注 2.2 pinned
+    await user.keyboard("{ArrowLeft}".repeat(4));
+    expect(hiddenAttr()).toContain("sidebar");
+
+    // the other direction: back without touching the icon
+    await user.keyboard("{ArrowRight}");
+    await waitFor(() => expect(hiddenAttr()).not.toContain("sidebar"));
+    expect(pressed("显示或隐藏结构栏")).toBe("true");
+    /* The track list is "44px <sidebar>px 1px ..." - the rail is first, so read the
+       second one. One ArrowRight back over the floor lands just above it, which is the
+       point: the column returns at the width the gesture asks for, while the icon path
+       (asserted in the 第十五批 case above) still brings it back at the resting 260. */
+    const tracks = columns().split(" ");
+    expect(tracks[0]).toBe("44px");
+    expect(tracks[1]).toMatch(/^\d+px$/);
+    expect(parseInt(tracks[1], 10)).toBeGreaterThanOrEqual(90);
+  });
+
+  it("brings the prose column back the same way when the chat boundary is pulled left", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+
+    screen.getAllByRole("separator")[1].focus();
+    await user.keyboard("{ArrowRight}".repeat(20));
+    await waitFor(() => expect(hiddenAttr()).toContain("editor"));
+
+    await user.keyboard("{ArrowLeft}".repeat(2));
+    await waitFor(() => expect(hiddenAttr()).not.toContain("editor"));
+    expect(hiddenAttr()).not.toContain("chat");
+  });
+
   it("keeps the separator a 1px hairline with no buttons on it", async () => {
     await openWorkbench();
 

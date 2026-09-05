@@ -171,6 +171,23 @@ export default function WorkbenchPage() {
     setHidden(next);
   }
 
+  /* A drag that closes a column and then pulls back has to answer "is it already gone?"
+     from the value just committed, not from the render this closure was created in -
+     every move handler lives inside one closure for the whole gesture. The ref mirrors
+     the state; the writes go through the functional updater so two moves in the same
+     frame cannot undo each other. */
+  const hiddenRef = useRef(hidden);
+  hiddenRef.current = hidden;
+
+  function setPaneHidden(key: HiddenKey, value: boolean) {
+    setHidden((prev) => {
+      if (prev[key] === value) return prev;
+      const next = { ...prev, [key]: value };
+      if (next.chat && next.editor) return prev;
+      return next;
+    });
+  }
+
   function toggleHidden(key: HiddenKey) {
     // Un-hiding the prose column takes the room back from the chat pane, which grew
     // into it when the column went away.
@@ -190,18 +207,27 @@ export default function WorkbenchPage() {
      icon goes unpressed and the width a pane comes back to is the width it had
      before - not the default. 第十五批批注 2.2 的判据就是这两条。 */
   function closePane(key: HiddenKey) {
-    // Idempotent on purpose, and this is the bug it hides: a drag or a run of arrow
-    // keys keeps firing after the column is gone, and a toggle would answer that by
-    // bringing it straight back - measured, the twelfth ArrowRight re-opened what the
-    // eleventh had closed.
-    if (hidden[key]) return;
+    // Idempotent on purpose: a run of arrow keys in the same direction must not toggle
+    // the column back on - measured, the twelfth ArrowRight re-opened what the eleventh
+    // had closed. Pulling the pointer the OTHER way is a different thing and 16.9 below.
+    if (hiddenRef.current[key]) return;
     // A drag that ends in a close leaves the pane one pixel above the threshold;
     // putting it away with that width stored means the icon brings back a strip
     // nobody can use. So the width goes back to the resting minimum first.
     if (key === "sidebar" || key === "chat") {
-      writePane(key, clampPane(key, panes[key]));
+      setPanes((prev) => ({ ...prev, [key]: clampPane(key, prev[key]) }));
     }
-    applyHidden({ ...hidden, [key]: true });
+    setPaneHidden(key, true);
+  }
+
+  /* 第十六批批注 9. The owner's words: 「我按住边界往右边拖，拖到一定程度它会消失掉。
+     正常来说，只要我鼠标没有松开，再往左拉，它应该还是会出现的」- the gesture used to end
+     the instant a column vanished, so pulling back moved nothing and the only way back was
+     the top-bar icon. Reopening goes through the same floor as closing, so the pointer and
+     the arrow keys cannot disagree about it. */
+  function reopenPane(key: HiddenKey) {
+    if (!hiddenRef.current[key]) return;
+    setPaneHidden(key, false);
   }
 
   const sidebarWidth = clampPane("sidebar", panes.sidebar);
@@ -264,13 +290,14 @@ export default function WorkbenchPage() {
      resting ceiling clamps the chat pane to exactly CLOSE_AT for the editor, so
      judging the clamped value would leave one pixel that never closes. */
   function editorWidthIf(pane: PaneKey, raw: number) {
+    const current = hiddenRef.current;
     const sidebar = pane === "sidebar" ? raw : panes.sidebar;
     const chat = pane === "chat" ? raw : panes.chat;
     return (
       window.innerWidth -
       44 -
-      (hidden.sidebar ? 0 : sidebar + 1) -
-      (hidden.chat ? 0 : chat + 1)
+      (current.sidebar ? 0 : sidebar + 1) -
+      (current.chat ? 0 : chat + 1)
     );
   }
 
@@ -283,22 +310,21 @@ export default function WorkbenchPage() {
     return Math.min(max, Math.max(CLOSE_AT, Math.round(raw)));
   }
 
-  /* One rule for the pointer and the keyboard: a pane dragged or nudged under the
-     floor closes, and a prose column squeezed under it closes. Returns true when
-     the gesture is over because something just went away. */
+  /* One reversible rule for the pointer and the keyboard: under the floor a column goes
+     away, back above it the same gesture brings it back. It returns nothing, because
+     nothing here ends a gesture any more - only pointerup does (第十六批批注 9). */
   function applyPane(pane: PaneKey, raw: number) {
     if (raw < CLOSE_AT) {
       closePane(pane);
-      return true;
+      return;
     }
+    reopenPane(pane);
     if (editorWidthIf(pane, raw) < EDITOR_MIN) {
-      // The prose column is the one being crushed: put it away and stop, or the
-      // pointer keeps dragging a column that is no longer there.
       closePane("editor");
-      return true;
+      return;
     }
+    reopenPane("editor");
     writePane(pane, dragPane(pane, raw));
-    return false;
   }
 
   function beginDrag(pane: PaneKey, event: ReactPointerEvent<HTMLDivElement>) {
@@ -307,7 +333,7 @@ export default function WorkbenchPage() {
     const startWidth = pane === "sidebar" ? panes.sidebar : panes.chat;
 
     function onMove(moveEvent: PointerEvent) {
-      if (applyPane(pane, startWidth + moveEvent.clientX - startX)) stopDrag();
+      applyPane(pane, startWidth + moveEvent.clientX - startX);
     }
     function stopDrag() {
       window.removeEventListener("pointermove", onMove);
@@ -321,7 +347,13 @@ export default function WorkbenchPage() {
   }
 
   function nudge(pane: PaneKey, delta: number) {
-    const current = pane === "sidebar" ? panes.sidebar : panes.chat;
+    /* A column that is away keeps its resting width so the icon can bring it back at a
+       usable size - which means the arrow keys must not use that width as their base.
+       From 260, one more ArrowLeft looks like "still above the floor" and would reopen
+       what the previous press closed; from the floor, only the direction matters. A
+       pointer drag needs no such correction: it measures from where the grab began. */
+    const stored = pane === "sidebar" ? panes.sidebar : panes.chat;
+    const current = hiddenRef.current[pane] ? CLOSE_AT - 1 : stored;
     applyPane(pane, current + delta);
   }
 
