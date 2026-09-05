@@ -1686,7 +1686,11 @@ select:focus-visible {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 4px 12px;
+  /* 2px, not 4: at 44px the toolbar was TALLER than the tab strip above it, which is
+     the opposite of the "略窄" the owner asked for. With every action on one 28px line
+     (see .editor-actions button.primary below) this row measures 32 - the shortest of
+     the bars: topbar 48, the two tab strips 38, this 32. */
+  padding: 2px 12px;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
 }
@@ -1750,6 +1754,17 @@ select:focus-visible {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-2);
+  font-size: 12px;
+}
+
+/* The primary action keeps its frame - §0.6 allows exactly one framed button per view
+   and this is it - but not the global 32px floor plus 6px padding, which made it 35px
+   tall in a row of 28px buttons and pushed the whole toolbar to 40. Same height as its
+   neighbours, still the only framed thing up there. */
+.editor-actions button.primary {
+  min-height: 0;
+  height: 28px;
+  padding: 0 12px;
   font-size: 12px;
 }
 
@@ -3424,7 +3439,10 @@ body.resizing {
   display: flex;
   align-items: stretch;
   flex: none;
-  height: 40px;
+  /* 38px, the height the chapter strip already measures (its own 6px top padding plus a
+     31-32px tab): two strips that are the same object should not be two pixels apart,
+     and the toolbar below is now shorter than both (前几轮遗留「四条 bar 收窄并统一」). */
+  height: 38px;
   padding: 0 8px;
   background: var(--surface-alt);
   border-bottom: 1px solid var(--border-strong);

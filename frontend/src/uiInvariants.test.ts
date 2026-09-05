@@ -406,6 +406,19 @@ const componentSources = import.meta.glob("./**/*.tsx", {
   eager: true,
 }) as Record<string, string>;
 
+  it("the four bars step down in one order, and the two tab strips are one height (前几轮遗留)", () => {
+    // 「四条 bar 收窄并统一」. Measured live after the change: topbar 48 on both pages,
+    // .editor-tabs 38 = .file-tabs 38, .editor-toolbar 33. The toolbar used to be 44 -
+    // taller than the strip above it - because the one framed button kept the global
+    // 32px floor plus 6px padding and stood 7px proud of its 28px row.
+    expect(rule(".file-tabs")).toContain("height: 38px");
+    expect(rule(".editor-toolbar")).toContain("padding: 2px 12px");
+    expect(rule(".editor-actions button.primary")).toContain("height: 28px");
+    expect(rule(".editor-actions button.primary")).toContain("min-height: 0");
+    // the framed primary keeps its frame - §0.6 allows exactly one per view
+    expect(rule(".editor-actions button:not(.primary)")).toContain("border: 0");
+  });
+
   it("a chapter tab says which chapter it is at a glance (第十六批批注 3)", () => {
     // 「打开的页面太多，你就只能看到『第什么什么』」- every tab began with the same
     // three glyphs and the strip stopped being a locator. The number is what the tree
