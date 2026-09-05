@@ -3264,7 +3264,58 @@ select:focus-visible {
   font-family: "Noto Serif SC", serif;
   font-size: 56px;
   font-weight: 600;
-  color: var(--accent);
+  /* 弹窗里挑的颜色当场就要在这里看得见；没挑就是「跟随工作台主色」，
+     与书架上那张卡用的是同一个回落。 */
+  color: var(--book-accent, var(--accent));
+}
+
+/* 前几轮点名项：预设八枚之外的一枚真·调色盘（系统取色器）。
+   形状**故意与预设不同**：预设是圆、它是方。真机截图里它和「青碧」是两枚一模一样的
+   绿圆，只能靠悬停 tooltip 区分 - 而 tooltip 只有鼠标知道。尺寸仍与预设同为 26。 */
+.cover-palette-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 4px;
+}
+
+.cover-swatch-picker {
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.cover-swatch-picker input {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: none;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+
+.cover-swatch-picker input::-webkit-color-swatch-wrapper {
+  padding: 0;
+  border-radius: 7px;
+}
+
+.cover-swatch-picker input::-webkit-color-swatch {
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+
+/* 当前色不在预设里，选中态就归这枚 - 与 .swatch[aria-checked] 同一圈描边。 */
+.cover-swatch-picker.on,
+.cover-swatch-picker.on input::-webkit-color-swatch {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
 }
 
 .cover-actions {
@@ -5477,7 +5528,8 @@ body.resizing {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  padding: 0 16px 4px;
+  /* 行内衬挪到 .cover-palette-row：那一行现在还要装一枚取色器。 */
+  padding: 0;
 }
 
 .cover-palette .swatch {

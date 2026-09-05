@@ -566,6 +566,22 @@ const componentSources = import.meta.glob("./**/*.tsx", {
 
   /* 前几轮点名项（书卡右键菜单）定下来的三件事：卡面动作是图标不是句子、
      右键菜单复用树那一套、没有通路的条目老实写「未开放」。 */
+  /* 前几轮点名项（封面色调色盘）：色板末尾那枚是系统取色器，不是我又画的假色轮；
+     挑的颜色必须当场在预览上看得见，不能等保存回书架才知道选了什么。 */
+  it("the cover palette ends in a real picker that paints the preview", () => {
+    expect(bookshelf).toContain('type="color"');
+    expect(bookshelf).toContain('aria-label="自定义封面颜色"');
+    expect(bookshelf).toContain('className="cover-palette-row"');
+    expect(bookshelf).toMatch(/style=\{\{ "--book-accent": coverColor \|\| tokenValue\("--accent"\)/);
+    expect(rule(".cover-preview span")).toContain("var(--book-accent, var(--accent))");
+    // 命中区与预设同尺寸（审计的地板线是 24）
+    expect(rule(".cover-swatch-picker input")).toContain("width: 26px");
+    expect(rule(".cover-swatch-picker input")).toContain("height: 26px");
+    // 形状必须与预设不同：两枚一模一样的圆，只有 tooltip 知道哪枚是取色器
+    expect(rule(".cover-swatch-picker")).toContain("border-radius: 7px");
+    expect(rule(".cover-palette .swatch")).toContain("border-radius: 50%");
+  });
+
   it("a book card's action is an icon and its menu is the tree's menu", () => {
     expect(bookshelf).toMatch(/className="icon-button cover-change-btn"[\s\S]{0,400}<ImagePlus/);
     expect(bookshelf).not.toMatch(/更换封面\s*<\/button>/);

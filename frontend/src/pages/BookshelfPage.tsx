@@ -3,6 +3,7 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, KeyboardEvent as Rea
 import { ImagePlus, Settings, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+import { tokenValue } from "../store/appearance";
 import { useWorkbench } from "../store/workbench";
 import type { Novel, NovelUpdatePayload } from "../types";
 
@@ -92,6 +93,10 @@ export default function BookshelfPage() {
   const menuOpener = useRef<HTMLElement | null>(null);
 
   const coverTarget = novels.find((novel) => novel.id === coverEditId) ?? null;
+  /* 前几轮点名项：八枚预设之外要有一枚真·调色盘。取色用的是系统取色器，
+     不是我再画一个假色轮。当前色不在预设里时，选中态落在这枚上。 */
+  const isCustomCover =
+    coverColor !== "" && !COVER_COLORS.some((color) => color.value === coverColor);
 
   useEffect(() => {
     if (!bookMenu) return;
@@ -370,7 +375,15 @@ export default function BookshelfPage() {
                 <X size={16} />
               </button>
             </header>
-            <div className="cover-preview">
+            {/* 选完当场看得见：预览以前只读全局 --accent，挑的颜色要保存回书架
+                才第一次出现，那等于让主人在盲选。
+                「未选色」写成主色本身而不是删掉这个属性 - React 更新时不会把内联的
+                自定义属性清回去（测试里量到的：从 {--book-accent:#123456} 变成
+                undefined 之后，节点上留的还是 #123456），所以这里永远给一个具体值。 */}
+            <div
+              className="cover-preview"
+              style={{ "--book-accent": coverColor || tokenValue("--accent") } as BookVars}
+            >
               {coverPreview ? (
                 <img src={coverPreview} alt={`${coverTarget.title} 封面预览`} />
               ) : (
@@ -378,6 +391,7 @@ export default function BookshelfPage() {
               )}
             </div>
             <p className="cover-palette-label">书脊与封面色</p>
+            <div className="cover-palette-row">
             <div className="cover-palette" role="radiogroup" aria-label="封面颜色">
               {COVER_COLORS.map((color) => (
                 <button
@@ -392,6 +406,19 @@ export default function BookshelfPage() {
                   onClick={() => setCoverColor(color.value)}
                 />
               ))}
+            </div>
+              {/* 不在 radiogroup 里：那一组的子项必须全是 radio，而这枚是取色器。 */}
+              <label
+                className={isCustomCover ? "cover-swatch-picker on" : "cover-swatch-picker"}
+                title={isCustomCover ? `自定义 ${coverColor}` : "自定义封面颜色"}
+              >
+                <input
+                  type="color"
+                  aria-label="自定义封面颜色"
+                  value={/^#[0-9a-f]{6}$/i.test(coverColor) ? coverColor : tokenValue("--accent")}
+                  onChange={(event) => setCoverColor(event.target.value)}
+                />
+              </label>
             </div>
             <div className="cover-actions">
               <label className="cover-upload">

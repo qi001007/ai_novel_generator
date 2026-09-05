@@ -158,6 +158,61 @@ describe("BookshelfPage", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
+  /* 前几轮点名项：预设八枚之外要有一枚真·调色盘，而且挑完当场看得见。 */
+  it("offers a real colour picker after the presets and paints the preview with it", async () => {
+    const user = userEvent.setup();
+    const puts: Record<string, unknown>[] = [];
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = String(init?.method ?? "GET");
+        if (url.endsWith("/api/novels/4") && method === "PUT") {
+          puts.push(JSON.parse(String(init?.body)));
+          return Promise.resolve(ok({ ...shelf[0], cover_color: "#123456" }));
+        }
+        return Promise.resolve(ok(shelf));
+      }),
+    );
+    const { container } = renderShelf();
+    const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
+    await user.click(within(card).getByRole("button", { name: "更换「演示测试」封面" }));
+
+    const group = screen.getByRole("radiogroup", { name: "封面颜色" });
+    const picker = screen.getByLabelText("自定义封面颜色") as HTMLInputElement;
+    expect(picker.type).toBe("color");
+    // 取色器不是 radio，所以不许住在 radiogroup 里（那一组的子项必须全是 radio）
+    expect(group.contains(picker)).toBe(false);
+    expect(within(group).getAllByRole("radio")).toHaveLength(9);
+
+    // 挑一个不在预设里的颜色：预览当场跟着变，选中态归这枚
+    fireEvent.input(picker, { target: { value: "#123456" } });
+    expect(document.querySelector(".cover-preview")?.getAttribute("style")).toContain("#123456");
+    expect(document.querySelector(".cover-swatch-picker.on")).toBeTruthy();
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(puts.length).toBe(1));
+    expect(puts[0]).toEqual({ cover_color: "#123456" });
+
+    // 保存会关窗；重开之后这个颜色是从服务器回来的，仍然认得出「不在预设里」
+    await user.click(within(card).getByRole("button", { name: "更换「演示测试」封面" }));
+    const group2 = screen.getByRole("radiogroup", { name: "封面颜色" });
+    expect(document.querySelector(".cover-preview")?.getAttribute("style")).toContain("#123456");
+    expect(document.querySelector(".cover-swatch-picker.on")).toBeTruthy();
+
+    // 回到预设之一，描边环还给那一枚；「默认」仍然能把值清回空
+    await user.click(within(group2).getByRole("radio", { name: "青碧" }));
+    expect(document.querySelector(".cover-swatch-picker.on")).toBeNull();
+    expect(within(group2).getByRole("radio", { name: "青碧" }).getAttribute("aria-checked")).toBe("true");
+    await user.click(within(group2).getByRole("radio", { name: "默认（跟随工作台主色）" }));
+    expect(within(group2).getByRole("radio", { name: "默认（跟随工作台主色）" }).getAttribute("aria-checked")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(puts.length).toBe(2));
+    expect(puts[1]).toEqual({ cover_color: "" });
+  });
+
   it("opens the same menu from the keyboard, without a mouse", async () => {
     const user = userEvent.setup();
     const { container } = renderShelf();
