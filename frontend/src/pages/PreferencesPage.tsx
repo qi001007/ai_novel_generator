@@ -702,6 +702,7 @@ export default function PreferencesPage() {
               crowded out the one control this bar actually needs. */}
           <button
             type="button"
+            className="icon-button"
             aria-label="返回上一页"
             title="返回上一页"
             // 批注 2: it always went to the shelf, so opening settings from a book

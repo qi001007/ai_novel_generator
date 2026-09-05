@@ -314,7 +314,15 @@ export default function BookshelfPage() {
           <span>AI 长篇连载工作台</span>
         </div>
         <div className="topbar-actions">
-          <button type="button" aria-label="设置" title="设置" onClick={() => navigate("/settings")}>
+          {/* D-22②：顶栏的图标钮一律无边框（§0.7 条一）。这两枚是全站仅剩的例外，
+              工作台同一位置的同类控件早就是裸图标。20.1 那次全局居中修复保留不变。 */}
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="设置"
+            title="设置"
+            onClick={() => navigate("/settings")}
+          >
             <Settings size={16} />
           </button>
           {/* 批注 4: the workbench lost this two rounds ago and this one was left

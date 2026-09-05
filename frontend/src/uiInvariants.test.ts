@@ -583,6 +583,18 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(bookshelf).toContain('"已经有同一部作品叫这个名字"');
   });
 
+  /* D-22②：顶栏的图标钮是记号不是方框（§0.7 条一）。全站只剩的两处例外已收掉，
+     不许再长回来 - 工作台同一位置的控件是裸图标，两套语言会让人觉得这两个页面
+     不是同一个应用。 */
+  it("topbar icon buttons are borderless marks, not boxes", () => {
+    for (const source of [bookshelf, preferences, layout]) {
+      const bare = source.match(/<button\s+type="button"\s+aria-label="[^"]+"[^>]*>\s*\n\s*<(Settings|ArrowLeft)/g) ?? [];
+      expect(bare, source.slice(0, 40)).toEqual([]);
+    }
+    expect(bookshelf).toMatch(/className="icon-button"\s*\n\s*aria-label="设置"/);
+    expect(preferences).toMatch(/className="icon-button"\s*\n\s*aria-label="返回上一页"/);
+  });
+
   /* D-22①：压在饱和色块上的字必须是 token。深色主题的语义色都是提亮的浅色调，
      白字压上去只有 2.6~3.4 - 九条规则各写一遍 #fff 就是这次的病根。 */
   it("ink on a saturated fill is a token, not a hard-coded white", () => {
