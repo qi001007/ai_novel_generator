@@ -12,6 +12,7 @@ vi.mock("../api", () => ({
 }));
 
 import { api } from "../api";
+import { draftBody, draftDocument, isDirty, useFiles } from "./files";
 import { useWorkbench } from "./workbench";
 import type { Chapter, ChapterBrief, FileDoc, GenerationRun, MachineCheckResult } from "../types";
 
@@ -70,6 +71,11 @@ const run: GenerationRun = {
 
 const check: MachineCheckResult = { passed: true, word_count: 4, issues: [] };
 
+/* 批注 3.3: the prose page and the file page share one buffer, so "what the prose
+   page shows" is a projection of the file entry - read it the same way here. */
+const buffer = () => useFiles.getState().entries[draftDoc.path];
+const draftBodyOf = () => draftBody(buffer().draft, 42);
+
 describe("workbench chapter writes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -80,9 +86,28 @@ describe("workbench chapter writes", () => {
       briefs: [brief],
       // Deliberately stale: generation must follow the selected chapter.
       selectedBriefId: 999,
-      draftContent: "沈曜推开了石门。",
       busy: false,
       error: null,
+    });
+    // 批注 3.3: there is one buffer, and it lives in the file store.
+    useFiles.setState({
+      novelId: 1,
+      metas: [],
+      tabs: [],
+      active: null,
+      entries: {
+        [draftDoc.path]: {
+          doc: draftDoc,
+          draft: draftDocument(42, "沈曜推开了石门。"),
+          loading: false,
+          saving: false,
+          error: null,
+          conflict: false,
+          savedAt: null,
+        },
+      },
+      pending: {},
+      views: {},
     });
     vi.mocked(api.readFile).mockResolvedValue(draftDoc);
     vi.mocked(api.writeFile).mockResolvedValue({
@@ -108,29 +133,36 @@ describe("workbench chapter writes", () => {
     await useWorkbench.getState().saveChapter();
 
     expect(api.put).not.toHaveBeenCalled();
-    expect(api.readFile).toHaveBeenCalledWith(1, "chapters/0042/draft.md");
     expect(api.writeFile).toHaveBeenCalledWith(
       1,
       "chapters/0042/draft.md",
       expect.stringContaining("# 第 42 章正文"),
-      { baseRevision: "draft-1" },
+      { actor: "human", baseRevision: "draft-1" },
     );
     expect(api.writeFile).toHaveBeenCalledWith(
       1,
       "chapters/0042/draft.md",
       expect.stringContaining("沈曜推开了石门。"),
-      { baseRevision: "draft-1" },
+      { actor: "human", baseRevision: "draft-1" },
     );
     expect(useWorkbench.getState().chapters[0].content).toContain("石门");
     expect(useWorkbench.getState().error).toBeNull();
   });
 
   it("targets the selected chapter's brief, not a stale selected brief id", async () => {
+    // what the server holds once the run has written the chapter
+    vi.mocked(api.readFile).mockResolvedValue({
+      ...draftDoc,
+      text: draftDocument(42, "新正文。"),
+      revision: "draft-2",
+    });
     await useWorkbench.getState().generateDraft();
 
     expect(api.streamGeneration).toHaveBeenCalledWith(1, 2, expect.any(Function));
     expect(useWorkbench.getState().lastGenerationRunId).toBe(10);
-    expect(useWorkbench.getState().draftContent).toBe("新正文。");
+    // the one buffer, not a copy of it: the run's saved text, re-read from the file
+    expect(draftBodyOf()).toBe("新正文。");
+    expect(useFiles.getState().entries[draftDoc.path].doc?.revision).toBe("draft-2");
     expect(useWorkbench.getState().error).toBeNull();
   });
 });
@@ -222,9 +254,21 @@ describe("workbench novel selection", () => {
   });
 });
 
-describe("per-chapter draft buffers", () => {
+describe("one draft buffer, read by both pages (批注 3.3)", () => {
   const a: Chapter = { ...chapter, id: 8, chapter_number: 1, content: "第一章原句。", title: "甲" };
   const b: Chapter = { ...chapter, id: 9, chapter_number: 2, content: "第二章原句。", title: "乙" };
+  const pathA = "chapters/0001/draft.md";
+  const pathB = "chapters/0002/draft.md";
+
+  const entry = (text: string) => ({
+    doc: { ...draftDoc, path: "", text, revision: "r1" },
+    draft: text,
+    loading: false,
+    saving: false,
+    error: null,
+    conflict: false,
+    savedAt: null,
+  });
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -232,29 +276,60 @@ describe("per-chapter draft buffers", () => {
       selectedNovelId: 1,
       chapters: [a, b],
       selectedChapterId: a.id,
-      chapterDrafts: {
-        [a.id]: { saved: a.content, draft: a.content },
-        [b.id]: { saved: b.content, draft: b.content },
+      chapterTabs: [a.id, b.id],
+    });
+    useFiles.setState({
+      novelId: 1,
+      metas: [],
+      tabs: [],
+      active: null,
+      pending: {},
+      views: {},
+      entries: {
+        [pathA]: entry(draftDocument(1, "第一章原句。")),
+        [pathB]: entry(draftDocument(2, "第二章原句。")),
       },
-      draftContent: a.content,
-      draftSaved: a.content,
     });
   });
 
-  it("keeps unsaved text when the reader looks at another chapter", () => {
-    // Regression: one shared buffer was reloaded from the chapter record on every
-    // selection, so clicking chapter two threw away what was typed into chapter one.
+  it("shows the same words in the source and on the prose page, both ways", () => {
+    // Prose page -> file source.
     useWorkbench.getState().setDraftContent("第一章改到一半。");
-    expect(useWorkbench.getState().isChapterDirty(a.id)).toBe(true);
+    expect(useFiles.getState().entries[pathA].draft).toContain("第一章改到一半。");
 
+    // File source -> prose page. This is the direction that used to be a separate
+    // buffer, and whichever page saved last deleted the other's words.
+    useFiles.getState().setDraft(pathA, draftDocument(1, "从源码页写的一句话。"));
+    expect(draftBody(useFiles.getState().entries[pathA].draft, 1)).toBe("从源码页写的一句话。");
+  });
+
+  it("says dirty in one voice, wherever it is read from", () => {
+    expect(useWorkbench.getState().isChapterDirty(a.id)).toBe(false);
+    expect(isDirty(useFiles.getState().entries[pathA])).toBe(false);
+
+    useWorkbench.getState().setDraftContent("改了还没存。");
+    expect(useWorkbench.getState().isChapterDirty(a.id)).toBe(true);
+    expect(isDirty(useFiles.getState().entries[pathA])).toBe(true);
+  });
+
+  it("keeps unsaved text when the reader looks at another chapter", () => {
+    useWorkbench.getState().setDraftContent("第一章改到一半。");
     useWorkbench.getState().selectChapter(b.id);
-    expect(useWorkbench.getState().draftContent).toBe("第二章原句。");
+    expect(draftBody(useFiles.getState().entries[pathB].draft, 2)).toBe("第二章原句。");
     expect(useWorkbench.getState().isChapterDirty(b.id)).toBe(false);
 
     useWorkbench.getState().selectChapter(a.id);
-    expect(useWorkbench.getState().draftContent).toBe("第一章改到一半。");
-    expect(useWorkbench.getState().draftSaved).toBe("第一章原句。");
+    expect(draftBody(useFiles.getState().entries[pathA].draft, 1)).toBe("第一章改到一半。");
     expect(useWorkbench.getState().isChapterDirty(a.id)).toBe(true);
+  });
+
+  it("round-trips the file a real server wrote, byte for byte", () => {
+    const server = "# 第 1 章正文\n\n> 标题是投影结构；标题下方全部是正文内容。\n\n第一段。\n\n第二段。\n";
+    expect(draftBody(server, 1)).toBe("第一段。\n\n第二段。");
+    expect(draftDocument(1, draftBody(server, 1))).toBe(server);
+    // a paragraph break typed at the very end must survive one edit cycle
+    const typed = draftDocument(1, `${draftBody(server, 1)}\n`);
+    expect(draftBody(typed, 1)).toBe("第一段。\n\n第二段。\n");
   });
 
   it("does not leak one book's drafts into the next", async () => {
@@ -263,8 +338,8 @@ describe("per-chapter draft buffers", () => {
     vi.mocked(api.get).mockResolvedValueOnce([]).mockResolvedValueOnce([b]);
     await useWorkbench.getState().selectNovel(2);
     const s = useWorkbench.getState();
-    expect(s.chapterDrafts[a.id]).toBeUndefined();
-    expect(s.draftContent).toBe("第二章原句。");
-    expect(s.isChapterDirty(b.id)).toBe(false);
+    expect(s.chapters.map((item) => item.id)).toEqual([b.id]);
+    // chapter 1 of the next book must not read the words left in this book's buffer
+    expect(useFiles.getState().entries[pathA]).toBeUndefined();
   });
 });

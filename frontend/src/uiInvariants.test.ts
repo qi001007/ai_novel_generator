@@ -23,6 +23,7 @@ const css = readFileSync("src/styles.css", "utf8");
 import treePane from "./components/TreePane.tsx?raw";
 import chatPane from "./components/ChatPane.tsx?raw";
 import editorPane from "./components/EditorPane.tsx?raw";
+import workbenchStore from "./store/workbench.ts?raw";
 import fileEditor from "./components/FileEditorPane.tsx?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
 import tocList from "./components/TocListView.tsx?raw";
@@ -144,7 +145,13 @@ describe("settled UI decisions must not regress", () => {
     expect(fileEditor).not.toContain("RENDERED_PATHS");
     expect(fileEditor).toContain("file-rendered");
     expect(css).toMatch(/\.file-rendered \{[\s\S]*?inset: 0;/);
-    expect(treePane).toContain("chapterDrafts");
+    // 批注 3.3: there is one draft buffer, the draft.md file entry, so a second
+    // private copy in the workbench store is exactly what must never come back.
+    expect(treePane).toContain("useFiles");
+    expect(treePane).toContain("draftPath");
+    expect(workbenchStore).not.toContain("chapterDrafts");
+    expect(workbenchStore).not.toContain("draftSaved");
+    expect(editorPane).toContain("chapterDraftPath");
     expect(treePane).toContain("未保存");
   });
 

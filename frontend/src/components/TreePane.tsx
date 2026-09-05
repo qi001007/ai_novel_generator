@@ -16,8 +16,14 @@ import type { RailPage } from "./ActivityRail";
 
 import StatusBadge from "./StatusBadge";
 import type { Chapter, FileMeta } from "../types";
-import { ARCS_PATH, BLUEPRINT_PATH, TOC_PATH, draftPath } from "../store/files";
-import { useWorkbench } from "../store/workbench";
+import {
+  ARCS_PATH,
+  BLUEPRINT_PATH,
+  draftBody,
+  draftPath,
+  TOC_PATH,
+  useFiles,
+} from "../store/files";
 
 export type PlanningLayer = "A" | "B" | "C";
 
@@ -100,7 +106,14 @@ export default function TreePane({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   // 第十四批批注 6: the tree has to say what the tab says. Subscribe to the buffers
   // themselves - `isChapterDirty` is a stable function and would never re-render.
-  const chapterDrafts = useWorkbench((state) => state.chapterDrafts);
+  // 批注 3.3: the buffer is the draft.md file entry, so the tree, the chapter tab
+  // and the file tab all read the same dirty flag instead of three copies of it.
+  const draftEntries = useFiles((state) => state.entries);
+  const dirtyChapter = (chapter: Chapter) => {
+    const entry = draftEntries[draftPath(chapter.chapter_number)];
+    if (!entry?.doc) return false;
+    return draftBody(entry.draft, chapter.chapter_number) !== draftBody(entry.doc.text, chapter.chapter_number);
+  };
   // 帧 27: search and the new/collapse actions are not furniture. The field only
   // exists once the reader asks for it.
   const [searchOpen, setSearchOpen] = useState(false);
@@ -355,8 +368,7 @@ export default function TreePane({
                   </button>
                   {/* One dot, one fact: unsaved outranks status, because that is the
                       thing the tab already shouts about and the two must agree. */}
-                  {chapterDrafts[chapter.id] &&
-                  chapterDrafts[chapter.id].draft !== chapterDrafts[chapter.id].saved ? (
+                  {dirtyChapter(chapter) ? (
                     <i
                       className="dirty-dot"
                       aria-label={`第 ${chapter.chapter_number} 章 未保存`}

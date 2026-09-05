@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
 import { api } from "../api";
-import { briefPath, draftDocument, draftPath, useFiles } from "../store/files";
+import { briefPath, draftBody, draftDocument, draftPath, useFiles } from "../store/files";
 import type {
   Chapter,
   ChapterBrief,
@@ -12,6 +12,26 @@ import type {
   NovelUpdatePayload,
   Review,
 } from "../types";
+
+/** The one buffer a chapter's prose lives in: the draft.md file entry. Both the
+ * prose page and the file editor read it, so they cannot overwrite each other. */
+export const chapterDraftPath = (chapter: Chapter) => draftPath(chapter.chapter_number);
+
+const dirtyOf = (chapter: Chapter): boolean => {
+  const entry = useFiles.getState().entries[chapterDraftPath(chapter)];
+  if (!entry?.doc) return false;
+  return draftBody(entry.draft, chapter.chapter_number) !== draftBody(entry.doc.text, chapter.chapter_number);
+};
+
+/** Open the draft.md buffer for a chapter the prose page is about to show. */
+function hydrateChapterDraft(chapter: Chapter) {
+  const path = chapterDraftPath(chapter);
+  // Seed from the chapter record so the page is never blank while the file read
+  // is in flight; ensure() then replaces it with the server text unless someone
+  // typed in the meantime.
+  useFiles.getState().seedDraft(path, draftDocument(chapter.chapter_number, chapter.content ?? ""));
+  void useFiles.getState().ensure(path);
+}
 
 export type HealthState = "loading" | "ok" | "error";
 export type WorkspaceTab = "write" | "plan" | "feedback";
@@ -27,13 +47,6 @@ type WorkbenchState = {
   selectedBriefId: number | null;
   chapters: Chapter[];
   selectedChapterId: number | null;
-  draftContent: string;
-  /** One buffer per chapter: `saved` is the server baseline, `draft` what is in
-   *  the field. Before this there was a single buffer reloaded from the chapter
-   *  record on every selection, so clicking another chapter discarded unsaved text
-   *  and the tab looked clean. */
-  chapterDrafts: Record<number, { saved: string; draft: string }>;
-  draftSaved: string;
   /** Chapters opened in the editor strip, in the order they were opened. */
   chapterTabs: number[];
   machineCheck: MachineCheckResult | null;
@@ -55,6 +68,7 @@ type WorkbenchState = {
   selectNovel: (novelId: number) => Promise<void>;
   selectBrief: (briefId: number) => void;
   selectChapter: (chapterId: number) => void;
+  /** The prose of the selected chapter, read out of the draft.md buffer. */
   setDraftContent: (content: string) => void;
   isChapterDirty: (chapterId: number) => boolean;
   openChapterTab: (chapterId: number) => void;
@@ -79,9 +93,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   selectedBriefId: null,
   chapters: [],
   selectedChapterId: null,
-  draftContent: "",
-  chapterDrafts: {},
-  draftSaved: "",
   chapterTabs: [],
   machineCheck: null,
   generationRuns: [],
@@ -164,23 +175,18 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       selectedBriefId: null,
       generationRuns: [],
       reviews: [],
-      chapterDrafts: {},
-      draftContent: "",
-      draftSaved: "",
       chapterTabs: [],
     });
+    // The draft buffers live in the file store now, and a path like
+    // chapters/0001/draft.md is the same string in every book - so the previous
+    // book's unsaved words would read as this book's chapter one. attach() clears
+    // them a moment later anyway; doing it here closes the window.
+    useFiles.getState().reset();
     try {
       const [briefs, chapters] = await Promise.all([
         api.get<ChapterBrief[]>(`/api/novels/${novelId}/planning/briefs`),
         api.get<Chapter[]>(`/api/novels/${novelId}/chapters`),
       ]);
-      // Seed a buffer per chapter here rather than only in selectChapter: the
-      // first chapter is chosen by assignment during load, so it never passes
-      // through selectChapter, and an unseeded buffer means an empty editor.
-      const chapterDrafts: Record<number, { saved: string; draft: string }> = {};
-      chapters.forEach((item) => {
-        chapterDrafts[item.id] = { saved: item.content ?? "", draft: item.content ?? "" };
-      });
       const first = chapters[0] ?? null;
       set({
         selectedNovelId: novelId,
@@ -188,11 +194,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         selectedBriefId: briefs[0]?.id ?? null,
         chapters,
         selectedChapterId: first?.id ?? null,
-        chapterDrafts,
-        draftContent: first?.content ?? "",
-        draftSaved: first?.content ?? "",
         chapterTabs: first ? [first.id] : [],
       });
+      // The first chapter is chosen by assignment during load, so it never passes
+      // through selectChapter - its buffer has to be seeded here or the editor
+      // opens onto an empty page.
+      if (first) hydrateChapterDraft(first);
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "加载失败" });
     }
@@ -241,48 +248,25 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     set({ selectedBriefId: briefId });
   },
 
+  // Nothing to write back on leaving a chapter: the text lives in the file
+  // buffer keyed by path, so switching chapters cannot discard it.
   selectChapter(chapterId) {
-    const { chapters, selectedChapterId, draftContent, chapterDrafts } = get();
-    const drafts = { ...chapterDrafts };
-    // Write the outgoing field back before leaving it, so nothing typed is lost
-    // by the act of looking at another chapter.
-    if (selectedChapterId !== null && drafts[selectedChapterId]) {
-      drafts[selectedChapterId] = { ...drafts[selectedChapterId], draft: draftContent };
-    }
-    const chapter = chapters.find((item) => item.id === chapterId);
-    if (!chapter) {
-      set({ selectedChapterId: chapterId, chapterDrafts: drafts });
-      return;
-    }
-    const existing = drafts[chapterId];
-    const entry = existing ?? { saved: chapter.content ?? "", draft: chapter.content ?? "" };
-    drafts[chapterId] = entry;
-    set({
-      selectedChapterId: chapterId,
-      chapterDrafts: drafts,
-      draftContent: entry.draft,
-      draftSaved: entry.saved,
-    });
+    if (get().selectedChapterId === chapterId) return;
+    set({ selectedChapterId: chapterId });
+    const chapter = get().chapters.find((item) => item.id === chapterId);
+    if (chapter) hydrateChapterDraft(chapter);
   },
 
   setDraftContent(content) {
-    const { selectedChapterId, chapterDrafts, draftSaved } = get();
-    if (selectedChapterId === null) {
-      set({ draftContent: content });
-      return;
-    }
-    set({
-      draftContent: content,
-      chapterDrafts: {
-        ...chapterDrafts,
-        [selectedChapterId]: { saved: chapterDrafts[selectedChapterId]?.saved ?? draftSaved, draft: content },
-      },
-    });
+    const { selectedChapterId, chapters } = get();
+    const chapter = chapters.find((item) => item.id === selectedChapterId);
+    if (!chapter) return;
+    useFiles.getState().setDraft(chapterDraftPath(chapter), draftDocument(chapter.chapter_number, content));
   },
 
   isChapterDirty(chapterId) {
-    const entry = get().chapterDrafts[chapterId];
-    return entry ? entry.draft !== entry.saved : false;
+    const chapter = get().chapters.find((item) => item.id === chapterId);
+    return chapter ? dirtyOf(chapter) : false;
   },
 
   openChapterTab(chapterId) {
@@ -291,6 +275,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       set({ chapterTabs: [...chapterTabs, chapterId] });
     }
     get().selectChapter(chapterId);
+    // selectChapter ignores a chapter that is already the selection, and that is
+    // exactly the case where the buffer was never asked for.
+    const chapter = get().chapters.find((item) => item.id === chapterId);
+    if (chapter) hydrateChapterDraft(chapter);
   },
 
   closeChapterTab(chapterId) {
@@ -298,13 +286,13 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const at = chapterTabs.indexOf(chapterId);
     if (at < 0) return;
     const rest = chapterTabs.filter((id) => id !== chapterId);
-    // The buffer stays in chapterDrafts: closing a tab is not undoing a draft,
-    // and reopening the chapter should give the text back.
+    // The buffer stays: closing a tab is not undoing a draft, and reopening the
+    // chapter should give the text back.
     set({ chapterTabs: rest });
     if (selectedChapterId !== chapterId) return;
     const next = rest[Math.min(at, rest.length - 1)];
     if (next === undefined) {
-      set({ selectedChapterId: null, draftContent: "", draftSaved: "" });
+      set({ selectedChapterId: null });
       return;
     }
     get().selectChapter(next);
@@ -335,9 +323,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         (event) => {
           if (event.event === "delta") {
             streamed += event.data.text;
-            get().setDraftContent(streamed);
+            // One write, into the buffer the file editor reads too (批注 3.3).
             useFiles.getState().setDraft(
-              draftPath(chapter.chapter_number),
+              chapterDraftPath(chapter),
               draftDocument(chapter.chapter_number, streamed),
             );
             return;
@@ -354,7 +342,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
                 : [...get().chapters, result.chapter],
               selectedChapterId: result.chapter.id,
               selectedBriefId: result.chapter.brief_id ?? get().selectedBriefId,
-              draftContent: result.chapter.content,
               machineCheck: result.machine_check,
               lastGenerationRunId: result.generation_run.id,
               recordVersion: get().recordVersion + 1,
@@ -372,32 +359,37 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     } finally {
       set({ busy: false });
     }
+    // The run wrote the file server-side, so the baseline this buffer was read
+    // against is gone: re-read here, where it can be awaited, and the prose page
+    // and the file page both pick up the same saved text.
+    if (chapter) await useFiles.getState().reload(chapterDraftPath(chapter));
   },
 
+  /* The prose page and the file page share one buffer, so saving is the file
+     layer's own save: same PUT, same base revision, same conflict flag. What this
+     adds is the chapter record, which only the server can recompute. */
   async saveChapter() {
-    const { selectedNovelId, selectedChapterId, draftContent, busy } = get();
+    const { selectedChapterId, busy } = get();
     const chapter = get().chapters.find((item) => item.id === selectedChapterId);
-    if (!selectedNovelId || !chapter || busy) return;
+    if (chapter === null || chapter === undefined || busy) return;
+    const path = chapterDraftPath(chapter);
 
     set({ busy: true, error: null });
-    try {
-      const path = draftPath(chapter.chapter_number);
-      const doc = await api.readFile(selectedNovelId, path);
-      await api.writeFile(selectedNovelId, path, draftDocument(chapter.chapter_number, draftContent), {
-        baseRevision: doc.revision,
-      });
-      const updated = await api.get<Chapter>(
-        `/api/novels/${selectedNovelId}/chapters/${chapter.id}`,
-      );
-      const saved = updated.content ?? "";
+    const saved = await useFiles.getState().save(path);
+    if (!saved) {
       set({
-        chapters: get().chapters.map((item) => (item.id === updated.id ? updated : item)),
-        draftContent: saved,
-        draftSaved: saved,
-        chapterDrafts: { ...get().chapterDrafts, [chapter.id]: { saved, draft: saved } },
+        busy: false,
+        error: useFiles.getState().entries[path]?.error ?? "保存失败",
       });
+      return;
+    }
+    try {
+      const updated = await api.get<Chapter>(
+        `/api/novels/${get().selectedNovelId}/chapters/${chapter.id}`,
+      );
+      set({ chapters: get().chapters.map((item) => (item.id === updated.id ? updated : item)) });
     } catch (cause) {
-      set({ error: cause instanceof Error ? cause.message : "保存失败" });
+      set({ error: cause instanceof Error ? cause.message : "章节记录刷新失败" });
     } finally {
       set({ busy: false });
     }

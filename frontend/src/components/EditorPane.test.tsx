@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import EditorPane from "./EditorPane";
+import { draftDocument, useFiles } from "../store/files";
 import type { Chapter } from "../types";
 import { useWorkbench } from "../store/workbench";
 
@@ -24,13 +25,46 @@ function seed(chapters: Chapter[], content = "") {
   useWorkbench.setState({
     chapters,
     selectedChapterId: chapters[0]?.id ?? null,
-    draftContent: content,
+    chapterTabs: chapters.map((item) => item.id),
     briefs: [],
     generationRuns: [],
     reviews: [],
     machineCheck: null,
     error: null,
     notice: null,
+  });
+  // 批注 3.3: the prose page has no buffer of its own - it reads the draft.md entry,
+  // so that is what a test has to fill.
+  const first = chapters[0];
+  const text = draftDocument(first?.chapter_number ?? 1, content);
+  useFiles.setState({
+    novelId: 1,
+    metas: [],
+    tabs: [],
+    active: null,
+    pending: {},
+    views: {},
+    entries: first
+      ? {
+          [`chapters/${String(first.chapter_number).padStart(4, "0")}/draft.md`]: {
+            doc: {
+              path: "",
+              kind: "draft",
+              layer: "正文",
+              label: "",
+              text: draftDocument(first.chapter_number, first.content),
+              ai_fields: ["content"],
+              revision: "r1",
+            },
+            draft: text,
+            loading: false,
+            saving: false,
+            error: null,
+            conflict: false,
+            savedAt: null,
+          },
+        }
+      : {},
   });
 }
 

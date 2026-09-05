@@ -52,7 +52,19 @@
 - [ ] **3.1 人物 `.md` 的切换钮要切到「人物卡片渲染页」**，不是 markdown 排版。
       判据：打开 `settings/characters/6.md` 点钮 → 出现人物卡片视图，再点回源码。
 - [ ] **3.2 `draft.md` 的切换钮要切到「正文渲染页」**（章节编辑器那个正文）。
-- [ ] **3.3 draft 与正文必须同步**（主人：「draft 变，正文也变」）。
+      §3.3 已把两边并成一份 buffer，剩下的就是让钮把右栏在「正文页 ↔ draft.md 源码」之间搬。
+      实测记一笔：现在从树里点 `draft.md` 会经 `open()` 把右栏切到文件页，而点章节号切回正文页
+      时 `openChapterTab → hydrateChapterDraft` 只 seed 空槽、不覆盖已有 buffer（这是 §3.3 的正确行为）。
+- [x] **3.3 draft 与正文必须同步**（主人：「draft 变，正文也变」）。**已做，2026-09-05 真机量过**：
+      `chapterDrafts` / `draftContent` / `draftSaved` 三个字段从 workbench 删除，唯一 buffer 是
+      `useFiles.entries["chapters/NNNN/draft.md"]`；正文 = `draftBody()` 投影（剥掉标题行与规则行），
+      `draftDocument()` 是它的逆，两者按字节互逆（新增一条 round-trip 测试钉住，含「末尾回车不被吃掉」）。
+      实测作品 5 第 4 章：源码页敲 `源码侧Y2` → 正文页立刻同字（`len 5`）；正文页敲 `正文侧Y1` →
+      源码页两条都在；一次 Ctrl+S 后服务器文件 `len 48` 含两条、DB 章节行 `word_count 12` 同步、
+      三处 dirty 点同时归零（tab / 树行 / 文件 tab 各 0）；刷新后正文页从文件层读回 `len 12`、
+      结构行不上屏、dirty 点 0。写通路仍是同一条 `PUT /api/novels/{id}/files/{path}`（D-01 未动）。
+      顺带修掉两处同族的丢字面：`closeTab` 不再删 buffer；`selectNovel` 现在 reset 文件层
+      （`chapters/0001/draft.md` 这个路径在两本书里是同一个字符串，不清就是拿甲书的字充乙书）。
       **已知根因**：现在是**两份 buffer**——`useWorkbench.chapterDrafts[id].draft`
       与 `useFiles.entries["chapters/NNNN/draft.md"].draft`，两者写同一个后端投影，
       所以会互相覆盖。**这是真 bug，不是观感问题。**

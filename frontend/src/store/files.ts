@@ -12,15 +12,41 @@ export const briefPath = (chapter: number) =>
 export const draftPath = (chapter: number) =>
   `chapters/${String(chapter).padStart(4, "0")}/draft.md`;
 
+// The title and the rule line are projection structure, emitted by the backend
+// (markdown_doc._TITLES/_RULES["draft"]); everything under them is the prose.
+const draftHead = (chapter: number) =>
+  `# 第 ${chapter} 章正文\n\n> 标题是投影结构；标题下方全部是正文内容。\n\n`;
+
 export const draftDocument = (chapter: number, content: string) =>
-  [
-    `# 第 ${chapter} 章正文`,
-    "",
-    "> 标题是投影结构；标题下方全部是正文内容。",
-    "",
-    content.trimEnd(),
-    "",
-  ].join("\n");
+  `${draftHead(chapter)}${content}\n`;
+
+/**
+ * draftDocument's inverse: the prose out of a draft.md buffer. This is the ONLY
+ * projection the prose editor reads - it never keeps a copy of its own (批注 3.3:
+ * two buffers wrote the same file and overwrote each other, which lost words).
+ * A single trailing newline is what the writer always appends, so dropping that
+ * one character keeps the round trip exact: a paragraph break typed at the very
+ * end survives editing -> saving -> re-reading.
+ */
+export const draftBody = (text: string, chapter: number) => {
+  if (!text) return "";
+  const head = draftHead(chapter);
+  if (text.startsWith(head)) return text.slice(head.length).replace(/\n$/, "");
+  // A file whose structure differs from the canonical head (an older write, or a
+  // hand-made fixture): peel the same two lines the backend parser drops.
+  const lines = text.split("\n");
+  let at = 0;
+  while (at < lines.length && !lines[at].trim()) at += 1;
+  if (lines[at]?.startsWith("# ")) {
+    at += 1;
+    while (at < lines.length && !lines[at].trim()) at += 1;
+    if (lines[at]?.startsWith(">")) {
+      at += 1;
+      while (at < lines.length && !lines[at].trim()) at += 1;
+    }
+  }
+  return lines.slice(at).join("\n").replace(/\n$/, "");
+};
 
 export const briefChapter = (path: string) => {
   const m = /^(?:briefs\/([0-9]{4})\.md|chapters\/([0-9]{4})\/brief\.md)$/.exec(path);
@@ -93,6 +119,12 @@ type FilesState = {
   metasError: string | null;
   attach: (novelId: number) => Promise<void>;
   open: (path: string, opts?: { jump?: JumpSource | null; field?: string | null }) => Promise<void>;
+  /** Put text in an empty buffer without reading the file - the chapter record is
+   *  a seed for it, never a second copy of it. */
+  seedDraft: (path: string, text: string) => void;
+  /** Read the file only when there is no server baseline yet, so the prose editor
+   *  can share this buffer instead of holding its own. */
+  ensure: (path: string) => Promise<void>;
   reload: (path: string) => Promise<void>;
   refreshMetas: () => Promise<void>;
   setDraft: (path: string, text: string) => void;
@@ -186,6 +218,33 @@ export const useFiles = create<FilesState>((set, get) => ({
     }
   },
 
+  seedDraft(path, text) {
+    // Only an untouched slot gets a seed: once anything is in the buffer - typed
+    // here or read from the file - the newer text wins.
+    if (get().entries[path]) return;
+    set((state) => patch(state, path, { draft: text }));
+  },
+
+  async ensure(path) {
+    const { novelId, entries } = get();
+    if (novelId === null || entries[path]?.doc) return;
+    const seeded = entries[path]?.draft;
+    set((state) => patch(state, path, { loading: true, error: null }));
+    try {
+      const doc = await api.readFile(novelId, path);
+      const now = get().entries[path];
+      // Text typed while this read was in flight outranks the file: adopting the
+      // new baseline is right, throwing the words away is not.
+      if (now?.draft === seeded) {
+        set((state) => patch(state, path, { doc, draft: doc.text, loading: false, error: null }));
+      } else {
+        set((state) => patch(state, path, { doc, loading: false, error: null }));
+      }
+    } catch (cause) {
+      set((state) => patch(state, path, { loading: false, error: detail(cause, "文件读取失败") }));
+    }
+  },
+
   async refreshMetas() {
     await syncMetas(get, set);
   },
@@ -254,11 +313,11 @@ export const useFiles = create<FilesState>((set, get) => ({
   closeTab(path) {
     const tabs = get().tabs.filter((item) => item !== path);
     const active = get().active === path ? (tabs[tabs.length - 1] ?? null) : get().active;
-    const entries = { ...get().entries };
-    delete entries[path];
+    // The buffer stays behind. Closing a tab is not discarding a draft, and the
+    // prose editor may still be looking at this same document (批注 3.3).
     const pending = { ...get().pending };
     delete pending[path];
-    set({ tabs, active, entries, pending, ...(active === null ? { jump: null } : {}) });
+    set({ tabs, active, pending, ...(active === null ? { jump: null } : {}) });
   },
 
   offer(proposal) {

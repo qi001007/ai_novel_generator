@@ -56,21 +56,28 @@ function formatTime(value: string) {
 }
 
 import HScrollThumb from "./HScrollThumb";
-import { useWorkbench } from "../store/workbench";
+import { draftBody, useFiles } from "../store/files";
+import { chapterDraftPath, useWorkbench } from "../store/workbench";
 
 export default function EditorPane() {
   const navigate = useNavigate();
   const state = useWorkbench();
-  const {
-    selectedChapterId,
-    chapters,
-    draftContent,
-    generationRuns,
-    busy,
-    notice,
-  } = state;
+  const { selectedChapterId, chapters, generationRuns, busy, notice } = state;
 
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
+  /* 批注 3.3: the prose used to live in its own `chapterDrafts` map while the file
+     page held `entries["chapters/NNNN/draft.md"]`, and both wrote that one file -
+     whichever saved last silently deleted the other's words. There is now a single
+     buffer, the file entry, and this page reads a projection of it. */
+  const draftEntry = useFiles((store) =>
+    chapter ? store.entries[chapterDraftPath(chapter)] : undefined,
+  );
+  const draftContent = draftEntry
+    ? draftBody(draftEntry.draft, chapter!.chapter_number)
+    : (chapter?.content ?? "");
+  const draftSaved = draftEntry?.doc
+    ? draftBody(draftEntry.doc.text, chapter!.chapter_number)
+    : (chapter?.content ?? "");
   const [savedAt, setSavedAt] = useState<string | null>(null);
   // The textarea is the scroller: it keeps the browser's caret-into-view work,
   // and the minimap reads and writes its scrollTop. Growing it to its full
@@ -99,10 +106,10 @@ export default function EditorPane() {
       prev.progress === next.progress && prev.height === next.height ? prev : next,
     );
   }, []);
-  // Baseline is the buffer's own saved text, not the chapter record: the record
+  // Baseline is the same buffer's saved text, not the chapter record: the record
   // only refreshes after a save, and comparing against it hid edits made while a
   // generation was in flight.
-  const dirty = chapter ? draftContent !== state.draftSaved : false;
+  const dirty = chapter ? draftContent !== draftSaved : false;
 
   useEffect(() => {
     setSavedAt(null);
