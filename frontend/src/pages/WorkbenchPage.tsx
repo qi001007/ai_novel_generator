@@ -42,6 +42,49 @@ const EDITOR_MIN = 160;
 const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 const PANE_STORAGE_KEY = "workbench.panes";
 const HIDDEN_STORAGE_KEY = "workbench.hidden";
+const STAGE_STORAGE_KEY = "workbench.stage";
+
+/* 第二十一批批注 1：「我进来是什么样，出来就是怎么样」。
+   rightView / railPage 是 React state，默认值写死在代码里，所以每次重挂都把
+   「刚才哪一面在台子上」这个问题重新回答成「默认那一面」- 而就在旁边的栏宽与
+   隐藏栏早就活得过路由。同一个事实，同一套待遇：一本书一条记录。
+   file 也记下来：刷新后文件缓冲本来就在内存里没了，但重开它只需要走 openFile
+   那一扇门，和 ?file= 深链走的是同一条路。 */
+type StageChoice = { view: RightView; rail: RailPage; file: string | null };
+
+const STAGE_VIEWS: RightView[] = ["editor", "files", "feedback", "worldmap", "foreshadow", "characters"];
+const STAGE_RAILS: RailPage[] = ["plan", "library", "chat"];
+
+function readStage(novelId: number): StageChoice | null {
+  try {
+    const all = JSON.parse(localStorage.getItem(STAGE_STORAGE_KEY) ?? "{}") as Record<
+      string,
+      Partial<StageChoice>
+    >;
+    const stored = all[String(novelId)];
+    if (!stored) return null;
+    return {
+      view: STAGE_VIEWS.includes(stored.view as RightView) ? (stored.view as RightView) : "editor",
+      rail: STAGE_RAILS.includes(stored.rail as RailPage) ? (stored.rail as RailPage) : "plan",
+      file: typeof stored.file === "string" ? stored.file : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStage(novelId: number, choice: StageChoice): void {
+  try {
+    const all = JSON.parse(localStorage.getItem(STAGE_STORAGE_KEY) ?? "{}") as Record<
+      string,
+      StageChoice
+    >;
+    all[String(novelId)] = choice;
+    localStorage.setItem(STAGE_STORAGE_KEY, JSON.stringify(all));
+  } catch {
+    /* 存不进去只是回到今天的默认行为，不该拦住任何人。 */
+  }
+}
 
 type HiddenKey = "sidebar" | "chat" | "editor";
 type Hidden = Record<HiddenKey, boolean>;
@@ -112,20 +155,27 @@ export default function WorkbenchPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const chapterIdParam = searchParams.get("chapter");
   const state = useWorkbench();
-  const [rightView, setRightView] = useState<RightView>("editor");
+  const [rightView, setRightView] = useState<RightView>(
+    () => readStage(Number(novelIdParam))?.view ?? "editor",
+  );
   // One source, not two. There used to be a `charactersOpen` boolean beside
   // `rightView`, and the two could disagree: opening 伏笔 cleared the boolean but
   // left rightView alone, and opening 人物 set the boolean without clearing
   // rightView - so both rows stayed lit and the character files could not be
   // reached. 批注 5 was that, reproduced.
   const charactersOpen = rightView === "characters";
-  const [railPage, setRailPage] = useState<RailPage>("plan");
+  const [railPage, setRailPage] = useState<RailPage>(
+    () => readStage(Number(novelIdParam))?.rail ?? "plan",
+  );
   const [panes, setPanes] = useState<Panes>(loadPanes);
   // 批注 14: any of the three columns can be put away, and the choice survives a
   // reload - the layout you settle on is yours, not a default to re-fight.
   const [hidden, setHidden] = useState<Hidden>(readHidden);
 
   const metas = useFiles((store) => store.metas);
+  // 恢复要等这本书的文件层挂上之后再谈：attach() 会重置 active/tabs，
+  // 而 open() 在 novelId 还是 null 时直接返回（真机量到 F5 后「栏面对了、文档没回来」）
+  const filesNovelId = useFiles((store) => store.novelId);
   const activeFile = useFiles((store) => store.active);
   const revealSeq = useFiles((store) => store.revealSeq);
   const stage = useFiles((store) => store.stage);
@@ -176,6 +226,34 @@ export default function WorkbenchPage() {
   useEffect(() => {
     localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(hidden));
   }, [hidden]);
+
+  /* 刷新之后把离开时那份文档重新取回来 - 但只在这次 URL 没有明说要看谁的时候。
+     显式意图（?file= / ?chapter=）大于历史状态，这条顺序和 16.11 的教训一致。
+     声明顺序是承重的：恢复必须排在写入前面，否则第一次写入会赶在读到记录之前
+     把 file 冲成 null（真机量到过：F5 之后栏面对了、文档没回来）。 */
+  const restoredNovel = useRef<number | null>(null);
+  useEffect(() => {
+    const novelId = Number(novelIdParam);
+    if (!Number.isFinite(novelId) || restoredNovel.current === novelId) return;
+    if (filesNovelId !== novelId) return;
+    const stored = readStage(novelId);
+    restoredNovel.current = novelId;
+    // 显式意图大于历史状态：URL 里点了章或点了文件，都不该被「上次那面」盖掉
+    if (searchParams.get("file") || searchParams.get("chapter")) return;
+    // 只有离开时确实是文件栏才重开那份文档：open() 会把 draft.md 钉在源码面上，
+    // 在正文面去恢复它反而把人从正文里拽走（真机 B3 量到的就是这个）。
+    if (stored?.view !== "files" || !stored.file) return;
+    if (useFiles.getState().active === stored.file) return;
+    void openFile(stored.file);
+  }, [novelIdParam, filesNovelId, searchParams, openFile]);
+
+  useEffect(() => {
+    const novelId = Number(novelIdParam);
+    if (!Number.isFinite(novelId)) return;
+    // 还没恢复就先别写：这条记录此刻的值不是用户的选择，是刷新前的最后一帧
+    if (restoredNovel.current !== novelId) return;
+    writeStage(novelId, { view: rightView, rail: railPage, file: activeFile });
+  }, [novelIdParam, rightView, railPage, activeFile]);
 
   /* One guard for every door: chat and editor between them must keep at least one
      column standing, or the window ends up showing nothing but the rail. */

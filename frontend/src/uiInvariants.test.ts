@@ -583,6 +583,26 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(bookshelf).toContain('"已经有同一部作品叫这个名字"');
   });
 
+  /* 第二十一批批注 1：离开再回来，不许换面。这条断言钉的是「谁优先」，
+     因为这一轮真机量出来的两个反例都是优先级错了，不是没写代码。 */
+  it("the workbench comes back to the face it was left on", () => {
+    expect(layout).toContain("readStage(Number(novelIdParam))?.view");
+    expect(layout).toContain("readStage(Number(novelIdParam))?.rail");
+    expect(layout).toContain("writeStage(novelId, { view: rightView, rail: railPage, file: activeFile })");
+    // 显式 URL 大于历史状态（?chapter= 也算，第一版漏了它就被测试抓到）
+    expect(layout).toMatch(/searchParams\.get\("file"\) \|\| searchParams\.get\("chapter"\)/);
+    // 恢复排在写入之前：否则第一次写入会赶在读到记录前把 file 冲成 null
+    expect(layout.indexOf("restoredNovel.current = novelId")).toBeLessThan(
+      // 比的是**调用点**，不是函数定义 - 定义在文件更靠前的位置，
+      // 拿 "writeStage(novelId" 去比会永远输给定义行（第一次就红在这里）
+      layout.indexOf("writeStage(novelId, {"),
+    );
+    // 等这本书的文件层挂上再恢复：open() 在 novelId 为 null 时直接返回
+    expect(layout).toContain("if (filesNovelId !== novelId) return;");
+    // 只有离开时确实是文件栏才重开文档：open() 会把 draft.md 钉在源码面上
+    expect(layout).toMatch(/stored\?\.view !== "files"/);
+  });
+
   /* 第二十批批注 1、2：同一处根因，修的是整类。 */
   it("a bare button centres its icon without shoving row text around", () => {
     // 剥掉注释再查：这条规则里就写着「不写 justify-content」这句话，

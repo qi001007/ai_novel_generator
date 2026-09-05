@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../App";
 import { useFiles } from "../store/files";
+import { useWorkbench } from "../store/workbench";
 
 const BLUEPRINT = "# A 层 · 全本蓝图（长期）\nmain_line: ''\n";
 
@@ -119,10 +120,10 @@ function columns() {
   return workspace().style.gridTemplateColumns;
 }
 
-async function openWorkbench() {
+async function openWorkbench(entry = "/novels/1") {
   stubFetch();
-  render(
-    <MemoryRouter initialEntries={["/novels/1"]}>
+  const result = render(
+    <MemoryRouter initialEntries={[entry]}>
       <App />
     </MemoryRouter>,
   );
@@ -132,6 +133,7 @@ async function openWorkbench() {
     expect(columns()).toContain("44px");
     expect(columns()).toContain("300px");
   });
+  return result;
 }
 
 describe("workbench layout", () => {
@@ -139,6 +141,46 @@ describe("workbench layout", () => {
     localStorage.clear();
     useFiles.getState().reset();
     vi.unstubAllGlobals();
+  });
+
+  /* 第二十一批批注 1：「我进入这个页面之前是 draft.md 的那个页面，退出之后再回来，
+     它自动切成渲染过后的正文页面。我要的是我进来是什么样，出来就是怎么样。」
+     病根是 rightView / railPage 是带死默认值的 React state，重挂即归零。 */
+  it("comes back to the face it was left on, and re-opens the document a reload dropped", async () => {
+    const user = userEvent.setup();
+    const first = await openWorkbench();
+    await user.click(screen.getByRole("button", { name: "全本蓝图" }));
+    await waitFor(() => expect(document.querySelector(".file-editor")).toBeTruthy());
+    first.unmount();
+
+    // 站内去 /settings 再回来，或者干脆 F5：这一页整个重挂
+    const second = await openWorkbench();
+    await waitFor(() => expect(document.querySelector(".file-editor")).toBeTruthy());
+    expect(document.querySelector(".editor-body textarea")).toBeNull();
+    expect(screen.getByRole("tab", { name: /blueprint/ })).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("workbench.stage") ?? "{}")["1"]).toMatchObject({
+      view: "files",
+      file: "blueprint.md",
+    });
+    second.unmount();
+
+    // 另一本书没看过文件，不该被这一本的选择带跑
+    useWorkbench.setState({ selectedNovelId: null });
+    const third = await openWorkbench("/novels/2");
+    await waitFor(() => expect(document.querySelector(".workspace")).toBeTruthy());
+    expect(document.querySelector(".file-editor")).toBeNull();
+    third.unmount();
+  });
+
+  it("lets an explicit deep link beat the remembered face", async () => {
+    localStorage.setItem(
+      "workbench.stage",
+      JSON.stringify({ "1": { view: "files", rail: "plan", file: "blueprint.md" } }),
+    );
+    await openWorkbench("/novels/1?chapter=70");
+    // ?chapter= 说的是「给我看正文面」，它大于上次离开时的那一面
+    await waitFor(() => expect(document.querySelector(".editor-body textarea")).toBeTruthy());
+    expect(document.querySelector(".file-editor")).toBeNull();
   });
 
   it("resizes the sidebar with the separator and persists it", async () => {
