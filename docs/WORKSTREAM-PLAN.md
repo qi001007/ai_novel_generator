@@ -756,6 +756,25 @@
       §0.9 表同时补两行（钮属于每一条标签条 / 正文只有一份 buffer）。
       注：交接简报里写的「现 18 条」与文件不符——改前实测是 15 个 `it`、63 个 `expect`。
       测试：前端 112 → **114 passed / 17 files**；`tsc -b --force` 干净；build 干净。
+
+- [x] **第十五批·批注 1.1 + 1.2（2026-09-05）：章节标签条终于真的溢出**：
+      **先量再改，量出来推翻了我上一轮写进本文件的诊断**。不是「滑块没做」，也不是
+      「收缩地板太高」——两条条的 `min-width` 都是 5.5rem、`flex: 0 1 auto`，本来就一致。
+      真因：`.editor-pane` 是 grid 项，隐式列按内容定宽，7 个标签时它 **938px** 装在
+      **768px** 的右栏里，标签溢出的是右栏（被视口裁掉）而不是自己的 scroller，
+      于是 `scrollWidth 882 == clientWidth 882` 恒不溢出，滚轮与覆盖式滑块永远无事可做。
+      改一行容器：`.editor-pane { grid-template-columns: minmax(0, 1fr); min-width: 0; }`
+      （`.file-editor` 早就有 `min-width: 0`，这就是「与文件条不一致」的那一处）；
+      并把 `.editor-tab` 上限 240px 对齐成文件条的 15rem。
+      真机复量：默认宽 hostW 768 / tab 100px / over 0（不再溢出右栏）；
+      右栏 558px 时 tab 收到 77px 地板、over 49 → **滚轮 `scrollLeft 0→49`、
+      悬停出现 thumb（457px→174px 随比例缩）、拖动到 241**；366px 时 over 241、滚轮 49→209；
+      `stripH 38` / `tabH 31` 全程不变（滑块不占布局这条老规则没被碰坏）；
+      无溢出时滚轮不动页面（`pageY 0`）。
+      防再犯：`uiInvariants.test.ts` 16 → **17** 个断言块，钉「两条条 min/max/flex 三个数相同」
+      ＋「`.editor-pane` 必须有有界列与 `min-width: 0`」。
+      门禁：前端 115 passed / 17 files；`tsc -b --force` 干净；build 干净；
+      命中区审计（正文台与文件台各一遍）0 small / 0 clipped / 0 unreachable。
 ---
 
 ## 三、历史（已完成，只留一行结论）

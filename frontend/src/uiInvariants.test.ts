@@ -66,6 +66,22 @@ describe("settled UI decisions must not regress", () => {
     expect(css).toMatch(/\.chat-messages:hover::-webkit-scrollbar-thumb/);
   });
 
+  it("the two tab strips shrink and stop at the same two numbers (第十五批批注 1.1、1.2)", () => {
+    // The floor and the ceiling are what decide when a strip overflows, and the
+    // owner asked for the chapter strip to behave like the file strip - not for a
+    // second thumb on a strip that can never overflow.
+    for (const sel of [".editor-tab", ".file-tab"]) {
+      expect(rule(sel), sel + " floor").toMatch(/min-width: 5\.5rem/);
+      expect(rule(sel), sel + " ceiling").toMatch(/max-width: 15rem/);
+      expect(rule(sel), sel + " shrink").toMatch(/flex: 0 1 auto/);
+    }
+    // And the real cause of "the wheel does nothing": the editor pane is a grid
+    // item, so without a bounded column the strip grew to 938px inside a 768px
+    // column and its scroller never had anything to scroll.
+    expect(rule(".editor-pane")).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(rule(".editor-pane")).toContain("min-width: 0");
+  });
+
   it("a tab's close button keeps ONE distance from the right edge (第十二批批注3)", () => {
     // The label has to take the slack, or the gap tracks the length of the name.
     expect(css).toMatch(

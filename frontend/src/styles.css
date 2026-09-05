@@ -1481,7 +1481,19 @@ select:focus-visible {
 
 .editor-pane {
   display: grid;
+  /* One bounded column. A grid container's implicit column is auto-sized, which
+     means "as wide as the tabs want" - measured 938px inside a 768px column, so
+     the strip overflowed the *page* instead of its own scroller and neither the
+     wheel nor the overlay thumb ever had anything to do (第十五批批注 1.1 / 1.2).
+     minmax(0, 1fr) is what .file-editor gets from being a stretching flex column. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto 1fr auto;
+  /* The column is a grid item, and a grid item's automatic minimum size is its
+     content - measured at 938px inside a 768px column, so the strip never got a
+     bounded width, never overflowed, and neither the wheel nor the overlay thumb
+     had anything to do (第十五批批注 1.1 / 1.2: "根本没改" 的真正原因，
+     不是滑块没做，是它永远无事可做). .file-editor already had this line. */
+  min-width: 0;
   min-height: 0;
   overflow: hidden;
 }
@@ -1514,7 +1526,10 @@ select:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  max-width: 240px;
+  /* 15rem, not 240px: the file tab's ceiling, so the two strips shrink and stop at
+     the same two numbers (第十五批批注 1.2 - "与文件条一致" is about the pair of
+     floors and ceilings, not only about the thumb). */
+  max-width: 15rem;
   /* Do not squeeze the label into two lines to make the strip fit; let the
      strip scroll instead. 第十四批批注 3: it may shrink to the floor, though. */
   flex: 0 1 auto;
