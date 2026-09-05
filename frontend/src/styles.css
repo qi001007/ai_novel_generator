@@ -5489,6 +5489,91 @@ body.resizing {
   font-weight: 600;
 }
 
+/* 第十九批批注 2: providers are a list, and every task picks one of them. */
+.prefs-group-title {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.prefs-providers,
+.prefs-routes {
+  display: grid;
+  gap: 8px;
+}
+
+.prefs-provider-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.prefs-provider-result {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.prefs-provider-add {
+  justify-self: start;
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.prefs-provider-test {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.prefs-provider-drop {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+}
+
+.prefs-provider-drop:hover {
+  background: var(--surface-alt);
+  color: var(--text-1);
+}
+
+.prefs-route-row {
+  display: grid;
+  grid-template-columns: 128px 168px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.prefs-route-task {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.prefs-routes select,
+.prefs-routes input {
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12.5px;
+}
+
 .prefs-field {
   display: grid;
   gap: 6px;

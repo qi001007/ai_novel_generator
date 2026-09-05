@@ -9,10 +9,25 @@ const config = {
   provider: "openai_compatible",
   api_base_url: "https://gateway.example/v1",
   timeout: 120,
-  models: { draft: "Model-A", review: "Model-A", summary: "", chat: "" },
+  models: { draft: "Model-A", review: "Model-A", summary: "", chat: "", image: "" },
   api_key_masked: "****9876",
   api_key_set: true,
   configured: true,
+  // 第十九批批注 2: a legacy install reads back as exactly one default provider, so the
+  // page has something to render before anyone adds a second one.
+  providers: [
+    {
+      id: "default",
+      name: "默认",
+      provider: "openai_compatible",
+      api_base_url: "https://gateway.example/v1",
+      api_key_masked: "****9876",
+      api_key_set: true,
+      is_default: true,
+    },
+  ],
+  routes: { draft: "default", review: "default", summary: "default", chat: "default", image: "default" },
+  tasks: ["draft", "review", "summary", "chat", "image"],
 };
 
 function stubFetch(calls: { method: string; url: string; body: unknown }[]) {
@@ -86,7 +101,60 @@ describe("PreferencesPage", () => {
       api_key: "",
       timeout: 120,
       models: config.models,
+      providers: [],
+      routes: config.routes,
     });
+  });
+
+  /* 第十九批批注 2: 「正文用 A 家、审稿用 B 家」must be expressible from the page, not
+     only in the database. */
+  it("adds a second provider and routes one task at it", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByLabelText("API Key");
+    await user.click(screen.getByRole("button", { name: "添加供应商" }));
+    await user.type(screen.getByLabelText("供应商 1 名称"), "B 家");
+    await user.type(
+      screen.getByLabelText("供应商 1 Base URL"),
+      "https://b.example/v1",
+    );
+    await user.type(screen.getByLabelText("供应商 1 API Key"), "key-b");
+
+    const route = await screen.findByLabelText("审稿使用的供应商");
+    await user.selectOptions(route, "p1");
+    expect((route as HTMLSelectElement).value).toBe("p1");
+    // the other tasks stay on the default gateway - routing is per task, not global
+    expect((screen.getByLabelText("正文生成使用的供应商") as HTMLSelectElement).value).toBe("default");
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => {
+      const put = calls.filter((call) => call.method === "PUT").pop();
+      expect(put?.body).toMatchObject({
+        providers: [{ id: "p1", name: "B 家", api_base_url: "https://b.example/v1" }],
+        routes: { review: "p1", draft: "default" },
+      });
+    });
+  });
+
+  it("sends the image slot as a task with a provider of its own", async () => {
+    stubFetch(calls);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+    const image = await screen.findByLabelText("生图（未启用）使用的供应商");
+    expect((image as HTMLSelectElement).value).toBe("default");
+    const model = screen.getByLabelText("生图（未启用）模型") as HTMLInputElement;
+    expect(model.value).toBe("");
+    // reserved, not wired: the row says so instead of hiding or faking a control
+    expect(model.placeholder).toBe("未启用");
   });
 
   it("runs the connection test against the backend, not a model", async () => {

@@ -19,11 +19,14 @@ def test_llm_status_reports_provider_and_model_configuration(
     data = response.json()
     assert data["provider"] == "opencode"
     assert data["configured"] is True
+    # `image` is a real slot now (第十九批批注 2) - reported as unconfigured rather
+    # than hidden, so the settings page can say 「未启用」 instead of inventing a button.
     assert data["models"] == {
         "draft": True,
         "review": True,
         "summary": False,
         "chat": False,
+        "image": False,
     }
 
 
@@ -49,4 +52,5 @@ def test_llm_status_is_not_configured_without_models(
         "review": False,
         "summary": False,
         "chat": False,
+        "image": False,
     }

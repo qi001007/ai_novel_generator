@@ -1,10 +1,20 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import { useWorkbench } from "../store/workbench";
+
+type LlmProvider = {
+  id: string;
+  name: string;
+  provider: string;
+  api_base_url: string;
+  api_key_masked: string;
+  api_key_set: boolean;
+  is_default: boolean;
+};
 
 type LlmConfig = {
   provider: string;
@@ -14,6 +24,23 @@ type LlmConfig = {
   api_key_masked: string;
   api_key_set: boolean;
   configured: boolean;
+  providers: LlmProvider[];
+  routes: Record<string, string>;
+  tasks: string[];
+};
+
+/** An editable row in the provider list. `api_key` holds only what the owner typed;
+ *  an empty string means "leave the stored one alone", which is also what the server
+ *  does with the **** echo. */
+type ProviderDraft = {
+  id: string;
+  name: string;
+  provider: string;
+  api_base_url: string;
+  api_key: string;
+  timeout: string;
+  keyMask: string;
+  isDefault: boolean;
 };
 
 type TestResult = { ok: boolean; detail: string };
@@ -23,9 +50,20 @@ const TASKS: Array<[string, string]> = [
   ["review", "审稿"],
   ["summary", "章摘要"],
   ["chat", "对话"],
+  // 第十九批批注 2: the slot is reserved with the same shape as the others. Nothing
+  // calls it yet, so the row says 未启用 instead of pretending a button works.
+  ["image", "生图（未启用）"],
 ];
 
 type GroupKey = "llm" | "appearance";
+
+/** A new row gets an id the owner never sees or types; it is only the join key between
+ *  a provider and the tasks that point at it. */
+function nextProviderId(existing: ProviderDraft[]): string {
+  let n = existing.length + 1;
+  while (existing.some((item) => item.id === `p${n}`)) n += 1;
+  return `p${n}`;
+}
 
 export default function PreferencesPage() {
   const navigate = useNavigate();
@@ -44,21 +82,47 @@ export default function PreferencesPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<GroupKey>("llm");
+  const [providers, setProviders] = useState<ProviderDraft[]>([]);
+  const [routes, setRoutes] = useState<Record<string, string>>({});
+  const [testResults, setTestResults] = useState<Record<string, string>>({});
+
+  /* One place that puts a freshly read config into the form, used by the first load and
+     by every save - the two used to drift (a save left a removed provider on screen). */
+  function applyConfig(data: LlmConfig) {
+    setConfig(data);
+    setBaseUrl(data.api_base_url);
+    setTimeout_(String(data.timeout));
+    setModels(data.models);
+    setRoutes(data.routes);
+    setProviders(
+      data.providers
+        .filter((item) => !item.is_default)
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          provider: item.provider,
+          api_base_url: item.api_base_url,
+          // never echoed back; blank means keep the stored one
+          api_key: "",
+          timeout: "",
+          keyMask: item.api_key_masked,
+          isDefault: false,
+        })),
+    );
+  }
 
   useEffect(() => {
     let active = true;
     api.get<LlmConfig>("/api/config/llm").then((data) => {
       if (!active) return;
-      setConfig(data);
-      setBaseUrl(data.api_base_url);
-      setTimeout_(String(data.timeout));
-      setModels(data.models);
+      applyConfig(data);
     }).catch((cause: Error) => {
       if (active) setError(cause.message);
     });
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function pickTheme(next: "light" | "dark") {
@@ -72,17 +136,24 @@ export default function PreferencesPage() {
     setNotice(null);
     api
       .put<LlmConfig>("/api/config/llm", {
+        // these four still describe the 默认 provider
         api_base_url: baseUrl,
         // Blank means "leave the stored key alone"; the server also ignores a mask echo.
         api_key: apiKey,
         timeout: Number(timeout),
         models,
+        providers: providers.map((item) => ({
+          id: item.id,
+          name: item.name,
+          provider: item.provider,
+          api_base_url: item.api_base_url,
+          api_key: item.api_key,
+          timeout: item.timeout === "" ? null : Number(item.timeout),
+        })),
+        routes,
       })
       .then((data) => {
-        setConfig(data);
-        setBaseUrl(data.api_base_url);
-        setTimeout_(String(data.timeout));
-        setModels(data.models);
+        applyConfig(data);
         setApiKey("");
         setNotice("已保存，后端立即生效，不需要重启");
       })
@@ -90,6 +161,16 @@ export default function PreferencesPage() {
         setError(cause instanceof Error ? cause.message : "保存失败"),
       )
       .finally(() => setBusy(false));
+  }
+
+  function testProvider(providerId: string, name: string) {
+    setTestResults((prev) => ({ ...prev, [providerId]: "测试中…" }));
+    return api
+      .post<TestResult>("/api/config/llm/test", { provider_id: providerId })
+      .then((data) => setTestResults((prev) => ({ ...prev, [providerId]: data.detail })))
+      .catch((cause: Error) =>
+        setTestResults((prev) => ({ ...prev, [providerId]: `「${name || providerId}」${cause.message}` })),
+      );
   }
 
   function test() {
@@ -119,6 +200,9 @@ export default function PreferencesPage() {
           {!config && !error ? <p className="prefs-muted">正在读取后端配置……</p> : null}
         {config ? (
           <>
+            {/* These three fields are the 默认供应商 - the same quartet the legacy
+                single-provider keys always described. The rows below are the extras. */}
+            <p className="prefs-group-title">默认供应商</p>
             <label className="prefs-field">
               Base URL
               <input
@@ -154,18 +238,127 @@ export default function PreferencesPage() {
                 aria-label="超时秒数"
               />
             </label>
-            <div className="prefs-models">
-              {TASKS.map(([key, label]) => (
-                <label className="prefs-field" key={key}>
-                  {label}
+            {/* 第十九批批注 2：「同时保存不同的供应商」+「正文/审稿/摘要用不同供应商的不同模型」。
+                供应商是一张列表，任务路由每一行选一个供应商再填模型名；
+                生图只是这张表里多一行任务，不是另一套代码。 */}
+            <div className="prefs-providers">
+              <p className="prefs-group-title">其他供应商</p>
+              {providers.length === 0 ? <p className="prefs-muted">还没有第二个供应商</p> : null}
+              {providers.map((item, index) => (
+                <div className="prefs-provider-row" key={item.id}>
                   <input
-                    value={models[key] ?? ""}
+                    className="prefs-provider-name"
+                    value={item.name}
+                    placeholder="名称"
+                    aria-label={`供应商 ${index + 1} 名称`}
                     onChange={(event) =>
-                      setModels({ ...models, [key]: event.target.value })
+                      setProviders((prev) =>
+                        prev.map((row, at) => (at === index ? { ...row, name: event.target.value } : row)),
+                      )
                     }
-                    aria-label={label + "模型"}
                   />
-                </label>
+                  <input
+                    className="prefs-provider-url"
+                    value={item.api_base_url}
+                    placeholder="https://api.example.com/v1"
+                    aria-label={`供应商 ${index + 1} Base URL`}
+                    onChange={(event) =>
+                      setProviders((prev) =>
+                        prev.map((row, at) => (at === index ? { ...row, api_base_url: event.target.value } : row)),
+                      )
+                    }
+                  />
+                  <input
+                    type="password"
+                    className="prefs-provider-key"
+                    value={item.api_key}
+                    placeholder={item.keyMask ? `已保存 ${item.keyMask}，留空则不修改` : "API Key"}
+                    aria-label={`供应商 ${index + 1} API Key`}
+                    autoComplete="off"
+                    onChange={(event) =>
+                      setProviders((prev) =>
+                        prev.map((row, at) => (at === index ? { ...row, api_key: event.target.value } : row)),
+                      )
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="prefs-provider-test"
+                    onClick={() => void testProvider(item.id, item.name)}
+                    disabled={busy}
+                  >
+                    测试
+                  </button>
+                  <button
+                    type="button"
+                    className="prefs-provider-drop"
+                    aria-label={`移除供应商 ${item.name || item.id}`}
+                    onClick={() => {
+                      setProviders((prev) => prev.filter((row) => row.id !== item.id));
+                      // a task still pointing here would be refused on save; send it home now
+                      setRoutes((prev) => {
+                        const next: Record<string, string> = {};
+                        for (const [task, pid] of Object.entries(prev)) {
+                          next[task] = pid === item.id ? "default" : pid;
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <X size={12} />
+                  </button>
+                  {testResults[item.id] ? <p className="prefs-provider-result">{testResults[item.id]}</p> : null}
+                </div>
+              ))}
+              <button
+                type="button"
+                className="prefs-provider-add"
+                onClick={() =>
+                  setProviders((prev) => [
+                    ...prev,
+                    {
+                      id: nextProviderId(prev),
+                      name: "",
+                      provider: "openai_compatible",
+                      api_base_url: "",
+                      api_key: "",
+                      timeout: "",
+                      keyMask: "",
+                      isDefault: false,
+                    },
+                  ])
+                }
+              >
+                添加供应商
+              </button>
+            </div>
+
+            <p className="prefs-group-title">任务路由</p>
+            <div className="prefs-routes">
+              {TASKS.map(([key, label]) => (
+                <div className="prefs-route-row" key={key}>
+                  <span className="prefs-route-task">{label}</span>
+                  <select
+                    className="prefs-route-provider"
+                    value={routes[key] ?? "default"}
+                    aria-label={`${label}使用的供应商`}
+                    onChange={(event) => setRoutes({ ...routes, [key]: event.target.value })}
+                  >
+                    <option value="default">默认</option>
+                    {providers.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name || item.id}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    className="prefs-route-model"
+                    value={models[key] ?? ""}
+                    placeholder={key === "image" ? "未启用" : ""}
+                    aria-label={label + "模型"}
+                    onChange={(event) => setModels({ ...models, [key]: event.target.value })}
+                  />
+                </div>
               ))}
             </div>
             <p className="prefs-state">

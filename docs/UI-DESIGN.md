@@ -284,6 +284,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 章节标签**只写四位章号**（`0001`），完整章名搬到可访问名与 tooltip | `EditorPane` 渲染 `{chapterNumberLabel(item.chapter_number)}`、`role="tab"` 上有 `aria-label`、按钮上有 `title`；三位数字只有一个出处 `chapterNumberLabel()` | 第十六批批注 3 |
 | **提示语行尾不加 `。`**（空态／占位／注脚／回执） | `uiInvariants` 用 `import.meta.glob` 扫全部组件源码：剥注释后任何以 `。` 收尾并紧跟引号／`</`／`}` 的用户可见文本都算违规，白名单只有 4 条具名豁免（Agent 欢迎语 2 行、两条发给模型的提示词、一条生图 prompt）；主人点名的两行另有具名断言 | 第十六批批注 5、6 |
 | 切换钮**只出现在有专属渲染视图的文档上**（目录表格／人物卡／正文页）；通用 markdown 排版不算另一个视图 | `hasRenderedView(path)` 一条判据；`.file-rendered` 覆盖层与其两条 CSS 已删，且断言反向钉死它不许回来；现存两个覆盖层仍必须 `inset: 0` | 第十六批批注 8 |
+| 模型接入 = **默认供应商 + 其他供应商列表 + 任务路由表**；每个供应商自带「测试」；未接通的槽位明写「未启用」不做假按钮 | `prefs-provider-row` / `prefs-routes` 存在；五个任务（draft/review/summary/chat/image）每一行都有供应商下拉与模型框；密钥只进 `type="password"`，读回只有掩码；移除供应商时指向它的任务当场回落默认 | 第十九批批注 2 |
 | 附件是**输入框上方的 chip**（`× + 文件图标 + 名字`），回形针**永远不许是死控件** | `.chat-attachments` chip 高 26px、`×` 命中 24×24；发送成功才清空、失败保留；非文本/超限必须给原因（前端预检 + 后端 `attachment_blocks()` 再判一次）；隐藏 `chat-attach-input` 用 clip 而非 `display:none`，键盘可达 | 第十九批批注 1 |
 | 设置页是**左列表 + 右入口**的可拓展结构，**分组名只说一次** | `PreferencesPage` 的 `groups` 表 + `role="tablist"` 列表 + 唯一 `role="tabpanel"`；面板不得再放同名 `<h2>`，靠 `aria-labelledby` 指回列表项 | 第十八批（主人点了 3 次） |
 | **思考过程与正文必须在字体上有区分**（更小、更淡、斜体、无框、正常成段）；命令/工具轨迹才用另一套呈现 | `.chat-card .chat-thinking-body p` = `12px / italic / --text-2`，正文 `.chat-card p` 仍 `13px`；特异性 (0,2,1) 压过 `.chat-card p`，**不靠源码顺序** | 第十八批批注 1 |

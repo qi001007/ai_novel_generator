@@ -37,6 +37,7 @@ import characterLibrary from "./components/CharacterLibrary.tsx?raw";
 import foreshadowWall from "./components/ForeshadowWall.tsx?raw";
 import worldMapPanel from "./components/WorldMapPanel.tsx?raw";
 import runDetailPage from "./pages/GenerationRunDetailPage.tsx?raw";
+import preferences from "./pages/PreferencesPage.tsx?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -420,6 +421,26 @@ const componentSources = import.meta.glob("./**/*.tsx", {
   import: "default",
   eager: true,
 }) as Record<string, string>;
+
+  it("providers are a list and every task routes to one of them (第十九批批注 2)", () => {
+    // 「我现在可能会同时保存不同的供应商…正文/审稿/章摘要用不同供应商的不同模型」.
+    // Before this the data model could not express it: one gateway, one model name per
+    // task. The guard is that the page still offers one flat provider (the legacy shape)
+    // AND a list, and that no task is missing from the routing table.
+    expect(preferences).toContain("prefs-provider-row");
+    expect(preferences).toContain("prefs-routes");
+    expect(preferences).toContain('routes,');
+    expect(preferences).toContain("nextProviderId");
+    for (const task of ["draft", "review", "summary", "chat", "image"]) {
+      expect(preferences).toContain(`["${task}",`);
+    }
+    // the reserved slot says so instead of pretending to work
+    expect(preferences).toContain('["image", "生图（未启用）"]');
+    expect(preferences).toContain('placeholder={key === "image" ? "未启用" : ""}');
+    // a secret is never echoed into a value, only into a placeholder as a mask
+    expect(preferences).toContain("api_key: item.api_key,");
+    expect(preferences).toMatch(/type="password"[\s\S]{0,200}prefs-provider-key/);
+  });
 
   it("the paperclip is a working control with a removable chip (第十九批批注 1)", () => {
     // It was disabled once, on purpose, because the old picker threw the selection away.
