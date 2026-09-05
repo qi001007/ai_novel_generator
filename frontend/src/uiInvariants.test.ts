@@ -261,6 +261,12 @@ describe("settled UI decisions must not regress", () => {
     // and the answer it has to read against stays 13px / --text-1
     expect(rule(".chat-card p")).toContain("font-size: 13px");
     expect(rule(".chat-trace-body")).toContain("border: 1px solid var(--border)");
+    /* 第十八批批注 1 的后半：命令用条目，方框只留给「读不懂的那一行」兜底。 */
+    expect(chatPane).toContain('className="chat-trace-list"');
+    expect(chatPane).toContain("traceActions(trace)");
+    expect(chatPane).toContain("ACTION_LABELS[action.name] ?? action.name");
+    expect(rule(".chat-trace-list")).not.toMatch(/border|background/);
+    expect(rule(".chat-trace-row")).toContain("font-size: 12px");
   });
 
   it("focus paints no frame anywhere - the whole class (第六轮批注16 / 第十一批批注2 / 第十四批批注5 / 第十五批批注4.2)", () => {

@@ -1043,6 +1043,49 @@ select:focus-visible {
   overflow-x: auto;
 }
 
+/* 第十八批批注 1 的后半：命令是条目，不是日志方框。一行一步 - 图标 + 中文动作名 +
+   参数 chip。chip 用等宽与内衬底色，是因为它显示的是文件名/查询词这类字面量，
+   不是因为它是一个框起来的控件（它不可点，所以也不进命中区清单）。 */
+.chat-trace-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.chat-trace-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.chat-trace-row svg {
+  flex: none;
+}
+
+.chat-trace-chip {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-alt);
+  color: var(--text-1);
+  font-family: var(--mono);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+/* The fallback for a block whose dialect we cannot read: the monospace body above, now
+   only ever inside one row, so an unparseable call still shows the truth instead of a
+   confident-looking row that misstates what ran. */
+.chat-trace-row .chat-trace-body {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+}
+
+
 /* 第十七批批注 1: 「不要用这种方框框选的形式」. Thinking is text the model wrote to
    itself, so it is set like text - no border, no fill, no monospace, wrapping at the
    measure of the answer above which it sits. */

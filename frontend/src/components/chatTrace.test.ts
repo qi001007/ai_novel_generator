@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reasoningParagraphs } from "./chatTrace";
+import { reasoningParagraphs, traceActions } from "./chatTrace";
 
 /* 第十七批批注 1: 「你一个字、一两个字一行就不对」. Rows written while the join bug was
    live stored one entry per streamed delta; they are still in the database, so the fold
@@ -37,5 +37,37 @@ describe("reasoningParagraphs", () => {
   it("answers nothing at all for an empty value", () => {
     expect(reasoningParagraphs("")).toEqual([]);
     expect(reasoningParagraphs("  \n\n  ")).toEqual([]);
+  });
+});
+
+/* The blocks in here are the dialects the models actually wrote into this database -
+   message 20 of novel 5 is the MiniMax one verbatim. A parser tested only on shapes I
+   invented would pass while the real row fell back to raw text. */
+describe("traceActions", () => {
+  it("reads the Ruby-ish dialect MiniMax wrote into the stored row", () => {
+    const block = `[TOOL_CALL]\n{tool => "read_file", args => {\n  --path "settings/foreshadow.md"\n}}\n[/TOOL_CALL]`;
+    expect(traceActions([block])).toEqual([
+      { name: "read_file", arg: "settings/foreshadow.md", raw: block },
+    ]);
+  });
+
+  it("reads the JSON dialect", () => {
+    const block = `[TOOL_CALL]\n{"name": "web_search", "arguments": {"query": "司天监 明代官署"}}\n[/TOOL_CALL]`;
+    const [action] = traceActions([block]);
+    expect(action.name).toBe("web_search");
+    expect(action.arg).toBe("司天监 明代官署");
+  });
+
+  it("keeps the raw block when the name cannot be read, so the row cannot lie", () => {
+    const block = "[TOOL_CALL]\n完全读不懂的一段\n[/TOOL_CALL]";
+    const [action] = traceActions([block]);
+    expect(action.name).toBeNull();
+    expect(action.raw).toContain("完全读不懂的一段");
+  });
+
+  it("handles a call with no arguments", () => {
+    const [action] = traceActions(['[TOOL_CALL]\n{"name": "list_files", "arguments": {}}\n[/TOOL_CALL]']);
+    expect(action.name).toBe("list_files");
+    expect(action.arg).toBeNull();
   });
 });

@@ -8,6 +8,8 @@ import {
   CornerDownLeft,
   Copy,
   Download,
+  FileText,
+  Search,
   Gauge,
   Paperclip,
   RotateCcw,
@@ -18,7 +20,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import MarkdownText from "./MarkdownText";
-import { reasoningParagraphs, splitTrace } from "./chatTrace";
+import { ACTION_LABELS, reasoningParagraphs, splitTrace, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
 import type {
@@ -839,8 +841,29 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <span>工具轨迹 · {trace.length} 步</span>
                         <ChevronDown size={11} />
                       </button>
+                      {/* 第十八批批注 1 的后半：命令用条目呈现 - 动作名 + 参数 chip，
+                          不再是把日志原文摊在一个等宽方框里。解析不出动作的行退回原文，
+                          宁可难看也不能把跑过的东西说错。 */}
                       {traceOpen === row.id ? (
-                        <pre className="chat-trace-body">{trace.join("\n\n")}</pre>
+                        <ul className="chat-trace-list">
+                          {traceActions(trace).map((action, index) => (
+                            <li className="chat-trace-row" key={index}>
+                              {action.name ? (
+                                <>
+                                  {action.name === "web_search" ? (
+                                    <Search size={12} aria-hidden="true" />
+                                  ) : (
+                                    <FileText size={12} aria-hidden="true" />
+                                  )}
+                                  <span>{ACTION_LABELS[action.name] ?? action.name}</span>
+                                  {action.arg ? <code className="chat-trace-chip">{action.arg}</code> : null}
+                                </>
+                              ) : (
+                                <pre className="chat-trace-body">{action.raw}</pre>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
                       ) : null}
                     </div>
                   ) : null}
