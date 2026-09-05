@@ -251,6 +251,15 @@ describe("settled UI decisions must not regress", () => {
     expect(chatPane).not.toMatch(/chat-thinking[\s\S]{0,400}chat-trace-body/);
     expect(css).toMatch(/\.chat-thinking-body \{[^}]*color: var\(--text-2\);/);
     expect(rule(".chat-thinking-body")).not.toMatch(/border|background|font-family/);
+    /* 第十八批批注 1: the type has to be distinguished from the answer, and the rule must
+       out-specify `.chat-card p` (0,1,1) - a tie is settled by source order, and this
+       block sits above it, so writing 12.5px on the container changed nothing at all. */
+    const thinkingP = rule(".chat-card .chat-thinking-body p");
+    expect(thinkingP).toContain("font-size: 12px");
+    expect(thinkingP).toContain("font-style: italic");
+    expect(thinkingP).toContain("color: var(--text-2)");
+    // and the answer it has to read against stays 13px / --text-1
+    expect(rule(".chat-card p")).toContain("font-size: 13px");
     expect(rule(".chat-trace-body")).toContain("border: 1px solid var(--border)");
   });
 

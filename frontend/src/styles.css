@@ -1048,15 +1048,29 @@ select:focus-visible {
    measure of the answer above which it sits. */
 .chat-thinking-body {
   color: var(--text-2);
-  font-size: 12.5px;
-  line-height: 1.8;
+  font-size: 12px;
+  line-height: 1.7;
 }
 
-.chat-thinking-body p {
+/* The distinction has to sit on the <p> itself: `.chat-card p` (0,1,1) sets 13px and
+   --text-1 and outranks anything put on the container (0,1,0), which is exactly how
+   第十七批批注 1 shipped looking identical to the answer while the stylesheet said
+   otherwise. Measured, then fixed: 12px vs 13px, --text-2 vs --text-1, italic vs normal -
+   and written as `.chat-card .chat-thinking-body p` (0,2,1) because `.chat-card p` is
+   (0,1,1) too, and a tie is settled by source order, which this block loses from up here.
+   Same lesson as the CodeMirror outline in 第十五批 4.2: out-specify, never rely on order.
+   The owner's reference image is slanted, so the slant is wanted; on Chinese glyphs the
+   browser synthesises the oblique, and if that reads badly to him it is one line to drop
+   - the size and tone alone already separate the two. */
+.chat-card .chat-thinking-body p {
   margin: 0 0 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.7;
 }
 
-.chat-thinking-body p:last-child {
+.chat-card .chat-thinking-body p:last-child {
   margin-bottom: 0;
 }
 
