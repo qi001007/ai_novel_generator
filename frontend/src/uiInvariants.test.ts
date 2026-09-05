@@ -38,6 +38,8 @@ import foreshadowWall from "./components/ForeshadowWall.tsx?raw";
 import worldMapPanel from "./components/WorldMapPanel.tsx?raw";
 import runDetailPage from "./pages/GenerationRunDetailPage.tsx?raw";
 import preferences from "./pages/PreferencesPage.tsx?raw";
+import appearanceStore from "./store/appearance.ts?raw";
+import appSource from "./App.tsx?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -528,5 +530,48 @@ const componentSources = import.meta.glob("./**/*.tsx", {
   it("the dark theme stays at the owner's measured grey (第十轮批注1)", () => {
     expect(css).toMatch(/\[data-theme="dark"\][\s\S]*?--surface-alt: #191a1b;/);
     expect(css).toMatch(/--surface: #1f2023;/);
+  });
+
+  /* 第十九批批注 3：外观第一次成为「可切换的偏好」。这一类东西最容易在半年后
+     被改回硬编码，所以钉的是结构，不是某个色值。 */
+  it("an appearance switch repaints tokens, and no preview copies a colour", () => {
+    // 浅色那套必须挂在属性能声明到任意元素上，预览卡才画得出「另一个主题长什么样」，
+    // 而不是把 token 抄第二遍（抄了就开始了说谎的预览）。
+    expect(css).toMatch(/:root,\s*\n\[data-theme="light"\] \{/);
+    // 复合选择器是这件事的全部机关：[data-accent="blue"] 与 [data-theme="dark"] 同为
+    // (0,1,0)，靠源码先后决胜，深色 + 蓝就会拿浅色的值去刷深色界面。写成
+    // :root[data-accent=...] 是同一个病的另一种写法——第十五批 4.2 与第十八批 18.1
+    // 两次都栽在「特异性优先于源码顺序」上。
+    expect(css).toMatch(/\[data-theme="dark"\]\[data-accent="blue"\] \{/);
+    expect(css).toMatch(/\[data-theme="dark"\]\[data-code="graphite"\] \{/);
+    expect(css).not.toMatch(/:root\[data-accent/);
+    expect(css).not.toMatch(/:root\[data-code/);
+    // 一个色值一个出处：换色系换的是 --accent 这三行别名，不是散在文件里的 74 处引用
+    expect(rule('[data-accent="blue"]')).toContain("--accent: var(--blue);");
+    expect(rule('[data-theme="dark"]')).toContain("--accent: var(--vermilion-dark);");
+    // 预览卡只声明属性，颜色一律回读 token
+    const previewRules = (css.match(/\.pv-[a-z.-]* \{[\s\S]*?\}/g) ?? []).join("\n");
+    expect(previewRules.length).toBeGreaterThan(200);
+    expect(previewRules).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+    expect(previewRules).toContain("background: var(--accent)");
+    // 正文字体只有一个出处，canvas 读它，不在组件里再写一份
+    expect(rule(".editor-body textarea")).toContain("font-family: var(--prose)");
+    expect(editorPane).toContain('tokenValue("--prose")');
+    expect(css).not.toMatch(/font-family: "Noto Serif SC", "Source Han Serif SC", serif;/);
+    // data-theme 只有一个写者（workbench 曾经也写它）
+    expect(workbenchStore).not.toMatch(/dataset\.theme/);
+    expect(appearanceStore).toContain("root.dataset.theme = resolveTheme(next.theme);");
+  });
+
+  it("the appearance panel is four card rows of radios over a miniature, not a swatch", () => {
+    for (const label of ["主题", "色系", "代码配色", "正文字体"]) {
+      expect(preferences).toContain(`label="${label}"`);
+    }
+    expect(preferences).toContain('value: "system"');
+    expect(preferences).toContain('"pref-preview"');
+    expect(preferences).toMatch(/role="radio"[\s\S]{0,200}aria-checked=\{checked\}/);
+    // 「系统」是活的：机器切换时界面跟着切，不是只在打开设置时算一次
+    expect(appSource).toContain('matchMedia("(prefers-color-scheme: dark)")');
+    expect(appSource).toContain("followSystem()");
   });
 });

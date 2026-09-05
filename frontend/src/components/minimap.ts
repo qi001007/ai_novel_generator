@@ -67,6 +67,7 @@ export function paintMinimap(
   height: number,
   dark: boolean,
   family: string,
+  accent: string,
 ): void {
   const track = Math.max(1, height - MM_PAD * 2);
   const pitch = Math.min(MM_PITCH, track / Math.max(1, lines.length));
@@ -78,9 +79,7 @@ export function paintMinimap(
     if (!body) return;
     const indent = Math.min((text.length - text.trimStart().length) * 0.8, 18);
     ctx.fillStyle = body.startsWith("#")
-      ? dark
-        ? "#e06a4e"
-        : "#c2492f"
+      ? accent
       : body.startsWith(">")
         ? dark
           ? "rgba(157,155,150,.35)"

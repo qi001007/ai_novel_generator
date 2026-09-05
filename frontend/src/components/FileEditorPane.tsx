@@ -29,6 +29,7 @@ import {
   progressFromPointer,
   thumbGeometry,
 } from "./minimap";
+import { tokenValue } from "../store/appearance";
 import HScrollThumb from "./HScrollThumb";
 import ViewToggle from "./ViewToggle";
 import CharacterDocForm from "./CharacterDocForm";
@@ -325,7 +326,8 @@ export default function FileEditorPane() {
       lines,
       height,
       document.documentElement.dataset.theme === "dark",
-      "\"Noto Sans SC\", \"Microsoft YaHei\", sans-serif",
+      tokenValue("--ui"),
+      tokenValue("--accent"),
     );
   }, [lines, mmHeight, caretLine, scroll]);
 

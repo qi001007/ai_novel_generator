@@ -41,7 +41,6 @@ function hydrateChapterDraft(chapter: Chapter) {
 
 export type HealthState = "loading" | "ok" | "error";
 export type WorkspaceTab = "write" | "plan" | "feedback";
-export type ThemeState = "light" | "dark";
 
 type WorkbenchState = {
   tab: WorkspaceTab;
@@ -65,9 +64,7 @@ type WorkbenchState = {
   busy: boolean;
   creatingChapter: boolean;
   createError: string | null;
-  theme: ThemeState;
   init: () => Promise<void>;
-  toggleTheme: () => void;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
   updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
   setTab: (tab: WorkspaceTab) => void;
@@ -110,20 +107,6 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   busy: false,
   creatingChapter: false,
   createError: null,
-  theme: ((): ThemeState => {
-    const stored = localStorage.getItem("theme");
-    if (stored === "light" || stored === "dark") return stored;
-    return typeof window.matchMedia === "function" && window.matchMedia("(prefers-color-scheme: dark)").matches
-      ? "dark"
-      : "light";
-  })(),
-
-  toggleTheme() {
-    const theme: ThemeState = get().theme === "dark" ? "light" : "dark";
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("theme", theme);
-    set({ theme });
-  },
 
   async createNovel(payload) {
     const novel = await api.post<Novel>("/api/novels", payload);
@@ -132,7 +115,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   async init() {
-    document.documentElement.dataset.theme = get().theme;
+    // Theme used to be stamped here. It now belongs to store/appearance.ts, which
+    // applies itself as soon as it is loaded - two writers for data-theme is the
+    // same bug shape as the two draft buffers (第十五批 3.3).
     try {
       await api.get<{ status: string }>("/api/health");
     } catch {

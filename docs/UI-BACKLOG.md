@@ -18,7 +18,7 @@
 ---
 
 
-## 一、2026-09-06 第十九轮批注（3 条，剩 1 条）
+## 一、2026-09-06 第十九轮批注（3 条，全部已做，等主人审批）
 
 主人：「提了一些意见，已经做完的审批通过，可以把新的意见加进去，继续按顺序做。」
 19.1（附件 chip）与 19.2（多供应商 + 任务路由）**已通过审批**，连同第十八批（18.1 思考过程
@@ -42,6 +42,32 @@
   4. 偏好存哪要有个说法并写进 DECISIONS：外观是**这台机器的偏好**，与
      D-16（服务端配置）分清楚，别把主题塞进 `app_config` 让另一台机器被动跟随；
   5. 所有选择刷新后仍在；键盘可达（卡片是 `role="radio"`，同 §0.6 弹层与分级控件口径）。
+
+- **已做（2026-09-06 真机点过、截图看过）**。
+  · 四组开关都落在 html 的 `data-theme` / `data-accent` / `data-code` / `data-prose` 上，
+    只由 `store/appearance.ts` 写；`workbench` 里那份 `theme`／`toggleTheme` 删除——
+    两个写者覆盖同一个属性，正是 3.3 与 16.11 的老病。存 `localStorage.appearance` 一个键，
+    旧的 `localStorage.theme` 读回来搬进新键，主人不必重选。理由与被否写法记在 **D-21**。
+  · 「系统」是新行为：写入那一刻解析成 light/dark，CSS 里没有第三种值；机器自己切换时由
+    `matchMedia` 的 change 事件重解析。真机两条都验：不刷新浅→深（`stored:null`）；
+    显式选浅色的时候机器转暗**不跟**（`mq:true` 而 `attrs:light`）。
+  · 预览卡不抄色值：浅色那套 token 挂在 `:root, [data-theme="light"]` 上，卡片自带
+    `data-theme`/`data-accent`/`data-code`/`data-prose` 就能画「另一个主题长什么样」。
+    实测卡片 208×113、四组共 9 张、`role="radio"` + `aria-checked`，Tab 可达，
+    聚焦 `outline:none` 且无 `box-shadow`（§0.9「聚焦不画一圈」仍成立）。
+  · 色系：朱砂留作默认，新增蓝。CodeMirror **真的**跟着换——`arcs.md` 源码视图里
+    标题文字 rgb(194,73,47) → 蓝 rgb(53,104,160) → 石墨 rgb(36,35,34)。
+  · 正文字体：`.editor-body textarea` 计算值 `"Noto Serif SC", "Source Han Serif SC", serif`
+    → `"Noto Sans SC", "Segoe UI", …`，字号仍 17px；缩略栏 canvas 改用
+    `tokenValue("--prose")` 回读，`EditorPane` 里那份字体栈字面量删掉。
+  · 对比度复量（工作台 1440×1000 逐元素）：浅朱砂 **0**／浅蓝 **0**／深蓝 **0**／
+    深蓝+石墨+黑体 **0**；深朱砂 **1** —— 禁用态主按钮 `#9a8883` 压 `#3a2b27` = **4.00**（需 4.5），
+    **改前就有**；蓝那一套我换成 5.07，朱砂是否一起抬上去属品牌色决定 → 已登记进第二节。
+  · 测试：新增 `store/appearance.test.ts` 5 条、`PreferencesPage` 1 条；
+    `uiInvariants` 33 → **35** 块（钉住复合选择器、预览不许抄色值、正文字体一个出处、
+    `data-theme` 一个写者）。前端 163 → **171 passed / 20 files**；tsc clean；build clean；
+    命中区 `/settings` 外观 0 small / 0 clipped / 0 unreachable，`/novels/5` 同
+    （edge 1、srOnly 1 属既有）。
 
 ---
 
@@ -69,8 +95,15 @@
 - [ ] **封面色改成调色盘**（或至少加一个调色盘入口）。
 - [x] ~~拖动分栏边界到极限应能关闭该栏~~（已做，见上面 §2.2，本条从第四节划掉）。
 
-- [ ] **对比度剩两处（品牌色决定，需主人拍板）**：`--accent` 压自己的淡色底 4.29；
-      深色主题白字压 `--accent` 3.31。
+- [ ] **对比度剩三处（品牌色决定，需主人拍板）**：`--accent` 压自己的淡色底 4.29；
+      深色主题白字压 `--accent` 3.31；深色**禁用态主按钮** 4.00
+      （`--control-disabled-accent-fg #9a8883` 压 `--control-disabled-accent-bg #3a2b27`，
+      第十九批 19.3 复量时抓到，改前就有。蓝色系那一对已换成 5.07，朱砂要不要一起抬，一起拍）。
+
+- [ ] **`UI-DESIGN §0.1` 那张表有三个值和代码不一致**（19.3 顺手发现，本轮不改）：
+      表里 dark `surface #1C1C1E`、`surface-alt #26262A`、light `text-2 #73716C`，
+      代码是 `#1f2023`、`#191a1b`、`#6d6b66`（后两处正是第十轮批注 1 与 `--text-2` 那一次修定的）。
+      这是文档漂移不是界面缺陷，但它是「文档说的和跑着的不是一回事」，下次动 §0.1 一并校。
 
 ---
 

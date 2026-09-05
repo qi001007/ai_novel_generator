@@ -1,10 +1,18 @@
 import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
-import { ArrowLeft, X } from "lucide-react";
+import type { HTMLAttributes, ReactNode } from "react";
+import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
-import { useWorkbench } from "../store/workbench";
+import {
+  prefersDark,
+  resolveTheme,
+  useAppearance,
+  type AccentChoice,
+  type CodeChoice,
+  type ProseChoice,
+  type ThemeChoice,
+} from "../store/appearance";
 
 type LlmProvider = {
   id: string;
@@ -65,14 +73,102 @@ function nextProviderId(existing: ProviderDraft[]): string {
   return `p${n}`;
 }
 
+/* ---- 外观面板（第十九批批注 19.3）：VSCode 那种「看样挑选」 ----------------
+   一张卡 = 一个选项，卡里那格微缩图就是选中之后界面的样子。
+   微缩图自己声明 data-theme / data-accent / data-code / data-prose，于是它读的
+   仍是 styles.css 顶上那几套 token：卡片不抄第二遍色值，就不会出现「卡片是蓝的、
+   切完还是橙的」这种说谎的预览。 */
+
+/** Attributes the stylesheet switches on, allowed on any element, not just html. */
+type PreviewVars = HTMLAttributes<HTMLSpanElement> & Record<`data-${string}`, string>;
+
+function Preview(props: {
+  theme?: "light" | "dark";
+  accent?: AccentChoice;
+  code?: CodeChoice;
+  prose?: ProseChoice;
+  /** A font cannot be shown as a bar of colour; it has to be shown as text. */
+  sample?: string;
+}) {
+  const vars: PreviewVars = { className: "pref-preview", "aria-hidden": "true" };
+  if (props.theme) vars["data-theme"] = props.theme;
+  if (props.accent) vars["data-accent"] = props.accent;
+  if (props.code) vars["data-code"] = props.code;
+  if (props.prose) vars["data-prose"] = props.prose;
+  return (
+    <span {...vars}>
+      {props.sample ? (
+        <span className="pv-sample">{props.sample}</span>
+      ) : (
+        <>
+          <span className="pv-bar">
+            <i className="pv-dot" />
+            <i className="pv-dot" />
+          </span>
+          <span className="pv-line" />
+          <span className="pv-line short" />
+          <span className="pv-line accent" />
+          <span className="pv-code">
+            <i className="pv-chip key" />
+            <i className="pv-chip string" />
+            <i className="pv-chip comment" />
+          </span>
+        </>
+      )}
+    </span>
+  );
+}
+
+type CardOption<T extends string> = { value: T; label: string; preview: ReactNode };
+
+function CardGroup<T extends string>(props: {
+  label: string;
+  hint?: string;
+  value: T;
+  options: CardOption<T>[];
+  onPick: (next: T) => void;
+}) {
+  return (
+    <div className="pref-section">
+      <p className="prefs-group-title">{props.label}</p>
+      {props.hint ? <p className="pref-hint">{props.hint}</p> : null}
+      <div className="pref-cards" role="radiogroup" aria-label={props.label}>
+        {props.options.map((option) => {
+          const checked = option.value === props.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              className="pref-card"
+              onClick={() => props.onPick(option.value)}
+            >
+              {option.preview}
+              <span className="pref-card-name">
+                {option.label}
+                {checked ? (
+                  <Check size={14} className="pref-card-check" aria-hidden="true" />
+                ) : (
+                  /* 未选中也要占住这个位置，否则勾上的一刻名字会往左跳一下。 */
+                  <span className="pref-card-check" />
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function PreferencesPage() {
   const navigate = useNavigate();
   // React Router keeps the entry index in history state; 0 means the reader
   // arrived here directly and there is nothing in-app to go back to.
   const historyDepth =
     (window.history.state as { idx?: number } | null | undefined)?.idx ?? 0;
-  const theme = useWorkbench((state) => state.theme);
-  const toggleTheme = useWorkbench((state) => state.toggleTheme);
+  const { theme, accent, code, prose, pick } = useAppearance();
   const [config, setConfig] = useState<LlmConfig | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -124,10 +220,6 @@ export default function PreferencesPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  function pickTheme(next: "light" | "dark") {
-    if (next !== theme) toggleTheme();
-  }
 
   function save() {
     if (!config) return;
@@ -386,25 +478,48 @@ export default function PreferencesPage() {
       key: "appearance",
       label: "外观",
       body: (
-        <div className="theme-choice" role="radiogroup" aria-label="主题">
-          <button
-            type="button"
-            role="radio"
-            aria-checked={theme === "light"}
-            onClick={() => pickTheme("light")}
-          >
-            浅色
-          </button>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={theme === "dark"}
-            onClick={() => pickTheme("dark")}
-          >
-            深色
-          </button>
-        </div>
-
+        <>
+          <CardGroup<ThemeChoice>
+            label="主题"
+            hint="「系统」跟随这台机器的浅色／深色设置，机器切换时界面跟着换"
+            value={theme}
+            onPick={(next) => pick({ theme: next })}
+            options={[
+              { value: "system", label: "系统", preview: <Preview theme={prefersDark() ? "dark" : "light"} accent={accent} code={code} prose={prose} /> },
+              { value: "light", label: "浅色", preview: <Preview theme="light" accent={accent} code={code} prose={prose} /> },
+              { value: "dark", label: "深色", preview: <Preview theme="dark" accent={accent} code={code} prose={prose} /> },
+            ]}
+          />
+          <CardGroup<AccentChoice>
+            label="色系"
+            value={accent}
+            onPick={(next) => pick({ accent: next })}
+            options={[
+              { value: "vermilion", label: "朱砂", preview: <Preview theme={resolveTheme(theme)} accent="vermilion" code={code} prose={prose} /> },
+              { value: "blue", label: "蓝", preview: <Preview theme={resolveTheme(theme)} accent="blue" code={code} prose={prose} /> },
+            ]}
+          />
+          <CardGroup<CodeChoice>
+            label="代码配色"
+            hint="只管源码里的标题、链接与引用；增删行的红绿是语义色，不跟着换"
+            value={code}
+            onPick={(next) => pick({ code: next })}
+            options={[
+              { value: "default", label: "默认", preview: <Preview theme={resolveTheme(theme)} accent={accent} code="default" /> },
+              { value: "graphite", label: "石墨", preview: <Preview theme={resolveTheme(theme)} accent={accent} code="graphite" /> },
+            ]}
+          />
+          <CardGroup<ProseChoice>
+            label="正文字体"
+            hint="只管章节编辑与调用记录里的成稿；书架上的书名与印章是装饰字，不变"
+            value={prose}
+            onPick={(next) => pick({ prose: next })}
+            options={[
+              { value: "serif", label: "宋体", preview: <Preview theme={resolveTheme(theme)} prose="serif" sample="星图与碑" /> },
+              { value: "sans", label: "黑体", preview: <Preview theme={resolveTheme(theme)} prose="sans" sample="星图与碑" /> },
+            ]}
+          />
+        </>
       ),
     },
   ];

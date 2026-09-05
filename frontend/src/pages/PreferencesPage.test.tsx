@@ -201,4 +201,54 @@ describe("PreferencesPage", () => {
     expect(document.querySelector(".prefs-panel h2")).toBeNull();
   });
 
+  /* 第十九批批注 3：外观从两个按钮变成四组「看样挑选」的卡片。这里钉的是
+     「点下去有东西在换、换的东西存得下来」；卡片画得像不像界面，那要靠截图。 */
+  it("switches theme, palette, code colours and prose font from the cards, and remembers", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    localStorage.clear();
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+    await user.click(screen.getByRole("tab", { name: "外观" }));
+
+    expect(screen.getAllByRole("radiogroup").map((item) => item.getAttribute("aria-label"))).toEqual([
+      "主题",
+      "色系",
+      "代码配色",
+      "正文字体",
+    ]);
+
+    await user.click(screen.getByRole("radio", { name: "深色" }));
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    await user.click(screen.getByRole("radio", { name: "蓝" }));
+    expect(document.documentElement.dataset.accent).toBe("blue");
+    await user.click(screen.getByRole("radio", { name: "石墨" }));
+    expect(document.documentElement.dataset.code).toBe("graphite");
+    await user.click(screen.getByRole("radio", { name: "黑体" }));
+    expect(document.documentElement.dataset.prose).toBe("sans");
+
+    expect(JSON.parse(localStorage.getItem("appearance") ?? "{}")).toMatchObject({
+      theme: "dark",
+      accent: "blue",
+      code: "graphite",
+      prose: "sans",
+    });
+
+    // 选中写在卡本身上：aria-checked 加一枚勾，不靠「这张看起来颜色不一样」
+    expect(screen.getByRole("radio", { name: "蓝" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "朱砂" }).getAttribute("aria-checked")).toBe("false");
+
+    // 卡里是一格微缩界面（标题条 + 文字 + 主色 + 语法着色），不是一块纯色
+    const card = screen.getByRole("radio", { name: "深色" });
+    expect(card.querySelector(".pv-bar")).toBeTruthy();
+    expect(card.querySelector(".pv-line.accent")).toBeTruthy();
+    expect(card.querySelector(".pv-chip.key")).toBeTruthy();
+    // 深色那张自己声明深色，所以页面此刻是浅是深，它都画得对
+    expect(card.querySelector(".pref-preview")?.getAttribute("data-theme")).toBe("dark");
+    localStorage.clear();
+  });
+
 });

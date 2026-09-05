@@ -9,11 +9,13 @@ import {
   progressFromPointer,
   thumbGeometry as sharedThumbGeometry,
 } from "./minimap";
+import { tokenValue } from "../store/appearance";
 
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
-/* The face the prose is set in, so the map's miniature lines match the page. */
-const PROSE_FONT = "\"Noto Serif SC\", \"Source Han Serif SC\", serif";
+/* The face the prose is set in is read from the stylesheet rather than repeated
+   here: a canvas takes no var(), and a second copy of the stack is a second answer
+   to 「正文用什么字体」- the one question 19.3 turns into a control. */
 
 /* The records panel keeps its size between reloads: it is the one region every
    run gets read in, and the default is too tall for a quick glance. */
@@ -177,12 +179,13 @@ export default function EditorPane() {
   // The map is painted with theme-dependent ink, and nothing in the redraw key
   // changes when the theme does - so after a theme switch the canvas kept the old
   // marks (measured: light-theme ink left the 56px column at #AAAAAA on a dark
-  // page) until the next scroll. Watch the attribute that carries the theme.
+  // page) until the next scroll. Watch every attribute that carries a look now -
+  // palette, prose face and syntax colours are all painted in here.
   useEffect(() => {
     const observer = new MutationObserver(() => setRedraw((count) => count + 1));
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme"],
+      attributeFilter: ["data-theme", "data-accent", "data-code", "data-prose"],
     });
     return () => observer.disconnect();
   }, []);
@@ -215,7 +218,7 @@ export default function EditorPane() {
     // a band of glyph soup rather than text - and when the band was reported as a
     // seam, dimming the ink made it unreadable. It draws like the file editor's map
     // now: one row per line, the same painter in both places.
-    paintMinimap(ctx, draftContent.split("\n"), height, dark, PROSE_FONT);
+    paintMinimap(ctx, draftContent.split("\n"), height, dark, tokenValue("--prose"), tokenValue("--accent"));
 
     // Fade whatever the slider does not cover: the bright band is the page you see.
     const geo = thumbGeometry(height);

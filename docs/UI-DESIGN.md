@@ -152,7 +152,20 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | `warning` | `#A8811F` | `#C9A227` | 编辑中、生成中 |
 | `danger` | `#DC2626` | `#F87171` | 破坏操作、校验失败 |
 
-规则：正文对比度 ≥ 4.5:1；状态色只用于徽章/点，不大面积铺色；focus ring 统一 accent 2px。
+规则：正文对比度 ≥ 4.5:1；状态色只用于徽章/点，不大面积铺色；**focus 不画圈**（§0.9，
+第十五批 4.1/4.2 之后这条取代了早先的「focus ring 统一 accent 2px」）。
+
+**`accent` 家族是别名，指向哪一套由 `data-accent` 决定（第十九批 19.3）**。两套原色各自
+只在 `:root` 写一次，换色系换的是那三行别名，不是散在文件里的 74 处 `var(--accent)`：
+
+| 色系 | Light（accent / strong / soft） | Dark | 实测：压界面底 / 压自身淡底 / 白字压 accent |
+|---|---|---|---|
+| 朱砂（默认） | `#C2492F` `#A83A24` `#FBEDE9` | `#E06A4E` `#E97F65` `#3B2B27` | 浅 4.90 / 4.29 / 4.90，深 4.92 / 4.06 / 2.78 |
+| 蓝 | `#3568A0` `#28527F` `#EAF1F8` | `#5290D0` `#6BA7DD` `#1D2B3A` | 浅 5.77 / 5.07 / 5.77，深 4.86 / 4.29 / 2.82 |
+
+蓝是照着「不比朱砂差」选的：浅色三项全过 AA，深色与朱砂同档。深色禁用态主按钮那一对
+（`--control-disabled-accent-*`）在朱砂下是 4.00:1，蓝下换成了 5.07:1——**这一对要不要
+把朱砂也抬上去，属品牌色决定，见 UI-BACKLOG 第二节**。
 
 ### 0.2 字体
 
@@ -162,7 +175,14 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 正文阅读与编辑 | 思源宋体 Noto Serif SC（400/600） | 17px，行高 1.9，段距 0.75em |
 | 动态数字 | 界面字体 + `font-variant-numeric: tabular-nums` | 字数、token、时间防跳动 |
 
+| 令牌 | 谁读它 |
+|---|---|
+| `--ui` | 根节点，一切界面文字 |
+| `--prose` | 正文：章节编辑与调用记录里的成稿。缩略栏是 canvas，用 `tokenValue("--prose")` 回读，不在组件里再抄一份字体栈 |
+
 规则：界面文字最小 12px；标题 `text-wrap: balance`，正文 `text-wrap: pretty`；根节点 `-webkit-font-smoothing: antialiased`。
+正文字体可切到无衬线（`data-prose="sans"`，第十九批 19.3）；书架上的书名、封面字与头像底字是**装饰字**，
+不跟着换——换的是「你要读的那篇正文」。
 
 ### 0.3 几何
 
@@ -286,6 +306,8 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 切换钮**只出现在有专属渲染视图的文档上**（目录表格／人物卡／正文页）；通用 markdown 排版不算另一个视图 | `hasRenderedView(path)` 一条判据；`.file-rendered` 覆盖层与其两条 CSS 已删，且断言反向钉死它不许回来；现存两个覆盖层仍必须 `inset: 0` | 第十六批批注 8 |
 | 模型接入 = **默认供应商 + 其他供应商列表 + 任务路由表**；每个供应商自带「测试」；未接通的槽位明写「未启用」不做假按钮 | `prefs-provider-row` / `prefs-routes` 存在；五个任务（draft/review/summary/chat/image）每一行都有供应商下拉与模型框；密钥只进 `type="password"`，读回只有掩码；移除供应商时指向它的任务当场回落默认 | 第十九批批注 2 |
 | 附件是**输入框上方的 chip**（`× + 文件图标 + 名字`），回形针**永远不许是死控件** | `.chat-attachments` chip 高 26px、`×` 命中 24×24；发送成功才清空、失败保留；非文本/超限必须给原因（前端预检 + 后端 `attachment_blocks()` 再判一次）；隐藏 `chat-attach-input` 用 clip 而非 `display:none`，键盘可达 | 第十九批批注 1 |
+| 外观四组开关（主题／色系／代码配色／正文字体）**都落在 html 的 `data-*` 上，一个属性一个写者**；预览卡只声明属性、不抄色值 | `:root, [data-theme="light"]` 必须成对存在（否则预览画不出另一个主题）；`[data-theme="dark"][data-accent="blue"]` 与 `[data-theme="dark"][data-code="graphite"]` 两条复合选择器不许退化成 `:root[...]`（特异性会拿浅色刷深色）；`.pv-*` 规则里出现任何十六进制色值即红；`workbench.ts` 里不许再出现 `dataset.theme` | 第十九批批注 3 |
+| **正文用的字体只有一个出处** | `--prose` 一个 token；章节正文与成稿两处 `font-family: var(--prose)`，`EditorPane` 里那份 `PROSE_FONT` 字面量不许回来（canvas 走 `tokenValue("--prose")`）；`.editor-body textarea` 换字体时字号仍是 17px | 第十九批批注 3 |
 | 设置页是**左列表 + 右入口**的可拓展结构，**分组名只说一次** | `PreferencesPage` 的 `groups` 表 + `role="tablist"` 列表 + 唯一 `role="tabpanel"`；面板不得再放同名 `<h2>`，靠 `aria-labelledby` 指回列表项 | 第十八批（主人点了 3 次） |
 | **思考过程与正文必须在字体上有区分**（更小、更淡、斜体、无框、正常成段）；命令/工具轨迹才用另一套呈现 | `.chat-card .chat-thinking-body p` = `12px / italic / --text-2`，正文 `.chat-card p` 仍 `13px`；特异性 (0,2,1) 压过 `.chat-card p`，**不靠源码顺序** | 第十八批批注 1 |
 | **聚焦不画一圈**：无 outline、无 `0 0 0` 光晕、无主色；只许光标 + 边框提亮一档 | 任何含 `focus` 的规则不得出现 `outline: <非 none/0>`、`box-shadow: 0 0 0`、`--accent`（caret 是唯一例外），`border-color` 提亮只许 `--border-strong`；`.editor-body:focus-within .editor-scroll` 这条规则不许存在；压过 CodeMirror 自带 `.cm-focused` 描边的规则不许被删 | 第十五批批注 4.1、4.2 |

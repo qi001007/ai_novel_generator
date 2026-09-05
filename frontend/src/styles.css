@@ -1,4 +1,5 @@
-:root {
+:root,
+[data-theme="light"] {
   color-scheme: light;
   --bg: #f8f8f7;
   --surface: #ffffff;
@@ -10,15 +11,36 @@
      just under the 4.5 floor, and it is the colour of every 11px secondary label
      in the tree, badges and avatars. One token, ten failing strings. */
   --text-2: #6d6b66;
-  --accent: #c2492f;
-  --accent-strong: #a83a24;
-  --accent-soft: #fbede9;
+  /* 色系（第十九批 19.3）：原色只在这里各写一次，--accent 是「当前选哪一套」的别名。
+     切色系换的是这三行别名，不是散在文件里的 74 处 var(--accent)。
+     蓝色系的每个值都是量出来的：浅色 5.77 / 5.07 / 5.77，深色 4.86 / 4.29 / 2.82，
+     与朱砂（浅色 4.90 / 4.29 / 4.90，深色 4.92 / 4.06 / 2.78）同一档，不多欠一处。
+     深色那枚 2.82 是「白字压主色」的老账（需主人拍板），蓝不新增，也不擅自替朱砂改。 */
+  --vermilion: #c2492f;
+  --vermilion-strong: #a83a24;
+  --vermilion-soft: #fbede9;
+  --vermilion-dark: #e06a4e;
+  --vermilion-strong-dark: #e97f65;
+  --vermilion-soft-dark: #3b2b27;
+  --blue: #3568a0;
+  --blue-strong: #28527f;
+  --blue-soft: #eaf1f8;
+  --blue-dark: #5290d0;
+  --blue-strong-dark: #6ba7dd;
+  --blue-soft-dark: #1d2b3a;
+  --accent: var(--vermilion);
+  --accent-strong: var(--vermilion-strong);
+  --accent-soft: var(--vermilion-soft);
   --success: #2f7d46;
   /* 3.45:1 on the proposal card's #fafaf9 foot. Darkened to 4.84:1. */
   --warning: #8a6a12;
   --danger: #dc2626;
   --hairline: #d4d2ce;
   --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
+  --ui: "Noto Sans SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  /* 正文阅读与编辑的字体（§0.2）。一个 token，两处正文与缩略栏共用；
+     [data-prose="sans"] 换的就是它。书架上的书名与印章字是装饰，不跟着走。 */
+  --prose: "Noto Serif SC", "Source Han Serif SC", serif;
   /* The minimap is a gutter, not part of the page you read. Anything that centres
      itself against the editor column has to subtract it, or it sits 28px right of the
      text it is standing in for - which is what the owner kept seeing (第十七批批注 2).
@@ -53,7 +75,7 @@
      "Lighter" points at a different token per theme (--surface in light,
      --surface-alt in dark), so the pair cannot be derived from one variable. */
   --chat-bubble: #ffffff;
-  font-family: "Noto Sans SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: var(--ui);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -72,9 +94,9 @@
   --border-strong: #3e3e42;
   --text-1: #ecebe9;
   --text-2: #9d9b96;
-  --accent: #e06a4e;
-  --accent-strong: #e97f65;
-  --accent-soft: #3b2b27;
+  --accent: var(--vermilion-dark);
+  --accent-strong: var(--vermilion-strong-dark);
+  --accent-soft: var(--vermilion-soft-dark);
   --success: #5cb176;
   --warning: #c9a227;
   --danger: #f87171;
@@ -112,6 +134,62 @@
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.4);
   --shadow-lift: 0 4px 12px rgb(0 0 0 / 0.3);
   --chat-bubble: #232428;
+}
+
+/* ---- 可切换的偏好（第十九批 19.3）--------------------------------------------
+   这四个开关都挂在 html 上，由 store/appearance.ts 写。每一条都写成「元素上
+   的属性」而不是「:root 的属性」，这样设置页里那几张预览卡能自己声明一套
+   主题，不必把上面的色值抄第二遍。
+   顺序即优先级：[data-theme] 与 [data-accent] 同为 (0,1,0)，靠源码先后决胜；
+   [data-theme="dark"][data-accent="blue"] 是 (0,2,0)，永远压过前两条。
+   -------------------------------------------------------------------------- */
+
+/* 蓝色系（浅色）。 */
+[data-accent="blue"] {
+  --accent: var(--blue);
+  --accent-strong: var(--blue-strong);
+  --accent-soft: var(--blue-soft);
+  /* 编辑区的高亮底与缩略栏的当前行都是主色的极淡版，留着橙色会露出没切换的破口。 */
+  --editor-active: #eef4fb;
+  --minimap-active: #c6d8ea;
+}
+
+/* 蓝色系（深色）。 */
+[data-theme="dark"][data-accent="blue"] {
+  --accent: var(--blue-dark);
+  --accent-strong: var(--blue-strong-dark);
+  --accent-soft: var(--blue-soft-dark);
+  --editor-active: #1b2836;
+  --minimap-active: #3b5670;
+  /* 禁用态的主按钮也是主色家族：留着那对暖灰，蓝主题下按不动的按钮会自带一点橙。
+     这一对量得 5.07:1；朱砂的同名一对是 4.00:1（老账，见 UI-BACKLOG 第二节）。 */
+  --control-disabled-accent-bg: #26313c;
+  --control-disabled-accent-fg: #93a2b1;
+}
+
+/* 代码配色：石墨 = 无彩色。只换语法着色这一族，--diff-* 是语义色（增/删），
+   不跟着走，否则「删了几行」要靠颜色深浅去猜。 */
+[data-code="graphite"] {
+  --tok-key: #242322;
+  --tok-string: #5f5c57;
+  --tok-literal: #3c3a37;
+  --tok-comment: #8b8884;
+  --tok-meta: #6d6b66;
+  --tok-keyword: #302e2c;
+}
+
+[data-theme="dark"][data-code="graphite"] {
+  --tok-key: #ecebe9;
+  --tok-string: #c2c0bc;
+  --tok-literal: #d8d6d2;
+  --tok-comment: #7e7b75;
+  --tok-meta: #9d9b96;
+  --tok-keyword: #dedcd8;
+}
+
+/* 正文字体：不用宋体的那一个选项走界面字体。 */
+[data-prose="sans"] {
+  --prose: var(--ui);
 }
 
 * {
@@ -1963,7 +2041,7 @@ select:focus-visible {
      minimap slider is the single visible control, and it scrolls this element. */
   overflow-y: auto;
   scrollbar-width: none;
-  font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+  font-family: var(--prose);
   font-size: 17px;
   /* 17 * 1.9 = 32.3 matches LINE_PX in EditorPane.tsx. */
   line-height: 1.9;
@@ -5069,7 +5147,7 @@ body.resizing {
   min-height: 0;
   max-height: none;
   margin: 12px 16px 16px;
-  font-family: "Noto Serif SC", "Source Han Serif SC", serif;
+  font-family: var(--prose);
   font-size: 15px;
   line-height: 1.85;
   color: var(--text-1);
@@ -5661,32 +5739,152 @@ body.resizing {
   padding-top: 4px;
 }
 
-.theme-choice {
-  /* .page-panel is a grid, so an inline-flex child still stretches across the row
-     unless it is told to sit at its own width. */
-  display: inline-flex;
-  justify-self: start;
-  gap: 4px;
-  padding: 3px;
+/* 设置页 · 外观（第十九批 19.3）。看样挑选：每张卡画的就是选中之后那一格界面会
+   变成什么样子，不是纯色块。预览元素自己声明 data-theme / data-accent /
+   data-code / data-prose，读的仍是文件顶上那几套 token - 抄第二遍色值的话，卡片
+   就会开始说谎（它承诺的和你切到的不是一回事）。 */
+.pref-section {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+
+.pref-section:last-child {
+  margin-bottom: 0;
+}
+
+.pref-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+
+.pref-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.pref-card {
+  width: 208px;
+  min-height: 0;
+  height: auto;
+  display: grid;
+  gap: 8px;
+  padding: 8px;
   border: 1px solid var(--border);
   border-radius: 8px;
+  background: var(--surface);
+  text-align: left;
 }
 
-.theme-choice button {
-  min-width: 64px;
-  min-height: 28px;
-  padding: 0 12px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--text-2);
-  font: inherit;
+/* 全局 button:hover 会把标签染成主色；这里图才是内容、名字只是名字，
+   所以悬停只把描边提亮一档。 */
+.pref-card:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-1);
+}
+
+.pref-card[aria-checked="true"],
+.pref-card[aria-checked="true"]:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.pref-card-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-1);
   font-size: 12.5px;
-  cursor: pointer;
 }
 
-.theme-choice button[aria-checked='true'] {
-  background: var(--accent-soft);
+.pref-card[aria-checked="true"] .pref-card-name {
+  font-weight: 600;
+}
+
+.pref-card-check {
   color: var(--accent);
-  font-weight: 500;
+  flex: none;
+}
+
+/* 一张窗口的缩小版：标题条、两行文字、一行主色、一行语法着色。
+   正好是这个应用从上到下真的有的四样东西。 */
+.pref-preview {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  height: 68px;
+  padding: 7px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.pv-bar {
+  display: flex;
+  gap: 3px;
+  margin-bottom: 2px;
+}
+
+.pv-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-2);
+  opacity: 0.55;
+}
+
+.pv-line,
+.pv-chip {
+  height: 4px;
+  border-radius: 2px;
+}
+
+.pv-line {
+  background: var(--text-1);
+  opacity: 0.82;
+}
+
+.pv-line.short {
+  width: 58%;
+  background: var(--text-2);
+  opacity: 0.5;
+}
+
+.pv-line.accent {
+  width: 34%;
+  background: var(--accent);
+  opacity: 1;
+}
+
+.pv-code {
+  display: flex;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.pv-chip.key {
+  width: 22px;
+  background: var(--tok-key);
+}
+
+.pv-chip.string {
+  width: 34px;
+  background: var(--tok-string);
+}
+
+.pv-chip.comment {
+  width: 26px;
+  background: var(--tok-comment);
+}
+
+/* 字体那两张卡要看到字本身，线条不行。 */
+.pv-sample {
+  color: var(--text-1);
+  font-family: var(--prose);
+  font-size: 15px;
+  line-height: 1.5;
 }
