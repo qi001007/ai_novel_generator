@@ -131,10 +131,6 @@ def _grams(text: str) -> set[str]:
     return words | bigrams
 
 
-def _chapter_number(item: Any) -> int | None:
-    return getattr(item, "chapter_number", None)
-
-
 def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
     """Enumerate every context block the agent could cite for one novel."""
     items: list[ContextItem] = []
@@ -572,21 +568,6 @@ def build_chat_context(
 
     ranked.sort(key=lambda block: (-block.item.score, block.item.label))
     return apply_context_budget(ranked, budget=budget), unknown
-
-
-def build_context(
-    session: Session,
-    novel_id: int,
-    query: str,
-    *,
-    chapter_id: int | None = None,
-    budget: int = DEFAULT_CONTEXT_BUDGET,
-) -> tuple[list[ContextItem], list[str]]:
-    """Back-compatible view of :func:`build_chat_context`: same order, no report."""
-    ctx, unknown = build_chat_context(
-        session, novel_id, query, chapter_id=chapter_id, budget=budget
-    )
-    return [block.item for block in ctx.selected], unknown
 
 
 def render_context(items: list[ContextItem]) -> str:

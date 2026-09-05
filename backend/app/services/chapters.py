@@ -39,19 +39,6 @@ def get_chapter_or_error(session: Session, novel_id: int, chapter_id: int) -> Ch
     return chapter
 
 
-def ensure_chapter_number_free(
-    session: Session, novel_id: int, chapter_number: int, exclude_id: int | None = None
-) -> None:
-    statement = select(Chapter).where(
-        Chapter.novel_id == novel_id,
-        Chapter.chapter_number == chapter_number,
-    )
-    if exclude_id is not None:
-        statement = statement.where(Chapter.id != exclude_id)
-    if session.exec(statement).first() is not None:
-        raise ChapterDomainError(409, "This chapter already exists")
-
-
 def generate_from_brief(
     session: Session, llm: LLMClient, novel: Novel, brief: ChapterBrief
 ) -> dict:

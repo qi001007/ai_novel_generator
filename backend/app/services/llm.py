@@ -2,7 +2,7 @@ import os
 import json
 import re
 from pathlib import Path
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from collections.abc import Iterator
 from typing import Any, Protocol
 

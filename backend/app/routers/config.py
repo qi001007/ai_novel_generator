@@ -14,7 +14,6 @@ from app.services.llm import (
     ROUTE_PREFIX,
     TASKS,
     resolve_routing,
-    resolve_settings,
 )
 
 router = APIRouter(prefix="/config", tags=["config"])
