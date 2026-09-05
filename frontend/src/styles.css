@@ -5344,11 +5344,66 @@ body.resizing {
 
 /* /settings (frame 25). The page reuses .page-panel; only the form needs rules. */
 .prefs-main {
-  width: min(880px, 100% - 48px);
+  /* 列表 + 入口 (主人点了三次的那条): the left column is the list of setting groups,
+     the right one holds only the selected group. Adding 色系 / 代码配色 / 字体 later is
+     one row in the groups table, not another stacked panel on this page. */
+  width: min(1000px, 100% - 48px);
   margin: 0 auto;
   padding: 32px 0 64px;
   display: grid;
-  gap: 20px;
+  grid-template-columns: 196px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+}
+
+.prefs-nav {
+  display: grid;
+  gap: 2px;
+  position: sticky;
+  top: 24px;
+}
+
+/* Quiet rows, like every other list in this app: no frame, no accent, the selected one
+   reads by fill and weight alone. */
+.prefs-nav button {
+  min-height: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: left;
+}
+
+.prefs-nav button:hover {
+  background: var(--surface-alt);
+  color: var(--text-1);
+}
+
+.prefs-nav button[aria-selected="true"] {
+  background: var(--surface-alt);
+  color: var(--text-1);
+  font-weight: 500;
+}
+
+.prefs-panel {
+  height: auto;
+  overflow: visible;
+}
+
+@media (max-width: 760px) {
+  .prefs-main {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .prefs-nav {
+    position: static;
+    grid-auto-flow: column;
+    justify-content: start;
+  }
 }
 
 .prefs-main h2 {

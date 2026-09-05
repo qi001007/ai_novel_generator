@@ -106,4 +106,31 @@ describe("PreferencesPage", () => {
     });
     expect(await screen.findByText("连接正常（HTTP 200）")).toBeTruthy();
   });
+
+  /* 设置页结构：左列表 + 右入口。加一项设置应当只是往表里添一条，
+     而列表与面板不许把同一个词说两遍（§0.7 条六）。 */
+  it("is a list on the left with one group open on the right", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+    const nav = await screen.findByRole("tablist", { name: "设置项" });
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["模型接入", "外观"]);
+    // only the selected group is on screen
+    expect(await screen.findByLabelText("API Key")).toBeTruthy();
+    expect(screen.queryByRole("radio", { name: "浅色" })).toBeNull();
+
+    await user.click(screen.getByRole("tab", { name: "外观" }));
+    expect(await screen.findByRole("radio", { name: "浅色" })).toBeTruthy();
+    expect(screen.queryByLabelText("API Key")).toBeNull();
+
+    // the group name is stated once, not in the list and again as a panel heading
+    expect(nav.ownerDocument.querySelectorAll(`[aria-labelledby="prefs-tab-appearance"]`)).toHaveLength(1);
+    expect(screen.getAllByText("外观")).toHaveLength(1);
+    expect(document.querySelector(".prefs-panel h2")).toBeNull();
+  });
+
 });
