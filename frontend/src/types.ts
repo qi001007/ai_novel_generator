@@ -174,11 +174,19 @@ export type StoredChatMessage = {
   proposals?: StoredProposal[];
 };
 
+export type ChatAttachment = {
+  /** The name is shown as the chip and becomes the context label; the text is what the
+   *  model is shown for this turn only - nothing is stored on the server. */
+  name: string;
+  text: string;
+};
+
 export type StreamChatPayload = {
   content: string;
   mode: ChatMode;
   chapter_id?: number | null;
   model?: string | null;
+  attachments?: ChatAttachment[];
 };
 
 export type ChatContextPayload = {

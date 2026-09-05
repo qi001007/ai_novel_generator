@@ -421,6 +421,24 @@ const componentSources = import.meta.glob("./**/*.tsx", {
   eager: true,
 }) as Record<string, string>;
 
+  it("the paperclip is a working control with a removable chip (第十九批批注 1)", () => {
+    // It was disabled once, on purpose, because the old picker threw the selection away.
+    // Disabled was the honest stop-loss; staying disabled after the owner asked for the
+    // feature is not. These assertions keep it wired: pick -> chip -> send -> cleared.
+    expect(chatPane).toContain('aria-label="上传附件"');
+    expect(chatPane).not.toMatch(/aria-label="上传附件"[\s\S]{0,160}disabled/);
+    expect(chatPane).toContain('className="chat-attachments"');
+    expect(chatPane).toContain("chat-attachment-drop");
+    expect(chatPane).toContain("readAsText(file)");
+    expect(chatPane).toContain("if (replaceId === undefined && files.length) setAttachments([]);");
+    expect(chatPane).toContain("attachments: files.length ? files : undefined");
+    // the chip's remove target stays a real target, and the picker stays reachable
+    expect(rule(".chat-attachment-drop")).toContain("width: 24px");
+    expect(rule(".chat-attachment-drop")).toContain("height: 24px");
+    expect(rule(".chat-attach-input")).toContain("clip-path: inset(50%)");
+    expect(rule(".chat-attach-input")).not.toMatch(/display: none|visibility: hidden/);
+  });
+
   it("the four bars step down in one order, and the two tab strips are one height (前几轮遗留)", () => {
     // 「四条 bar 收窄并统一」. Measured live after the change: topbar 48 on both pages,
     // .editor-tabs 38 = .file-tabs 38, .editor-toolbar 33. The toolbar used to be 44 -

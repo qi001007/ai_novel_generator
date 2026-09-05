@@ -27,13 +27,83 @@ from app.services.agent import (
 )
 from app.services.context import (
     DEFAULT_CONTEXT_BUDGET,
+    ContextBlock,
     ContextItem,
+    TIER_CORE,
     build_chat_context,
     context_debug_enabled,
     log_injection,
     mention_tokens,
     render_context,
 )
+
+# An attachment is not a second injection path (D-04): it becomes an ordinary
+# ContextBlock in the same list the collectors produce, so the prompt renderer, the
+# context_refs on the stored message and the injection manifest all see it for free.
+# It is pinned to TIER_CORE because the owner put it there on purpose - the budget must
+# not trim a file he just handed over.
+ATTACHMENT_KIND = "附件"
+ATTACHMENT_SUFFIXES = {
+    ".md", ".markdown", ".txt", ".text", ".rst", ".log", ".csv", ".tsv",
+    ".json", ".jsonl", ".yaml", ".yml", ".toml", ".ini", ".xml",
+    ".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css",
+}
+ATTACHMENT_MAX_FILES = 8
+ATTACHMENT_MAX_CHARS_EACH = 20_000
+ATTACHMENT_MAX_CHARS_TOTAL = 60_000
+
+
+def attachment_blocks(attachments: list[dict] | None) -> list[ContextBlock]:
+    """Validate what the browser sent and turn it into context blocks.
+
+    The front end pre-checks the same limits so a wrong file is refused before it is
+    picked; this is the boundary that cannot be talked past, and every rejection names
+    a reason instead of dropping the file quietly - silently discarding what the owner
+    selected is the exact failure that made the old paperclip get disabled.
+    """
+    blocks: list[ContextBlock] = []
+    if not attachments:
+        return blocks
+    if len(attachments) > ATTACHMENT_MAX_FILES:
+        raise ChatDomainError(f"附件最多 {ATTACHMENT_MAX_FILES} 个，当前 {len(attachments)} 个")
+
+    used = 0
+    for raw in attachments:
+        name = str(raw.get("name") or "").strip().replace("\\", "/").split("/")[-1]
+        text = str(raw.get("text") or "")
+        if not name:
+            raise ChatDomainError("附件缺少文件名")
+        dot = name.rfind(".")
+        suffix = name[dot:].lower() if dot > 0 else ""
+        if suffix not in ATTACHMENT_SUFFIXES:
+            raise ChatDomainError(
+                f"附件「{name}」不是可读取的文本文件（支持 md / txt / json / yaml / csv / 代码等）"
+            )
+        stripped = text.strip()
+        if not stripped:
+            raise ChatDomainError(f"附件「{name}」是空的，没有可注入的内容")
+        if len(stripped) > ATTACHMENT_MAX_CHARS_EACH:
+            raise ChatDomainError(
+                f"附件「{name}」有 {len(stripped)} 字，超过单个上限 {ATTACHMENT_MAX_CHARS_EACH} 字"
+            )
+        if used + len(stripped) > ATTACHMENT_MAX_CHARS_TOTAL:
+            raise ChatDomainError(
+                f"附件合计超过 {ATTACHMENT_MAX_CHARS_TOTAL} 字上限（「{name}」装不下）"
+            )
+        used += len(stripped)
+        blocks.append(
+            ContextBlock(
+                ContextItem(
+                    kind=ATTACHMENT_KIND,
+                    label=f"附件 · {name}",
+                    ref=f"attachment:{name}",
+                    text=stripped,
+                ),
+                TIER_CORE,
+                "主人随本条消息上传",
+            )
+        )
+    return blocks
 from app.services.llm import LLMClient, LLMError, LLMUnavailableError
 
 
@@ -255,6 +325,7 @@ def prepare_turn(
     model: str | None = None,
     allowed_models: set[str] | None = None,
     context_budget: int = DEFAULT_CONTEXT_BUDGET,
+    attachments: list[dict] | None = None,
 ) -> ChatTurn:
     """Resolve context, store the user turn, then assemble the LLM messages."""
     if mode not in MODES:
@@ -280,6 +351,10 @@ def prepare_turn(
         chapter_id=chapter.id if chapter else None,
         budget=context_budget,
     )
+    # Appended to the selected list, not to a side channel: everything downstream
+    # (items, context_refs, the system prompt, the manifest the 资料 panel reads) is
+    # derived from this one list.
+    writing_context.selected.extend(attachment_blocks(attachments))
     items = [block.item for block in writing_context.selected]
     log_injection(
         writing_context,

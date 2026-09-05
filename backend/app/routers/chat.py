@@ -36,11 +36,24 @@ SSE_HEADERS = {
 }
 
 
+class ChatAttachment(SQLModel):
+    """A text file the owner attached to one message.
+
+    The bytes never outlive the request: nothing is stored on the server, and the
+    content is injected as a context block for that turn only. `prepare_turn` re-checks
+    every limit, so this model is a shape, not a permission.
+    """
+
+    name: str
+    text: str
+
+
 class ChatCreate(SQLModel):
     content: str
     mode: str = "write"
     chapter_id: int | None = None
     model: str | None = None
+    attachments: list[ChatAttachment] = Field(default_factory=list)
 
 
 class ChatContextItem(SQLModel):
@@ -183,6 +196,7 @@ def create_chat_reply(
             chapter_id=payload.chapter_id,
             model=payload.model,
             allowed_models=llm.settings.configured_models,
+            attachments=[item.model_dump() for item in payload.attachments],
         )
         return complete_turn(session, llm, turn, registry=registry)
     except ChatDomainError as cause:
@@ -210,6 +224,7 @@ def stream_chat_reply(
             chapter_id=payload.chapter_id,
             model=payload.model,
             allowed_models=llm.settings.configured_models,
+            attachments=[item.model_dump() for item in payload.attachments],
         )
     except ChatDomainError as cause:
         raise _to_http(cause) from cause

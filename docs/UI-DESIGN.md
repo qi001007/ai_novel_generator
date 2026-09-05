@@ -284,6 +284,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 章节标签**只写四位章号**（`0001`），完整章名搬到可访问名与 tooltip | `EditorPane` 渲染 `{chapterNumberLabel(item.chapter_number)}`、`role="tab"` 上有 `aria-label`、按钮上有 `title`；三位数字只有一个出处 `chapterNumberLabel()` | 第十六批批注 3 |
 | **提示语行尾不加 `。`**（空态／占位／注脚／回执） | `uiInvariants` 用 `import.meta.glob` 扫全部组件源码：剥注释后任何以 `。` 收尾并紧跟引号／`</`／`}` 的用户可见文本都算违规，白名单只有 4 条具名豁免（Agent 欢迎语 2 行、两条发给模型的提示词、一条生图 prompt）；主人点名的两行另有具名断言 | 第十六批批注 5、6 |
 | 切换钮**只出现在有专属渲染视图的文档上**（目录表格／人物卡／正文页）；通用 markdown 排版不算另一个视图 | `hasRenderedView(path)` 一条判据；`.file-rendered` 覆盖层与其两条 CSS 已删，且断言反向钉死它不许回来；现存两个覆盖层仍必须 `inset: 0` | 第十六批批注 8 |
+| 附件是**输入框上方的 chip**（`× + 文件图标 + 名字`），回形针**永远不许是死控件** | `.chat-attachments` chip 高 26px、`×` 命中 24×24；发送成功才清空、失败保留；非文本/超限必须给原因（前端预检 + 后端 `attachment_blocks()` 再判一次）；隐藏 `chat-attach-input` 用 clip 而非 `display:none`，键盘可达 | 第十九批批注 1 |
 | 设置页是**左列表 + 右入口**的可拓展结构，**分组名只说一次** | `PreferencesPage` 的 `groups` 表 + `role="tablist"` 列表 + 唯一 `role="tabpanel"`；面板不得再放同名 `<h2>`，靠 `aria-labelledby` 指回列表项 | 第十八批（主人点了 3 次） |
 | **思考过程与正文必须在字体上有区分**（更小、更淡、斜体、无框、正常成段）；命令/工具轨迹才用另一套呈现 | `.chat-card .chat-thinking-body p` = `12px / italic / --text-2`，正文 `.chat-card p` 仍 `13px`；特异性 (0,2,1) 压过 `.chat-card p`，**不靠源码顺序** | 第十八批批注 1 |
 | **聚焦不画一圈**：无 outline、无 `0 0 0` 光晕、无主色；只许光标 + 边框提亮一档 | 任何含 `focus` 的规则不得出现 `outline: <非 none/0>`、`box-shadow: 0 0 0`、`--accent`（caret 是唯一例外），`border-color` 提亮只许 `--border-strong`；`.editor-body:focus-within .editor-scroll` 这条规则不许存在；压过 CodeMirror 自带 `.cm-focused` 描边的规则不许被删 | 第十五批批注 4.1、4.2 |

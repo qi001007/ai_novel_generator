@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -132,6 +132,76 @@ describe("ChatPane", () => {
 
   /* 第十六批批注 1: 「智能体回话的上面还是没有思考过程展开的入口」. The fold that was
      there only ever listed tool calls, so an ordinary answer had no entry at all. */
+  /* 第十九批批注 1: the paperclip used to be disabled because the old picker threw the
+     selection away. It now has to carry the file to the model and look like the chip the
+     owner drew - and refuse a wrong file out loud. */
+  async function openWithStream(onStream: (body: unknown) => void) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/chat/stream")) {
+          onStream(JSON.parse(String(init?.body)));
+          return Promise.resolve(sse([["delta", { text: "好" }], ["end", {}]]));
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+  }
+
+  it("shows a removable chip for a picked file and sends its text", async () => {
+    const bodies: unknown[] = [];
+    await openWithStream((body) => bodies.push(body));
+    const user = userEvent.setup();
+
+    await user.upload(
+      document.querySelector(".chat-attach-input") as HTMLInputElement,
+      [new File(["碑律第一条：不可靠近碑面。"], "AGENTS.md", { type: "text/markdown" })],
+    );
+
+    const chip = await screen.findByLabelText("已选附件");
+    expect(chip.textContent).toContain("AGENTS.md");
+
+    await user.type(screen.getByLabelText("对话输入"), "按这份设定检查");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(bodies.length).toBe(1));
+    expect(bodies[0]).toMatchObject({
+      attachments: [{ name: "AGENTS.md", text: "碑律第一条：不可靠近碑面。" }],
+    });
+    // and the chip is gone once the turn actually went out
+    await waitFor(() => expect(screen.queryByLabelText("已选附件")).toBeNull());
+  });
+
+  it("drops a chip on its own remove button", async () => {
+    await openWithStream(() => undefined);
+    const user = userEvent.setup();
+    await user.upload(
+      document.querySelector(".chat-attach-input") as HTMLInputElement,
+      [new File(["a"], "one.txt"), new File(["b"], "two.txt")],
+    );
+    expect((await screen.findByLabelText("已选附件")).textContent).toContain("two.txt");
+    await user.click(screen.getByRole("button", { name: "移除附件 one.txt" }));
+    const chip = await screen.findByLabelText("已选附件");
+    expect(chip.textContent).not.toContain("one.txt");
+    expect(chip.textContent).toContain("two.txt");
+  });
+
+  it("refuses a non-text file with a reason instead of silently ignoring it", async () => {
+    await openWithStream(() => undefined);
+    const input = document.querySelector(".chat-attach-input") as HTMLInputElement;
+    // userEvent.upload honours the accept attribute, so a wrong type has to be pushed
+    // in by hand - that is the point of the check: the browser filter is courtesy, the
+    // component still has to refuse when something slips past it.
+    Object.defineProperty(input, "files", {
+      value: [new File([new Uint8Array([137, 80, 78, 71])], "cover.png", { type: "image/png" })],
+    });
+    fireEvent.change(input);
+    expect(await screen.findByText(/cover\.png/)).toBeTruthy();
+    expect(screen.queryByLabelText("已选附件")).toBeNull();
+  });
+
   it("folds the model's own reasoning above the answer and opens it on click", async () => {
     const user = userEvent.setup();
     const thought = "先翻目录确认第 1 章的落点，再决定用谁的视角开场。";

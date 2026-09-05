@@ -15,6 +15,7 @@ import {
   RotateCcw,
   ScrollText,
   Square,
+  X,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -29,6 +30,7 @@ import type {
   ChatReference,
   ChatStreamEvent,
   FileProposal,
+  ChatAttachment,
   StoredChatMessage,
 } from "../types";
 import { useWorkbench } from "../store/workbench";
@@ -138,6 +140,28 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
   );
 }
 
+/* The same limits the server enforces (services/chat.py), checked here first so a
+   wrong file is refused when it is picked rather than after the message is sent.
+   The server still re-checks - this is courtesy, not trust. */
+const ATTACH_SUFFIXES = [
+  ".md", ".markdown", ".txt", ".text", ".rst", ".log", ".csv", ".tsv",
+  ".json", ".jsonl", ".yaml", ".yml", ".toml", ".ini", ".xml",
+  ".py", ".js", ".ts", ".tsx", ".jsx", ".html", ".css",
+];
+const ATTACH_ACCEPT = ATTACH_SUFFIXES.join(",");
+const ATTACH_MAX_FILES = 8;
+const ATTACH_MAX_CHARS_EACH = 20_000;
+const ATTACH_MAX_CHARS_TOTAL = 60_000;
+
+function readAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(new Error(`读取「${file.name}」失败`));
+    reader.readAsText(file);
+  });
+}
+
 export default function ChatPane({ className = "" }: { className?: string }) {
   const navigate = useNavigate();
   const selectedNovelId = useWorkbench((s) => s.selectedNovelId);
@@ -169,6 +193,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const discardFile = useFiles((store) => store.discardProposal);
   const openFile = useFiles((store) => store.open);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const attachRef = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
@@ -448,13 +475,23 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     setStreaming(true);
     const controller = new AbortController();
     abortRef.current = controller;
+    const files = attachments;
     try {
       await api.streamChat(
         selectedNovelId,
-        { content: text, mode, chapter_id: selectedChapterId, model: selectedModel },
+        {
+          content: text,
+          mode,
+          chapter_id: selectedChapterId,
+          model: selectedModel,
+          attachments: files.length ? files : undefined,
+        },
         (event) => applyEvent(agentId, event),
         controller.signal,
       );
+      // Cleared only once the turn actually went out. The old bug was the other way
+      // round: chips survived a send they had nothing to do with (第十九批批注 1).
+      if (replaceId === undefined && files.length) setAttachments([]);
     } catch (cause) {
       patchAgent(agentId, {
         status: "error",
@@ -475,6 +512,50 @@ export default function ChatPane({ className = "" }: { className?: string }) {
 
   function stop() {
     abortRef.current?.abort();
+  }
+
+/** FileReader, not File.text(): jsdom has no text() on File, and the portrait picker
+ *  in this app already reads files this way - one idiom, testable in both places. */
+
+  /* Reading is deliberately rejected rather than truncated: half a file injected
+     silently is worse than no file, and the owner sees which one and why. */
+  async function pickAttachments(files: FileList | null) {
+    if (!files?.length) return;
+    setAttachError(null);
+    const next: ChatAttachment[] = [];
+    for (const file of [...files]) {
+      const suffix = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+      if (!ATTACH_SUFFIXES.includes(suffix)) {
+        setAttachError(`「${file.name}」不是可读取的文本文件（支持 md / txt / json / yaml / csv / 代码等）`);
+        return;
+      }
+      if (file.size > ATTACH_MAX_CHARS_EACH * 4) {
+        setAttachError(`「${file.name}」太大，单个附件上限 ${ATTACH_MAX_CHARS_EACH} 字`);
+        return;
+      }
+      const text = await readAsText(file);
+      if (!text.trim()) {
+        setAttachError(`「${file.name}」是空的`);
+        return;
+      }
+      if (text.trim().length > ATTACH_MAX_CHARS_EACH) {
+        setAttachError(`「${file.name}」有 ${text.trim().length} 字，超过单个上限 ${ATTACH_MAX_CHARS_EACH} 字`);
+        return;
+      }
+      next.push({ name: file.name, text });
+    }
+    setAttachments((prev) => {
+      const merged = [...prev, ...next.filter((item) => !prev.some((had) => had.name === item.name))];
+      if (merged.length > ATTACH_MAX_FILES) {
+        setAttachError(`附件最多 ${ATTACH_MAX_FILES} 个`);
+        return prev;
+      }
+      if (merged.reduce((sum, item) => sum + item.text.length, 0) > ATTACH_MAX_CHARS_TOTAL) {
+        setAttachError(`附件合计超过 ${ATTACH_MAX_CHARS_TOTAL} 字上限`);
+        return prev;
+      }
+      return merged;
+    });
   }
 
   // The field grows with what the reader types, up to a ceiling, and the dock grows
@@ -1041,6 +1122,26 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           </ul>
         ) : null}
         <div className="composer">
+          {/* 主人给的参考图就是这个形状：× + 图标 + 文件名，一枚一枚排在输入框上方。 */}
+          {attachments.length ? (
+            <div className="chat-attachments" aria-label="已选附件">
+              {attachments.map((item) => (
+                <span className="chat-attachment-chip" key={item.name}>
+                  <button
+                    type="button"
+                    className="chat-attachment-drop"
+                    aria-label={`移除附件 ${item.name}`}
+                    onClick={() => setAttachments((prev) => prev.filter((had) => had.name !== item.name))}
+                  >
+                    <X size={11} />
+                  </button>
+                  <FileText size={12} aria-hidden="true" />
+                  <span className="chat-attachment-name">{item.name}</span>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          {attachError ? <p className="chat-attach-error">{attachError}</p> : null}
           <div className="chat-input">
             <textarea
               ref={inputRef}
@@ -1085,19 +1186,30 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 写作
               </button>
             </div>
-            {/* The picker accepted up to ten files into state that no request ever
-                read, and the chips survived the send. A control that silently
-                throws your selection away is worse than a disabled one, so it says
-                what it is; @ already reaches every document in the book. */}
+            {/* 第十九批批注 1: this used to be disabled because the old picker dropped
+                the selection on the floor. It now hands the text to the same context list
+                @ and the collectors feed, so the model really sees it. */}
             <button
               type="button"
               className="chat-attach"
               aria-label="上传附件"
-              title="附件上传暂未开放 · 用 @ 可直接点名书里的资料"
-              disabled
+              title="上传附件 · 文本类文件，随本条消息注入"
+              onClick={() => attachRef.current?.click()}
             >
               <Paperclip size={15} />
             </button>
+            <input
+              ref={attachRef}
+              type="file"
+              multiple
+              accept={ATTACH_ACCEPT}
+              className="chat-attach-input"
+              aria-label="选择附件文件"
+              onChange={(event) => {
+                void pickAttachments(event.target.files);
+                event.target.value = "";
+              }}
+            />
             <span className="spacer" />
             <div className="model-menu-wrap" ref={modelMenuRef}>
               <button
