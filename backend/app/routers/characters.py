@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, SQLModel, select
 
 from app.db import get_session
-from app.models import Character, utc_now
+from app.models import Character, CharacterAppearance, utc_now
 from app.routers.planning import get_novel_or_404
 
 
@@ -25,6 +25,33 @@ MAX_PORTRAIT_CHARS = 3 * 1024 * 1024
 
 class PortraitUpdate(SQLModel):
     portrait: str = ""
+
+
+@router.delete("/{novel_id}/characters/{character_id}", status_code=204)
+def delete_character(
+    novel_id: int,
+    character_id: int,
+    session: Session = Depends(get_session),
+) -> None:
+    """把一个人物从这本书里删掉，连同它的逐章外貌记录。
+
+    这不是新功能：`CharacterLibrary.remove()` 一直在调它，而它从来不存在，
+    所以「删除」按钮必然 405（Q-09）。补上它是把一个坏按钮修好。
+    `settings/characters/N.md` 是投影（D-02），行没了文件也就没了 -
+    不需要第二条写通路去「删文件」。
+    归属必须一起验：拿着 A 书的 id 到 B 书下来删，是 404，不是把 A 的人物删掉
+    （T-18 那条教训：两个 id 拼出来的操作，必须能证明它们属于同一本书）。
+    """
+    get_novel_or_404(novel_id, session)
+    character = session.get(Character, character_id)
+    if character is None or character.novel_id != novel_id:
+        raise HTTPException(status_code=404, detail="Character not found in this novel")
+    for row in session.exec(
+        select(CharacterAppearance).where(CharacterAppearance.character_id == character_id)
+    ).all():
+        session.delete(row)
+    session.delete(character)
+    session.commit()
 
 
 @router.get("/{novel_id}/characters", response_model=list[Character])

@@ -672,8 +672,11 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 全局 button.primary 会把这些行刷成实心主色条（字也是主色＝看不见），
     // 菜单项必须自己声明无底；这条断言是那张截图换来的。
     expect(rule(".tree-menu-item.primary")).toContain("background: none");
-    // 假按钮比没按钮糟：删除没有通路，就 disabled + 原因
-    expect(bookshelf).toMatch(/disabled\s+title="删除语义未定/);
+    // D-22③ 推翻了「删除一律未开放」：书与人物现在有真端点，
+    // 而树里的「重命名 / 删除」仍然 disabled（章号是主键，D-13 未决）。
+    expect(bookshelf).toContain("删除作品…");
+    expect(bookshelf).toContain("confirmTitle !== deleteTarget.title");
+    expect(treePane).toMatch(/disabled[^>]*title="重命名与删除尚未开放"/);
     // 鼠标与键盘两扇门
     expect(bookshelf).toContain("onContextMenu={(event) => openBookMenu(event, novel)}");
     expect(bookshelf).toContain('event.key === "ContextMenu"');

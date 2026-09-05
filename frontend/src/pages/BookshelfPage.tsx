@@ -149,6 +149,7 @@ export default function BookshelfPage() {
   const novels = useWorkbench((state) => state.novels);
   const selectNovel = useWorkbench((state) => state.selectNovel);
   const updateNovel = useWorkbench((state) => state.updateNovel);
+  const deleteNovel = useWorkbench((state) => state.deleteNovel);
   const navigate = useNavigate();
   const createNovel = useWorkbench((state) => state.createNovel);
 
@@ -161,6 +162,9 @@ export default function BookshelfPage() {
   const [draft, setDraft] = useState<BookDraft>(EMPTY_DRAFT);
   const [busy, setBusy] = useState(false);
   /* 弹窗里的初值来自服务器，不是本地那份可能已经过期的 novels 缓存。 */
+  const [deleteTarget, setDeleteTarget] = useState<Novel | null>(null);
+  const [confirmTitle, setConfirmTitle] = useState("");
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [infoId, setInfoId] = useState<number | null>(null);
   const [infoDraft, setInfoDraft] = useState<BookDraft | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
@@ -228,15 +232,16 @@ export default function BookshelfPage() {
   };
 
   useEffect(() => {
-    if (!coverEditId && infoId === null) return;
+    if (!coverEditId && infoId === null && !deleteTarget) return;
     function onKeyDown(event: KeyboardEvent) {
       if (event.key !== "Escape") return;
       setCoverEditId(null);
       setInfoId(null);
+      setDeleteTarget(null);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [coverEditId, infoId]);
+  }, [coverEditId, infoId, deleteTarget]);
 
   function openWizard() {
     setDraft(EMPTY_DRAFT);
@@ -482,17 +487,73 @@ export default function BookshelfPage() {
             <kbd>书名 简介 章数</kbd>
           </button>
           <div className="tree-menu-sep" />
-          {/* 与树的「重命名 / 删除」同一口径：没有通路就明说未开放，不摆一个会 405 的钮。 */}
+          {/* D-22③：这条从「未开放」变成真端点。树里的「重命名 / 删除」仍然未开放 -
+              章号是主键，删一章要不要顺延是 D-13 没定的事，不在这次范围内。 */}
           <button
             type="button"
             role="menuitem"
-            className="tree-menu-item"
-            disabled
-            title="删除语义未定：与「反馈记录进不进文件层」「人物删除必然 405」是同一条决策"
+            className="tree-menu-item danger"
+            onClick={runBookAction(() => {
+              const novel = novels.find((item) => item.id === bookMenu.id);
+              if (!novel) return;
+              setConfirmTitle("");
+              setDeleteError(null);
+              setDeleteTarget(novel);
+            })}
           >
-            <span>删除作品</span>
-            <kbd>未开放</kbd>
+            <span>删除作品…</span>
+            <kbd>输书名确认</kbd>
           </button>
+        </div>
+      ) : null}
+      {deleteTarget ? (
+        <div className="wizard-backdrop" onClick={() => setDeleteTarget(null)} role="presentation">
+          <div
+            className="wizard book-delete"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="删除作品"
+          >
+            <h2>删除《{deleteTarget.title}》</h2>
+            <p className="book-delete-note">
+              这本书的章节、简报、目录、弧、人物、伏笔、对话记录、生成运行与审稿会一起从数据库里删掉，
+              没有回收站。要删，请把书名原样打一遍
+            </p>
+            <label className="book-field">
+              输入书名确认
+              <input
+                value={confirmTitle}
+                placeholder={deleteTarget.title}
+                aria-label="输入书名确认删除"
+                onChange={(event) => setConfirmTitle(event.target.value)}
+              />
+            </label>
+            {deleteError ? <p className="book-info-problem">{deleteError}</p> : null}
+            <footer className="cover-modal-footer">
+              <button type="button" onClick={() => setDeleteTarget(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={busy || confirmTitle !== deleteTarget.title}
+                onClick={() => {
+                  const target = deleteTarget;
+                  setBusy(true);
+                  setDeleteError(null);
+                  deleteNovel(target.id)
+                    .then(() => setDeleteTarget(null))
+                    .catch((cause: unknown) =>
+                      setDeleteError(cause instanceof Error ? cause.message : "删除失败"),
+                    )
+                    .finally(() => setBusy(false));
+                }}
+              >
+                删除
+              </button>
+            </footer>
+          </div>
         </div>
       ) : null}
       {infoId !== null ? (

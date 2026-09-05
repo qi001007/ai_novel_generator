@@ -67,6 +67,8 @@ type WorkbenchState = {
   init: () => Promise<void>;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
   updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
+  /** 一本书的全部派生行由后端那一条级联删掉（D-23）；这里只负责让列表说实话。 */
+  deleteNovel: (novelId: number) => Promise<void>;
   setTab: (tab: WorkspaceTab) => void;
   selectNovel: (novelId: number) => Promise<void>;
   selectBrief: (briefId: number) => void;
@@ -144,6 +146,15 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   setTab(tab) {
     set({ tab });
+  },
+
+  async deleteNovel(novelId) {
+    await api.del<void>(`/api/novels/${novelId}`);
+    const now = get();
+    set({
+      novels: now.novels.filter((item) => item.id !== novelId),
+      selectedNovelId: now.selectedNovelId === novelId ? null : now.selectedNovelId,
+    });
   },
 
   async updateNovel(novelId, payload) {

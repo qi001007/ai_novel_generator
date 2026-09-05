@@ -5,10 +5,49 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import SQLModel, Session, select
 
 from app.db import get_session
-from app.models import Chapter, Novel, utc_now
+from app.models import (
+    ArcPlan,
+    Chapter,
+    ChapterBrief,
+    ChapterSummary,
+    Character,
+    CharacterAppearance,
+    ChatMessage,
+    Foreshadow,
+    GenerationRun,
+    Novel,
+    PlanningBlueprint,
+    PlotFeedback,
+    Review,
+    Setting,
+    TocEntry,
+    utc_now,
+)
 
 
 router = APIRouter(prefix="/novels", tags=["novels"])
+
+# 删一本书要一起消失的东西。顺序是承重的：子记录先走，
+# 所以 chapter 排在 chapter_brief 前面（chapter.brief_id 指着它），
+# character_appearance 排在 character 前面（它指着 character.id）。
+# app_config 故意不在这里 - 它是全局偏好，不属于任何一本书。
+# 为什么是物理删除、为什么界面上要输书名确认：见 DECISIONS D-23。
+NOVEL_SCOPED_MODELS = (
+    CharacterAppearance,
+    ChapterSummary,
+    Review,
+    GenerationRun,
+    ChatMessage,
+    PlotFeedback,
+    Foreshadow,
+    Chapter,
+    ChapterBrief,
+    Setting,
+    Character,
+    ArcPlan,
+    TocEntry,
+    PlanningBlueprint,
+)
 
 
 HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
@@ -134,3 +173,22 @@ def update_novel(
     session.commit()
     session.refresh(novel)
     return novel
+
+
+@router.delete("/{novel_id}", status_code=204)
+def delete_novel(novel_id: int, session: Session = Depends(get_session)) -> None:
+    """整本书，连同它派生出的每一行。
+
+    这是 D-01 的镜像面：写四层规划只有一条入口，删也只有一条。
+    删完返回 204 - 没有东西可回，硬造一个 JSON 体是让前端去猜形状。
+    """
+    novel = session.get(Novel, novel_id)
+    if novel is None:
+        raise HTTPException(status_code=404, detail="Novel not found")
+    for model in NOVEL_SCOPED_MODELS:
+        for row in session.exec(
+            select(model).where(model.novel_id == novel_id)
+        ).all():
+            session.delete(row)
+    session.delete(novel)
+    session.commit()

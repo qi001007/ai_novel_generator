@@ -4553,6 +4553,18 @@ body.resizing {
 
 .tree-menu-item kbd { font-size: 10px; color: inherit; opacity: 0.75; }
 
+/* 破坏性动作在菜单里靠颜色说，不靠方框说（§0.6：一屏最多一个方框主按钮）。 */
+.tree-menu-item.danger { color: var(--danger); }
+
+.tree-menu-item.danger:hover:not(:disabled) { background: var(--diff-minus-bg); }
+
+.book-delete-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--text-2);
+}
+
 .tree-menu-sep {
   height: 1px;
   margin: 4px 6px;

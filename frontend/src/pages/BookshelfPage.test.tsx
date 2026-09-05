@@ -114,7 +114,7 @@ describe("BookshelfPage", () => {
 
   /* 前几轮点名项：书卡右键菜单。两条纪律一起钉 - 菜单里不许有会 405 的假按钮，
      卡面那枚动作钮不许再带文字（「按钮能用图标就用图标」）。 */
-  it("opens a context menu on the book card and keeps 删除 honest about not existing", async () => {
+  it("opens a context menu on the book card with the four doors that actually work", async () => {
     const user = userEvent.setup();
     const { container } = renderShelf();
     const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
@@ -127,11 +127,8 @@ describe("BookshelfPage", () => {
       "打开作品Enter",
       "更换封面…悬停图标",
       "编辑信息…书名 简介 章数",
-      "删除作品未开放",
+      "删除作品…输书名确认",
     ]);
-    const del = within(menu).getByRole("menuitem", { name: /删除作品/ }) as HTMLButtonElement;
-    expect(del.disabled).toBe(true);
-    expect(del.getAttribute("title")).toContain("删除语义未定");
 
     // 点菜单项只开弹窗，不许顺带把读者送进工作台
     await user.click(within(menu).getByRole("menuitem", { name: /更换封面/ }));
@@ -247,6 +244,56 @@ describe("BookshelfPage", () => {
     await screen.findByRole("menu");
     await user.click(document.body);
     expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  /* D-22③：删除从「未开放」变成真端点。安全不靠回收站，靠把书名原样打一遍这一步。 */
+  it("asks for the title before it deletes a book, and sends nothing on cancel", async () => {
+    const user = userEvent.setup();
+    const deletes: string[] = [];
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = String(init?.method ?? "GET");
+        if (method === "DELETE") {
+          deletes.push(url);
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+        return Promise.resolve(ok(url.endsWith("/api/novels") ? shelf : shelf[0]));
+      }),
+    );
+    const { container } = renderShelf();
+    const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
+    fireEvent.contextMenu(card);
+    await user.click(
+      within(await screen.findByRole("menu", { name: "《演示测试》的操作" })).getByRole("menuitem", { name: /删除作品/ }),
+    );
+
+    const dialog = await screen.findByRole("dialog", { name: "删除作品" });
+    const confirm = within(dialog).getByRole("button", { name: "删除" }) as HTMLButtonElement;
+    // 一个字没打，删除是死的
+    expect(confirm.disabled).toBe(true);
+    await user.type(within(dialog).getByLabelText("输入书名确认删除"), "演示");
+    expect(confirm.disabled).toBe(true);
+    expect(deletes).toHaveLength(0);
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "删除作品" })).toBeNull();
+    expect(deletes).toHaveLength(0);
+
+    // 打对了才真删，删完那张卡从书架上消失
+    fireEvent.contextMenu(container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement);
+    await user.click(
+      within(await screen.findByRole("menu", { name: "《演示测试》的操作" })).getByRole("menuitem", { name: /删除作品/ }),
+    );
+    // 重新查一次：上一轮的 dialog 节点已经随取消被卸载，往 detached 节点里打字
+    // 不会进 React 的 state（这条测试第一次就是这么假失败的）
+    const again = await screen.findByRole("dialog", { name: "删除作品" });
+    await user.type(within(again).getByLabelText("输入书名确认删除"), "演示测试");
+    await user.click(within(again).getByRole("button", { name: "删除" }));
+    await waitFor(() => expect(deletes).toEqual(["/api/novels/4"]));
+    await waitFor(() => expect(container.querySelector(`.book-card[data-novel-id="4"]`)).toBeNull());
   });
 
   /* 前几轮点名项：预设八枚之外要有一枚真·调色盘，而且挑完当场看得见。 */

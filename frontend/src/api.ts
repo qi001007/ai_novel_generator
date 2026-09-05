@@ -21,6 +21,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new Error(detail?.detail ?? response.statusText);
   }
 
+  // 204 没有 body。删除端点返回它是标准做法；让 request 去 json() 只会抛一个
+  // 「Unexpected end of JSON input」，把一次成功的删除显示成失败。
+  if (response.status === 204) return undefined as T;
+
   return (await response.json()) as T;
 }
 
