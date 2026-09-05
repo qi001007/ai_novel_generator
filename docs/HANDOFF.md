@@ -76,14 +76,14 @@
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 180 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 125 passed / 18 files
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 200 passed
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 182 passed / 20 files
 cd E:\novel-generator\frontend; npx tsc -b --force --pretty false           # 必须 clean（--force，别信增量）
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 cd E:\novel-generator\.scratch; node hit-area-audit.mjs                     # 期望 0 small / 0 clipped / 0 unreachable
 
 # 界面不可回退闸门（改界面必须同批改这里的断言，见 UI-DESIGN §0.9）
-#   frontend/src/uiInvariants.test.ts —— 现 20 块
+#   frontend/src/uiInvariants.test.ts —— 现 36 块
 ```
 
 要看注入上下文清单：后端起时带 `$env:NOVEL_CONTEXT_DEBUG = '1'`，跑在**可见终端**里
@@ -92,16 +92,11 @@ cd E:\novel-generator\.scratch; node hit-area-audit.mjs                     # �
 S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scripts\writing_ring_smoke.py`；
 默认模板草稿，加 `--live` 才会真实调用模型。
 
-**2026-09-05 文档清账（主人：「删除一些落后的、之前写的推进计划，保证文档简洁」）**：
-`WORKSTREAM-PLAN.md` 从 886 行 / 88KB 压到 229 行 / 17KB——它自己第一节就写着「只记进度与勾选，
-已完成一律进 DECISIONS」，却靠批注流水涨到那个体积，而涨到那个体积没让任何一条决定更清楚。
-所有**未结**条目逐条搬走、一条没丢（含第六轮那条「调用记录面板按内容给高」，它差点被流水埋掉）。
-`UI-BACKLOG.md` 按「勾完即删该条」清掉第十五批 13 条已完成项。
-
-**界面批注的唯一合法流程已写进 `AGENTS.md`《UI 批注处理闭环》（2026-09-05 主人要求固化）**：
-当场写进 `UI-BACKLOG` 带判据 → 按严重度一条一条做 → 真机截图自己看过 → 同一提交改
-`uiInvariants` 断言 → 文档四件套 → 每条单独 commit+push → **做完的从 UI-BACKLOG 删掉** →
-整批做完交主人审核。顺手发现的别的缺陷只登记不顺手改。
+**文档自己也要清账**（主人两次明确要求：「删一些，给后端纪要留空间」）。2026-09-06 这一轮：
+`UI-BACKLOG` 31.3KB → 5.9KB、`UI-DESIGN` 48.3KB → 35.4KB、`WORKSTREAM-PLAN` 加了 §五。
+判断标准只有一条——**本文件是开新对话要读的最小信息，任何「正文」都不该在这里**。
+删掉的都是已被别处接管的过程记录，未结项一条没丢；每轮删了什么记在
+`WORKSTREAM-PLAN.md` §五，追溯用 `git show <提交>:docs/<文件>`。
 
 ## 读哪份文件
 
@@ -110,20 +105,21 @@ S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scrip
 | 知道系统实际长什么样、还缺什么 | `docs/ARCHITECTURE.md` |
 | 知道某设计为什么这么定 / 哪个旧口径已废 | `docs/DECISIONS.md`（按 D-xx / X-xx / R-xx / T-xx 编号） |
 | 改需求、加功能 | `docs/PRD.md` → 同步 `docs/REQUIREMENTS.md` |
-| 改界面 | `docs/UI-DESIGN.md`（当前权威版本见其首行） |
-| 看进度与待办勾选 | `docs/WORKSTREAM-PLAN.md` |
+| 改界面 | `docs/UI-DESIGN.md`（§0 令牌、§0.7-§0.9 纪律与不可回退清单、§1-§7 页面规格） |
+| 界面还有什么没做 | `docs/UI-BACKLOG.md`（只记未完成，勾完即删） |
+| 看进度、待办与**下一步顺序** | `docs/WORKSTREAM-PLAN.md`（§五＝等主人认可的后端顺序） |
 | 工具报错怎么定责 | `AGENTS.md` 四桶（NAME / ARGS / SCRIPT / QUOTA） |
 
 ## 当前主干进度（细节与验收在 WORKSTREAM-PLAN）
 
 ```text
-S0 上下文可观测   代码已就绪，待跑给主人看一次
-S3 写通路收口     已落地，并按 D-15 延伸到设定库
-S1 最小写作环     隔离脚本与统一预算裁剪已落地
-S2 agentic 内核   第 1 步已落地并**在真模型上跑通读→提案→应用→生正文**；S4 接写作环未开始
-UI  支线          帧 26 已清账（C 区长字段 + A 区设定库树 + ④在文件中新建）；三册中伏笔/世界观已进文件层，反馈册待 Q-07
-S4 合流           未开始
-UI  支线          批准的设计帧仍有未清账项，逐条见 WORKSTREAM-PLAN 的 U 系列
+S0 上下文可观测   代码就绪，欠一次「/generate 全链真调 API 跑给主人看」（要点头，会烧 token）
+S3 写通路收口     已落地并按 D-15 延伸到设定库；只剩「删掉退役后无效的导入/助手」一条
+S1 最小写作环     隔离脚本 + 统一预算裁剪已落地
+S2 agentic 内核   已在真模型上跑通 读 → 提案 → 人点应用 → 生正文；S4 未开始
+S4 合流           未开始（对话式管理接写作环、Ctrl+K）
+UI                主人 2026-09-06 判定可以冻结：「目前这个前端我算是比较满意了，可以开始接后端了」
+                  未结四条见 UI-BACKLOG，其中伏笔墙／地图接线被他明确排到最后
 ```
 
 待主人拍板的存量事项：`DECISIONS.md` §5.3 的 **Q-07**（反馈记录要不要进文件层并 410 `/feedback`）、
@@ -131,24 +127,11 @@ UI  支线          批准的设计帧仍有未清账项，逐条见 WORKSTREAM-
 `DELETE /characters/{id}` 从未存在，必然 405）。三条与「删除作品」同属**删除语义**，一起定。
 D-15、D-16 已批准。
 
-**给下一个接手的人**：主人 2026-09-04 的原话是「一开始让你改前端 bug、实现批准的 Figma 稿，
-你忘了，我看你根本就没改」。教训两条——① **批准的设计稿没落地就是没做完**，不能用「帧出了」
-或「测试全绿」顶替；② 别躲进 Figma 建帧、后端收口这类自留地，先清主人点名的界面。
+## 三条给接手的人（都是跑出来、不是测出来的）
 
-**2026-09-04 前端清账轮（主人：「后端先存档，现在先改前端」）**：主人第四轮 16 条浏览器批注里
-可修的全部修完，逐条真机量过（该轮明细已折叠进 WORKSTREAM-PLAN《四、历史》一行，过程原文用
-`git show <提交>:docs/WORKSTREAM-PLAN.md` 追溯）。三条值得接手的人记住：
-
-- **能量的都别目测**。缩略栏「粘手」量出来是画与拖两套数 + `scrollTop/scrollHeight` 未归一；
-  书架「影子粘在书上」量出来是 15px 模糊向上够进书体 24.8px；标签页「比例不对」量出来是
-  `min-width:132px` 把关闭按钮推到离右边界 48.8px。目测永远看不出这些数字。
-- **假控件比没控件更糟**。回形针能选 10 个文件、渲染出 chip，而 `streamChat` 只发
-  `content/mode/chapter_id/model`——选了就是扔了。已改 `disabled` + 说明，与仓内另外 5 处
-  「暂未开放」同一口径。**宁可显式承认没做，不许让它看起来像做完了。**
-- **廉价感有一半是可测的**：逐元素算合成背景做对比度审计，浅色主题 13 处不过 AA，其中十处
-  共用一个 `--text-2`（4.31，只差 0.19）。改一个 token 修十处。另：五处中文标到 10px，
-  那是拉丁终端的字号。**剩两处是品牌色决策，已交主人，不在 bug 修复里擅自动主色。**
-
-本轮**没做**的，以及为什么：批注 15 的「重命名 / 删除」需要后端删除语义（全仓除 `chat.py`
-无任何 delete 路由），与 Q-07 / Q-09 是同一条决策，不在前端臆造第二条写通路；批注 9 / 10 / 12 / 14
-是界面新增，按 UI 铁律要先出帧再落码。
+- **别目测，去量**。缩略栏「粘手」量出来是画与拖两套数；书架「影子糊在书上」量出来是 15px
+  模糊向上够进书体 24.8px；「图标没居中」量出来是 −2.5px。目测永远给不出这些数。
+- **假控件比没控件更糟**。能点但什么都不做的按钮，一律改成 `disabled` + 写明原因
+  （树右键、生图任务行、删除作品都是这个口径）。宁可承认没做，不许让它看起来像做完了。
+- **测试全绿 ≠ 功能实现**。`uiInvariants` 与 vitest 都不解析样式表：菜单第一项被刷成
+  实心主色条、字也是主色（看不见），只有真机截图看得出来（T-19）。
