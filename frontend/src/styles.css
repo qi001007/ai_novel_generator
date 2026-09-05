@@ -342,27 +342,6 @@ select:focus-visible {
   text-overflow: ellipsis;
 }
 
-.topbar-center {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-alt);
-  color: var(--text-2);
-  font-size: 12px;
-}
-
-.topbar-center kbd {
-  font-family: inherit;
-  font-size: 11px;
-  border: 1px solid var(--border-strong);
-  border-radius: 4px;
-  padding: 0 4px;
-  background: var(--surface);
-}
-
 .model-chip {
   display: inline-flex;
   align-items: center;
@@ -760,12 +739,6 @@ select:focus-visible {
   gap: 2px;
   align-content: start;
   min-width: 0;
-}
-
-.tree-ellipsis {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 .tree-empty {
@@ -1686,14 +1659,6 @@ select:focus-visible {
   border-bottom: 1px solid var(--border);
 }
 
-/* The label truncates, the dots never do. */
-.editor-tab-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Status is a dot, not a word. The progression reads left to right across the
    pipeline: hollow = untouched, grey = drafted, amber = machine/AI looked,
    green = final. The word is still there for the pointer and for a screen
@@ -1851,28 +1816,6 @@ select:focus-visible {
   color: var(--accent-strong);
 }
 
-/* ---------- 目录树 ---------- */
-
-/* One row, not two: title, whatever is worth saying about the document, and
-   the chevron that folds the list under it. */
-.editor-footer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: none;
-  padding: 3px 16px;
-  border-bottom: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--text-2);
-}
-
-.editor-footer h3 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-1);
-}
-
 /* The panel under the editor: its own top border, a drag line above it, and a
    height the user sets — the records list used to eat 200px that could not go. */
 .editor-bottom {
@@ -1883,28 +1826,6 @@ select:focus-visible {
   overflow: hidden;
   border-top: 1px solid var(--border);
   background: var(--surface);
-}
-
-/* Icon only: the panel it folds sits directly beneath it, so a chevron says
-   what a sentence here never needed to. */
-.footer-toggle {
-  display: inline-grid;
-  place-items: center;
-  margin-left: auto;
-  width: 26px;
-  height: 22px;
-  min-height: 0;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-alt);
-  color: var(--text-2);
-  cursor: pointer;
-}
-
-.footer-toggle:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 /* 批注 5: it sat at the top of a full-height column, which reads as a heading and
@@ -1927,35 +1848,6 @@ select:focus-visible {
   font-size: 16px;
   color: var(--text-1);
 }
-
-.check-result {
-  margin: 12px 16px;
-  padding: 12px 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: baseline;
-}
-
-.check-result.passed {
-  border-color: var(--success);
-}
-
-.check-result.failed {
-  border-color: var(--danger);
-}
-
-.check-result ul {
-  flex-basis: 100%;
-  margin: 0;
-  padding-left: 20px;
-  font-size: 13px;
-}
-
-
 
 .record-list {
   list-style: none;
@@ -2002,24 +1894,6 @@ select:focus-visible {
 .panel h2 {
   margin: 0;
   font-size: 15px;
-}
-
-.form-grid {
-  display: grid;
-  gap: 8px;
-}
-
-.form-grid label {
-  display: grid;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--text-2);
-}
-
-.form-grid textarea {
-  min-height: 64px;
-  resize: vertical;
-  line-height: 1.5;
 }
 
 .toolbar {
@@ -2401,34 +2275,6 @@ select:focus-visible {
   gap: 8px;
 }
 
-/* ---------- 底部状态栏 ---------- */
-
-.statusbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  height: 24px;
-  padding: 0 12px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-  font-size: 11px;
-  color: var(--text-2);
-}
-
-.statusbar .dot {
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  margin-right: 6px;
-  background: var(--danger);
-}
-
-.statusbar .dot.ok {
-  background: var(--success);
-}
-
 /* ---------- 通知 / 错误 ---------- */
 
 .notice {
@@ -2716,11 +2562,6 @@ select:focus-visible {
 .feedback-item.status-applied .feedback-marker {
   background: var(--success);
   border-color: var(--success);
-}
-
-.feedback-item.status-rejected .feedback-marker {
-  background: var(--border-strong);
-  border-color: var(--border-strong);
 }
 
 .feedback-meta {
@@ -3023,27 +2864,6 @@ select:focus-visible {
   background: var(--book-accent);
 }
 
-.book-continue {
-  position: absolute;
-  top: 34%;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: var(--accent-strong);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  opacity: 0;
-  transition: opacity 160ms ease-out;
-  pointer-events: none;
-}
-
-.book-card:hover .book-continue,
-.book-card:focus-visible .book-continue {
-  opacity: 1;
-}
-
 .cover-change-btn {
   position: absolute;
   top: 10px;
@@ -3117,8 +2937,7 @@ select:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .book-card,
-  .book-slot::after,
-  .book-continue {
+.book-slot::after {
     transition: none;
   }
 }
@@ -3208,15 +3027,6 @@ select:focus-visible {
   height: 1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
-}
-
-.cover-hint {
-  margin: 0;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  color: var(--text-2);
-  font-size: 12px;
 }
 
 .cover-modal-footer {
@@ -3420,8 +3230,6 @@ body.resizing {
   cursor: col-resize;
   user-select: none;
 }
-
-
 
 @media (prefers-reduced-motion: reduce) {
   .splitter::after,
@@ -4173,36 +3981,6 @@ body.resizing {
   opacity: 1;
   background: var(--control-disabled-accent-bg);
   color: var(--control-disabled-accent-fg);
-}
-
-/* ---- 树底固定按钮排与右键菜单（帧 20） ---- */
-.tree-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-top: 1px solid var(--border);
-}
-
-.file-mode-return {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  background: var(--surface-alt);
-  color: var(--text-1);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.file-mode-return:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 .tree-action {
@@ -4986,12 +4764,6 @@ body.resizing {
   display: block;
 }
 
-
-
-
-
-
-
 .manifest-row {
   display: grid;
   grid-template-columns: 26px 34px 84px minmax(0, 1fr) 56px 200px;
@@ -5322,8 +5094,6 @@ body.resizing {
   background: var(--accent);
   color: #fff;
 }
-
-
 
 .record-list li {
   display: flex;

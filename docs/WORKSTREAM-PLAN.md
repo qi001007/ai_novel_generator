@@ -164,9 +164,16 @@
 - [ ] **伏笔墙 / 地图面板未接线**：面板内**零请求**，所以 `foreshadow.md` 里已有两条、注入清单也
       能看到，它仍显示空态。这是面板未接线，不是数据没进来——别再当「伏笔功能没做」重复排查。
 - [ ] **novel 3「MD探针」测试作品**：等上面那条端点补齐后删除。
-- [x] 死样式类扫描：`34f36ef` 已清除（Q-01）；2026-09-05 重扫，`styles.css` 里 370 个类名
-      中 25 个在源码零命中——逐个核过，`cm-*`／`level-*`／`status-*`／`editor-tab-label` 等
-      由 CodeMirror 与模板字符串动态拼出，**不是死样式**；余下待第十六批清理。
+- [x] 死样式类扫描：`34f36ef` 已清除（Q-01）；2026-09-05 再扫，`styles.css` 370 个类名里
+      25 个源码零命中。**逐个判生死，不整批删**：`cm-*` 由 CodeMirror 生成，`level-boss`／
+      `level-protagonist` 来自 `` `character-card level-${character.level}` ``，
+      `status-applied` 来自 `` `feedback-item status-${item.status}` ``（后端确有 `applied`）——
+      这些都活着。真死的 13 个已删：`book-continue`／`check-result`／`cover-hint`／
+      `editor-footer`／`editor-tab-label`／`file-mode-return`／`footer-toggle`／`form-grid`／
+      `status-rejected`（后端从无此值）／`statusbar`／`topbar-center`／`tree-actions`／
+      `tree-ellipsis`，共 26 条规则、`styles.css` −4.1KB。
+      ⚠ 第一版删除脚本把**注释里的逗号**当成选择器分隔符，切断三处注释造成**未闭合注释**
+      （会吞掉后面整段 CSS）——已回滚重写：先把注释换成占位符再解析。
 
 ---
 
