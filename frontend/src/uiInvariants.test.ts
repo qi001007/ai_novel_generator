@@ -290,6 +290,21 @@ describe("settled UI decisions must not regress", () => {
     expect(css).toMatch(/\.file-cm \.cm-editor\.cm-focused\s*\{\s*outline: 0;/);
   });
 
+  it("anything centred in the editor column subtracts the minimap gutter (第十七批批注 2)", () => {
+    // 「我老是感觉你下面的这行小字的中心，跟上面那个章节编辑的中心不在同一条线上」.
+    // Measured, the two lines agreed with each other and disagreed with the page: every
+    // block that fills the editor column centres on the full pane, while the text lives
+    // in (pane - 56px minimap) - a constant 28px error in four places. One token now,
+    // and the gutter cannot drift away from the insets that reference it.
+    expect(css).toMatch(/--minimap-w: 56px;/);
+    expect(rule(".minimap")).toContain("width: var(--minimap-w)");
+    expect(rule(".editor-empty")).toContain("padding-right: var(--minimap-w)");
+    expect(rule(".toc-list-overlay")).toContain("padding-right: var(--minimap-w)");
+    expect(rule(".character-doc-overlay")).toContain("var(--minimap-w)");
+    // a second literal 56px for the gutter is how this drifts back
+    expect(css.split("width: 56px;").length - 1).toBe(0);
+  });
+
   it("the prose page says focus with a caret and nothing else (第十五批批注4.1)", () => {
     // The owner asked for the frame around the writing surface to go. Round fourteen I
     // recoloured it from accent to --text-2 and called that fixed - the same frame in

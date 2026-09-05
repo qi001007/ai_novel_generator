@@ -268,6 +268,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 回答**无框、无头像、无抬头行** | `.chat-card.agent` 无 border/background；`ChatPane` 无 `chat-avatar`/`chat-card-head` | 第十轮批注 3、4 |
 | 工具轨迹**折叠**，不混进正文；**思考过程与工具轨迹是两个各自独立折叠**，名字与图标不许混用 | `ChatPane` 含 `splitTrace` 与 `chat-trace`；推理折叠为 `.chat-thinking` + `Brain`，轨迹折叠为 `Wrench` +「工具轨迹 · N 步」；模型没给推理时**不摆空入口** | 第十一轮主请求 + 第十六批批注 1 |
 | **思考过程是散文，不是方框**；命令才用等宽块 | `.chat-thinking-body` 无 border / 无 background / 非等宽、`white-space: normal` 正常折行；`.chat-trace-body` 的边框块只服务工具轨迹；库里被撕碎的旧推理在读出时由 `reasoningParagraphs()` 拼回，不改写数据 | 第十七批批注 1 |
+| **在编辑列里居中的东西必须扣掉缩略栏装订线** | `--minimap-w: 56px` 一处定义；`​.minimap` 宽度与 `.editor-empty`／`.toc-list-overlay`／`.character-doc-overlay` 的居中内衬都读它；`width: 56px` 字面量不许再出现 | 第十七批批注 2 |
 | 动作是**记号不是句子** | 提案卡无 `proposal-note`，三个 `aria-label` 在；apply 无主色色块 | 第十一轮批注 3-6、第十二批批注 6 |
 | 章节标签**只有一个点** | `EditorPane` 不含 `StatusBadge` | 第十二批批注 1 |
 | 换人**留 52px** | `.chat-row.user + .chat-row.assistant` 的 `margin-top: 40px` | 第十三批批注 5、7 |
