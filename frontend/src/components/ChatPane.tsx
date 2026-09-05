@@ -18,7 +18,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import MarkdownText from "./MarkdownText";
-import { splitTrace } from "./chatTrace";
+import { reasoningParagraphs, splitTrace } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
 import type {
@@ -787,7 +787,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           const refs = row.meta.refs ?? [];
           // The trace is not prose. Fold it above the answer instead of printing it.
           const { prose, trace } = splitTrace(row.text);
-          const reasoning = row.meta.reasoning?.trim() ?? "";
+          const reasoning = reasoningParagraphs(row.meta.reasoning ?? "");
           return (
             <div key={row.id} className="chat-row assistant">
               <div className="chat-message">
@@ -796,7 +796,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       was here is called 思考过程 but only ever listed tool calls, so a
                       plain answer had no way to show what the model actually thought.
                       No reasoning from the model means no entry - not an empty shell. */}
-                  {reasoning ? (
+                  {reasoning.length ? (
                     <div className="chat-trace chat-thinking">
                       <button
                         type="button"
@@ -808,8 +808,15 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <span>思考过程</span>
                         <ChevronDown size={11} />
                       </button>
+                      {/* 第十七批批注 1: thinking is prose, so it is set as prose - no
+                          box around it, no monospace, wrapping like the answer. The
+                          bordered block stays for the tool trace, which IS commands. */}
                       {thinkingOpen === row.id ? (
-                        <pre className="chat-trace-body">{reasoning}</pre>
+                        <div className="chat-thinking-body">
+                          {reasoning.map((paragraph, index) => (
+                            <p key={index}>{paragraph}</p>
+                          ))}
+                        </div>
                       ) : null}
                     </div>
                   ) : null}

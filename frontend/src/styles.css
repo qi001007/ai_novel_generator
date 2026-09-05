@@ -1015,6 +1015,9 @@ select:focus-visible {
 }
 
 .chat-trace-body {
+  /* Commands, not prose: the owner's reference for this shape was a list of actions,
+     so the monospace block with its edge stays - and it is now the ONLY folded body
+     that has one. */
   margin: 0;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -1026,6 +1029,23 @@ select:focus-visible {
   line-height: 1.65;
   white-space: pre-wrap;
   overflow-x: auto;
+}
+
+/* 第十七批批注 1: 「不要用这种方框框选的形式」. Thinking is text the model wrote to
+   itself, so it is set like text - no border, no fill, no monospace, wrapping at the
+   measure of the answer above which it sits. */
+.chat-thinking-body {
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.8;
+}
+
+.chat-thinking-body p {
+  margin: 0 0 8px;
+}
+
+.chat-thinking-body p:last-child {
+  margin-bottom: 0;
 }
 
 /* What you can do with a finished reply - and (批注 4, 5) the only place the

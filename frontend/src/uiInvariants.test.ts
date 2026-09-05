@@ -238,9 +238,16 @@ describe("settled UI decisions must not regress", () => {
     expect(chatPane).toContain("<span>思考过程</span>");
     expect(chatPane).toContain("工具轨迹 ·");
     expect(chatPane).toContain("const [thinkingOpen, setThinkingOpen]");
-    expect(chatPane).toContain('{reasoning ? (');
+    expect(chatPane).toContain("{reasoning.length ? (");
     // the field has to exist on both sides of the wire or the fold dies on reload
     expect(chatTypes).toContain("reasoning: string;");
+    // 第十七批批注 1: thinking is prose, so it gets no box and no monospace block -
+    // the bordered `.chat-trace-body` belongs to the tool trace alone
+    expect(chatPane).toContain('className="chat-thinking-body"');
+    expect(chatPane).not.toMatch(/chat-thinking[\s\S]{0,400}chat-trace-body/);
+    expect(css).toMatch(/\.chat-thinking-body \{[^}]*color: var\(--text-2\);/);
+    expect(rule(".chat-thinking-body")).not.toMatch(/border|background|font-family/);
+    expect(rule(".chat-trace-body")).toContain("border: 1px solid var(--border)");
   });
 
   it("focus paints no frame anywhere - the whole class (第六轮批注16 / 第十一批批注2 / 第十四批批注5 / 第十五批批注4.2)", () => {
