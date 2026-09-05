@@ -135,7 +135,7 @@ export default function FeedbackPanel({ novelId }: { novelId: number | null }) {
 
       {feedback.length === 0 ? (
         <div className="feedback-empty">
-          <p>还没有反馈记录。</p>
+          <p>还没有反馈记录</p>
         </div>
       ) : (
         <ol className="feedback-timeline" aria-label="反馈时间线">

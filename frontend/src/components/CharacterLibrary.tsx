@@ -251,7 +251,7 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
       {filtered.length === 0 ? (
         <div className="library-empty">
           <h2>{query || activeLevel !== "all" ? "没有匹配的人物" : "还没有人物"}</h2>
-          <p>{query || activeLevel !== "all" ? "换个关键词或分级试试。" : "从主角团开始，给故事立起第一张卡。"}</p>
+          <p>{query || activeLevel !== "all" ? "换个关键词或分级试试" : "从主角团开始，给故事立起第一张卡"}</p>
         </div>
       ) : (
         <div className="character-grid">

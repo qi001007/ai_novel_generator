@@ -89,7 +89,7 @@ describe("EditorPane", () => {
 
   it("keeps hook order when a chapter arrives after the empty state", () => {
     const { rerender } = render(<MemoryRouter><EditorPane /></MemoryRouter>);
-    expect(screen.getByText("左侧选择或新建一章开始写作。")).toBeTruthy();
+    expect(screen.getByText("左侧选择或新建一章开始写作")).toBeTruthy();
 
     act(() => seed([emptyChapter], emptyChapter.content));
     rerender(<MemoryRouter><EditorPane /></MemoryRouter>);

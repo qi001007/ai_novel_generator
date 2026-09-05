@@ -327,14 +327,14 @@ export default function GenerationRunDetailPage() {
                       </header>
                       <pre>
                         {selectedBlock.excerpt ||
-                          "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到。"}
+                          "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到"}
                       </pre>
                     </div>
                   ) : null}
                 </>
               ) : (
                 <div className="run-detail-empty compact">
-                  <p>这是一条旧格式记录，没有结构化注入清单。</p>
+                  <p>这是一条旧格式记录，没有结构化注入清单</p>
                   <pre>{run.input_summary}</pre>
                 </div>
               )
@@ -347,7 +347,7 @@ export default function GenerationRunDetailPage() {
                     <Copy size={13} /> 复制输出
                   </button>
                 </div>
-                <pre>{run.output || "这次调用没有保存模型输出。"}</pre>
+                <pre>{run.output || "这次调用没有保存模型输出"}</pre>
               </div>
             )}
 
@@ -364,9 +364,9 @@ export default function GenerationRunDetailPage() {
                     ))}
                   </ul>
                 ) : (
-                  <p>没有发现问题。</p>
+                  <p>没有发现问题</p>
                 )}
-                <p className="run-check-note">校验按当前正文与 D 简报必要事实现算。</p>
+                <p className="run-check-note">校验按当前正文与 D 简报必要事实现算</p>
               </div>
             )}
 
@@ -385,7 +385,7 @@ export default function GenerationRunDetailPage() {
                       ))}
                     </dl>
                   </article>
-                )) : <p className="empty">这一章还没有审稿记录。</p>}
+                )) : <p className="empty">这一章还没有审稿记录</p>}
               </div>
             )}
           </div>

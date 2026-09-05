@@ -300,6 +300,17 @@ describe("settled UI decisions must not regress", () => {
     expect(fileEditor).not.toMatch(/sourceView \? <BookOpen/);
   });
 
+/**
+ * Every component source, as text. import.meta.glob goes through the same Vite
+ * pipeline as the ?raw imports above, so a guard that has to see the whole tree does
+ * not need 30 import lines or a node filesystem.
+ */
+const componentSources = import.meta.glob("./**/*.tsx", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
+
   it("a chapter tab says which chapter it is at a glance (第十六批批注 3)", () => {
     // 「打开的页面太多，你就只能看到『第什么什么』」- every tab began with the same
     // three glyphs and the strip stopped being a locator. The number is what the tree
@@ -312,6 +323,44 @@ describe("settled UI decisions must not regress", () => {
     // one source for the digits: the tree row, the tab and the search all read it
     expect(filesStore).toContain("export const chapterNumberLabel");
     expect(treePane).toContain("chapterNumberLabel(chapter.chapter_number)");
+  });
+
+  it("interface hints do not end with a full stop (第十六批批注 5、6)", () => {
+    // 「你这种语句里面就不要加标点符号，因为它本来就是一个提示词」- a sentence-ending dot
+    // turns a locator into a line of prose. The owner pointed at two of them; there were
+    // 17 across the app, so this is the whole class and a guard, not another fix.
+    //
+    // What is allowed to keep its punctuation: prose the agent itself writes, and text
+    // that is a prompt to the model rather than interface copy. Each is named, not
+    // pattern-matched, so a new hint cannot hide behind an existing exemption.
+    const ALLOWED = [
+      "我是这本书的写作 Agent", // the agent's opening answer - prose in a chat bubble
+      "用 @ 可以点名某份资料", // the second line of that same answer
+      "请盘点", // sent to the model, never rendered as UI copy
+      "请用 web_search", // ditto
+      "中国水墨风格", // an image prompt for the painting panel
+    ];
+    const offenders: string[] = [];
+    for (const [file, source] of Object.entries(componentSources)) {
+      if (file.includes(".test.")) continue;
+      const stripped = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      for (const raw of stripped.split("\n")) {
+        const line = raw.trim();
+        if (!line.includes("\u3002") || ALLOWED.some((a) => line.includes(a))) continue;
+        // a full stop that closes a run of user-visible text: end of a string literal,
+        // end of a JSX text node, or end of an interpolated expression
+        if (/[\u3002]["'`)]/.test(line) || /[\u3002]\s*<\//.test(line) || /[\u3002]\s*\}/.test(line)) {
+          offenders.push(file + " | " + line.slice(0, 72));
+        }
+      }
+    }
+    expect(offenders, offenders.join("\n")).toEqual([]);
+    // The two lines the owner actually pointed at, pinned by name as well - a class
+    // guard that silently stops seeing one file should not be the only thing holding.
+    expect(editorPane).toContain("<p>左侧选择或新建一章开始写作</p>");
+    expect(editorPane).not.toContain("开始写作。</p>");
+    expect(fileEditor).toContain("你确认后才写入</p>");
+    expect(fileEditor).not.toContain("才写入。</p>");
   });
 
   it("the dark theme stays at the owner's measured grey (第十轮批注1)", () => {

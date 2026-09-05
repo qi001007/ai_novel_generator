@@ -61,7 +61,7 @@ describe("BookshelfPage", () => {
     const stats = card.querySelector(".book-stats") as HTMLElement;
     expect(stats.textContent).toBe("—·—");
     expect((card.querySelector(".book-updated") as HTMLElement).textContent).toBe("最近编辑 —");
-    expect(within(card).getByText("还没有简介，去蓝图里写一句。")).toBeTruthy();
+    expect(within(card).getByText("还没有简介，去蓝图里写一句")).toBeTruthy();
   });
 
   it("drives the progress rail from done / target, never past 100%", () => {

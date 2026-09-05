@@ -13,7 +13,7 @@ export default function ForeshadowWall({ novelId }: { novelId: number | null }) 
       <div className="page-panel-empty">
         <Flag size={32} aria-hidden="true" />
         <h3>还没有伏笔</h3>
-        <p>从章节简报或蓝图出发，埋下第一条伏笔线。</p>
+        <p>从章节简报或蓝图出发，埋下第一条伏笔线</p>
       </div>
     </section>
   );

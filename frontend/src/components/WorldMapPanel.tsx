@@ -16,7 +16,7 @@ export default function WorldMapPanel({ novelId }: { novelId: number | null }) {
       <div className="page-panel-empty">
         <MapPin size={32} aria-hidden="true" />
         <h3>还没有地图</h3>
-        <p>从剧情弧或章节简报出发，让 AI 帮你画出第一张世界观地图。</p>
+        <p>从剧情弧或章节简报出发，让 AI 帮你画出第一张世界观地图</p>
         <button type="button" onClick={() => novelId && navigate(`/novels/${novelId}/artworks/1`)}>
           查看绘画详情（页面壳）
         </button>

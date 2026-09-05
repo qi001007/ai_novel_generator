@@ -196,7 +196,7 @@ export default function BookshelfPage() {
                   {/* 批注 24: the whole cover is the target and already navigates. */}
                   <div className="book-meta">
                     <h3>{novel.title}</h3>
-                    <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句。"}</p>
+                    <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句"}</p>
                     {progressPercent(novel) === null ? null : (
                       <div
                         className="book-progress"

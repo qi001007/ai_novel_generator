@@ -80,7 +80,7 @@ export default function PreferencesPage() {
         setTimeout_(String(data.timeout));
         setModels(data.models);
         setApiKey("");
-        setNotice("已保存，后端立即生效，不需要重启。");
+        setNotice("已保存，后端立即生效，不需要重启");
       })
       .catch((cause: unknown) =>
         setError(cause instanceof Error ? cause.message : "保存失败"),

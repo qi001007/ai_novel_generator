@@ -496,7 +496,7 @@ export default function TreePane({
            table, which is S3 work - until then this says so rather than showing
            invented threads. */
         <p className="tree-empty">
-          还没有会话记录。中栏的对话目前按章保存，要在这里列出来，得先有会话表那一层。
+          还没有会话记录。中栏的对话目前按章保存，要在这里列出来，得先有会话表那一层
         </p>
       ) : null}
       {createError && <p className="tree-action-error">{createError}</p>}

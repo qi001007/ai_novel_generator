@@ -229,7 +229,7 @@ export default function EditorPane() {
       <section className="editor-pane" aria-label="章节编辑">
         <div className="editor-empty">
           <h2>章节编辑</h2>
-          <p>左侧选择或新建一章开始写作。</p>
+          <p>左侧选择或新建一章开始写作</p>
         </div>
       </section>
     );

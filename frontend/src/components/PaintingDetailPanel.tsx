@@ -61,7 +61,7 @@ export default function PaintingDetailPanel({ onBack }: PaintingDetailPanelProps
               <dt>成本估算</dt>
               <dd className="tabular">¥ 0.28</dd>
             </dl>
-            <p className="painting-cost-note">数据缺失显示 —，不显示 0。</p>
+            <p className="painting-cost-note">数据缺失显示 —，不显示 0</p>
           </section>
           <h3>提示词</h3>
           <div className="painting-prompt">

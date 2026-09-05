@@ -701,7 +701,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     <section className={`chat-pane ${className}`} aria-label="AI 对话">
       {llmStatus && !llmStatus.configured && (
         <div className="chat-notice">
-          LLM 未配置：在 backend/.env 填入密钥后重启后端，模型状态会变绿。
+          LLM 未配置：在 backend/.env 填入密钥后重启后端，模型状态会变绿
         </div>
       )}
       <div className="chat-messages" ref={scrollRef}>
