@@ -40,6 +40,7 @@ import runDetailPage from "./pages/GenerationRunDetailPage.tsx?raw";
 import preferences from "./pages/PreferencesPage.tsx?raw";
 import appearanceStore from "./store/appearance.ts?raw";
 import appSource from "./App.tsx?raw";
+import bookshelf from "./pages/BookshelfPage.tsx?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -561,6 +562,28 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // data-theme 只有一个写者（workbench 曾经也写它）
     expect(workbenchStore).not.toMatch(/dataset\.theme/);
     expect(appearanceStore).toContain("root.dataset.theme = resolveTheme(next.theme);");
+  });
+
+  /* 前几轮点名项（书卡右键菜单）定下来的三件事：卡面动作是图标不是句子、
+     右键菜单复用树那一套、没有通路的条目老实写「未开放」。 */
+  it("a book card's action is an icon and its menu is the tree's menu", () => {
+    expect(bookshelf).toMatch(/className="icon-button cover-change-btn"[\s\S]{0,400}<ImagePlus/);
+    expect(bookshelf).not.toMatch(/更换封面\s*<\/button>/);
+    // 32, not 28: the card's 3D lean costs a 28px button 4px of hit width
+    expect(rule(".cover-change-btn")).toContain("width: 32px");
+    // 一套菜单语言：树用的那三个类，不另起一份
+    expect(bookshelf).toContain('className="tree-menu"');
+    expect(bookshelf).toContain('className="tree-menu-item primary"');
+    expect(bookshelf).toContain('className="tree-menu-sep"');
+    // 全局 button.primary 会把这些行刷成实心主色条（字也是主色＝看不见），
+    // 菜单项必须自己声明无底；这条断言是那张截图换来的。
+    expect(rule(".tree-menu-item.primary")).toContain("background: none");
+    // 假按钮比没按钮糟：删除没有通路，就 disabled + 原因
+    expect(bookshelf).toMatch(/disabled\s+title="删除语义未定/);
+    // 鼠标与键盘两扇门
+    expect(bookshelf).toContain("onContextMenu={(event) => openBookMenu(event, novel)}");
+    expect(bookshelf).toContain('event.key === "ContextMenu"');
+    expect(bookshelf).toContain('aria-haspopup="menu"');
   });
 
   it("the appearance panel is four card rows of radios over a miniature, not a swatch", () => {

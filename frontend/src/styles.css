@@ -3130,16 +3130,21 @@ select:focus-visible {
   position: absolute;
   top: 10px;
   right: 10px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 28px;
-  padding: 0 10px;
+  /* 前几轮点名项：动作进了右键，卡面这枚只剩图标。尺寸按 §0.4 的「独立图标 32×32」，
+     不是随手 28：书卡整体被 .book-card 的 3D 斜躺变换转了约 26 度，实测一枚 28px 的钮
+     在屏幕上的命中宽只剩 24px（28 x cos26），刚好卡在审计地板线上。32px 压完是 28.7px。
+     底仍是半透明白加一道内描边 - 它压在封面上，透明底会看不清。 */
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  min-width: 32px;
+  min-height: 0;
+  height: 32px;
+  padding: 0;
   border: 0;
-  border-radius: 14px;
+  border-radius: 16px;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   color: var(--text-1);
-  font-size: 12px;
   box-shadow: inset 0 0 0 1px var(--border);
   opacity: 0;
   transform: translateY(-4px);
@@ -4359,7 +4364,14 @@ body.resizing {
 
 .tree-menu-item:hover:not(:disabled) { background: var(--surface-alt); }
 
-.tree-menu-item.primary { color: var(--accent); }
+.tree-menu-item.primary {
+  color: var(--accent);
+  /* background 必须写在这里：全局 button.primary 是 (0,1,1)，压得过 .tree-menu-item
+     的 (0,1,0)，会把这一行刷成实心主色条、而条上的字也是主色 - 于是菜单第一项
+     在两张截图之前一直是一条看不见的橙块（树菜单同款，本轮才拍到）。
+     「主行动」在菜单里靠颜色说，不靠方框说（§0.6）。 */
+  background: none;
+}
 
 .tree-menu-item.primary:hover:not(:disabled) { background: var(--accent-soft); }
 

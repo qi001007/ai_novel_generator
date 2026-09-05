@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
 import { ImagePlus, Settings, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -22,6 +22,13 @@ const COVER_COLORS = [
   { value: "#7d2f3f", label: "绛" },
   { value: "#37423b", label: "松烟" },
 ];
+
+/* The book card's context menu. Same overlay, same widths, same "未开放" honesty as
+   the tree's - a second menu language for the same app is how controls start to differ
+   in ways nobody decided. */
+const BOOK_MENU_WIDTH = 208;
+
+type BookMenu = { x: number; y: number; id: number; title: string };
 
 /* The stamps come back as naive UTC, so without an explicit zone the browser reads
    them as local and every "3 天前" is off by eight hours. */
@@ -78,8 +85,62 @@ export default function BookshelfPage() {
   const [targetChapters, setTargetChapters] = useState(300);
   const [styleConstraints, setStyleConstraints] = useState("");
   const [busy, setBusy] = useState(false);
+  const [bookMenu, setBookMenu] = useState<BookMenu | null>(null);
+  const bookMenuRef = useRef<HTMLDivElement | null>(null);
+  /* Where the menu came from, so closing it hands the focus back instead of dropping
+     the keyboard reader on the top of the page. */
+  const menuOpener = useRef<HTMLElement | null>(null);
 
   const coverTarget = novels.find((novel) => novel.id === coverEditId) ?? null;
+
+  useEffect(() => {
+    if (!bookMenu) return;
+    function onPointerDown(event: MouseEvent) {
+      if (!bookMenuRef.current?.contains(event.target as Node)) setBookMenu(null);
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      setBookMenu(null);
+      menuOpener.current?.focus();
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [bookMenu]);
+
+  /** The one place that opens the cover editor - the pill on the cover and the menu
+   *  item are two doors onto it, not two implementations. */
+  function openCoverEditor(novel: Novel) {
+    setCoverPreview(novel.cover_image || null);
+    setCoverColor(novel.cover_color ?? "");
+    setCoverError(null);
+    setCoverEditId(novel.id);
+  }
+
+  function openBookMenu(event: ReactMouseEvent | ReactKeyboardEvent, novel: Novel) {
+    event.preventDefault();
+    event.stopPropagation();
+    const host = event.currentTarget as HTMLElement;
+    menuOpener.current = host;
+    const rect = host.getBoundingClientRect();
+    // A keyboard-opened menu has no pointer: it hangs off the card's own top-left.
+    const rawX = "clientX" in event && event.clientX ? event.clientX : rect.left + 14;
+    const rawY = "clientY" in event && event.clientY ? event.clientY : rect.top + 42;
+    setBookMenu({
+      x: Math.max(8, Math.min(rawX, window.innerWidth - BOOK_MENU_WIDTH - 8)),
+      y: Math.max(8, Math.min(rawY, window.innerHeight - 150)),
+      id: novel.id,
+      title: novel.title,
+    });
+  }
+
+  const runBookAction = (action: () => void) => () => {
+    setBookMenu(null);
+    action();
+  };
 
   useEffect(() => {
     if (!coverEditId) return;
@@ -154,10 +215,16 @@ export default function BookshelfPage() {
                 style={novel.cover_color ? ({ "--book-accent": novel.cover_color } as BookVars) : undefined}
                 tabIndex={0}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" && event.target === event.currentTarget) {
+                  if (event.target !== event.currentTarget) return;
+                  if (event.key === "Enter") {
                     void selectNovel(novel.id).then(() => navigate(`/novels/${novel.id}`));
                   }
+                  // Windows' own convention for "the context menu, but from the keyboard"
+                  if (event.key === "F10" && event.shiftKey) openBookMenu(event, novel);
+                  if (event.key === "ContextMenu") openBookMenu(event, novel);
                 }}
+                onContextMenu={(event) => openBookMenu(event, novel)}
+                aria-haspopup="menu"
                 onClick={async () => {
                   await selectNovel(novel.id);
                   navigate(`/novels/${novel.id}`);
@@ -178,20 +245,19 @@ export default function BookshelfPage() {
                       {novel.title.slice(0, 1)}
                     </span>
                   )}
+                  {/* 前几轮点名项：动作收进右键，卡面这一枚改成纯图标（「按钮能用图标
+                      就用图标」）。名字在 aria-label 与 title 里，说清是给哪本书换封面。 */}
                   <button
                     type="button"
-                    className="cover-change-btn"
+                    className="icon-button cover-change-btn"
                     aria-label={`更换「${novel.title}」封面`}
+                    title={`更换「${novel.title}」封面`}
                     onClick={(event) => {
                       event.stopPropagation();
-                      setCoverPreview(novel.cover_image || null);
-                      setCoverColor(novel.cover_color ?? "");
-                      setCoverError(null);
-                      setCoverEditId(novel.id);
+                      openCoverEditor(novel);
                     }}
                   >
-                    <ImagePlus size={14} />
-                    更换封面
+                    <ImagePlus size={16} />
                   </button>
                   {/* 批注 24: the whole cover is the target and already navigates. */}
                   <div className="book-meta">
@@ -235,6 +301,51 @@ export default function BookshelfPage() {
           </div>
         )}
       </main>
+      {bookMenu ? (
+        <div
+          ref={bookMenuRef}
+          className="tree-menu"
+          role="menu"
+          aria-label={`《${bookMenu.title}》的操作`}
+          style={{ left: bookMenu.x, top: bookMenu.y, width: BOOK_MENU_WIDTH }}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-menu-item primary"
+            onClick={runBookAction(() => {
+              void selectNovel(bookMenu.id).then(() => navigate(`/novels/${bookMenu.id}`));
+            })}
+          >
+            <span>打开作品</span>
+            <kbd>Enter</kbd>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-menu-item"
+            onClick={runBookAction(() => {
+              const novel = novels.find((item) => item.id === bookMenu.id);
+              if (novel) openCoverEditor(novel);
+            })}
+          >
+            <span>更换封面…</span>
+            <kbd>悬停图标</kbd>
+          </button>
+          <div className="tree-menu-sep" />
+          {/* 与树的「重命名 / 删除」同一口径：没有通路就明说未开放，不摆一个会 405 的钮。 */}
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-menu-item"
+            disabled
+            title="删除语义未定：与「反馈记录进不进文件层」「人物删除必然 405」是同一条决策"
+          >
+            <span>删除作品</span>
+            <kbd>未开放</kbd>
+          </button>
+        </div>
+      ) : null}
       {coverTarget ? (
         <div
           className="wizard-backdrop"

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -110,6 +110,61 @@ describe("BookshelfPage", () => {
 
     await waitFor(() => expect(puts.length).toBe(1));
     expect(puts[0]).toEqual({ cover_color: "#2f6b57" });
+  });
+
+  /* 前几轮点名项：书卡右键菜单。两条纪律一起钉 - 菜单里不许有会 405 的假按钮，
+     卡面那枚动作钮不许再带文字（「按钮能用图标就用图标」）。 */
+  it("opens a context menu on the book card and keeps 删除 honest about not existing", async () => {
+    const user = userEvent.setup();
+    const { container } = renderShelf();
+    const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
+
+    expect(within(card).getByRole("button", { name: "更换「演示测试」封面" }).textContent).toBe("");
+
+    fireEvent.contextMenu(card);
+    const menu = await screen.findByRole("menu", { name: "《演示测试》的操作" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "打开作品Enter",
+      "更换封面…悬停图标",
+      "删除作品未开放",
+    ]);
+    const del = within(menu).getByRole("menuitem", { name: /删除作品/ }) as HTMLButtonElement;
+    expect(del.disabled).toBe(true);
+    expect(del.getAttribute("title")).toContain("删除语义未定");
+
+    // 点菜单项只开弹窗，不许顺带把读者送进工作台
+    await user.click(within(menu).getByRole("menuitem", { name: /更换封面/ }));
+    expect(await screen.findByRole("dialog", { name: "封面编辑" })).toBeTruthy();
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(container.querySelector(".book-card")).toBeTruthy();
+  });
+
+  it("closes the book menu with Escape and gives the focus back to the card", async () => {
+    const user = userEvent.setup();
+    const { container } = renderShelf();
+    const card = container.querySelector(`.book-card[data-novel-id="2"]`) as HTMLElement;
+
+    fireEvent.contextMenu(card);
+    expect(await screen.findByRole("menu", { name: "《日向家的叛忍》的操作" })).toBeTruthy();
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(card);
+
+    // 点外面同样算关
+    fireEvent.contextMenu(card);
+    await screen.findByRole("menu");
+    await user.click(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("opens the same menu from the keyboard, without a mouse", async () => {
+    const user = userEvent.setup();
+    const { container } = renderShelf();
+    const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
+    card.focus();
+    await user.keyboard("{Shift>}{F10}{/Shift}");
+    expect(await screen.findByRole("menu", { name: "《演示测试》的操作" })).toBeTruthy();
   });
 
 });
