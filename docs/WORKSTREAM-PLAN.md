@@ -721,6 +721,24 @@
       测试：前端 92 → **107**（新增 13 条不变量 + 2 条 MarkdownText 行为）；
       `tsc -b --force` 干净（为此加了 `src/node-shims.d.ts` 五行声明，
       不为一个测试把 `@types/node` 拉进浏览器工程）；build 干净；命中区审计 0/0/0。
+
+- [x] **第十五批·批注 3.3（2026-09-05）：一份 draft buffer，正文页只是它的投影**：
+      这批第一条，也是唯一一条会**丢字**的。责任提交是我自己：`a25597b` 之前的形态是
+      workbench 存 `chapterDrafts/draftContent/draftSaved`、files 存
+      `entries["chapters/NNNN/draft.md"]`，两份 buffer 写同一个后端投影，后存的把先存的抹掉。
+      现在 files 的 entry 是唯一 buffer，`draftBody()` 剥结构行给出正文、`draftDocument()` 装回去，
+      两者按字节互逆（round-trip 写成测试，含「末尾回车不被吃」这条边界）；
+      `saveChapter` 改为走 `useFiles.save`，写通路仍是唯一那条文件层 `PUT`（D-01 未动）。
+      顺手清掉两处同族丢字：`closeTab` 不再删 buffer；`selectNovel` reset 文件层——
+      `chapters/0001/draft.md` 在两本书里是同一个字符串，不清就是拿甲书的字充乙书。
+      真机（作品 5 第 4 章，裸 Edge + CDP 真键盘）：源码页敲的字正文页立刻见、正文页敲的字源码页立刻见、
+      一次 Ctrl+S 后服务器文件 `len 48` 两条都在、DB 章节行 `word_count 12`、三处未保存点同时归零、
+      刷新后正文页读回 `len 12` 且结构行不上屏。测试数据已还原（ch3/ch4 均回到 `len 34` 空骨架）。
+      门禁：后端 180 passed；前端 109 → **112 passed / 17 files**；`tsc -b --force` 干净；
+      build 干净；命中区审计 0 small / 0 clipped / 0 unreachable。
+      不变量同步：`uiInvariants.test.ts` 里「树读的是同一份 buffer」那条从
+      `chapterDrafts` 改钉 `useFiles` + `draftPath`，并新增反向断言——workbench 里再出现
+      `chapterDrafts`／`draftSaved` 就红，防止第二份 buffer 悄悄长回来。
 ---
 
 ## 三、历史（已完成，只留一行结论）
