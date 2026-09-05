@@ -32,10 +32,12 @@ const CHAT_MIN = 400;
    column: the tree row, the chat composer and the editor toolbar all stop fitting,
    so continuing to drag is fighting a strip that cannot hold anything. */
 const CLOSE_AT = 90;
-/* Bringing the prose column back has to bring it back readable. A drag that closed
-   it left the chat pane holding nearly the whole window, so a plain un-hide came
-   back as a 113px strip - measured. The chat pane gives the room back. */
-const EDITOR_MIN = 420;
+/* The prose column's own floor, and it is higher than CLOSE_AT on purpose: below
+   this the toolbar stops fitting and the actions (机械校验 / AI 自检 / 通过终审 / 打回 /
+   事实落库) get pushed past the right edge and eaten by overflow:hidden - measured at
+   a 24px toolbar with every action reporting hit:false (第十五批批注 2.1). So the
+   column is either at least this wide or it is away, never a clipped sliver. */
+const EDITOR_MIN = 160;
 const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 const PANE_STORAGE_KEY = "workbench.panes";
 const HIDDEN_STORAGE_KEY = "workbench.hidden";
@@ -63,7 +65,9 @@ function readHidden(): Hidden {
    window has left after the rail, the tree, the two seams and CLOSE_AT. It used to
    reserve a flat 560px, which meant the editor could never be dragged shut. */
 function chatMax(sidebar: number) {
-  return Math.max(CHAT_MIN, window.innerWidth - 44 - sidebar - 2 - CLOSE_AT);
+  // 0, not CHAT_MIN: a ceiling must not carry a floor of its own, or on a narrow
+  // window the chat pane's minimum wins and the prose column is the one that pays.
+  return Math.max(0, window.innerWidth - 44 - sidebar - 2 - EDITOR_MIN);
 }
 
 function chatDefault(sidebar: number) {
@@ -71,8 +75,12 @@ function chatDefault(sidebar: number) {
 }
 
 function clampPane(pane: PaneKey, value: number, sidebar = SIDEBAR_DEFAULT) {
-  const min = pane === "sidebar" ? SIDEBAR_MIN : CHAT_MIN;
   const max = pane === "sidebar" ? SIDEBAR_MAX : chatMax(sidebar);
+  /* A floor may never sit above its own ceiling. The chat pane's minimum used to
+     win over the maximum, which is how a 860px window ended up with a 114px prose
+     column: 400 for the chat, whatever is left for the editor. On a narrow window
+     the chat pane now gives room back instead of the editor being crushed. */
+  const min = Math.min(pane === "sidebar" ? SIDEBAR_MIN : CHAT_MIN, max);
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
@@ -198,6 +206,29 @@ export default function WorkbenchPage() {
 
   const sidebarWidth = clampPane("sidebar", panes.sidebar);
   const chatWidth = charactersOpen ? 0 : clampPane("chat", panes.chat, sidebarWidth);
+
+  /* A narrower window does not re-render this component on its own, so the chat
+     pane kept the pixel width it had on a wider screen and the prose column - the
+     only 1fr track - collapsed to whatever was left. That is how the toolbar got to
+     24px with every action reporting hit:false (第十五批批注 2.1). Re-clamp on
+     resize with the same rule a drag applies, and only if the prose column still
+     cannot reach its floor does it go away: a column that does not fit is a column
+     that is not on screen, never a clipped one. Everything is recomputed from the
+     stored widths here rather than read off the last render, whose pixel values
+     belonged to the old window and closed the column for no reason. */
+  useEffect(() => {
+    function onResize() {
+      const sidebar = clampPane("sidebar", panes.sidebar);
+      const chat = clampPane("chat", panes.chat, sidebar);
+      if (sidebar !== panes.sidebar || chat !== panes.chat) setPanes({ sidebar, chat });
+      if (hidden.editor || hidden.chat) return;
+      const used = 44 + (hidden.sidebar ? 0 : sidebar + 1) + chat + 1;
+      if (window.innerWidth - used < EDITOR_MIN) setHidden({ ...hidden, editor: true });
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [panes, hidden]);
+
   // Tracks are built to match what is actually rendered: hidden panels become
   // display:none, and a track left over with no item in it is a dead gap.
   const columns = (() => {
@@ -260,7 +291,7 @@ export default function WorkbenchPage() {
       closePane(pane);
       return true;
     }
-    if (editorWidthIf(pane, raw) < CLOSE_AT) {
+    if (editorWidthIf(pane, raw) < EDITOR_MIN) {
       // The prose column is the one being crushed: put it away and stop, or the
       // pointer keeps dragging a column that is no longer there.
       closePane("editor");

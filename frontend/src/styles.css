@@ -768,6 +768,12 @@ select:focus-visible {
   --thread-max: 56rem;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Same bounded-column rule as .editor-pane: a grid item's automatic minimum size
+     is its content, so on a narrow window the thread painted over the editor's
+     toolbar and the actions stopped answering the pointer (elementFromPoint on
+     "AI 自检" returned div.chat-messages). min-width: 0 keeps each column inside
+     its own track (第十五批批注 2.1). */
+  min-width: 0;
   min-height: 0;
   background: var(--surface-alt);
 }
@@ -782,6 +788,8 @@ select:focus-visible {
 
 .chat-dock {
   grid-row: 3;
+  /* same reason as .chat-messages - it is the other item in that column */
+  min-width: 0;
 }
 
 .chat-notice {
@@ -793,6 +801,11 @@ select:focus-visible {
 }
 
 .chat-messages {
+  /* A grid item's automatic minimum size is its content, and the thread's content
+     is a long paragraph: measured at 328px inside a 214px column, so the thread
+     painted over the editor's toolbar and two actions stopped answering the
+     pointer. 0 lets the text wrap inside its own column instead (第十五批批注 2.1). */
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   /* 批注 2: an answer that starts at the pixel next to the border reads as a
@@ -1652,6 +1665,7 @@ select:focus-visible {
 .editor-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 4px 12px;
   background: var(--bg);

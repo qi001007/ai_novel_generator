@@ -790,6 +790,27 @@
       测试：新增 3 条（三栏各一，含「回来至少能用」），前端 115 → **118 passed / 17 files**；
       `tsc -b --force` 干净；build 干净；命中区审计两种台面 0/0/0；后端 180 passed。
       第四节那条同义老账已划掉。
+
+- [x] **第十五批·批注 2.1（2026-09-05）：工具栏动作一个都不许消失，顺带扫掉同族两桩**：
+      判据是「拖到 400px 不许消失」，选了换行这条路（`.editor-toolbar` 加 `flex-wrap: wrap`，
+      `.editor-actions` 本来就有）。实测 400px 两行 73px、300px 三行 103px，六个动作
+      `visible && hit` 全 true。
+      量出来的两桩更严重的同类，都是「看得见点不到」：
+      ① 窗口 resize 后组件不重渲染 → 对话栏留着旧像素宽、唯一的 `1fr` 正文列被挤成 **24px**，
+      六个动作 `hit:false` 全灭——这就是主人说的「直接消失」；新增 resize 夹紧（回调内现算，
+      不吃上一次渲染的像素值，我第一版就是这么写错、把 860px 误判成放不下而误关正文列）；
+      ② 网格项自动最小尺寸 = 内容：`.chat-messages` 在 214px 栏里实测 328px，溢出去盖正文列，
+      `elementFromPoint("AI 自检")` 返回 `div.chat-messages`。`.chat-pane/.chat-messages/.chat-dock`
+      补 `min-width: 0`，与 §1.1 那条 `.editor-pane` 同族——这次一次扫完。
+      规则收口：`EDITOR_MIN = 160`（正文列放不下就关，不留裁切）；地板不得高于天花板
+      （`clampPane` 里 `min(CHAT_MIN, max)`，原来 `chatMax` 自带 `max(CHAT_MIN,…)` 的地板
+      在窄窗口反向压垮正文列）。
+      审计脚本自身的假警报也修了：最后一行 `brief.md` 压在视口底边（y1010>1000）被记成
+      `small 121x21`，现单列 `edge` 一类报出来，不静默吞掉。
+      真机扫描 1656／1200／1000／860／720 五档：`paneOverflow 0`、不可见不可点 0。
+      `uiInvariants` 17 → **18** 块（钉三处 `min-width: 0`、工具栏两处 `flex-wrap`、
+      `EDITOR_MIN` 与地板不得高于天花板）。前端 118 → **119 passed**；tsc/build 干净；
+      命中区审计 0 small / 0 clipped / 0 unreachable（edge 单列 2 项，均为窗口边界）。
 ---
 
 ## 三、历史（已完成，只留一行结论）

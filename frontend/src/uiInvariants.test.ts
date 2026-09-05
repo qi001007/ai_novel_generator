@@ -25,6 +25,7 @@ import chatPane from "./components/ChatPane.tsx?raw";
 import editorPane from "./components/EditorPane.tsx?raw";
 import workbenchStore from "./store/workbench.ts?raw";
 import fileEditor from "./components/FileEditorPane.tsx?raw";
+import layout from "./pages/WorkbenchPage.tsx?raw";
 import filesStore from "./store/files.ts?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
 import tocList from "./components/TocListView.tsx?raw";
@@ -64,6 +65,24 @@ describe("settled UI decisions must not regress", () => {
   it("the thread's bar fades without moving the page (第十二批批注2.1)", () => {
     expect(rule(".chat-messages")).toContain("scrollbar-gutter: stable both-edges");
     expect(css).toMatch(/\.chat-messages:hover::-webkit-scrollbar-thumb/);
+  });
+
+  it("no resizable column may paint over its neighbour, and the toolbar wraps (第十五批批注 2.1)", () => {
+    // Every pane inside a dragged column has to be bounded, or a grid item's
+    // content-sized minimum spills into the next column. Measured: the thread was
+    // 328px wide in a 214px column and covered two editor actions, which then
+    // answered elementFromPoint as div.chat-messages - a control that is there but
+    // cannot be clicked is worse than a missing one.
+    for (const sel of [".editor-pane", ".chat-pane", ".chat-messages", ".chat-dock", ".file-editor"]) {
+      expect(rule(sel), sel + " must stay in its own track").toContain("min-width: 0");
+    }
+    // The prose column's own floor lives in the layout, not in a hopeful CSS value:
+    // below it the column is closed rather than clipped.
+    expect(layout).toContain("const EDITOR_MIN = 160");
+    expect(layout).toContain("min(pane === \"sidebar\" ? SIDEBAR_MIN : CHAT_MIN, max)");
+    // and the actions stay reachable by wrapping instead of being pushed out
+    expect(rule(".editor-toolbar")).toContain("flex-wrap: wrap");
+    expect(rule(".editor-actions")).toContain("flex-wrap: wrap");
   });
 
   it("the two tab strips shrink and stop at the same two numbers (第十五批批注 1.1、1.2)", () => {
