@@ -10,7 +10,8 @@ import { useWorkbench } from "../store/workbench";
 import type { FileDoc } from "../types";
 
 vi.mock("../api", () => ({
-  api: { listFiles: vi.fn(), readFile: vi.fn(), writeFile: vi.fn() },
+  api: {
+    get: vi.fn(async () => []), listFiles: vi.fn(), readFile: vi.fn(), writeFile: vi.fn() },
 }));
 
 import { api } from "../api";

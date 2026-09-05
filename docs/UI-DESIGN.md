@@ -271,7 +271,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 章节标签**只有一个点** | `EditorPane` 不含 `StatusBadge` | 第十二批批注 1 |
 | 换人**留 52px** | `.chat-row.user + .chat-row.assistant` 的 `margin-top: 40px` | 第十三批批注 5、7 |
 | 深色「灰」= 主人给的 #191A1B | `--surface-alt: #191a1b`、`--surface: #1f2023` | 第十轮批注 1 |
-| 人物文件的渲染视图是**人物卡片**，不是排版后的 markdown | `settings/characters/N.md` → `CharacterDocCard`；`.character-doc-overlay` 用 `inset: 0` 且无像素偏移；`showRendered` 排除人物路径；分级词只有一张表 `LEVEL_LABELS` | 第十五批批注 3.1 |
+| 人物文件的渲染视图是**那张可编辑的人物卡**（与弹窗同一个组件），不是排版后的 markdown，也不是第二张只读卡 | `settings/characters/N.md` → `CharacterDocForm` → `CharacterFormCard`；文本写回走 `useFiles.save(path)` 一条口、照片走它自己的窄端点；`.character-doc-overlay` 用 `inset: 0`；只读的 `CharacterDocCard` 与 `.character-doc {` 反向钉死不许回来；分级词与文档互转只有一处 `CharacterFormCard` | 第十五批批注 3.1 + 第十六批批注 7 |
 | 列内容**不得溢出自己的轨道**，工具栏放不下就换行 | `.editor-pane/.chat-pane/.chat-messages/.chat-dock/.file-editor` 全有 `min-width: 0`；`.editor-toolbar` 与 `.editor-actions` 都 `flex-wrap: wrap`；正文列底线 `EDITOR_MIN = 160` | 第十五批批注 2.1 |
 | 拖分栏边界到极限**就关掉那一栏**，三栏一致；**同一次手势反向拖回来即可重开**；图标是同一状态的另一扇门 | `applyPane` 一个可逆判据（指针与方向键共用，只有 `pointerup` 结束手势）；同方向连按仍幂等（已隐藏时以 `CLOSE_AT-1` 为基准）；`hiddenRef` 镜像 + 函数式写入，闭包里的旧快照不许用来判「是不是已经关了」；正文栏回来时至少 420px | 第十五批批注 2.2 + 第十六批批注 9 |
 | 标签条**要能真的溢出**：容器必须给它一条有界的列 | `.editor-pane` 有 `grid-template-columns: minmax(0, 1fr)` + `min-width: 0`；`.editor-tab` 与 `.file-tab` 的 min/max/flex 三个数相同（5.5rem / 15rem / `0 1 auto`） | 第十五批批注 1.1、1.2 |

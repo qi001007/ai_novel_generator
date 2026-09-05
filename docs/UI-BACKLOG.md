@@ -124,7 +124,7 @@
   `endsDot:false`。连带改两条既有测试的断言文本（`EditorPane.test`、`BookshelfPage.test`，
   改断言不删断言）。前端 131 → **132 passed / 18 files**。
 
-### 16.7 人物渲染视图应直接复用那张可编辑的卡（批注 7）
+### 16.7 ✅ 人物渲染视图应直接复用那张可编辑的卡（批注 7）
 
 - 主人：「你这里的人物界面里的卡片完全可以用。那个卡片是可编辑的，而且可以更改照片。
   你没有必要在这里重新做一个，直接复用那个卡片，在这里呈现就可以了，你现在这个反而不能编辑」。
@@ -135,6 +135,35 @@
   一并删除（它是我上一轮造的，删自己造的属清理，不属删除语义）。
 - ⚠ 连带已知缺陷（**本条不顺手修**）：卡上「删除人物」调的
   `DELETE /api/novels/{id}/characters/{cid}` 端点不存在，必然 405，属删除语义那条决策。
+- **已做（2026-09-05 真机改过、存过、并把数据还原了）**。做法是**把弹窗那张卡搬出来共用**，
+  不是再画一张：
+  · 新增 `components/CharacterFormCard.tsx` —— 卡片本体 + 文档↔表单互转
+    （`formFromCharacterDoc` / `fillCharacterDoc`）+ `isCharacterDoc` / `characterDocId` /
+    `LEVEL_LABELS` / `LONG_FIELDS` 全在这一处；`CharacterLibrary` 的弹窗改为渲染它
+    （行为不变，含「未保存的人物铅笔禁用」这条我在抽取时弄丢、被测试抓回来的守卫）；
+  · 新增 `components/CharacterDocForm.tsx` —— 文件面板里的宿主：表单值取自**缓冲区**
+    （未保存的字照样上卡），改动就地写回投影文本，保存走 `useFiles.save(path)` 这一条口；
+    照片是 base64 资产、不是正文，沿用弹窗那条窄端点（D-15 原口径）；
+  · **删除** `CharacterDocCard.tsx` 与其测试，`.character-doc*` 六条 CSS 一并删；
+    解析用例迁进 `CharacterFormCard.test.tsx`，并补「读写只动四个 bullet、其余字节不变」
+    与「round-trip」两条。
+  真机（`novels/5/settings/characters/6.md`）：卡片 752×436、姓名输入框 = 沈砚舟、
+  分级下拉 = protagonist、起始/结束章 = 1/12、四个长字段带铅笔预览、结构行未上屏；
+  分级改成 boss → **源码那一行同步变成 `- **分级**：boss`**、标签页脏点亮起；
+  点保存 → 服务器写入、脏点熄灭；再改回 protagonist 存回，实测 `len 210`、
+  与基线**逐字节相同**、revision 回到 `cc375383eb90`。
+- 顺带修掉一处**既存**缺陷（卡片搬进文件面板后才暴露）：`.character-modal input`
+  （特异性 0,2,0）压过 `.portrait-input`（0,1,0），把那个「视觉隐藏但可键盘到达」的
+  file input 撑成 **808×34**——`clip-path: inset(50%)` 还在，但盒子巨大、中心被
+  「贴照片」按钮盖住，审计报 unreachable。升选择器特异性压回，实测 1×1、`unreachable: 0`。
+- 审计脚本两处改动（`.scratch/` 不入 git，故记在此）：① `STEP` 2 → 1（半像素框每边白丢
+  1px 的假警报）；② 新增 `srOnly` 桶并在末尾打印——1×1 + clip 的元素本就不是点击目标，
+  单列一类而不是静默跳过，免得真被埋的控件混进去。所以本轮门禁期望值是
+  **0 clipped / 0 unreachable / 1 small（16.10 那条复制钮）/ 1 srOnly（照片输入框）**。
+- `uiInvariants` 23 → **24** 块；第十五批 3.1 那块没删、换了宿主并**加严**（钉
+  `<CharacterDocForm`、钉卡上有「贴照片／更换照片」、钉 `saveFile(path)` 是唯一写口、
+  反向钉 `CharacterDocCard` 与 `.character-doc {` 不许回来、`inset: 0` 原样保留）。
+  前端 134 → **138 passed / 18 files**；tsc／build 干净。
 
 ### 16.8 ✅ 没有专属渲染视图的文档，点切换钮不该跳变（批注 8）
 

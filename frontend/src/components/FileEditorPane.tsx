@@ -31,7 +31,8 @@ import {
 } from "./minimap";
 import HScrollThumb from "./HScrollThumb";
 import ViewToggle from "./ViewToggle";
-import CharacterDocCard, { isCharacterDoc } from "./CharacterDocCard";
+import CharacterDocForm from "./CharacterDocForm";
+import { isCharacterDoc } from "./CharacterFormCard";
 import TocListView, { parseToc, renderToc } from "./TocListView";
 import { useWorkbench } from "../store/workbench";
 
@@ -472,12 +473,12 @@ export default function FileEditorPane() {
             <TocListView />
           </div>
         ) : null}
-        {/* 批注 2: the same relation, everywhere. Read-only typesetting of the draft
-            the reader is editing - unsaved words included, so toggling never hides
-            their own edits. Editing happens in the source view. */}
+        {/* 第十六批批注 7: this is the card the dialog uses, not a read-only copy of
+            it - editable, and the photo can be changed here. It reads the buffer, so
+            unsaved words still show, and it writes through the one file writer. */}
         {showCharacterCard && entry?.doc ? (
           <div className="character-doc-overlay">
-            <CharacterDocCard text={entry.draft} />
+            <CharacterDocForm path={active!} />
           </div>
         ) : null}
         <div className="file-code">

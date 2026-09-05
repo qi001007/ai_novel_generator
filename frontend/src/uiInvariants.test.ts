@@ -27,7 +27,8 @@ import workbenchStore from "./store/workbench.ts?raw";
 import fileEditor from "./components/FileEditorPane.tsx?raw";
 import layout from "./pages/WorkbenchPage.tsx?raw";
 import filesStore from "./store/files.ts?raw";
-import cardView from "./components/CharacterDocCard.tsx?raw";
+import characterFormCard from "./components/CharacterFormCard.tsx?raw";
+import characterDocForm from "./components/CharacterDocForm.tsx?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
 import tocList from "./components/TocListView.tsx?raw";
 import viewToggle from "./components/ViewToggle.tsx?raw";
@@ -69,13 +70,25 @@ describe("settled UI decisions must not regress", () => {
     expect(css).toMatch(/\.chat-messages:hover::-webkit-scrollbar-thumb/);
   });
 
-  it("a character file renders as the card, not as typeset markdown (第十五批批注 3.1)", () => {
-    // The owner named the path: opening settings/characters/6.md and pressing the
-    // button has to show the card. A .file-rendered overlay of the same bytes is
-    // what it used to be, and that is still "a file", not the thing the file is for.
-    expect(cardView).toContain("character-doc");
+  it("a character file renders as THE card - the editable one (第十五批批注 3.1 + 第十六批批注 7)", () => {
+    // 3.1 said "not typeset markdown"; the owner then pointed out that what I shipped
+    // was a second, read-only card: 「你没有必要在这里重新做一个，直接复用那个卡片」. So the
+    // rendered view is the dialog's own card, and there is exactly one of it.
     expect(fileEditor).toContain("character-doc-overlay");
+    expect(fileEditor).toContain("<CharacterDocForm");
     expect(fileEditor).toContain("isCharacterDoc");
+    expect(characterDocForm).toContain("<CharacterFormCard");
+    // the card really is the editable one: fields as controls, and the photo control
+    expect(characterFormCard).toContain('label>\n            姓名');
+    expect(characterFormCard).toContain("更换照片");
+    expect(characterFormCard).toContain("贴照片");
+    // and it writes the projection in place, through the one file writer
+    expect(characterFormCard).toContain("export function fillCharacterDoc");
+    expect(characterDocForm).toContain("saveFile(path)");
+    // the read-only copy must not come back alongside it
+    expect(fileEditor).not.toContain("CharacterDocCard");
+    expect(css).not.toMatch(/\.character-doc \{/);
+    expect(css).not.toMatch(/\.character-doc-fields/);
     // one label function decides what the button offers, for every kind
     expect(filesStore).toContain('return "人物卡片"');
     // and the card covers its own body the way the directory list does - inset: 0,

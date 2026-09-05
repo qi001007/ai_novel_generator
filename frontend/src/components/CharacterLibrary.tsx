@@ -1,49 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../api";
 import { useFiles } from "../store/files";
 import type { Character, FileDoc, FileWriteResult } from "../types";
-
-/** The one path a character document lives at (DECISIONS D-15). */
-const NEW_CHARACTER_PATH = "settings/characters/new.md";
-const characterDocPath = (id: number | null) =>
-  id === null ? NEW_CHARACTER_PATH : `settings/characters/${id}.md`;
-
-/** Frame 26: the long fields are prose, so the modal only previews them. */
-type LongFieldKey = "identity" | "goals" | "behavior_constraints" | "current_status";
-const LONG_FIELDS: { key: LongFieldKey; label: string }[] = [
-  { key: "identity", label: "身份" },
-  { key: "goals", label: "目标" },
-  { key: "behavior_constraints", label: "行为约束" },
-  { key: "current_status", label: "当前状态" },
-];
-
-type CharacterForm = {
-  id: number | null;
-  name: string;
-  level: string;
-  portrait: string;
-  identity: string;
-  goals: string;
-  behavior_constraints: string;
-  current_status: string;
-  expected_start_chapter: number | null;
-  expected_end_chapter: number | null;
-};
-
-const emptyForm: CharacterForm = {
-  id: null,
-  name: "",
-  level: "supporting",
-  portrait: "",
-  identity: "",
-  goals: "",
-  behavior_constraints: "",
-  current_status: "",
-  expected_start_chapter: null,
-  expected_end_chapter: null,
-};
+import CharacterFormCard from "./CharacterFormCard";
+import type { CharacterForm, LongFieldKey } from "./CharacterFormCard";
+import {
+  characterDocPath,
+  emptyForm,
+  fillCharacterDoc,
+  LEVEL_LABELS,
+  NEW_CHARACTER_PATH,
+} from "./CharacterFormCard";
 
 const levelTabs = [
   { key: "all", label: "全部" },
@@ -53,37 +21,8 @@ const levelTabs = [
   { key: "extra", label: "龙套" },
 ] as const;
 
-/* Shared with the document's rendered view, so one level never reads two ways. */
-export const LEVEL_LABELS: Record<string, string> = {
-  protagonist: "主角团",
-  supporting: "重要配角",
-  boss: "小 Boss",
-  extra: "龙套",
-};
-
 function toForm(character: Character): CharacterForm {
-  return { ...character };
-}
-
-/* The character document is the projection the server renders, so the form edits that
-   text in place instead of re-deriving a second format here. Anything the writer does
-   not recognise comes back as a structure error, which is the point. */
-function setBullet(text: string, label: string, value: string): string {
-  const re = new RegExp("^- \\*\\*" + label + "\\*\\*：[^\\n]*", "m");
-  return re.test(text) ? text.replace(re, "- **" + label + "**：" + value) : text;
-}
-
-
-function fillCharacterDoc(text: string, form: CharacterForm): string {
-  let out = text;
-  out = setBullet(out, "姓名", form.name.trim());
-  out = setBullet(out, "分级", form.level);
-  out = setBullet(out, "起始章", form.expected_start_chapter === null ? "—" : String(form.expected_start_chapter));
-  out = setBullet(out, "结束章", form.expected_end_chapter === null ? "—" : String(form.expected_end_chapter));
-  // The four sections are deliberately not written from here: the modal opens with a
-  // snapshot, and a snapshot saved after someone edited the file would overwrite
-  // their work with stale text. Long fields belong to the editor now (帧 26).
-  return out;
+  return { ...emptyForm, ...character };
 }
 
 export default function CharacterLibrary({ novelId }: { novelId: number | null }) {
@@ -94,7 +33,6 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const portraitRef = useRef<HTMLInputElement>(null);
   const openFile = useFiles((state) => state.open);
 
   // Hand the caret to FileEditorPane at the matching section. revealSeq is bumped
@@ -296,129 +234,22 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
             if (event.target === event.currentTarget) setEditing(null);
           }}
         >
-          <div className="character-modal" role="dialog" aria-modal="true" aria-label="人物详情">
-            <header>
-              <h2>{editing.id ? "编辑人物" : "新建人物"}</h2>
-              <button type="button" className="icon-button" aria-label="关闭" onClick={() => setEditing(null)}>
-                <X size={16} />
-              </button>
-            </header>
-            <div className="modal-grid">
-              <div className="modal-profile">
-                <div className="portrait-field">
-                  <span className="avatar large" aria-hidden="true">
-                    {editing.portrait ? (
-                      <img src={editing.portrait} alt={`${editing.name || "新人物"} 照片`} />
-                    ) : (
-                      editing.name.charAt(0) || "?"
-                    )}
-                  </span>
-                  <div className="portrait-actions">
-                    <button
-                      type="button"
-                      className="portrait-button"
-                      onClick={() => portraitRef.current?.click()}
-                    >
-                      {editing.portrait ? "更换照片" : "贴照片"}
-                    </button>
-                    {editing.portrait ? (
-                      <button
-                        type="button"
-                        className="ghost-danger"
-                        onClick={() => setEditing({ ...editing, portrait: "" })}
-                      >
-                        移除
-                      </button>
-                    ) : null}
-                  </div>
-                  <input
-                    ref={portraitRef}
-                    type="file"
-                    accept="image/*"
-                    className="portrait-input"
-                    aria-label="上传人物照片"
-                    onChange={(event) => {
-                      pickPortrait(event.target.files?.[0]);
-                      event.target.value = "";
-                    }}
-                  />
-                  <p className="portrait-hint">方形照片效果最好，2MB 以内</p>
-                </div>
-                <label>
-                  姓名
-                  <input
-                    value={editing.name}
-                    onChange={(event) => setEditing({ ...editing, name: event.target.value })}
-                  />
-                </label>
-                <label>
-                  分级
-                  <select
-                    value={editing.level}
-                    onChange={(event) => setEditing({ ...editing, level: event.target.value })}
-                  >
-                    <option value="protagonist">主角团</option>
-                    <option value="supporting">重要配角</option>
-                    <option value="boss">小 Boss</option>
-                    <option value="extra">龙套</option>
-                  </select>
-                </label>
-                <div className="number-pair">
-                  <label>
-                    起始章
-                    <input
-                      type="number"
-                      value={editing.expected_start_chapter ?? ""}
-                      onChange={(event) => setEditing({
-                        ...editing,
-                        expected_start_chapter: event.target.value ? Number(event.target.value) : null,
-                      })}
-                    />
-                  </label>
-                  <label>
-                    结束章
-                    <input
-                      type="number"
-                      value={editing.expected_end_chapter ?? ""}
-                      onChange={(event) => setEditing({
-                        ...editing,
-                        expected_end_chapter: event.target.value ? Number(event.target.value) : null,
-                      })}
-                    />
-                  </label>
-                </div>
-              </div>
-              <div className="modal-fields">
-                <p className="long-field-hint">以下为长字段：弹窗内只读预览，编辑回文件层</p>
-                {LONG_FIELDS.map((item) => {
-                  const value = editing[item.key];
-                  return (
-                    <div className="long-field" key={item.key}>
-                      <span className="long-field-label">{item.label}</span>
-                      <div className="long-field-box">
-                        <p className={value ? "long-field-text" : "long-field-text blank"}>{value || "—"}</p>
-                        <button
-                          type="button"
-                          className="long-field-edit"
-                          aria-label={`在文件中编辑${item.label}`}
-                          title={
-                            editing.id
-                              ? `在右栏打开 ${editing.id}.md 并定位到「${item.label}」`
-                              : "先保存人物，再在文件中编辑"
-                          }
-                          disabled={!editing.id}
-                          onClick={() => editInFile(item.key)}
-                        >
-                          <Pencil size={13} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-            <footer>
-              {editing.id && (
+          {/* 第十六批批注 7: the card itself is no longer written here - the file pane
+              shows the same one, so the two cannot drift apart. */}
+          <CharacterFormCard
+            value={editing}
+            onChange={setEditing}
+            onSave={() => void save()}
+            onCancel={() => setEditing(null)}
+            onPickPortrait={pickPortrait}
+            onRemovePortrait={() => setEditing({ ...editing, portrait: "" })}
+            onEditLongField={editInFile}
+            busy={busy}
+            error={error}
+            title={editing.id ? "编辑人物" : "新建人物"}
+            onClose={() => setEditing(null)}
+            extra={
+              editing.id ? (
                 deleteArmed ? (
                   <div className="delete-confirm">
                     <button
@@ -436,15 +267,9 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
                     删除
                   </button>
                 )
-              )}
-              <span className="spacer" />
-              <button type="button" onClick={() => setEditing(null)}>取消</button>
-              <button type="button" className="primary" disabled={busy} onClick={() => void save()}>
-                保存
-              </button>
-            </footer>
-            {error ? <p className="status-error">{error}</p> : null}
-          </div>
+              ) : null
+            }
+          />
         </div>
       )}
     </section>
