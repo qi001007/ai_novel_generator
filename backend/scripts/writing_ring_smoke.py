@@ -103,7 +103,13 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.live:
-        llm = get_llm_client()
+        # get_llm_client 是个 FastAPI 依赖：裸调时它收到的 session 是那个 Depends 对象，
+        # 一进 select() 就 AttributeError。也就是说 `--live` 这条路从来没跑通过
+        # （19.2 之前是同一个签名，同一个错）。给它一个真 session。
+        from app.db import engine
+
+        with Session(engine) as llm_session:
+            llm = get_llm_client(llm_session)
         if not llm.settings.is_configured:
             print("FAIL: --live 需要 backend/.env 里的 API key 与 draft 模型")
             return 2

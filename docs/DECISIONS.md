@@ -299,6 +299,39 @@ D-22③ 授权后的具体策略。
   计划里写着「等端点补齐后删除」，端点补齐了，但删他库里的行是另一个动作 -
   现在那扇门开着，他在书架上右键、把书名打一遍即可，两本书各五秒。
 
+### D-25 `--live` 冒烟以前从来没跑通过：依赖函数不许裸调
+
+D-22⑤ 授权我跑 S0 那条真调验收。第一次跑就炸在
+`AttributeError: 'Depends' object has no attribute 'exec'`：
+`writing_ring_smoke.py` 直接 `get_llm_client()`，而这个函数的签名是
+`def get_llm_client(session: Session = Depends(get_session))` - 裸调时 FastAPI 不参与，
+默认值就是那个 `Depends` 对象本身。19.2 之前是同一个签名、同一个错，
+所以这条路径**从来没有工作过**，只是离线模式不经过它，测试也从不覆盖脚本。
+
+修法在调用方（脚本自己开一个 `Session(app.db.engine)` 传进去），
+不动依赖签名 - 改了就会牵动 6 处 `dependency_overrides`。
+教训一条：**能被脚本裸调的 FastAPI 依赖，要么显式传 session，要么在脚本里包一层**；
+「离线模式跑通」不等于「这条路径是好的」。
+
+### D-24 生图槽位保持「未启用」，因为这台网关的 key 不允许（实测，不是猜）
+
+D-22⑥ 要的答案。探测方式：读运行期真源（`resolve_settings(session)`，即 `app_config`
+回落 `backend/.env` 的那份配置），对 `https://api.scnet.cn/api/llm/v1` 发两个探测请求。
+
+```text
+POST /images/generations  -> 401 {"error":{"message":
+  "Coding Plan and Token Plan API keys are only allowed to call LLM and Embedding APIs"}}
+POST /images              -> 401 {"code":"401","msg":"用户未登录!"}
+```
+
+所以：**不是我们没接，是这把 key 没有那个权限**。19.2 留的槽位（`llm.route.image` +
+`llm.model.image`）形状已经对，界面那行继续明写「未启用」，并把这个原因挂到 title 上 -
+将来换一家有生图权限的供应商，是「加一个供应商档案 + 把 image 任务路由过去」，
+不改结构、不改前端。
+
+顺带一条对 D-12 有用的事实：**Embedding 是允许的**。这不改变 v1 不做向量 RAG 的裁定 -
+D-12 的前置条件仍然是一个可复现的「该给的章节没给」，而不是「技术上能调」。
+
 ---
 
 ## 2. 已废止（禁止据以行动）

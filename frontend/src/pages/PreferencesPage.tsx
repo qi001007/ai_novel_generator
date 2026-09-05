@@ -529,7 +529,17 @@ export default function PreferencesPage() {
             <div className="prefs-routes">
               {TASKS.map(([key, label]) => (
                 <div className="prefs-route-row" key={key}>
-                  <span className="prefs-route-task">{label}</span>
+                  <span
+                    className="prefs-route-task"
+                    // 未启用不是没做，是这把 key 没有那个权限（D-24 的 401 原文）
+                    title={
+                      key === "image"
+                        ? "这台网关的 key 只允许 LLM 与 Embedding（实测 401）。换一家有生图权限的供应商后，加档案并把这一行路由过去即可"
+                        : undefined
+                    }
+                  >
+                    {label}
+                  </span>
                   <select
                     className="prefs-route-provider"
                     value={routes[key] ?? "default"}
