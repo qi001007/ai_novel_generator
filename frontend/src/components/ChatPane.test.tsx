@@ -17,6 +17,7 @@ const assistantMessage = {
   context_refs: [],
   token_input: 1200,
   token_output: 340,
+  reasoning: "",
   created_at: "2026-09-01T10:00:00Z",
 };
 
@@ -127,6 +128,65 @@ describe("ChatPane", () => {
       expect(screen.getByText(/输入 1200 \/ 输出 340/)).toBeTruthy();
     });
     expect(screen.getByText("人物 · 陈九思")).toBeTruthy();
+  });
+
+  /* 第十六批批注 1: 「智能体回话的上面还是没有思考过程展开的入口」. The fold that was
+     there only ever listed tool calls, so an ordinary answer had no entry at all. */
+  it("folds the model's own reasoning above the answer and opens it on click", async () => {
+    const user = userEvent.setup();
+    const thought = "先翻目录确认第 1 章的落点，再决定用谁的视角开场。";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/stream")) {
+          return Promise.resolve(
+            sse([
+              ["delta", { text: "第一章" }],
+              ["done", { message: { ...stored("第一章"), reasoning: thought } }],
+              ["end", {}],
+            ]),
+          );
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "开场怎么写？");
+    await user.keyboard("{Enter}");
+    await screen.findByText("第一章");
+
+    const entry = screen.getByRole("button", { name: /思考过程/ });
+    // folded by default: the entry is there, the text is not
+    expect(screen.queryByText(thought)).toBeNull();
+    expect(entry.getAttribute("aria-expanded")).toBe("false");
+    await user.click(entry);
+    expect(await screen.findByText(thought)).toBeTruthy();
+    expect(entry.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("shows no thinking entry when the model gave no reasoning", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/stream")) {
+          return Promise.resolve(
+            sse([["delta", { text: "第一章" }], ["done", { message: stored("第一章") }], ["end", {}]]),
+          );
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "开场怎么写？");
+    await user.keyboard("{Enter}");
+    await screen.findByText("第一章");
+    // no empty shell: an entry that opens onto nothing is the假控件 this project bans
+    expect(screen.queryByRole("button", { name: /思考过程/ })).toBeNull();
   });
 
   it("renders the reply as prose and ends it with copy and download", async () => {

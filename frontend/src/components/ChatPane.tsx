@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Brain,
   ChevronDown,
+  Wrench,
   CornerDownLeft,
   Copy,
   Download,
@@ -43,6 +44,8 @@ type AgentMeta = {
   /** What the turn was allowed to reach for, so an empty round reads as
       "did not need it" rather than "cannot". */
   allowed?: string[];
+  /** The model's own reasoning, when the model gave any. */
+  reasoning?: string;
 };
 
 type AgentRow = {
@@ -127,6 +130,7 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
             tokenInput: row.token_input,
             tokenOutput: row.token_output,
             refs: row.context_refs,
+            reasoning: row.reasoning,
           },
         },
   );
@@ -147,6 +151,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [streaming, setStreaming] = useState(false);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [traceOpen, setTraceOpen] = useState<number | null>(null);
+  // Two folds, two open states: 「思考过程」 is what the model thought, 「工具轨迹」 is
+  // what it did. They arrive on different turns and must not open each other.
+  const [thinkingOpen, setThinkingOpen] = useState<number | null>(null);
   // A copy button that says nothing is a fake control, so the row remembers that
   // it worked for a moment.
   const [copiedId, setCopiedId] = useState<number | null>(null);
@@ -388,6 +395,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                   tokenOutput: message.token_output,
                   refs: row.meta.refs?.length ? row.meta.refs : message.context_refs,
                   unknown: row.meta.unknown,
+                  reasoning: message.reasoning || row.meta.reasoning,
                 },
               }
             : row,
@@ -779,10 +787,32 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           const refs = row.meta.refs ?? [];
           // The trace is not prose. Fold it above the answer instead of printing it.
           const { prose, trace } = splitTrace(row.text);
+          const reasoning = row.meta.reasoning?.trim() ?? "";
           return (
             <div key={row.id} className="chat-row assistant">
               <div className="chat-message">
                 <div className={`chat-card agent ${row.status}`}>
+                  {/* 第十六批批注 1: the entry the owner was still missing. The fold that
+                      was here is called 思考过程 but only ever listed tool calls, so a
+                      plain answer had no way to show what the model actually thought.
+                      No reasoning from the model means no entry - not an empty shell. */}
+                  {reasoning ? (
+                    <div className="chat-trace chat-thinking">
+                      <button
+                        type="button"
+                        className="chat-meta"
+                        aria-expanded={thinkingOpen === row.id}
+                        onClick={() => setThinkingOpen(thinkingOpen === row.id ? null : row.id)}
+                      >
+                        <Brain size={11} />
+                        <span>思考过程</span>
+                        <ChevronDown size={11} />
+                      </button>
+                      {thinkingOpen === row.id ? (
+                        <pre className="chat-trace-body">{reasoning}</pre>
+                      ) : null}
+                    </div>
+                  ) : null}
                   {trace.length ? (
                     <div className="chat-trace">
                       <button
@@ -791,8 +821,8 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         aria-expanded={traceOpen === row.id}
                         onClick={() => setTraceOpen(traceOpen === row.id ? null : row.id)}
                       >
-                        <Brain size={11} />
-                        <span>思考过程 · {trace.length} 步</span>
+                        <Wrench size={11} />
+                        <span>工具轨迹 · {trace.length} 步</span>
                         <ChevronDown size={11} />
                       </button>
                       {traceOpen === row.id ? (

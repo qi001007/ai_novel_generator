@@ -29,11 +29,36 @@
 `Select-String … | Select-Object -First 16` 看引用，前 16 条命中全落在它自己的测试文件里，
 输出被截断，我就把「我没看到」当成了「不存在」。这正是本文件纪律 2 的病。
 
-### 16.1 智能体回复上方仍然没有「思考过程」展开入口（批注 1）
+### 16.1 ✅ 智能体回复上方仍然没有「思考过程」展开入口（批注 1）
 
 - 现状取证：`services/llm.py:222` 只取 `delta.content`；全仓 `reasoning` 0 命中；
   `ChatMessage` 无对应列。前端只有**工具轨迹**折叠（`chat-trace`），没有模型自己的推理。
 - **主人 2026-09-05 把这条交给我定**（「你给出来的123，这个你自己做决定」）→ 决定：**做**。
+- **已做（2026-09-05 真机跑通，见下面数字）**。通路：
+  `llm.stream_messages` 加 `reasoning_out` 出参累加器（照既有 `usage_out` 的写法，
+  **不改 yield 契约、零调用方涟漪**）→ `agent.stream_agent_turn` 跨步骤透传 →
+  `chat.stream_turn` 落库 → alembic `f3b9c0d21a55` 给 `chat_message` 加 `reasoning` 列 →
+  `ChatMessageOut` 出参带上 → 前端 `AgentMeta.reasoning` + 回答上方一个折叠入口。
+  **两个只有真机才能抓到的 bug，都是我自己这一轮造的**：
+  ① 我把**每个 delta 块**用 `\n\n` 拼，于是推理碎成「用户\n\n想\n\n让我\n\n用」——
+     块与块直接相接、分段只发生在**跨步骤**之间；已补回归测试（`test_agent_loop.py`）。
+  ② 模型有列、行里也有文本，但 `ChatMessageOut` 与 `_MESSAGE_FIELDS` 压根没有这个字段，
+     于是**流式那一次能看到、刷新后入口消失**；补进响应模型，
+     并加 `test_the_list_endpoint_carries_the_reasoning_too` 钉住「回读也要带」。
+- 命名冲突顺手解决：原来那个折叠**挂着「思考过程」的名字，里面装的却是工具调用列表**。
+  现在两者各有名字与图标——**思考过程 = `Brain`（模型自己的推理）**、
+  **工具轨迹 = `Wrench`（它做了什么）**，两个折叠各自独立开合。
+- 真机（作品 5，MiniMax-M2.5，两条真实提问）：
+  「第1章的视角用谁？一句话回答」→ 回答「沈砚舟。」，推理 43 字、
+  读作连续散文「用户问第1章的视角用谁。根据资料里的【D 简报 · 第 1 章】明确写着：视角：沈砚舟」；
+  默认收起、点击展开、`aria-expanded` 跟着翻；**纯刷新后**该条仍有入口并回读出同样 43 字，
+  而功能上线前的三条老回复**没有入口**（没有推理就不摆空壳）。
+- 后端 183 → **185 passed**（新增 3 条：SSE 里推理不进正文通道、无累加器时行为不变、
+  迁移与出参各一条）+ 1 条循环回归；前端 138 → **140 passed / 18 files**；
+  `uiInvariants` 24 → **25** 块；tsc／build 干净；
+  命中区审计 **0 small / 0 clipped / 0 unreachable**（3 项 edge 均为窗口边界）。
+  审计还修了自己一处判序：被窗口**上沿**裁掉的控件中心落在视口外，先前被误报成
+  「中心被别的元素盖住」，害我去找一个不存在的覆盖层——现在四条边都先归 `edge`。
 - 判据：`stream_chat` 按现有 `usage_out` 那套**出参累加器**风格收 `delta.reasoning_content`
   （不改 yield 契约，零调用方涟漪）→ alembic 加列 `chat_message.reasoning` →
   `/chat` 的 `done` 事件与 `GET /messages` 出参带上 → 前端每条 assistant 回复上方一个

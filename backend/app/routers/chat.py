@@ -60,7 +60,7 @@ class ChatProposalOut(SQLModel):
 
 
 _MESSAGE_FIELDS = (
-    "id", "novel_id", "role", "content", "mode", "model", "mentions",
+    "id", "novel_id", "role", "content", "reasoning", "mode", "model", "mentions",
     "context_refs", "token_input", "token_output", "created_at",
 )
 
@@ -70,6 +70,9 @@ class ChatMessageOut(SQLModel):
     novel_id: int
     role: str
     content: str
+    # Out of the list endpoint too: the fold has to survive a reload, not only the
+    # stream that produced it (第十六批批注 1).
+    reasoning: str = ""
     mode: str
     model: str
     mentions: list[str] = Field(default_factory=list)

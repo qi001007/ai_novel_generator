@@ -30,6 +30,7 @@ import filesStore from "./store/files.ts?raw";
 import characterFormCard from "./components/CharacterFormCard.tsx?raw";
 import characterDocForm from "./components/CharacterDocForm.tsx?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
+import chatTypes from "./types.ts?raw";
 import tocList from "./components/TocListView.tsx?raw";
 import viewToggle from "./components/ViewToggle.tsx?raw";
 
@@ -225,6 +226,21 @@ describe("settled UI decisions must not regress", () => {
     expect(workbenchStore).not.toContain("draftSaved");
     expect(editorPane).toContain("chapterDraftPath");
     expect(treePane).toContain("未保存");
+  });
+
+  it("thinking and tooling are two separate folds, and an empty one is never shown (第十六批批注 1)", () => {
+    // The owner asked for 「思考过程」 and it had been missing for four rounds, because the
+    // only fold in the thread was called that while listing tool calls. Two names, two
+    // icons, two open states - and no entry at all when the model gave no reasoning.
+    expect(chatPane).toContain('className="chat-trace chat-thinking"');
+    expect(chatPane).toContain("<Brain size={11} />");
+    expect(chatPane).toContain("<Wrench size={11} />");
+    expect(chatPane).toContain("<span>思考过程</span>");
+    expect(chatPane).toContain("工具轨迹 ·");
+    expect(chatPane).toContain("const [thinkingOpen, setThinkingOpen]");
+    expect(chatPane).toContain('{reasoning ? (');
+    // the field has to exist on both sides of the wire or the fold dies on reload
+    expect(chatTypes).toContain("reasoning: string;");
   });
 
   it("focus paints no frame anywhere - the whole class (第六轮批注16 / 第十一批批注2 / 第十四批批注5 / 第十五批批注4.2)", () => {

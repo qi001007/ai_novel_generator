@@ -60,13 +60,16 @@ class ScriptedLLM:
             raw_message=reply.get("raw_message", {}),
         )
 
-    def stream_messages(self, task_type, messages, temperature=0.2, usage_out=None, model=None, tools=None):
+    def stream_messages(self, task_type, messages, temperature=0.2, usage_out=None, model=None, tools=None, reasoning_out=None):
         reply = self.replies[len(self.seen)]
         self.seen.append([dict(item) for item in messages])
         self.tools_seen.append(tools)
         if usage_out is not None:
             usage = reply.get("usage", (10, 5))
             usage_out.update({"model": "scripted", "token_input": usage[0], "token_output": usage[1]})
+        if reasoning_out is not None:
+            for piece in reply.get("reasoning", []):
+                reasoning_out.append(piece)
         for piece in reply.get("chunks", [reply.get("content", "")]):
             yield piece
 
@@ -78,6 +81,30 @@ def call_block(name: str, **arguments: Any) -> str:
 
 
 # --- registry ---------------------------------------------------------------
+
+
+def test_reasoning_accumulates_as_one_stream_with_a_break_only_between_steps():
+    """第十六批批注 1. The pieces are deltas of a single response, so joining them with a
+    separator shredded the text into "用户\n\n想\n\n让我" - measured live on MiniMax. A
+    break belongs between steps, and nowhere else."""
+    llm = ScriptedLLM(
+        [
+            {"chunks": [call_block("read_file", path="arcs.md")], "reasoning": ["先看目录", "再定视角"]},
+            {"chunks": ["正文在这里。"], "reasoning": ["可以回答了"]},
+        ]
+    )
+    registry = ToolRegistry([make_tool()])
+    events = list(
+        stream_agent_turn(
+            llm,
+            [{"role": "user", "content": "开场怎么写？"}],
+            registry,
+            task_type="chat",
+            reasoning_out=(reasoning := []),
+        )
+    )
+    assert events[-1][0] == "final"
+    assert "".join(reasoning) == "先看目录再定视角\n\n可以回答了"
 
 
 def test_registry_runs_a_tool_and_reports_its_result():

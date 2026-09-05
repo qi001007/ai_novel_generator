@@ -336,12 +336,14 @@ def persist_reply(
     model: str,
     token_input: int,
     token_output: int,
+    reasoning: str = "",
 ) -> ChatMessage:
     """Store the reply twice: message-level tokens plus aggregated run usage."""
     message = ChatMessage(
         novel_id=turn.novel_id,
         role="assistant",
         content=content,
+        reasoning=reasoning,
         mode=turn.mode,
         model=model,
         context_refs=turn.references(),
@@ -446,6 +448,7 @@ def stream_turn(
     )
 
     outcome: Any = None
+    reasoning: list[str] = []
     try:
         for name, payload in stream_agent_turn(
             llm,
@@ -455,6 +458,7 @@ def stream_turn(
             model=turn.model,
             temperature=turn.temperature,
             config=config,
+            reasoning_out=reasoning,
         ):
             if name == "delta":
                 yield ("delta", {"text": payload})
@@ -499,5 +503,8 @@ def stream_turn(
             model=outcome.model,
             token_input=outcome.token_input,
             token_output=outcome.token_output,
+            # the pieces are deltas of one stream, so they join with nothing; the
+            # agent loop is what inserts a break between steps
+            reasoning="".join(reasoning).strip(),
         )
     yield ("done", {"message": message.model_dump(mode="json")})

@@ -161,6 +161,9 @@ export type StoredChatMessage = {
   novel_id: number;
   role: "user" | "assistant";
   content: string;
+  /** The model's own reasoning for this answer. Never part of `content`: that is what
+   *  gets replayed into later prompts, and thoughts must not come back as spoken text. */
+  reasoning: string;
   mode: string;
   model: string;
   mentions: string[];

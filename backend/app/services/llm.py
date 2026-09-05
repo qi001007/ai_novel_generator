@@ -103,6 +103,7 @@ class LLMClient(Protocol):
         usage_out: dict[str, int] | None = None,
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        reasoning_out: list[str] | None = None,
     ) -> Iterator[str]:
         ...
 
@@ -186,6 +187,7 @@ class OpenAICompatibleClient:
         usage_out: dict[str, int] | None = None,
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
+        reasoning_out: list[str] | None = None,
     ) -> Iterator[str]:
         resolved = self._resolve_model(task_type, model)
         payload: dict[str, Any] = {
@@ -222,6 +224,14 @@ class OpenAICompatibleClient:
                 content = delta.get("content")
                 if isinstance(content, str) and content:
                     yield content
+                # A reasoning stream is a second channel of the same response, not an
+                # answer: it is collected for the record and never yielded as prose.
+                # Both spellings exist across OpenAI-compatible gateways, and the one
+                # this deployment runs (MiniMax) uses the first.
+                if reasoning_out is not None:
+                    thought = delta.get("reasoning_content") or delta.get("reasoning")
+                    if isinstance(thought, str) and thought:
+                        reasoning_out.append(thought)
 
     def _resolve_model(self, task_type: str, model: str | None = None) -> str:
         if not self.settings.is_configured:

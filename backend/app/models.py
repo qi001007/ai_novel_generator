@@ -336,6 +336,10 @@ class ChatMessage(SQLModel, table=True):
     novel_id: int = Field(foreign_key="novel.id", index=True)
     role: str = Field(index=True)
     content: str = ""
+    # The model's own reasoning for this answer, kept beside it and shown collapsed.
+    # It is not part of `content`, so history replay and context injection never carry
+    # a previous turn's thoughts along as if the model had said them out loud.
+    reasoning: str = ""
     mode: str = "write"
     model: str = ""
     mentions: list[str] = Field(

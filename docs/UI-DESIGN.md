@@ -266,7 +266,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 章号格**只有数字** | 无 `toc-lock`、无 `<Lock` | 第十二批批注 4 |
 | 文件栏**除写失败外不说话** | `FileEditorPane` 里不含「保存已锁定」「处提案待应用 ·」 | 第十二批批注 2 |
 | 回答**无框、无头像、无抬头行** | `.chat-card.agent` 无 border/background；`ChatPane` 无 `chat-avatar`/`chat-card-head` | 第十轮批注 3、4 |
-| 工具轨迹**折叠**，不混进正文 | `ChatPane` 含 `splitTrace` 与 `chat-trace` | 第十一轮主请求 |
+| 工具轨迹**折叠**，不混进正文；**思考过程与工具轨迹是两个各自独立折叠**，名字与图标不许混用 | `ChatPane` 含 `splitTrace` 与 `chat-trace`；推理折叠为 `.chat-thinking` + `Brain`，轨迹折叠为 `Wrench` +「工具轨迹 · N 步」；模型没给推理时**不摆空入口** | 第十一轮主请求 + 第十六批批注 1 |
 | 动作是**记号不是句子** | 提案卡无 `proposal-note`，三个 `aria-label` 在；apply 无主色色块 | 第十一轮批注 3-6、第十二批批注 6 |
 | 章节标签**只有一个点** | `EditorPane` 不含 `StatusBadge` | 第十二批批注 1 |
 | 换人**留 52px** | `.chat-row.user + .chat-row.assistant` 的 `margin-top: 40px` | 第十三批批注 5、7 |

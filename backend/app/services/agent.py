@@ -353,6 +353,7 @@ def stream_agent_turn(
     temperature: float = 0.2,
     config: AgentConfig | None = None,
     streaming: bool = True,
+    reasoning_out: list[str] | None = None,
 ) -> Iterator[tuple[str, Any]]:
     """Ask, act, feed the result back, ask again - until the model just answers.
 
@@ -383,6 +384,11 @@ def stream_agent_turn(
         raw: dict[str, Any] = {}
 
         if streaming:
+            # One accumulator for the whole turn. Deltas are pieces of a single stream
+            # and get concatenated as they arrive; the paragraph break belongs between
+            # the steps, so it is written here rather than by whoever joins the list.
+            if reasoning_out is not None and index > 1 and reasoning_out:
+                reasoning_out.append("\n\n")
             chunks = llm.stream_messages(
                 task_type,
                 history,
@@ -390,6 +396,9 @@ def stream_agent_turn(
                 usage_out=usage,
                 model=model,
                 tools=specs,
+                # one accumulator for the whole turn: a turn that used tools has one
+                # reasoning stretch per step, and the reader wants them in order
+                reasoning_out=reasoning_out,
             )
             for chunk in chunks:
                 parts.append(chunk)

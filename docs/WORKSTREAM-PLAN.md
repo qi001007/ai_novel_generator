@@ -232,6 +232,7 @@ UI 的未结一律在 `UI-BACKLOG.md`，此处不复述。
 | 第十五批 4.1/4.2 | 聚焦不画任何一圈 | 整类扫完，含 CodeMirror 自带 `.cm-focused` 描边；闸门升级为「先剥注释再查一类」 |
 | 第十六批 16.5、16.6 | 提示语里的句号 | 全仓扫 `。` 命中 31 行，改 17 条界面提示、刻意保留 14 处（Agent 正文／发给模型的提示词／生图 prompt／注释）；闸门扫全部 `.tsx` 源码、白名单逐条点名不写模式匹配；固化成 UI-DESIGN §0.7 条九 |
 | 第十六批 16.3 | 章节标签分不清 | 标签改显四位章号、章名搬到 `aria-label`/`title`；宽度三个数经实测无需改动（6 个标签时 `scrollWidth == clientWidth`）；两条既有测试改断言不删 |
+| 第十六批 16.1 | 回复上方的思考过程入口 | `reasoning_out` 出参累加器（照 `usage_out` 写法，不改 yield 契约）→ agent 跨步骤透传 → `chat_message.reasoning`（迁移 `f3b9c0d21a55`）→ `ChatMessageOut` → 前端折叠；顺手把「思考过程」与「工具轨迹」两个名字分家（Brain / Wrench）；两个只有真机才暴露的自造 bug 记档：delta 块被 `\n\n` 拼碎、出参模型漏字段导致刷新后入口消失。理由见 D-18 |
 | 第十六批 16.7 | 人物渲染视图复用可编辑卡 | 弹窗那张卡抽成 `CharacterFormCard`（含文档↔表单互转），文件面板宿主 `CharacterDocForm` 绑缓冲区、保存走 `useFiles.save` 一条口；只读副本 `CharacterDocCard` 与其六条 CSS 删除；顺带修一处既存特异性 bug（`.character-modal input` 把视觉隐藏的 file input 撑成 808×34）；真机改值→源码 bullet 同步→保存→改回，服务器逐字节还原 |
 | 第十六批 16.9 | 拖到极限关栏后拖回来 | `applyPane` 改成可逆且不再结束手势（只有 `pointerup` 结束）；两处坑记档：拖拽闭包读的是旧 `hidden` 快照（改 `hiddenRef` + 函数式写入）；`closePane` 复位宽度会让方向键同向再按被误判成「变宽」而重开（已隐藏时基准换成 `CLOSE_AT-1`）；真机按住鼠标来回拖两条边界都过 |
 | 第十六批 16.8 | 无专属渲染视图不给切换钮 | `hasRenderedView()` 一条判据；通用 `MarkdownText` 覆盖层与 `.file-rendered` 删除，第十四批那条 `inset: 0` 断言改钉现存两个覆盖层；顺带量出 16.11（`views[draft]` 两个写者互相覆盖，责任提交 `6b6dbd3`），只记录不顺手改 |

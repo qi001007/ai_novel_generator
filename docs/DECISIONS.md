@@ -139,6 +139,26 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
 
 ---
 
+### D-18 模型的推理单独存一列，绝不混进 `content`
+
+- **结论**：`chat_message.reasoning` 保存模型自己的推理（迁移 `f3b9c0d21a55`），
+  界面上是回答上方一个默认收起的折叠。它**不是** `content` 的前缀，也不进
+  `_history_messages()` 与注入上下文。
+- **为什么不并进 content**：`content` 会被回放成后续对话的历史、并被 `collect_items()`
+  当资料注入。推理一旦混进去，模型下一轮就会把自己上次的心里话当成"已经说出口的话"
+  再讲一遍，甚至据它作答——那是最难查的一种自我污染。
+- **取法**：`stream_messages` 用 `reasoning_out` **出参累加器**收集 `delta.reasoning_content`
+  （兼容 `delta.reasoning` 这一写法），与既有 `usage_out` 同一形状。
+  没有改 `Iterator[str]` 的 yield 契约——那会波及 draft / reviews / planning 等全部调用方，
+  而它们中的绝大多数根本不需要推理。
+- **拼接口径**：累加器收到的是**增量块**，相接不加任何分隔；段落分隔只发生在
+  **agent 跨步骤**之间。第一版把每块都用 `\n\n` 拼，真机上推理碎成了
+  「用户\n\n想\n\n让我」——这条由 `test_agent_loop.py` 钉住。
+- **出参必须显式带上**：`ChatMessageOut` 与 `_MESSAGE_FIELDS` 都要有 `reasoning`，
+  否则流式那一次能看到、刷新后入口消失（本条落地时就漏过一次，已补测试）。
+
+---
+
 ## 2. 已废止（禁止据以行动）
 
 | 编号 | 旧口径 | 废止于 | 原因 |

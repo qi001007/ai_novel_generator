@@ -86,6 +86,7 @@ class FakeChatClient:
         usage_out: dict[str, int] | None = None,
         model: str | None = None,
         tools: list[dict] | None = None,
+        reasoning_out: list[str] | None = None,
     ) -> Iterator[str]:
         self.calls.append(
             {
