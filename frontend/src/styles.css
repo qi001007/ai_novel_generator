@@ -157,17 +157,26 @@ button:active:not(:disabled) {
   transform: scale(0.96);
 }
 
-/* Focus is never the brand colour: the owner has asked for this three times
-   (第六轮批注 16 on the composer, 第十一批批注 2 and 第十四批批注 5 on the directory
-   cells - the last one twice, because I fixed one element instead of the class).
-   --text-2 keeps WCAG 2.4.11 contrast in both themes without turning every field
-   the colour of the accent. Guarded by uiInvariants: no focus rule may use accent. */
-button:focus-visible,
+/* 第十五批批注 4.1 / 4.2 - the fourth time, and this time the whole class.
+   Focus never draws a ring: no outline, no 0 0 0 Npx halo, not even in neutral grey.
+   Last round I swapped the accent for --text-2 and called it fixed, which only
+   changed the colour of the frame the owner asked to lose.
+   What focus may still say: a field lifts its own border one step to
+   --border-strong (same geometry, nothing added), and a button fills with the tint
+   its hover already uses. Both are a change of content, and both keep WCAG 2.4.7
+   without a fourth box around something that already has an edge.
+   Guarded by uiInvariants. */
+button:focus-visible {
+  outline: 0;
+  background: var(--surface-alt);
+  border-color: var(--border-strong);
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid var(--text-2);
-  outline-offset: 1px;
+  outline: 0;
+  border-color: var(--border-strong);
 }
 
 button.primary {
@@ -245,6 +254,16 @@ button:disabled {
   color: var(--text-1);
 }
 
+/* The same overlay its hover already uses, not the solid --surface-alt a bordered
+   button gets: on the light theme that grey sits three points off the topbar and
+   reads as nothing, and a filled square under a bare chevron is the 底框 that §0.7
+   条五 forbids. One language for "this control is live under you", pointer or
+   keyboard. */
+.icon-button:focus-visible {
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
+  color: var(--text-1);
+}
+
 .icon-button.active {
   color: var(--accent);
 }
@@ -263,8 +282,7 @@ select {
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline-offset: 0;
-  border-color: var(--text-2);
+  border-color: var(--border-strong);
 }
 
 .badge {
@@ -719,8 +737,7 @@ select:focus-visible {
 
 .tree-search:focus-visible {
   outline: 0;
-  border-color: var(--text-2);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-2) 22%, transparent);
+  border-color: var(--border-strong);
 }
 
 .tree-search::placeholder {
@@ -1208,12 +1225,9 @@ select:focus-visible {
     box-shadow 150ms ease-out;
 }
 
-/* 批注 16: lighting the card border in the accent colour the instant the field is
-   clicked is the cheapest-looking thing this screen does. The caret and the raised
-   shadow already say focus; keep the colour out of it. */
-.composer:focus-within {
-  box-shadow: var(--shadow-pop);
-}
+/* 批注 16 asked for no accent on focus; 第十五批批注 4.2 asks for nothing to appear
+   at all, so the focus-only lift goes too - the card keeps its resting shadow and
+   the caret says focus. */
 
 /* Controls stop competing with the field: ghost by default, filled only
    when they carry state. */
@@ -1758,6 +1772,10 @@ select:focus-visible {
   min-width: 0;
   overflow: hidden;
   border: 1px solid transparent;
+  /* Stated, not inherited: an untargeted element computes outline-style none with the
+     UA's medium (3px) width, which paints nothing but is not what the owner asked to
+     measure. With this line the criterion "outline-width: 0" is literally true. */
+  outline: 0;
 }
 
 /* VSCode-style minimap: the whole page scaled to fit, with one transparent
@@ -1805,21 +1823,16 @@ select:focus-visible {
   line-height: 1.9;
 }
 
-/* A real border, not an inset shadow (an inset ring is painted underneath
-   children that carry their own background), and on .editor-scroll rather than
-   .editor-body: measured, .editor-body ends at x=1656 on a 1656px viewport, so
-   its right side sat on the window edge and read as a missing fourth side. The
-   minimap is a gutter, so the ring wraps the prose and stays whole. */
-.editor-body:focus-within .editor-scroll {
-  border-color: var(--text-2);
-}
-
 .editor-body textarea::-webkit-scrollbar {
   display: none;
 }
 
+/* The caret is the whole focus signal for the prose page - that is what a writing
+   surface should say. `outline: 0` rather than `none` so the measured width is a flat
+   0px, and the transparent 1px border of .editor-scroll stays where it was before and
+   after the click (第十五批批注 4.1 的判据). */
 .editor-body textarea:focus-visible {
-  outline: none;
+  outline: 0;
   caret-color: var(--accent);
 }
 
@@ -2282,8 +2295,7 @@ select:focus-visible {
 .character-modal select:focus-visible,
 .character-modal textarea:focus-visible {
   outline: 0;
-  border-color: var(--text-2);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-2) 22%, transparent);
+  border-color: var(--border-strong);
 }
 
 .number-pair {
@@ -3077,9 +3089,14 @@ select:focus-visible {
   color: var(--text-2);
 }
 
-.book-new-card:hover .book-face,
-.book-new-card:focus-visible .book-face {
+.book-new-card:hover .book-face {
   border-color: var(--text-2);
+  color: var(--text-1);
+}
+
+/* 4.2: the dashed edge already rests at --border-strong, so focus may not darken it
+   again - what says focus is the card's own fill (button:focus-visible). */
+.book-new-card:focus-visible .book-face {
   color: var(--text-1);
 }
 
@@ -3386,12 +3403,13 @@ select:focus-visible {
   background: transparent;
 }
 
-/* The line itself carries the signal: 1px turns accent, plus a 1px soft halo.
-   Perceived ~3px, anchored on the seam, and it never moves the layout. */
+/* The line itself carries the signal: the 1px seam darkens and nothing is added
+   around it. The 1px halo this rule used to paint belongs to the same class the
+   owner has now asked to lose four times (第十五批批注 4.2) - it made a 1px boundary
+   read as 3px and slid the "edge" away from the actual seam. */
 .splitter:hover,
 .splitter:focus-visible {
   background: var(--text-2);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text-2) 28%, transparent);
 }
 
 .splitter:focus-visible {
@@ -3842,6 +3860,14 @@ body.resizing {
   /* 批注 6: the chapter page renders on --bg and this one on --surface, so moving
      between two documents changed the colour under the text. One black now. */
   background: var(--bg);
+}
+
+/* 第十五批批注 4.2 names .file-cm as one of the surfaces to sweep, and it really did
+   have a ring - not ours. CodeMirror's base theme ships `.cm-focused { outline: 1px
+   dotted #212121 }` (specificity 0,2,0), so this wins by being 0,3,0 regardless of
+   stylesheet order. Measured before: dotted 1px on focus; after: none. */
+.file-cm .cm-editor.cm-focused {
+  outline: 0;
 }
 
 .file-cm .cm-scroller {
@@ -4524,8 +4550,7 @@ body.resizing {
 }
 
 .toc-search:focus-within {
-  border-color: var(--text-2);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-2) 22%, transparent);
+  border-color: var(--border-strong);
 }
 
 .toc-search input {
@@ -4631,12 +4656,13 @@ body.resizing {
   border-color: var(--border);
 }
 
-/* 第十四批批注 5: this is the exact ring the owner has now pointed at twice. */
+/* 第十四批批注 5 pointed at this ring twice; 第十五批批注 4.2 removed the whole class,
+   so what is left is the cell's own 1px border (already reserved at rest) lifting one
+   step - the same allowance a search field has, not a second frame. */
 .toc-row input:focus,
 .toc-row textarea:focus {
-  border-color: var(--text-2);
+  border-color: var(--border-strong);
   outline: 0;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text-2) 22%, transparent);
 }
 
 .toc-hit {
@@ -5504,8 +5530,8 @@ body.resizing {
 }
 
 .prefs-field input:focus-visible {
-  outline: none;
-  border-color: var(--text-2);
+  outline: 0;
+  border-color: var(--border-strong);
 }
 
 .prefs-field-narrow {

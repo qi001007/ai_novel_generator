@@ -156,13 +156,20 @@ scroller `scrollWidth 882 == clientWidth 882` → **没有溢出**，所以滚�
 
 ### 4 正文编辑区聚焦后那圈框，整个删掉（主人 2026-09-05 03:0x 补）
 
-- [ ] **4.1** 点击正文编辑区（`章节正文` textarea）后，四周出现一圈**浅色框线**，主人要求删掉。
+- [x] **4.1** 点击正文编辑区（`章节正文` textarea）后，四周出现一圈**浅色框线**，主人要求删掉。
       **根因是我上一轮自己造的**：第十四批批注 5 我把「聚焦上主色」改成中性
       `--text-2`（深色主题里 rgb(157,155,150) ≈ 浅灰白），于是它从橙框变成了白框——
       **换了颜色没换存在**。判据：点进正文区，`.editor-scroll` 与 textarea 的
       `border-top-color` 在聚焦前后**完全不变**（保持 `transparent`），`box-shadow: none`，
       `outline-width: 0`。
-- [ ] **4.2 同类一次扫完**（这条教训我已经挨过四次）：所有「聚焦才出现的框/底」的
+      **已做（2026-09-05 真机点过、图自己看过）**：`.editor-body:focus-within .editor-scroll`
+      **整条删除**，不是换颜色。深色主题实测聚焦前后逐项相同——`.editor-scroll`
+      `border-top rgba(0,0,0,0)` / `box-shadow none` / `outline-width 0px`（`outline: 0`
+      是显式补的一行：没被任何规则命中的元素 Chrome 会算出 UA 初值 `none 3px`，
+      画不出东西但字面不满足判据）；textarea 只有两项变：`outline-width 3px→0px`
+      （两者都不画）与 `caret rgb(236,235,233)→rgb(224,106,78)`——
+      **聚焦期间出现的只有光标**。
+- [x] **4.2 同类一次扫完**（这条教训我已经挨过四次）：所有「聚焦才出现的框/底」的
       编辑面都要按同一规则处理，不许只改正文这一处 ——
       `.editor-body:focus-within .editor-scroll`、`.file-cm` 聚焦态、`.chat-input textarea`、
       `.composer:focus-within`、`.tree-search:focus-visible`、`.toc-search:focus-within`、
@@ -172,6 +179,38 @@ scroller `scrollWidth 882 == clientWidth 882` → **没有溢出**，所以滚�
       判据（写进 `uiInvariants.test.ts`）：任何含 `focus` 的规则都不得出现
       `outline: <非 0>` 或 `box-shadow: 0 0 0 Npx` 或 `var(--accent)`；
       键盘可达性靠 `:focus-visible` 的**内容变化**（如 caret、字重），不靠画框。
+      **已做（2026-09-05 整类扫完，逐项真机量过）**：
+      · `.editor-body:focus-within .editor-scroll` —— 删（见 4.1）；
+      · `.composer:focus-within { box-shadow: var(--shadow-pop) }` —— 删，聚焦不再抬影；
+      · `.tree-search:focus-visible` —— 去 `box-shadow: 0 0 0 2px`，边框 `--text-2`→
+        `--border-strong`（实测 `rgb(49,49,52)→rgb(62,62,66)`，1px 不变、无光晕）；
+      · `.toc-search:focus-within`／`.toc-row input,textarea:focus`／`.prefs-field input:focus-visible`／
+        `.character-modal` 三件套 —— 同一处理，实测都只剩一档 1px 边框提亮；
+      · `.chat-input textarea:focus-visible` —— 实测前后**完全不变**；
+      · `.splitter:hover, :focus-visible` —— 去掉 `box-shadow: 0 0 0 1px` 光晕（它把 1px 的
+        分栏线画成 3px，还把「边界」挪到光标所在处），只留线本身变色；
+      · **`.file-cm` 真有一圈，而且不是我们写的**：CodeMirror 基础主题自带
+        `.cm-focused { outline: 1px dotted #212121 }`（特异性 0,2,0）。加
+        `.file-cm .cm-editor.cm-focused { outline: 0 }`（0,3,0，与样式表顺序无关地压过它）；
+        实测聚焦后 `outline-style: none`，浅色主题同样干净；
+      · 全局 `button/input/textarea/select:focus-visible` 的 `outline: 2px solid` 拆掉：
+        带边框的钮靠 `--surface-alt` 填充、字段靠边框提亮到 `--border-strong`；
+        无边框的 `.icon-button` 用它 hover 早就在用的那层 `--text-1 8%` 叠加——浅色主题里
+        `--surface-alt` 与顶栏只差三个色阶几乎看不见，而给裸 chevron 铺实心方块正是
+        §0.7 条五禁的「底框」。真机 Tab 到「返回书架」，深浅两档都截图看过。
+      闸门：`uiInvariants.test.ts` 里原来那条「focus never paints the brand colour」升级成
+      整类闸门（先剥注释，再查 outline／`0 0 0` 光晕／`--accent`／边框提亮只许
+      `--border-strong`），另加一条「正文页只用光标说话」，断言
+      `.editor-body:focus-within .editor-scroll` 不许回来、CodeMirror 的压过规则不许被删。
+      变异验证：四类违规写法（outline 非 0、`0 0 0` 光晕、`--text-2` 提亮、`--accent` 底）
+      全都被这道闸门咬住。
+
+- [ ] **4.3（本轮实测新发现，等主人定夺，未动代码）**：`.character-modal` 那套表单所属的
+      `CharacterLibrary` 组件**没有任何页面挂载**——全仓只有它自己的测试，以及
+      `CharacterDocCard` 借它的 `LEVEL_LABELS`，两处引用它。第十五批批注 3.1 把人物文件
+      改成卡片之后，旧的「人物库 + 详情弹窗」在真机上已经走不到。本轮只按整类规则改了
+      它的聚焦 CSS（改一处比留一处不一致便宜），**没有删组件**：删属于删除语义那条决策
+      （与 Q-07／Q-09／删作品同一条），等点头。
 
 ---
 

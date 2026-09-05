@@ -827,6 +827,38 @@
       第四节两条同义老账（章节条的钮、人物长字段的那一对）一并划掉。
       测试：新增 4 条（解析 3 + 渲染 1）＋1 块不变量，前端 119 → **124 passed / 18 files**；
       `uiInvariants` 18 → 19 块；tsc／build 干净；命中区审计 0/0/0（edge 单列 2 项为窗口边界）。
+
+- [x] **第十五批·批注 4.1 + 4.2（2026-09-05）：聚焦不再画任何一圈，整类扫完**：
+      这是同一件事被点名的第四次。第十四批批注 5 我声称修了，实际只是把主色框换成
+      `--text-2` 浅灰——**换了颜色没换存在**，责任提交是我自己的那一轮。
+      这次按整类处理：`.editor-body:focus-within .editor-scroll`、`.composer:focus-within`
+      两条抬影**整条删除**；`.tree-search`／`.toc-search`／`.toc-row input,textarea`／
+      `.character-modal` 三件套／`.prefs-field input`／全局 `button,input,textarea,select`
+      的 `outline` 与 `box-shadow: 0 0 0 Npx` 全部去掉，只留「自身边框提亮一档到
+      `--border-strong`」；`.splitter` 的 1px 光晕删掉（它把分栏线画成 3px 并把「边界」
+      挪到光标处）。键盘可达性换成**内容变化**：带边框的钮填 `--surface-alt`，
+      无边框的 `.icon-button` 复用它 hover 早就在用的 `--text-1 8%` 叠加——浅色主题里
+      `--surface-alt` 与顶栏只差三个色阶几乎看不见，而给裸 chevron 铺实心方块正是
+      §0.7 条五禁的「底框」，所以两处不是一套。
+      **`.file-cm` 那圈不是我们写的**：CodeMirror 基础主题自带
+      `.cm-focused { outline: 1px dotted #212121 }`（0,2,0）。加
+      `.file-cm .cm-editor.cm-focused { outline: 0 }`（0,3,0）按特异性压住，与样式表
+      顺序无关；真机深浅两档聚焦后 `outline-style: none`。
+      判据字面化：`.editor-scroll` 显式写 `outline: 0`——没被规则命中的元素 Chrome 算出
+      UA 初值 `none 3px`，画不出东西但不满足主人写的「outline-width: 0」。
+      真机（深色主题，作品 5）逐项量聚焦前后：`.editor-scroll` 完全不变
+      （`rgba(0,0,0,0)`／`none`／`0px`），textarea 只有 caret 由 `rgb(236,235,233)`
+      变 `rgb(224,106,78)`——**聚焦期间出现的只有光标**；`.chat-input textarea` 前后不变；
+      `.tree-search`／`.prefs-field input`／`.toc-row textarea` 各只剩一档 1px 提亮。
+      顺带修一处会害死下一个人的旧文档：`UI-DESIGN.md` §0.6 还写着「输入框 focus 2px
+      accent ring」，正是第六轮就禁掉的东西——规范不更新，圈就会再长回来。
+      新发现（未动代码，见 UI-BACKLOG 4.3）：`.character-modal` 所属的 `CharacterLibrary`
+      无任何页面挂载，3.1 之后真机走不到；删它属删除语义那条决策。
+      闸门：`uiInvariants` 19 → **20** 块——原「focus never paints the brand colour」升级为
+      整类闸门（先剥注释，再查 outline／`0 0 0`／`--accent`／边框提亮只许 `--border-strong`，
+      并钉住 CodeMirror 压过规则），新增「正文页只用光标说话」一块。变异验证四类违规写法
+      全部被咬。前端 124 → **125 passed / 18 files**；后端 180 passed；tsc／build 干净；
+      命中区审计 0 small / 0 clipped / 0 unreachable（edge 单列 2 项为窗口边界）。
 ---
 
 ## 三、历史（已完成，只留一行结论）

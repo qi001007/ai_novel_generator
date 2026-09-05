@@ -193,7 +193,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 ### 0.6 组件基础
 
 - **按钮**：默认形态是**无边框图标按钮**（见 §0.7）。方框按钮（primary accent 底白字 / secondary 描边 / danger）一个界面**最多一个**，且必须是该界面的主行动；其余一律降为图标或快捷键。高 32（紧凑）/ 36（标准），圆角 6，字重 500；加载中转 spinner 并禁点。
-- **输入框**：高 36，surface-alt 底，focus 2px accent ring；错误 danger ring + 下方 12px 错误文案。
+- **输入框**：高 36，surface-alt 底；**聚焦不画任何一圈**——只允许光标，加上自身边框提亮一档到 `--border-strong`（第六轮批注 16 起禁 accent ring，第十五批批注 4.2 把中性灰的圈也禁了，见 §0.9）；错误态 danger 描边 + 下方 12px 错误文案。
 - **状态标记**：**优先用圆点与颜色，不用文字徽章**。空心灰环＝草稿、实心深灰点＝定稿、主色点＝待审、warning 点＋spinner＝生成中。文字徽章只在「一屏之内需要读出多个不同状态」时才用，且不得与标题重复。
 - **弹层**：模态与确认气泡两种；Esc 关闭、焦点困住、关闭后焦点归还。
 - **空态**：lucide 图标 + 一句话 + 一个主按钮，居中，无装饰插画。
@@ -276,6 +276,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 标签条**要能真的溢出**：容器必须给它一条有界的列 | `.editor-pane` 有 `grid-template-columns: minmax(0, 1fr)` + `min-width: 0`；`.editor-tab` 与 `.file-tab` 的 min/max/flex 三个数相同（5.5rem / 15rem / `0 1 auto`） | 第十五批批注 1.1、1.2 |
 | 一份文档一个「渲染 ↔ 原文件」钮，**出现在它所在的每一条标签条上**，两条都只读 `views[path]` | `.editor-tabs-actions` 存在；两侧都调 `toggleViewLabel`／`isSourceView`；任一组件里不得出现自己的 `sourceView` state；不硬编码「切到渲染视图」 | 第十五批批注 1.3、1.4、3.2、3.4 |
 | 正文页只有一份 buffer，就是 `draft.md` 的文件条目 | workbench 里不存在 `chapterDrafts`／`draftSaved`；树读 `useFiles` + `draftPath`；`draftBody`↔`draftDocument` 按字节互逆有测试 | 第十五批批注 3.3 |
+| **聚焦不画一圈**：无 outline、无 `0 0 0` 光晕、无主色；只许光标 + 边框提亮一档 | 任何含 `focus` 的规则不得出现 `outline: <非 none/0>`、`box-shadow: 0 0 0`、`--accent`（caret 是唯一例外），`border-color` 提亮只许 `--border-strong`；`.editor-body:focus-within .editor-scroll` 这条规则不许存在；压过 CodeMirror 自带 `.cm-focused` 描边的规则不许被删 | 第十五批批注 4.1、4.2 |
 
 **给下一个接手的人**：新增或推翻一条界面决定时，**同一提交里**改这张表和那个测试文件。
 只改代码不改断言，就是下一次「你怎么越改越回去了」。

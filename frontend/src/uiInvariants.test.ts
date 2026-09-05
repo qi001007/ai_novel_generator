@@ -207,24 +207,57 @@ describe("settled UI decisions must not regress", () => {
     expect(treePane).toContain("未保存");
   });
 
-  it("focus never paints the brand colour on a control (第六轮批注16 / 第十一批批注2 / 第十四批批注5)", () => {
-    // Three times raised, because each time one element was fixed instead of the
-    // class. The rule is now mechanical: any rule that reacts to :focus may not use
-    // --accent for a frame, a ring or a fill. The text caret is the one allowed
-    // exception - it is the writing cursor, not a border, and it is 2px wide.
+  it("focus paints no frame anywhere - the whole class (第六轮批注16 / 第十一批批注2 / 第十四批批注5 / 第十五批批注4.2)", () => {
+    // Raised four times, and the last three because one element got fixed while the
+    // class stayed. So the gate reads the class: any rule that reacts to focus may not
+    //   (a) draw an outline (only none / 0),
+    //   (b) paint a `0 0 0 Npx` halo, whatever colour,
+    //   (c) use the brand colour for a frame, ring, fill or text,
+    //   (d) lift a border to anything except --border-strong.
+    // The one brand colour left is the text caret - it is the writing cursor, not a
+    // border, and it is what the owner asked to keep when he asked for the rest to go.
+    // Comments are stripped first: a note that mentions :focus must not be read as the
+    // selector of the rule sitting under it.
+    const flat = css.replace(/\/\*[\s\S]*?\*\//g, "");
     const offenders: string[] = [];
-    for (const match of css.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
-      const sel = match[1].trim();
-      const body = match[2];
+    for (const match of flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const sel = match[1].trim().replace(/\s+/g, " ");
       if (!sel.includes("focus")) continue;
-      const painted = body
-        .split(";")
-        .map((d) => d.trim())
-        .filter((d) => d.startsWith("outline") || d.startsWith("border-color") || d.startsWith("box-shadow") || d.startsWith("background"))
-        .filter((d) => d.includes("var(--accent"));
-      if (painted.length) offenders.push(sel.replace(/\s+/g, " ") + " -> " + painted.join(" / "));
+      for (const raw of match[2].split(";")) {
+        const d = raw.trim();
+        if (!d.includes(":")) continue;
+        const prop = d.slice(0, d.indexOf(":")).trim();
+        const value = d.slice(d.indexOf(":") + 1).trim();
+        if (prop === "outline") {
+          if (value !== "none" && value !== "0") offenders.push(sel + " -> " + d);
+        } else if (prop === "box-shadow") {
+          if (value.includes("0 0 0")) offenders.push(sel + " -> " + d);
+        } else if (prop === "border-color") {
+          if (value !== "transparent" && !value.includes("var(--border-strong)"))
+            offenders.push(sel + " -> " + d);
+        } else if (prop === "border" || prop === "background" || prop === "color") {
+          if (value.includes("var(--accent")) offenders.push(sel + " -> " + d);
+        }
+      }
     }
     expect(offenders, offenders.join("\n")).toEqual([]);
+    // A ring can also arrive from a dependency's own stylesheet. CodeMirror's base
+    // theme paints `.cm-focused { outline: 1px dotted #212121 }`, which this file has
+    // to out-specify; if that override is ever dropped the ring comes back silently.
+    expect(css).toMatch(/\.file-cm \.cm-editor\.cm-focused\s*\{\s*outline: 0;/);
+  });
+
+  it("the prose page says focus with a caret and nothing else (第十五批批注4.1)", () => {
+    // The owner asked for the frame around the writing surface to go. Round fourteen I
+    // recoloured it from accent to --text-2 and called that fixed - the same frame in
+    // a different grey. So the container rule must not come back at all, and the
+    // surface keeps its see-through 1px border the same before and after the click.
+    expect(css).not.toMatch(/\.editor-body:focus-within\s+\.editor-scroll/);
+    expect(css).toMatch(/\.editor-scroll\s*\{[^}]*border: 1px solid transparent;/);
+    const body = rule(".editor-body textarea:focus-visible");
+    expect(body).toContain("outline: 0");
+    expect(body).toContain("caret-color: var(--accent)");
+    expect(body).not.toMatch(/border|box-shadow/);
   });
 
   it("one document, one toggle, on every strip that holds it (第十五批批注 1.3、1.4、3.4)", () => {
