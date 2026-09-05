@@ -27,6 +27,15 @@ const SIDEBAR_MIN = 260;
 const SIDEBAR_MAX = 520;
 const SIDEBAR_DEFAULT = 300;
 const CHAT_MIN = 400;
+/* Dragging a boundary past its pane puts that pane away - 第十五批批注 2.2, an ask
+   that has sat on the list for several rounds. 90px is where a column stops being a
+   column: the tree row, the chat composer and the editor toolbar all stop fitting,
+   so continuing to drag is fighting a strip that cannot hold anything. */
+const CLOSE_AT = 90;
+/* Bringing the prose column back has to bring it back readable. A drag that closed
+   it left the chat pane holding nearly the whole window, so a plain un-hide came
+   back as a 113px strip - measured. The chat pane gives the room back. */
+const EDITOR_MIN = 420;
 const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 const PANE_STORAGE_KEY = "workbench.panes";
 const HIDDEN_STORAGE_KEY = "workbench.hidden";
@@ -49,22 +58,26 @@ function readHidden(): Hidden {
   }
 }
 
-function chatMax() {
-  return Math.max(CHAT_MIN, window.innerWidth - 560);
+/* The prose column may be squeezed all the way to the closing threshold - that is
+   what 第十五批批注 2.2 asks for - so the chat pane's ceiling is only whatever the
+   window has left after the rail, the tree, the two seams and CLOSE_AT. It used to
+   reserve a flat 560px, which meant the editor could never be dragged shut. */
+function chatMax(sidebar: number) {
+  return Math.max(CHAT_MIN, window.innerWidth - 44 - sidebar - 2 - CLOSE_AT);
 }
 
-function chatDefault() {
-  return clampPane("chat", Math.round(window.innerWidth * CHAT_DEFAULT_RATIO));
+function chatDefault(sidebar: number) {
+  return clampPane("chat", Math.round(window.innerWidth * CHAT_DEFAULT_RATIO), sidebar);
 }
 
-function clampPane(pane: PaneKey, value: number) {
+function clampPane(pane: PaneKey, value: number, sidebar = SIDEBAR_DEFAULT) {
   const min = pane === "sidebar" ? SIDEBAR_MIN : CHAT_MIN;
-  const max = pane === "sidebar" ? SIDEBAR_MAX : chatMax();
+  const max = pane === "sidebar" ? SIDEBAR_MAX : chatMax(sidebar);
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function defaultPanes(): Panes {
-  return { sidebar: SIDEBAR_DEFAULT, chat: chatDefault() };
+  return { sidebar: SIDEBAR_DEFAULT, chat: chatDefault(SIDEBAR_DEFAULT) };
 }
 
 function loadPanes(): Panes {
@@ -74,9 +87,10 @@ function loadPanes(): Panes {
     if (!raw) return base;
     const stored = JSON.parse(raw) as Partial<Panes>;
     // Re-clamp so a width saved on a wide monitor cannot overflow a narrow window.
+    const sidebar = clampPane("sidebar", stored.sidebar ?? base.sidebar);
     return {
-      sidebar: clampPane("sidebar", stored.sidebar ?? base.sidebar),
-      chat: clampPane("chat", stored.chat ?? base.chat),
+      sidebar,
+      chat: clampPane("chat", stored.chat ?? base.chat, sidebar),
     };
   } catch {
     return base;
@@ -142,17 +156,48 @@ export default function WorkbenchPage() {
     localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(hidden));
   }, [hidden]);
 
+  /* One guard for every door: chat and editor between them must keep at least one
+     column standing, or the window ends up showing nothing but the rail. */
+  function applyHidden(next: Hidden) {
+    if (next.chat && next.editor) return;
+    setHidden(next);
+  }
+
   function toggleHidden(key: HiddenKey) {
-    setHidden((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      // Chat and editor between them must keep at least one column standing.
-      if (next.chat && next.editor) return prev;
-      return next;
-    });
+    // Un-hiding the prose column takes the room back from the chat pane, which grew
+    // into it when the column went away.
+    if (key === "editor" && hidden.editor) {
+      const room =
+        window.innerWidth -
+        44 -
+        (hidden.sidebar ? 0 : sidebarWidth + 1) -
+        (hidden.chat ? 0 : 1) -
+        EDITOR_MIN;
+      writePane("chat", clampPane("chat", Math.min(panes.chat, room), sidebarWidth));
+    }
+    applyHidden({ ...hidden, [key]: !hidden[key] });
+  }
+
+  /* Closing by drag lands in the same state as closing by the top-bar icon, so the
+     icon goes unpressed and the width a pane comes back to is the width it had
+     before - not the default. 第十五批批注 2.2 的判据就是这两条。 */
+  function closePane(key: HiddenKey) {
+    // Idempotent on purpose, and this is the bug it hides: a drag or a run of arrow
+    // keys keeps firing after the column is gone, and a toggle would answer that by
+    // bringing it straight back - measured, the twelfth ArrowRight re-opened what the
+    // eleventh had closed.
+    if (hidden[key]) return;
+    // A drag that ends in a close leaves the pane one pixel above the threshold;
+    // putting it away with that width stored means the icon brings back a strip
+    // nobody can use. So the width goes back to the resting minimum first.
+    if (key === "sidebar" || key === "chat") {
+      writePane(key, clampPane(key, panes[key]));
+    }
+    applyHidden({ ...hidden, [key]: true });
   }
 
   const sidebarWidth = clampPane("sidebar", panes.sidebar);
-  const chatWidth = charactersOpen ? 0 : clampPane("chat", panes.chat);
+  const chatWidth = charactersOpen ? 0 : clampPane("chat", panes.chat, sidebarWidth);
   // Tracks are built to match what is actually rendered: hidden panels become
   // display:none, and a track left over with no item in it is a dead gap.
   const columns = (() => {
@@ -181,32 +226,76 @@ export default function WorkbenchPage() {
     }));
   }
 
+  /* Where the prose column would end up if the pointer got what it is asking for.
+     The tracks are 44px rail, then sidebar + seam, then chat + seam, then the rest,
+     so the last column is whatever the window has left - and it is the one a
+     rightward drag squeezes. Derived from the *raw* pointer value on purpose: the
+     resting ceiling clamps the chat pane to exactly CLOSE_AT for the editor, so
+     judging the clamped value would leave one pixel that never closes. */
+  function editorWidthIf(pane: PaneKey, raw: number) {
+    const sidebar = pane === "sidebar" ? raw : panes.sidebar;
+    const chat = pane === "chat" ? raw : panes.chat;
+    return (
+      window.innerWidth -
+      44 -
+      (hidden.sidebar ? 0 : sidebar + 1) -
+      (hidden.chat ? 0 : chat + 1)
+    );
+  }
+
+  /* While a boundary is being dragged the floor is CLOSE_AT, not the resting min:
+     the column has to visibly collapse into the edge, or the pointer travels three
+     hundred pixels with nothing moving and then the pane vanishes for no reason.
+     The resting min still guards a width that comes back from storage. */
+  function dragPane(pane: PaneKey, raw: number) {
+    const max = pane === "sidebar" ? SIDEBAR_MAX : chatMax(panes.sidebar);
+    return Math.min(max, Math.max(CLOSE_AT, Math.round(raw)));
+  }
+
+  /* One rule for the pointer and the keyboard: a pane dragged or nudged under the
+     floor closes, and a prose column squeezed under it closes. Returns true when
+     the gesture is over because something just went away. */
+  function applyPane(pane: PaneKey, raw: number) {
+    if (raw < CLOSE_AT) {
+      closePane(pane);
+      return true;
+    }
+    if (editorWidthIf(pane, raw) < CLOSE_AT) {
+      // The prose column is the one being crushed: put it away and stop, or the
+      // pointer keeps dragging a column that is no longer there.
+      closePane("editor");
+      return true;
+    }
+    writePane(pane, dragPane(pane, raw));
+    return false;
+  }
+
   function beginDrag(pane: PaneKey, event: ReactPointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     const startX = event.clientX;
     const startWidth = pane === "sidebar" ? panes.sidebar : panes.chat;
 
     function onMove(moveEvent: PointerEvent) {
-      writePane(pane, clampPane(pane, startWidth + moveEvent.clientX - startX));
+      if (applyPane(pane, startWidth + moveEvent.clientX - startX)) stopDrag();
     }
-    function onUp() {
+    function stopDrag() {
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointerup", stopDrag);
       document.body.classList.remove("resizing");
     }
 
     document.body.classList.add("resizing");
     window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointerup", stopDrag);
   }
 
   function nudge(pane: PaneKey, delta: number) {
     const current = pane === "sidebar" ? panes.sidebar : panes.chat;
-    writePane(pane, clampPane(pane, current + delta));
+    applyPane(pane, current + delta);
   }
 
   function resetPane(pane: PaneKey) {
-    writePane(pane, pane === "sidebar" ? SIDEBAR_DEFAULT : chatDefault());
+    writePane(pane, pane === "sidebar" ? SIDEBAR_DEFAULT : chatDefault(panes.sidebar));
   }
 
   useEffect(() => {
@@ -469,7 +558,7 @@ export default function WorkbenchPage() {
               label="对话栏"
               width={panes.chat}
               min={CHAT_MIN}
-              max={chatMax()}
+              max={chatMax(sidebarWidth)}
               onDragStart={beginDrag}
               onNudge={nudge}
               onReset={resetPane}

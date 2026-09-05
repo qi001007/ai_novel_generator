@@ -161,6 +161,62 @@ describe("workbench layout", () => {
     expect(JSON.parse(localStorage.getItem("workbench.panes") ?? "{}").sidebar).toBe(SIDEBAR_DEFAULT + 32);
   });
 
+  /* 第十五批批注 2.2 - the oldest item on this list: dragging a boundary to its
+     limit has to put that column away, the same way the top-bar icon does, for all
+     three of them. The keyboard reaches the same code path as the pointer, and
+     jsdom has no layout to drag through, so the nudges are the honest probe. */
+  const hiddenAttr = () => workspace().dataset.hiddenPanels ?? "";
+  const pressed = (name: string) =>
+    screen.getByRole("button", { name }).getAttribute("aria-pressed");
+
+  it("closes the tree column when its boundary is dragged past the floor", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+
+    screen.getAllByRole("separator")[0].focus();
+    await user.keyboard("{ArrowLeft}".repeat(14));
+
+    await waitFor(() => expect(hiddenAttr()).toContain("sidebar"));
+    // the top-bar icon reads the same state - one fact, two doors
+    expect(pressed("显示或隐藏结构栏")).toBe("false");
+    // and it does not come back as a 92px strip nobody can use
+    await user.click(screen.getByRole("button", { name: "显示或隐藏结构栏" }));
+    await waitFor(() => expect(columns()).toContain("260px"));
+    expect(hiddenAttr()).not.toContain("sidebar");
+  });
+
+  it("closes the chat column the same way, from the same boundary", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+
+    screen.getAllByRole("separator")[1].focus();
+    await user.keyboard("{ArrowLeft}".repeat(20));
+
+    await waitFor(() => expect(hiddenAttr()).toContain("chat"));
+    expect(pressed("显示或隐藏对话栏")).toBe("false");
+    // the seam of a column that is gone must not stay in the track list
+    await waitFor(() =>
+      expect(columns().split(" ").filter((t) => t === "1px")).toHaveLength(1),
+    );
+  });
+
+  it("closes the prose column when the chat boundary is dragged over it", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+
+    screen.getAllByRole("separator")[1].focus();
+    await user.keyboard("{ArrowRight}".repeat(20));
+
+    await waitFor(() => expect(hiddenAttr()).toContain("editor"));
+    expect(pressed("显示或隐藏编辑栏")).toBe("false");
+    // one column must stay standing, and the chat pane is the one that is
+    expect(hiddenAttr()).not.toContain("chat");
+    // no orphan splitter: hiding the editor removes its track as well
+    await waitFor(() =>
+      expect(columns().split(" ").filter((t) => t === "1px")).toHaveLength(1),
+    );
+  });
+
   it("keeps the separator a 1px hairline with no buttons on it", async () => {
     await openWorkbench();
 

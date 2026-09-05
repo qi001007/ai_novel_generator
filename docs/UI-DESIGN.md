@@ -270,6 +270,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 章节标签**只有一个点** | `EditorPane` 不含 `StatusBadge` | 第十二批批注 1 |
 | 换人**留 52px** | `.chat-row.user + .chat-row.assistant` 的 `margin-top: 40px` | 第十三批批注 5、7 |
 | 深色「灰」= 主人给的 #191A1B | `--surface-alt: #191a1b`、`--surface: #1f2023` | 第十轮批注 1 |
+| 拖分栏边界到极限**就关掉那一栏**，三栏一致；图标是同一状态的另一扇门 | `applyPane` 一个判据（指针与方向键共用）；关闭幂等；正文栏回来时至少 420px | 第十五批批注 2.2（原第四节老账） |
 | 标签条**要能真的溢出**：容器必须给它一条有界的列 | `.editor-pane` 有 `grid-template-columns: minmax(0, 1fr)` + `min-width: 0`；`.editor-tab` 与 `.file-tab` 的 min/max/flex 三个数相同（5.5rem / 15rem / `0 1 auto`） | 第十五批批注 1.1、1.2 |
 | 一份文档一个「渲染 ↔ 原文件」钮，**出现在它所在的每一条标签条上**，两条都只读 `views[path]` | `.editor-tabs-actions` 存在；两侧都调 `toggleViewLabel`／`isSourceView`；任一组件里不得出现自己的 `sourceView` state；不硬编码「切到渲染视图」 | 第十五批批注 1.3、1.4、3.2、3.4 |
 | 正文页只有一份 buffer，就是 `draft.md` 的文件条目 | workbench 里不存在 `chapterDrafts`／`draftSaved`；树读 `useFiles` + `draftPath`；`draftBody`↔`draftDocument` 按字节互逆有测试 | 第十五批批注 3.3 |
