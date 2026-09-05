@@ -955,6 +955,13 @@ select:focus-visible {
 }
 
 .chat-code-bar {
+  /* The bar is 29px (28 content + its own 1px top border) and the button inside it is
+     28, so the button's last row lands exactly on the seam with the <pre> below - and a
+     static sibling later in the tree paints over it. One row of a real control, measured
+     at y=453 with elementFromPoint (第十七批 16.10). A stacking context of its own is the
+     fix that cannot break when the code block changes height. */
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
