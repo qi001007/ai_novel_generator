@@ -13,7 +13,7 @@ import Splitter, { type PaneKey } from "../components/Splitter";
 import ActivityRail, { type RailPage } from "../components/ActivityRail";
 import TreePane, { type BriefRow } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
-import { briefChapter, briefPath, draftChapter, useFiles } from "../store/files";
+import { briefChapter, briefPath, draftChapter, draftPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
 type RightView = "editor" | "files" | "feedback" | "worldmap" | "foreshadow" | "characters";
@@ -139,6 +139,18 @@ export default function WorkbenchPage() {
     await refreshMetas();
     setRightView("files");
     void openFile(briefPath(created));
+  }
+
+  /* Which side of a draft.md pair is on stage is decided here, because this is the only
+     place that knows it - `rightView` is React state, invisible to the store. Two
+     functions used to write `views[draftPath]` from the other end and fight each other,
+     which is why a `?file=chapters/NNNN/draft.md` deep link showed the source while its
+     button promised the source (第十七批 16.11, my own 6b6dbd3). */
+  function markProseStage(chapterId: number) {
+    const chapter = state.chapters.find((item) => item.id === chapterId);
+    if (!chapter) return;
+    const path = draftPath(chapter.chapter_number);
+    useFiles.setState((prev) => (prev.views[path] === false ? {} : { views: { ...prev.views, [path]: false } }));
   }
 
   const createChapter = useRef(handleCreateChapter);
@@ -378,6 +390,7 @@ export default function WorkbenchPage() {
     if (!state.chapters.some((item) => item.id === chapterId)) return;
     state.openChapterTab(chapterId);
     setRightView("editor");
+    markProseStage(chapterId);
     setSearchParams({}, { replace: true });
   }, [chapterIdParam, state.chapters, state.selectedChapterId, setSearchParams]);
 
@@ -580,6 +593,10 @@ export default function WorkbenchPage() {
             onOpenFile={(path) => void openFile(path)}
             onSelectChapter={(chapterId) => {
               setRightView("editor");
+              // Bringing the prose page on stage IS the answer to "which side of the
+              // pair is showing", so this is where the flag is written - not from
+              // inside the buffer hydration (16.11).
+              markProseStage(chapterId);
               // Open it in the strip as well as selecting it, so a chapter you
               // clicked is where a chapter you opened would be.
               state.openChapterTab(chapterId);

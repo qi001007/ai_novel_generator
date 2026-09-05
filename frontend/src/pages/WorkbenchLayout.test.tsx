@@ -221,6 +221,25 @@ describe("workbench layout", () => {
      pulling back moved nothing and the only way to get the column again was to let go
      and click the top-bar icon. One reversible floor now governs both directions, and
      both doors. */
+  /* 16.11: two store writers used to fight over views[draftPath] - open() stamped true
+     and the chapter hydration stamped false unconditionally - so a deep link into a
+     draft's source showed the source while its button promised the source, and the
+     first click changed nothing on screen. The flag is now written where the column is
+     decided. */
+  it("opens a draft's source by deep link with the toggle already facing the prose page", async () => {
+    stubFetch();
+    render(
+      <MemoryRouter initialEntries={["/novels/1?file=chapters/0042/draft.md"]}>
+        <App />
+      </MemoryRouter>,
+    );
+    const toggle = await screen.findByRole("button", { name: "切到正文页" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    // and the surface really is the source, so the label is not lying about the future
+    expect(document.querySelector(".file-cm .cm-editor")).toBeTruthy();
+    expect(document.querySelector(".editor-body textarea")).toBeNull();
+  });
+
   it("gives a closed column back from the same boundary, and not from the same direction", async () => {
     const user = userEvent.setup();
     await openWorkbench();
