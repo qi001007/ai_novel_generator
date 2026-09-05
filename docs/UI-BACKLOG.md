@@ -64,7 +64,7 @@
     深蓝+石墨+黑体 **0**；深朱砂 **1** —— 禁用态主按钮 `#9a8883` 压 `#3a2b27` = **4.00**（需 4.5），
     **改前就有**；蓝那一套我换成 5.07，朱砂是否一起抬上去属品牌色决定 → 已登记进第二节。
   · 测试：新增 `store/appearance.test.ts` 5 条、`PreferencesPage` 1 条；
-    `uiInvariants` 33 → **35** 块（钉住复合选择器、预览不许抄色值、正文字体一个出处、
+    `uiInvariants` 29 → **31** 块（钉住复合选择器、预览不许抄色值、正文字体一个出处、
     `data-theme` 一个写者）。前端 163 → **171 passed / 20 files**；tsc clean；build clean；
     命中区 `/settings` 外观 0 small / 0 clipped / 0 unreachable，`/novels/5` 同
     （edge 1、srOnly 1 属既有）。
@@ -126,7 +126,7 @@
     整行看不见。这个病在树菜单里已经存在很久，jsdom 测试永远看不见（它不断样式表）。
     修在共用类上（`.tree-menu-item.primary { background: none }`），两张菜单一起好。
   · 测试：`BookshelfPage` +3（右键三条齐全且删除项 disabled 带原因／Esc 关并还焦点／
-    键盘 Shift+F10 能开／点更换封面开弹窗且不跳工作台）；`uiInvariants` 35 → **36** 块。
+    键盘 Shift+F10 能开／点更换封面开弹窗且不跳工作台）；`uiInvariants` 31 → **32** 块。
     前端 171 → **175 passed / 20 files**；tsc clean；build clean；
     命中区 `/` 与 `/novels/5` 均 0 small / 0 clipped / 0 unreachable。
 - [x] **封面色改成调色盘** ✅（前几轮点名项，2026-09-06 做完，`0d65432`）
@@ -163,7 +163,7 @@
     `style={coverColor ? {...} : undefined}`——**React 不会把内联自定义属性清回去**，
     测试里量到节点上留的还是上一个 hex。改成永远给一个具体值（空值时给主色）。
   · 测试：`BookshelfPage` +1（取色器在组外／挑完预览与选中态都变／保存落库 hex／
-    重开后认得出非预设色／回到预设与「默认」都各自正确）；`uiInvariants` 36 → **37** 块。
+    重开后认得出非预设色／回到预设与「默认」都各自正确）；`uiInvariants` 32 → **33** 块。
     前端 175 → **177 passed / 20 files**；tsc clean；build clean；命中区 0/0/0。
 - [x] ~~拖动分栏边界到极限应能关闭该栏~~（已做，见上面 §2.2，本条从第四节划掉）。
 
