@@ -76,14 +76,14 @@
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 200 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 182 passed / 20 files
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 204 passed
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 188 passed / 20 files
 cd E:\novel-generator\frontend; npx tsc -b --force --pretty false           # 必须 clean（--force，别信增量）
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 cd E:\novel-generator\.scratch; node hit-area-audit.mjs                     # 期望 0 small / 0 clipped / 0 unreachable
 
 # 界面不可回退闸门（改界面必须同批改这里的断言，见 UI-DESIGN §0.9）
-#   frontend/src/uiInvariants.test.ts —— 现 36 块
+#   frontend/src/uiInvariants.test.ts —— 现 38 块（数它：git show HEAD:frontend/src/uiInvariants.test.ts | 数 it(" 的行）
 ```
 
 要看注入上下文清单：后端起时带 `$env:NOVEL_CONTEXT_DEBUG = '1'`，跑在**可见终端**里
