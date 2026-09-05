@@ -4048,7 +4048,14 @@ body.resizing {
 
 .tree-action:disabled { opacity: 0.65; cursor: default; }
 
-.tree-inline-action {
+/* The same inline affordance, wherever a sentence needs to open a door.
+   min-height:0 is load-bearing: the global button floor is 32px and this sits inside a
+   12px line of text - the same root cause that already inflated the tree prefix, the
+   drag handle and the mode switch in earlier rounds. */
+.tree-inline-action,
+.chat-notice-action {
+  position: relative;
+  min-height: 0;
   padding: 0;
   border: 0;
   background: none;
@@ -4059,7 +4066,25 @@ body.resizing {
   cursor: pointer;
 }
 
+/* A link inside a sentence cannot be 24px tall without pushing the line apart, so the
+   target is widened with an invisible overlay instead - the same trick the splitter and
+   the drag line use, and the audit reads it because it hit-tests, not because it trusts
+   the box. 4px above and below an 18px line is 26px of grab; 3px either side. */
+.tree-inline-action::after,
+.chat-notice-action::after {
+  content: "";
+  position: absolute;
+  inset: -4px -3px;
+}
+
 .tree-inline-action:disabled { color: var(--text-2); opacity: 0.65; }
+
+/* Inside the warning-toned notice an accent link fights the banner, so it borrows the
+   banner's own colour and keeps only the underline as the "clickable" cue. */
+.chat-notice-action {
+  color: inherit;
+  font-weight: 600;
+}
 
 .tree-action-error {
   margin: 0 10px 8px;

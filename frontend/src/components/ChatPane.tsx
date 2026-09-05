@@ -708,8 +708,15 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   return (
     <section className={`chat-pane ${className}`} aria-label="AI 对话">
       {llmStatus && !llmStatus.configured && (
+        /* 第九批遗留：这句话一直在教主人做一件错事。D-16 之后配置的真源是 app_config
+           表、入口在 /settings，`get_llm_client` 每次请求都重新解析，所以既不用改 .env
+           也不用重启后端 - 照旧话去做，改完还是不生效，只会白折腾一次。 */
         <div className="chat-notice">
-          LLM 未配置：在 backend/.env 填入密钥后重启后端，模型状态会变绿
+          LLM 未配置：到
+          <button type="button" className="chat-notice-action" onClick={() => navigate("/settings")}>
+            设置
+          </button>
+          里填 API 密钥，保存后即刻生效，不用重启后端
         </div>
       )}
       <div className="chat-messages" ref={scrollRef}>

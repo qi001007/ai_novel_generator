@@ -189,6 +189,29 @@ describe("ChatPane", () => {
     expect(screen.queryByRole("button", { name: /思考过程/ })).toBeNull();
   });
 
+  /* 第九批遗留：这条提示一直在教主人做一件错事（改 .env 并重启后端），
+     而 D-16 之后真源是 app_config 表、入口在 /settings。 */
+  it("points the unconfigured notice at the settings page, not at backend/.env", async () => {
+    useWorkbench.setState({
+      llmStatus: {
+        provider: "openai_compatible",
+        configured: false,
+        models: {},
+        available_models: [],
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json([]))));
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    const notice = await screen.findByText(/LLM 未配置/);
+    expect(notice.textContent).toContain("设置");
+    expect(notice.textContent).toContain("不用重启后端");
+    // the wrong instruction must not come back: editing the file and restarting.
+    // (Checked as a phrase - the correct sentence also contains 重启, in 「不用重启后端」.)
+    expect(notice.textContent).not.toMatch(/\.env/);
+    expect(notice.textContent).not.toMatch(/密钥后重启|后重启后端/);
+    expect(screen.getByRole("button", { name: "设置" })).toBeTruthy();
+  });
+
   it("renders the reply as prose and ends it with copy and download", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
