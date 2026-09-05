@@ -30,6 +30,7 @@ import filesStore from "./store/files.ts?raw";
 import cardView from "./components/CharacterDocCard.tsx?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
 import tocList from "./components/TocListView.tsx?raw";
+import viewToggle from "./components/ViewToggle.tsx?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -264,9 +265,12 @@ describe("settled UI decisions must not regress", () => {
     // The chapter strip used to have no button at all, so the prose page was a dead
     // end; and a private useState in either pane would put the pair back to two.
     expect(editorPane).toContain("editor-tabs-actions");
-    expect(editorPane).toContain("toggleViewLabel");
-    expect(editorPane).toContain("isSourceView");
-    expect(fileEditor).toContain("toggleViewLabel");
+    // 第十六批批注 2 moved the button into one shared component; the decision it pins
+    // is unchanged - both strips show it, neither owns a copy of the state.
+    expect(editorPane).toContain("<ViewToggle");
+    expect(fileEditor).toContain("<ViewToggle");
+    expect(viewToggle).toContain("toggleViewLabel");
+    expect(viewToggle).toContain("isSourceView");
     // and neither side hardcodes the words, or the two strips describe one action
     // in two vocabularies (the file strip used to say 渲染视图, the owner asked 正文)
     // (the minimap keeps a `view` state of its own - that is a scroll ratio, not a
@@ -278,6 +282,22 @@ describe("settled UI decisions must not regress", () => {
     // the map, not a per-component copy, is the state
     expect(filesStore).toContain("views: Record<string, boolean>");
     expect(filesStore).toContain("export const isSourceView");
+  });
+
+  it("the toggle is one component, and its icon names the surface you are on (第十六批批注 2)", () => {
+    // The owner accepted the switching but said the button was 反过来: the book is the
+    // reading surface, so the book belongs on the reading surface - not on the strip
+    // that is about to leave it. Two strips drawing the same pair by hand is also how
+    // they drifted once already, so the button is now one component both of them use.
+    expect(editorPane).toContain("<ViewToggle");
+    expect(fileEditor).toContain("<ViewToggle");
+    expect(viewToggle).toContain("{source ? <FileCode2 size={14} /> : <BookOpen size={14} />}");
+    // the label still names the destination, or "切到源码视图" would describe the past
+    expect(viewToggle).toContain("toggleViewLabel(path, views)");
+    expect(viewToggle).toContain("aria-pressed={source}");
+    // and neither strip may grow its own copy of the icon decision again
+    expect(editorPane).not.toMatch(/sourceShown \? <BookOpen/);
+    expect(fileEditor).not.toMatch(/sourceView \? <BookOpen/);
   });
 
   it("the dark theme stays at the owner's measured grey (第十轮批注1)", () => {

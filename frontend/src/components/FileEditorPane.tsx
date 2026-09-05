@@ -3,7 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { EditorState } from "@codemirror/state";
 import { EditorView, highlightActiveLine, keymap } from "@codemirror/view";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { AlertTriangle, BookOpen, ChevronRight, FileCode2, RefreshCw, X } from "lucide-react";
+import { AlertTriangle, ChevronRight, FileCode2, RefreshCw, X } from "lucide-react";
 
 import {
   cursorReport,
@@ -21,7 +21,6 @@ import {
   isDirty,
   isSourceView,
   TOC_PATH,
-  toggleViewLabel,
   useFiles,
 } from "../store/files";
 import {
@@ -31,6 +30,7 @@ import {
   thumbGeometry,
 } from "./minimap";
 import HScrollThumb from "./HScrollThumb";
+import ViewToggle from "./ViewToggle";
 import CharacterDocCard, { isCharacterDoc } from "./CharacterDocCard";
 import MarkdownText from "./MarkdownText";
 import TocListView, { parseToc, renderToc } from "./TocListView";
@@ -411,18 +411,9 @@ export default function FileEditorPane() {
             typeset prose for everything else). */}
         {entry?.doc ? (
           <div className="file-tabs-actions">
-            {/* The label comes from the same function the chapter strip calls, so the
-                pair can never be described two different ways. */}
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={toggleViewLabel(active!, views)}
-              title={toggleViewLabel(active!, views)}
-              aria-pressed={sourceView}
-              onClick={() => (sourceView ? toggleView(active!) : handleToSource())}
-            >
-              {sourceView ? <BookOpen size={14} /> : <FileCode2 size={14} />}
-            </button>
+            {/* One component now, so the chapter strip and this one cannot point
+                different ways - that is what drifted before 第十六批批注 2. */}
+            <ViewToggle path={active!} onToggle={() => (sourceView ? toggleView(active!) : handleToSource())} />
           </div>
         ) : null}
         <HScrollThumb scroller={tabsScrollRef} revision={tabs.join("|")} />

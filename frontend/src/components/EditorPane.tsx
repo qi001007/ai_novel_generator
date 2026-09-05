@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { BookOpen, FileCode2, ScrollText, X } from "lucide-react";
+import { ScrollText, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -56,13 +56,8 @@ function formatTime(value: string) {
 }
 
 import HScrollThumb from "./HScrollThumb";
-import {
-  draftBody,
-  draftPath,
-  isSourceView,
-  toggleViewLabel,
-  useFiles,
-} from "../store/files";
+import ViewToggle from "./ViewToggle";
+import { draftBody, draftPath, useFiles } from "../store/files";
 import { chapterDraftPath, useWorkbench } from "../store/workbench";
 
 export default function EditorPane() {
@@ -88,10 +83,7 @@ export default function EditorPane() {
      One document, one button per strip that holds it, and both read the same
      `views[path]` - there is no second "am I looking at the prose" boolean. */
   const draftFilePath = chapter ? draftPath(chapter.chapter_number) : "";
-  const views = useFiles((store) => store.views);
   const toggleView = useFiles((store) => store.toggleView);
-  const sourceShown = chapter ? isSourceView(draftFilePath, views) : false;
-  const toggleLabel = chapter ? toggleViewLabel(draftFilePath, views) : "";
   const [savedAt, setSavedAt] = useState<string | null>(null);
   // The textarea is the scroller: it keeps the browser's caret-into-view work,
   // and the minimap reads and writes its scrollTop. Growing it to its full
@@ -362,16 +354,7 @@ export default function EditorPane() {
         </div>
         {chapter ? (
           <div className="editor-tabs-actions">
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={toggleLabel}
-              title={toggleLabel}
-              aria-pressed={sourceShown}
-              onClick={() => toggleView(draftFilePath)}
-            >
-              {sourceShown ? <BookOpen size={14} /> : <FileCode2 size={14} />}
-            </button>
+            <ViewToggle path={draftFilePath} onToggle={() => toggleView(draftFilePath)} />
           </div>
         ) : null}
         <HScrollThumb scroller={tabsScrollRef} revision={state.chapterTabs.join("|")} />
