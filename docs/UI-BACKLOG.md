@@ -35,11 +35,26 @@
   1. 改的是**整类**而不是这两枚：全局 `button` 规则加 `display: inline-flex` +
      `align-items: center` + `justify-content: center`，以后任何裸按钮都不会再犯；
   2. 复量：`/`、`/settings`、`/novels/5` 三页所有「含图标且无文字」的按钮 |dy| ≤ 0.5px；
-  3. **不许改外观**：边框、尺寸、圆角、颜色一概不动（主人只说了不居中）；
+  3. **不许改外观**：边框、圆角、颜色一概不动（主人只说了不居中）。
+     尺寸这一项实测**必须**变：35px 里有 3px 是图标下面那半行空隙，居中后按钮回到
+     全局 `min-height` 的 32px - 那不是改设计，是那条空隙本来就不该算高度；
      顶栏这两枚是方框而工作台同位的是无边框图标钮——这处不一致**只登记**（见 §20.5），不顺手改；
   4. 行内文字按钮（`.tree-inline-action` 那种在句子里的）不许被 flex 改动而错位：
      量它相对所在段落文字基线的偏移，改前后都 ≤1px；
-  5. `uiInvariants` 钉住全局 button 规则里的这三行；命中区审计 0 small / 0 clipped / 0 unreachable。
+  5. `uiInvariants` 钉住全局 button 规则里的居中两行，并**反向钉死** `justify-content`
+     不许出现（第一版我加了它，把树里左对齐的行文字推走 75px）；
+     命中区审计 0 small / 0 clipped / 0 unreachable。
+
+- **已做（2026-09-06，改前后各拍一次全站 111 个按钮的快照逐一对比）**。
+  · 顶栏两枚：图标偏移 **−3.0px → 0.0px**；按钮高 **35 → 32**（那 3px 是图标下的半行空隙）。
+  · 其余 109 个按钮：**文字位置零位移、尺寸零变化**——第一版我多加了
+    `justify-content: center`，快照对比当场抓到 `.tree-label`／`.tree-label mono`
+    两枚的行文字右移 75px／72px，于是去掉它（按钮是 shrink-to-fit 的 inline-flex，
+    水平方向本来就对称，交给各自的 `text-align`）。
+  · 残留一处：`.cover-change-btn` 量到 −1px，那是书卡 3D 斜躺变换下 `getBoundingClientRect`
+    的投影误差（同一元素在 grid 居线下不可能偏），非布局问题，未动。
+  · 测试：`uiInvariants` **33 → 34** 块；前端 177 → 178；tsc clean；build clean；
+    命中区 `/`、`/settings`、`/novels/5` 均 0 small / 0 clipped / 0 unreachable。
 
 ### 20.2 书卡右键菜单功能太少（批注 3）
 

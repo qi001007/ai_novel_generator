@@ -566,6 +566,18 @@ const componentSources = import.meta.glob("./**/*.tsx", {
 
   /* 前几轮点名项（书卡右键菜单）定下来的三件事：卡面动作是图标不是句子、
      右键菜单复用树那一套、没有通路的条目老实写「未开放」。 */
+  /* 第二十批批注 1、2：同一处根因，修的是整类。 */
+  it("a bare button centres its icon without shoving row text around", () => {
+    // 剥掉注释再查：这条规则里就写着「不写 justify-content」这句话，
+    // 让散文去触发断言，等于闸门自己骗自己（第十五批 4.2 同一课）。
+    const r = rule("button").replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(r).toContain("display: inline-flex");
+    expect(r).toContain("align-items: center");
+    // justify-content: center 是我想当然加的第一版：它把 .tree-label 那类
+    // 占满一行的按钮文字右移了 75px（改前后各拍一次全站按钮快照对比出来的）。
+    expect(r).not.toContain("justify-content");
+  });
+
   /* 前几轮点名项（封面色调色盘）：色板末尾那枚是系统取色器，不是我又画的假色轮；
      挑的颜色必须当场在预览上看得见，不能等保存回书架才知道选了什么。 */
   it("the cover palette ends in a real picker that paints the preview", () => {

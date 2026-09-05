@@ -218,6 +218,16 @@ p {
 /* ---------- 按钮 / 输入 / 徽章 ---------- */
 
 button {
+  /* 第二十批 20.1：图标与文字都居中。svg 是行内内容时按**文字基线**排，
+     line-height 在它下面留了半行空隙 - 实测顶栏两枚 42x35 的按钮里 16px 图标
+     偏 -2.5px。修在这里而不是给每枚补 .icon-button：以后任何裸按钮都不会再犯。
+     自带 display 的（.book-card: block、.icon-button: grid、.tree-menu-item: flex）
+     特异性更高，不受这条影响。 */
+  display: inline-flex;
+  align-items: center;
+  /* 故意不写 justify-content: center：按钮是 shrink-to-fit 的 inline-flex，图标本来就
+     对称居中；而 .tree-label 那类占满一行的按钮一居中，行文字右移 75px（实测）。
+     水平方向交给各自的 text-align。 */
   min-height: 32px;
   padding: 6px 12px;
   border: 1px solid var(--border-strong);
