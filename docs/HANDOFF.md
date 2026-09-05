@@ -77,8 +77,13 @@
 
 ```powershell
 cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 180 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 78 passed / 15 files
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 125 passed / 18 files
+cd E:\novel-generator\frontend; npx tsc -b --force --pretty false           # 必须 clean（--force，别信增量）
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
+cd E:\novel-generator\.scratch; node hit-area-audit.mjs                     # 期望 0 small / 0 clipped / 0 unreachable
+
+# 界面不可回退闸门（改界面必须同批改这里的断言，见 UI-DESIGN §0.9）
+#   frontend/src/uiInvariants.test.ts —— 现 20 块
 ```
 
 要看注入上下文清单：后端起时带 `$env:NOVEL_CONTEXT_DEBUG = '1'`，跑在**可见终端**里
@@ -86,6 +91,12 @@ cd E:\novel-generator\frontend; npm run build                              # 期
 
 S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scripts\writing_ring_smoke.py`；
 默认模板草稿，加 `--live` 才会真实调用模型。
+
+**2026-09-05 文档清账（主人：「删除一些落后的、之前写的推进计划，保证文档简洁」）**：
+`WORKSTREAM-PLAN.md` 从 886 行 / 88KB 压到 229 行 / 17KB——它自己第一节就写着「只记进度与勾选，
+已完成一律进 DECISIONS」，却靠批注流水涨到那个体积，而涨到那个体积没让任何一条决定更清楚。
+所有**未结**条目逐条搬走、一条没丢（含第六轮那条「调用记录面板按内容给高」，它差点被流水埋掉）。
+`UI-BACKLOG.md` 按「勾完即删该条」清掉第十五批 13 条已完成项。
 
 ## 读哪份文件
 
@@ -120,7 +131,8 @@ D-15、D-16 已批准。
 或「测试全绿」顶替；② 别躲进 Figma 建帧、后端收口这类自留地，先清主人点名的界面。
 
 **2026-09-04 前端清账轮（主人：「后端先存档，现在先改前端」）**：主人第四轮 16 条浏览器批注里
-可修的全部修完，逐条真机量过（明细见 WORKSTREAM-PLAN 批注第五批）。三条值得接手的人记住：
+可修的全部修完，逐条真机量过（该轮明细已折叠进 WORKSTREAM-PLAN《四、历史》一行，过程原文用
+`git show <提交>:docs/WORKSTREAM-PLAN.md` 追溯）。三条值得接手的人记住：
 
 - **能量的都别目测**。缩略栏「粘手」量出来是画与拖两套数 + `scrollTop/scrollHeight` 未归一；
   书架「影子粘在书上」量出来是 15px 模糊向上够进书体 24.8px；标签页「比例不对」量出来是
