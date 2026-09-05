@@ -249,7 +249,9 @@ describe("workbench layout", () => {
   it("groups chapter prose and brief files under one chapter node", async () => {
     await openWorkbench();
     await waitFor(() => {
-      expect(screen.getByText("0042")).toBeTruthy();
+      // The editor tab carries the same four digits now (第十六批批注 3), so this has to
+      // say which 0042 it means instead of accepting whichever came first.
+      expect(document.querySelector(".tree-label.mono")?.textContent).toBe("0042");
     });
     expect(screen.getByText("draft.md")).toBeTruthy();
     expect(screen.getByText("brief.md")).toBeTruthy();

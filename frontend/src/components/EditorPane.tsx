@@ -57,7 +57,7 @@ function formatTime(value: string) {
 
 import HScrollThumb from "./HScrollThumb";
 import ViewToggle from "./ViewToggle";
-import { draftBody, draftPath, useFiles } from "../store/files";
+import { chapterNumberLabel, draftBody, draftPath, useFiles } from "../store/files";
 import { chapterDraftPath, useWorkbench } from "../store/workbench";
 
 export default function EditorPane() {
@@ -328,11 +328,18 @@ export default function EditorPane() {
               className={`editor-tab ${active ? "active" : ""}`}
               role="tab"
               aria-selected={active}
+              aria-label={`第 ${item.chapter_number} 章 ${item.title || "未命名"}`}
             >
-              <button type="button" onClick={() => state.openChapterTab(id)}>
-                <span>
-                  第 {item.chapter_number} 章 {item.title || "未命名"}
-                </span>
+              {/* 第十六批批注 3: with a few tabs open every one of them read
+                  「第 … 章 …」 and was truncated to「第 …」, so the strip could not tell
+                  you which chapter you were on. The tab now carries just the number the
+                  tree shows; the words move to title + accessible name (§0.8 条二). */}
+              <button
+                type="button"
+                onClick={() => state.openChapterTab(id)}
+                title={`第 ${item.chapter_number} 章 ${item.title || "未命名"}`}
+              >
+                <span className="mono">{chapterNumberLabel(item.chapter_number)}</span>
               </button>
               {/* 批注 1: the permanent status ring is gone. It sat there whether or
                   not anything was happening, and the moment you typed, an unsaved

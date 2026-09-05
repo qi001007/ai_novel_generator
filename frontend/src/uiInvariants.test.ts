@@ -300,6 +300,20 @@ describe("settled UI decisions must not regress", () => {
     expect(fileEditor).not.toMatch(/sourceView \? <BookOpen/);
   });
 
+  it("a chapter tab says which chapter it is at a glance (第十六批批注 3)", () => {
+    // 「打开的页面太多，你就只能看到『第什么什么』」- every tab began with the same
+    // three glyphs and the strip stopped being a locator. The number is what the tree
+    // already shows, so the tab shows that; the words move to the accessible name and
+    // the tooltip, they do not disappear (§0.8 条二).
+    expect(editorPane).toContain("{chapterNumberLabel(item.chapter_number)}");
+    expect(editorPane).not.toMatch(/<span>\s*\n?\s*第 \{item\.chapter_number\} 章/);
+    expect(editorPane).toContain('aria-label={`第 ${item.chapter_number} 章 ${item.title || "未命名"}`}');
+    expect(editorPane).toContain('title={`第 ${item.chapter_number} 章 ${item.title || "未命名"}`}');
+    // one source for the digits: the tree row, the tab and the search all read it
+    expect(filesStore).toContain("export const chapterNumberLabel");
+    expect(treePane).toContain("chapterNumberLabel(chapter.chapter_number)");
+  });
+
   it("the dark theme stays at the owner's measured grey (第十轮批注1)", () => {
     expect(css).toMatch(/\[data-theme="dark"\][\s\S]*?--surface-alt: #191a1b;/);
     expect(css).toMatch(/--surface: #1f2023;/);

@@ -278,6 +278,7 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 正文页只有一份 buffer，就是 `draft.md` 的文件条目 | workbench 里不存在 `chapterDrafts`／`draftSaved`；树读 `useFiles` + `draftPath`；`draftBody`↔`draftDocument` 按字节互逆有测试 | 第十五批批注 3.3 |
 | **搜索匹配的是屏上显示的那个值**，不是它背后的字段 | 章号显示 `0001` 就必须搜得到 `0`／`00`／`0001`；`chapterNumberLabel()` 一处出显示值，`chapterMatches()` 用它做判据并有单测 | 第十六批批注 4 |
 | 切换钮的**图标说「你在哪」**，文案说「点下去去哪」；两条标签条共用**同一个组件** | `components/ViewToggle.tsx` 里 `source ? FileCode2 : BookOpen`；两条标签条都必须渲染 `<ViewToggle`；任一侧不得再出现自己的 `? <BookOpen` | 第十六批批注 2 |
+| 章节标签**只写四位章号**（`0001`），完整章名搬到可访问名与 tooltip | `EditorPane` 渲染 `{chapterNumberLabel(item.chapter_number)}`、`role="tab"` 上有 `aria-label`、按钮上有 `title`；三位数字只有一个出处 `chapterNumberLabel()` | 第十六批批注 3 |
 | **聚焦不画一圈**：无 outline、无 `0 0 0` 光晕、无主色；只许光标 + 边框提亮一档 | 任何含 `focus` 的规则不得出现 `outline: <非 none/0>`、`box-shadow: 0 0 0`、`--accent`（caret 是唯一例外），`border-color` 提亮只许 `--border-strong`；`.editor-body:focus-within .editor-scroll` 这条规则不许存在；压过 CodeMirror 自带 `.cm-focused` 描边的规则不许被删 | 第十五批批注 4.1、4.2 |
 
 **给下一个接手的人**：新增或推翻一条界面决定时，**同一提交里**改这张表和那个测试文件。
