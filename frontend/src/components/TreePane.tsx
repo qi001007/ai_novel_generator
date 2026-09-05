@@ -19,6 +19,8 @@ import type { Chapter, FileMeta } from "../types";
 import {
   ARCS_PATH,
   BLUEPRINT_PATH,
+  chapterMatches,
+  chapterNumberLabel,
   draftBody,
   draftPath,
   TOC_PATH,
@@ -195,13 +197,10 @@ export default function TreePane({
 
   const needle = chapterQuery.trim().toLowerCase();
   const filtering = needle.length > 0;
-  const shownChapters = filtering
-    ? chapters.filter(
-        (chapter) =>
-          String(chapter.chapter_number).includes(needle) ||
-          (chapter.title || "").toLowerCase().includes(needle),
-      )
-    : chapters;
+  // Match what is on screen, not the field behind it. `chapter_number` is a number, so
+  // the old String(1) = "1" could never answer "0", "00" or "0001" even though the row
+  // reads 0001 - the owner's words: 「你必须得搜123才能搜到，你这个就不太对」.
+  const shownChapters = filtering ? chapters.filter((chapter) => chapterMatches(chapter, needle)) : chapters;
   // While a search is on, matched chapters open themselves: the point is to jump to
   // the file, not to make the reader expand each one after finding it.
   const isCollapsed = (key: string) => !filtering && collapsed[key] === true;
@@ -364,7 +363,7 @@ export default function TreePane({
                     title={`打开第 ${chapter.chapter_number} 章正文页`}
                     onClick={() => onSelectChapter(chapter.id)}
                   >
-                    {String(chapter.chapter_number).padStart(4, "0")}
+                    {chapterNumberLabel(chapter.chapter_number)}
                   </button>
                   {/* One dot, one fact: unsaved outranks status, because that is the
                       thing the tab already shouts about and the two must agree. */}

@@ -76,6 +76,20 @@ export const isSourceView = (path: string, views: Record<string, boolean>) =>
 export const toggleViewLabel = (path: string, views: Record<string, boolean>) =>
   isSourceView(path, views) ? `切到${renderedViewLabel(path)}` : "切到源码视图";
 
+/** The chapter number as it appears on screen. The tree row, the editor tab and the
+ *  search all read this one function - the search used String(chapter_number) and so
+ *  could not find "0001" while showing it (第十五批之后的第十六批批注 4). */
+export const chapterNumberLabel = (n: number) => String(n).padStart(4, "0");
+
+/** Does a chapter answer the tree's search box? Compared against what the row shows:
+ *  the padded number, or the title. Lives here so the tree and its test read one rule. */
+export const chapterMatches = (
+  chapter: { chapter_number: number; title?: string | null },
+  needle: string,
+) =>
+  chapterNumberLabel(chapter.chapter_number).includes(needle) ||
+  (chapter.title ?? "").toLowerCase().includes(needle);
+
 export const draftChapter = (path: string) => {
   const m = /^(?:chapters\/([0-9]{4})(?:\.md|\/draft\.md)|chapters\/([0-9]{4})\/draft\.md)$/.exec(path);
   return m ? Number(m[1] ?? m[2]) : null;

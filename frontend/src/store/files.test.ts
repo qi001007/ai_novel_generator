@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api";
-import { BLUEPRINT_PATH, isDirty, useFiles } from "./files";
+import { BLUEPRINT_PATH, chapterMatches, chapterNumberLabel, isDirty, useFiles } from "./files";
 
 vi.mock("../api", () => ({
   api: { listFiles: vi.fn(), readFile: vi.fn(), writeFile: vi.fn() },
@@ -139,5 +139,30 @@ describe("files store", () => {
     useFiles.getState().setDraft("briefs/0048.md", "- **章节号**：48\n");
     await expect(useFiles.getState().save("briefs/0048.md")).resolves.toBe(true);
     expect(useFiles.getState().metas.map((meta) => meta.path)).toContain("briefs/0048.md");
+  });
+});
+
+/* 第十六批批注 4：树里显示 0001，搜索却拿 String(1) 去比，于是主人输「0」搜不到。
+   判据是「屏幕上看得见的东西必须搜得到」，所以钉的是显示值，不是字段值。 */
+describe("the tree's chapter search", () => {
+  it("finds chapter 1 by everything the row shows", () => {
+    for (const needle of ["0", "00", "000", "0001", "1"]) {
+      expect(chapterMatches({ chapter_number: 1, title: "星潮夜" }, needle), needle).toBe(true);
+    }
+  });
+
+  it("still matches on the title, case-insensitively", () => {
+    expect(chapterMatches({ chapter_number: 7, title: "Star Tide" }, "star")).toBe(true);
+    expect(chapterMatches({ chapter_number: 7, title: null }, "star")).toBe(false);
+  });
+
+  it("does not match a number that is not in the label", () => {
+    expect(chapterMatches({ chapter_number: 1, title: "" }, "2")).toBe(false);
+    expect(chapterMatches({ chapter_number: 12, title: "" }, "012")).toBe(true);
+  });
+
+  it("pads to four digits but never truncates a long number", () => {
+    expect(chapterNumberLabel(1)).toBe("0001");
+    expect(chapterNumberLabel(12345)).toBe("12345");
   });
 });
