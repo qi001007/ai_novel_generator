@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   APPEARANCE_DEFAULTS,
+  PROSE_SIZE,
+  UI_SIZE,
   applyAppearance,
   readAppearance,
   resolveTheme,
+  uiZoom,
   useAppearance,
 } from "./appearance";
 
@@ -45,18 +48,48 @@ describe("appearance store", () => {
     expect(readAppearance()).toEqual(APPEARANCE_DEFAULTS);
   });
 
-  it("writes exactly the four attributes the stylesheet switches on", () => {
-    applyAppearance({ theme: "dark", accent: "blue", code: "graphite", prose: "sans" });
-    const { dataset } = document.documentElement;
+  it("writes the attributes and the two size variables the stylesheet switches on", () => {
+    applyAppearance({
+      theme: "dark",
+      accent: "blue",
+      code: "graphite",
+      uiFont: "inter",
+      proseFont: "georgia",
+      codeFont: "consolas",
+      uiSize: 16,
+      proseSize: 19,
+    });
+    const { dataset, style } = document.documentElement;
     expect(dataset.theme).toBe("dark");
     expect(dataset.accent).toBe("blue");
     expect(dataset.code).toBe("graphite");
-    expect(dataset.prose).toBe("sans");
+    expect(dataset.uiFont).toBe("inter");
+    expect(dataset.proseFont).toBe("georgia");
+    expect(dataset.codeFont).toBe("consolas");
+    // 界面字号是 zoom 因子：16 / 14
+    expect(style.getPropertyValue("--ui-zoom")).toBe(String(16 / 14));
+    expect(style.getPropertyValue("--prose-size")).toBe("19px");
+  });
+
+  it("keeps the old two-way prose pick and clamps what cannot be a size", () => {
+    localStorage.setItem("appearance", JSON.stringify({ prose: "sans" }));
+    expect(readAppearance().proseFont).toBe("hei");
+    localStorage.setItem("appearance", JSON.stringify({ prose: "serif" }));
+    expect(readAppearance().proseFont).toBe("default");
+    localStorage.setItem("appearance", JSON.stringify({ uiSize: 99, proseSize: -4 }));
+    const clamped = readAppearance();
+    expect(clamped.uiSize).toBe(UI_SIZE.max);
+    expect(clamped.proseSize).toBe(PROSE_SIZE.min);
   });
 
   it("persists a pick and applies it in the same breath", () => {
-    useAppearance.getState().pick({ accent: "blue" });
-    expect(JSON.parse(localStorage.getItem("appearance") ?? "{}")).toMatchObject({ accent: "blue" });
+    useAppearance.getState().pick({ accent: "blue", uiSize: 16 });
+    expect(JSON.parse(localStorage.getItem("appearance") ?? "{}")).toMatchObject({
+      accent: "blue",
+      uiSize: 16,
+    });
+    // 跟随指针的浮层要靠这个因子换算坐标
+    expect(uiZoom()).toBeCloseTo(16 / 14, 5);
     expect(document.documentElement.dataset.accent).toBe("blue");
     // and reading it back is what a reload does
     expect(readAppearance().accent).toBe("blue");

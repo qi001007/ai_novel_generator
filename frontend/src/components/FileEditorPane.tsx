@@ -29,7 +29,7 @@ import {
   progressFromPointer,
   thumbGeometry,
 } from "./minimap";
-import { tokenValue } from "../store/appearance";
+import { toCssPx, tokenValue } from "../store/appearance";
 import HScrollThumb from "./HScrollThumb";
 import ViewToggle from "./ViewToggle";
 import CharacterDocForm from "./CharacterDocForm";
@@ -262,8 +262,8 @@ export default function FileEditorPane() {
     const progress = progressFromPointer(
       mmHeight,
       scroll.height,
-      clientY,
-      mapTop,
+      toCssPx(clientY),
+      toCssPx(mapTop),
       mmGrabRef.current,
     );
     dom.scrollTop = progress * Math.max(0, dom.scrollHeight - dom.clientHeight);
@@ -274,7 +274,7 @@ export default function FileEditorPane() {
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.height <= 0) return;
     const geo = thumbGeometry(mmHeight, scroll.height, scrollProgress);
-    const offset = event.clientY - rect.top;
+    const offset = toCssPx(event.clientY - rect.top);
     // On the thumb, keep the offset you grabbed; on bare track, centre it here.
     mmGrabRef.current = isOnThumb(mmHeight, scroll.height, scrollProgress, offset)
       ? offset - geo.top

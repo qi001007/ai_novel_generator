@@ -1,17 +1,24 @@
 import { useEffect, useState } from "react";
-import type { HTMLAttributes, ReactNode } from "react";
+import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import {
+  CODE_FONTS,
+  PROSE_FONTS,
+  PROSE_SIZE,
+  UI_FONTS,
+  UI_SIZE,
   prefersDark,
-  resolveTheme,
+  tokenValue,
   useAppearance,
   type AccentChoice,
   type CodeChoice,
-  type ProseChoice,
+  type CodeFontChoice,
+  type ProseFontChoice,
   type ThemeChoice,
+  type UiFontChoice,
 } from "../store/appearance";
 
 type LlmProvider = {
@@ -86,7 +93,9 @@ function Preview(props: {
   theme?: "light" | "dark";
   accent?: AccentChoice;
   code?: CodeChoice;
-  prose?: ProseChoice;
+  uiFont?: UiFontChoice;
+  proseFont?: ProseFontChoice;
+  codeFont?: CodeFontChoice;
   /** A font cannot be shown as a bar of colour; it has to be shown as text. */
   sample?: string;
 }) {
@@ -94,7 +103,9 @@ function Preview(props: {
   if (props.theme) vars["data-theme"] = props.theme;
   if (props.accent) vars["data-accent"] = props.accent;
   if (props.code) vars["data-code"] = props.code;
-  if (props.prose) vars["data-prose"] = props.prose;
+  if (props.uiFont) vars["data-ui-font"] = props.uiFont;
+  if (props.proseFont) vars["data-prose-font"] = props.proseFont;
+  if (props.codeFont) vars["data-code-font"] = props.codeFont;
   return (
     <span {...vars}>
       {props.sample ? (
@@ -118,6 +129,94 @@ function Preview(props: {
     </span>
   );
 }
+
+/* 第二十批批注 5：只有主题需要看图，所以只有它是卡片。其余一律「一行一项」-
+   左边名字，右边控件，行间一条线，整块一个圆角容器。给一个下拉配一张卡，
+   那张卡什么也说不清。 */
+type PrefVars = CSSProperties & Record<`--${string}`, string>;
+
+function Row(props: { label: string; note?: string; children: ReactNode }) {
+  return (
+    <div className="pref-row">
+      <span className="pref-row-label">
+        {props.label}
+        {props.note ? <span className="pref-row-note">{props.note}</span> : null}
+      </span>
+      <div className="pref-row-control">{props.children}</div>
+    </div>
+  );
+}
+
+function Seg<T extends string>(props: {
+  label: string;
+  value: T;
+  options: readonly { key: T; label: string }[];
+  onPick: (next: T) => void;
+}) {
+  return (
+    <div className="pref-seg" role="radiogroup" aria-label={props.label}>
+      {props.options.map((option) => (
+        <button
+          key={option.key}
+          type="button"
+          role="radio"
+          aria-checked={option.key === props.value}
+          onClick={() => props.onPick(option.key)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FontSelect<T extends string>(props: {
+  label: string;
+  value: T;
+  options: readonly { key: T; label: string }[];
+  onPick: (next: T) => void;
+}) {
+  return (
+    <select
+      aria-label={props.label}
+      value={props.value}
+      onChange={(event) => props.onPick(event.target.value as T)}
+    >
+      {props.options.map((option) => (
+        <option key={option.key} value={option.key}>
+          {option.label}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function SizeRange(props: {
+  label: string;
+  value: number;
+  range: { min: number; max: number; step: number };
+  onPick: (next: number) => void;
+}) {
+  return (
+    <>
+      <input
+        type="range"
+        aria-label={props.label}
+        min={props.range.min}
+        max={props.range.max}
+        step={props.range.step}
+        value={props.value}
+        onChange={(event) => props.onPick(Number(event.target.value))}
+      />
+      <code className="pref-row-value">{props.value} px</code>
+    </>
+  );
+}
+
+const ACCENT_OPTIONS = [
+  { key: "vermilion", label: "朱砂", token: "--vermilion" },
+  { key: "blue", label: "蓝", token: "--blue" },
+] as const;
 
 type CardOption<T extends string> = { value: T; label: string; preview: ReactNode };
 
@@ -168,7 +267,8 @@ export default function PreferencesPage() {
   // arrived here directly and there is nothing in-app to go back to.
   const historyDepth =
     (window.history.state as { idx?: number } | null | undefined)?.idx ?? 0;
-  const { theme, accent, code, prose, pick } = useAppearance();
+  const { theme, accent, code, uiFont, proseFont, codeFont, uiSize, proseSize, pick } =
+    useAppearance();
   const [config, setConfig] = useState<LlmConfig | null>(null);
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -485,40 +585,105 @@ export default function PreferencesPage() {
             value={theme}
             onPick={(next) => pick({ theme: next })}
             options={[
-              { value: "system", label: "系统", preview: <Preview theme={prefersDark() ? "dark" : "light"} accent={accent} code={code} prose={prose} /> },
-              { value: "light", label: "浅色", preview: <Preview theme="light" accent={accent} code={code} prose={prose} /> },
-              { value: "dark", label: "深色", preview: <Preview theme="dark" accent={accent} code={code} prose={prose} /> },
+              {
+                value: "system",
+                label: "系统",
+                preview: (
+                  <Preview
+                    theme={prefersDark() ? "dark" : "light"}
+                    accent={accent}
+                    code={code}
+                    uiFont={uiFont}
+                    proseFont={proseFont}
+                    codeFont={codeFont}
+                  />
+                ),
+              },
+              {
+                value: "light",
+                label: "浅色",
+                preview: (
+                  <Preview
+                    theme="light"
+                    accent={accent}
+                    code={code}
+                    uiFont={uiFont}
+                    proseFont={proseFont}
+                    codeFont={codeFont}
+                  />
+                ),
+              },
+              {
+                value: "dark",
+                label: "深色",
+                preview: (
+                  <Preview
+                    theme="dark"
+                    accent={accent}
+                    code={code}
+                    uiFont={uiFont}
+                    proseFont={proseFont}
+                    codeFont={codeFont}
+                  />
+                ),
+              },
             ]}
           />
-          <CardGroup<AccentChoice>
-            label="色系"
-            value={accent}
-            onPick={(next) => pick({ accent: next })}
-            options={[
-              { value: "vermilion", label: "朱砂", preview: <Preview theme={resolveTheme(theme)} accent="vermilion" code={code} prose={prose} /> },
-              { value: "blue", label: "蓝", preview: <Preview theme={resolveTheme(theme)} accent="blue" code={code} prose={prose} /> },
-            ]}
-          />
-          <CardGroup<CodeChoice>
-            label="代码配色"
-            hint="只管源码里的标题、链接与引用；增删行的红绿是语义色，不跟着换"
-            value={code}
-            onPick={(next) => pick({ code: next })}
-            options={[
-              { value: "default", label: "默认", preview: <Preview theme={resolveTheme(theme)} accent={accent} code="default" /> },
-              { value: "graphite", label: "石墨", preview: <Preview theme={resolveTheme(theme)} accent={accent} code="graphite" /> },
-            ]}
-          />
-          <CardGroup<ProseChoice>
-            label="正文字体"
-            hint="只管章节编辑与调用记录里的成稿；书架上的书名与印章是装饰字，不变"
-            value={prose}
-            onPick={(next) => pick({ prose: next })}
-            options={[
-              { value: "serif", label: "宋体", preview: <Preview theme={resolveTheme(theme)} prose="serif" sample="星图与碑" /> },
-              { value: "sans", label: "黑体", preview: <Preview theme={resolveTheme(theme)} prose="sans" sample="星图与碑" /> },
-            ]}
-          />
+          <div className="pref-rows">
+            <div className="pref-row">
+              <span className="pref-row-label">
+                强调色
+                <span className="pref-row-note">行动、选中与 AI 产出的指向色</span>
+              </span>
+              <div className="pref-row-control">
+                {/* 色块读的是 styles.css 里的原色 token，这里一个十六进制都不写 */}
+                <div className="pref-colours" role="radiogroup" aria-label="强调色">
+                  {ACCENT_OPTIONS.map((option) => (
+                    <button
+                      key={option.key}
+                      type="button"
+                      role="radio"
+                      aria-checked={accent === option.key}
+                      className="pref-colour"
+                      aria-label={option.label}
+                      title={option.label}
+                      style={{ "--chip": tokenValue(option.token) } as PrefVars}
+                      onClick={() => pick({ accent: option.key })}
+                    >
+                      {accent === option.key ? <Check size={12} aria-hidden="true" /> : null}
+                    </button>
+                  ))}
+                </div>
+                <code className="pref-row-value">{tokenValue("--accent")}</code>
+              </div>
+            </div>
+            <Row label="代码配色" note="只管源码里的标题、链接与引用；增删行的红绿是语义色">
+              <Seg
+                label="代码配色"
+                value={code}
+                options={[
+                  { key: "default", label: "默认" },
+                  { key: "graphite", label: "石墨" },
+                ]}
+                onPick={(next) => pick({ code: next })}
+              />
+            </Row>
+            <Row label="界面字号" note="整栏一起缩放，含菜单与弹窗">
+              <SizeRange label="界面字号" value={uiSize} range={UI_SIZE} onPick={(next) => pick({ uiSize: next })} />
+            </Row>
+            <Row label="正文字号">
+              <SizeRange label="正文字号" value={proseSize} range={PROSE_SIZE} onPick={(next) => pick({ proseSize: next })} />
+            </Row>
+            <Row label="界面字体">
+              <FontSelect label="界面字体" value={uiFont} options={UI_FONTS} onPick={(next) => pick({ uiFont: next })} />
+            </Row>
+            <Row label="正文字体" note="书架上的书名与印章是装饰字，不跟着换">
+              <FontSelect label="正文字体" value={proseFont} options={PROSE_FONTS} onPick={(next) => pick({ proseFont: next })} />
+            </Row>
+            <Row label="代码字体">
+              <FontSelect label="代码字体" value={codeFont} options={CODE_FONTS} onPick={(next) => pick({ codeFont: next })} />
+            </Row>
+          </div>
         </>
       ),
     },

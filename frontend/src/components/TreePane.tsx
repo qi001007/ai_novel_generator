@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { uiZoom } from "../store/appearance";
 import {
   Bookmark,
   ChevronDown,
@@ -148,8 +149,10 @@ export default function TreePane({
 
   const openMenu = (event: React.MouseEvent, target: MenuTarget) => {
     event.preventDefault();
-    const x = Math.min(event.clientX, window.innerWidth - MENU_WIDTH - 8);
-    setMenu({ x: Math.max(8, x), y: event.clientY, target });
+    // 指针给的是视觉像素，菜单的 left/top 是 CSS 像素（#root 上有 zoom）
+    const z = uiZoom();
+    const x = Math.min(event.clientX / z, (window.innerWidth - 8) / z - MENU_WIDTH);
+    setMenu({ x: Math.max(8 / z, x), y: event.clientY / z, target });
   };
 
   const runMenuAction = (action: () => void) => () => {

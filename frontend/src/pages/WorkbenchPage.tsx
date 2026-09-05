@@ -15,6 +15,7 @@ import TreePane, { type BriefRow } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
 import { briefChapter, briefPath, draftChapter, draftPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
+import { toCssPx } from "../store/appearance";
 
 type RightView = "editor" | "files" | "feedback" | "worldmap" | "foreshadow" | "characters";
 
@@ -345,7 +346,8 @@ export default function WorkbenchPage() {
     const startWidth = pane === "sidebar" ? panes.sidebar : panes.chat;
 
     function onMove(moveEvent: PointerEvent) {
-      applyPane(pane, startWidth + moveEvent.clientX - startX);
+      // 拖过的距离是视觉像素，栏宽是 CSS 像素：不换算的话 1.25 倍下拖 100px 走 125px
+      applyPane(pane, startWidth + toCssPx(moveEvent.clientX - startX));
     }
     function stopDrag() {
       window.removeEventListener("pointermove", onMove);

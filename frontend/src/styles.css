@@ -39,8 +39,13 @@
   --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
   --ui: "Noto Sans SC", "Segoe UI", "Microsoft YaHei", sans-serif;
   /* 正文阅读与编辑的字体（§0.2）。一个 token，两处正文与缩略栏共用；
-     [data-prose="sans"] 换的就是它。书架上的书名与印章字是装饰，不跟着走。 */
+     [data-prose-font=...] 换的就是它。书架上的书名与印章字是装饰，不跟着走。 */
   --prose: "Noto Serif SC", "Source Han Serif SC", serif;
+  /* 字号（第二十批 20.4）。界面字号不写成 font-size：全站几百条 font-size 是写死的，
+     逐条改 em 不现实，而 zoom 正是 VSCode window.zoomLevel 的做法 - 它缩放整棵子树，
+     一处生效。跟随指针的浮层与拖拽要按这个因子换算（见 uiZoom()）。 */
+  --ui-zoom: 1;
+  --prose-size: 17px;
   /* The minimap is a gutter, not part of the page you read. Anything that centres
      itself against the editor column has to subtract it, or it sits 28px right of the
      text it is standing in for - which is what the owner kept seeing (第十七批批注 2).
@@ -187,13 +192,61 @@
   --tok-keyword: #dedcd8;
 }
 
-/* 正文字体：不用宋体的那一个选项走界面字体。 */
-[data-prose="sans"] {
-  --prose: var(--ui);
+/* 字体族（第二十批 20.4）。每个 key 一份栈，只写在这里 -
+   组件里出现第二份字体栈，切换就会有一半的地方不生效。
+   每一条都写明中文回退：选了 Georgia 不该让中文变成豆腐块。 */
+[data-ui-font="system"] {
+  --ui: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+[data-ui-font="inter"] {
+  --ui: Inter, "Noto Sans SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+
+[data-ui-font="arial"] {
+  --ui: Arial, "Helvetica Neue", "Microsoft YaHei", sans-serif;
+}
+
+[data-ui-font="hei"] {
+  --ui: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
+}
+
+[data-prose-font="georgia"] {
+  --prose: Georgia, "Noto Serif SC", "Times New Roman", serif;
+}
+
+[data-prose-font="times"] {
+  --prose: "Times New Roman", "Noto Serif SC", serif;
+}
+
+[data-prose-font="simsun"] {
+  --prose: SimSun, "Noto Serif SC", serif;
+}
+
+[data-prose-font="hei"] {
+  --prose: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+}
+
+[data-code-font="system"] {
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+
+[data-code-font="cascadia"] {
+  --mono: "Cascadia Code", Consolas, "JetBrains Mono", monospace;
+}
+
+[data-code-font="consolas"] {
+  --mono: Consolas, "Courier New", monospace;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* 界面字号 = #root 的 zoom。放在 #root 而不是 html：html 上的 zoom 会连
+   window.innerWidth 一起换坐标系，浮层的夹取就跟着错了。 */
+#root {
+  zoom: var(--ui-zoom, 1);
 }
 
 body {
@@ -2052,7 +2105,7 @@ select:focus-visible {
   overflow-y: auto;
   scrollbar-width: none;
   font-family: var(--prose);
-  font-size: 17px;
+  font-size: var(--prose-size);
   /* 17 * 1.9 = 32.3 matches LINE_PX in EditorPane.tsx. */
   line-height: 1.9;
 }
@@ -5261,7 +5314,8 @@ body.resizing {
   max-height: none;
   margin: 12px 16px 16px;
   font-family: var(--prose);
-  font-size: 15px;
+  /* 成稿比编辑器正文小两档，这个差是设计定的，不随字号滑杆变。 */
+  font-size: calc(var(--prose-size) - 2px);
   line-height: 1.85;
   color: var(--text-1);
 }
@@ -5921,6 +5975,131 @@ body.resizing {
 .pref-card-check {
   color: var(--accent);
   flex: none;
+}
+
+/* 一行一项（第二十批批注 5）。形状照主人给的那张图：整块一个圆角容器，
+   行间一条 hairline，名字在左、控件在右。 */
+.pref-rows {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 46px;
+  padding: 8px 14px;
+}
+
+.pref-row + .pref-row {
+  border-top: 1px solid var(--border);
+}
+
+.pref-row-label {
+  display: grid;
+  gap: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+}
+
+.pref-row-note {
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--text-2);
+}
+
+.pref-row-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pref-row-value {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.pref-colours {
+  display: flex;
+  gap: 8px;
+}
+
+.pref-colour {
+  width: 26px;
+  min-width: 0;
+  min-height: 0;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--chip);
+  color: #fff;
+  display: grid;
+  place-items: center;
+}
+
+.pref-colour[aria-checked="true"] {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+
+.pref-seg {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.pref-seg button {
+  min-height: 0;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.pref-seg button + button {
+  border-left: 1px solid var(--border);
+}
+
+.pref-seg button[aria-checked="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.pref-row select {
+  min-height: 0;
+  height: 28px;
+  max-width: 230px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.pref-row input[type="range"] {
+  width: 150px;
+  min-height: 0;
+  /* 26, not 20: 轨道本身细是应该的，但命中区要够 §0.4 的 24 -
+     审计量的是「点得到」的范围，20px 的盒子只有 21 命中高。 */
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  accent-color: var(--accent);
 }
 
 /* 一张窗口的缩小版：标题条、两行文字、一行主色、一行语法着色。

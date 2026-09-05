@@ -4,7 +4,7 @@ import { ImagePlus, Settings, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
-import { tokenValue } from "../store/appearance";
+import { tokenValue, uiZoom } from "../store/appearance";
 import { useWorkbench } from "../store/workbench";
 import type { Novel, NovelUpdatePayload } from "../types";
 
@@ -210,11 +210,13 @@ export default function BookshelfPage() {
     menuOpener.current = host;
     const rect = host.getBoundingClientRect();
     // A keyboard-opened menu has no pointer: it hangs off the card's own top-left.
+    // 同上：指针与 rect 是视觉像素，菜单的 left/top 要写成 CSS 像素
+    const z = uiZoom();
     const rawX = "clientX" in event && event.clientX ? event.clientX : rect.left + 14;
     const rawY = "clientY" in event && event.clientY ? event.clientY : rect.top + 42;
     setBookMenu({
-      x: Math.max(8, Math.min(rawX, window.innerWidth - BOOK_MENU_WIDTH - 8)),
-      y: Math.max(8, Math.min(rawY, window.innerHeight - 150)),
+      x: Math.max(8 / z, Math.min(rawX / z, (window.innerWidth - 8) / z - BOOK_MENU_WIDTH)),
+      y: Math.max(8 / z, Math.min(rawY / z, (window.innerHeight - 8) / z - 150)),
       id: novel.id,
       title: novel.title,
     });

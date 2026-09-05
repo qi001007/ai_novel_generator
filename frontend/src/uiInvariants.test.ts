@@ -40,6 +40,8 @@ import runDetailPage from "./pages/GenerationRunDetailPage.tsx?raw";
 import preferences from "./pages/PreferencesPage.tsx?raw";
 import appearanceStore from "./store/appearance.ts?raw";
 import appSource from "./App.tsx?raw";
+import hScrollThumb from "./components/HScrollThumb.tsx?raw";
+import workPage from "./pages/WorkbenchPage.tsx?raw";
 import bookshelf from "./pages/BookshelfPage.tsx?raw";
 
 /**
@@ -629,14 +631,31 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(bookshelf).toContain('aria-haspopup="menu"');
   });
 
-  it("the appearance panel is four card rows of radios over a miniature, not a swatch", () => {
-    for (const label of ["主题", "色系", "代码配色", "正文字体"]) {
-      expect(preferences).toContain(`label="${label}"`);
-    }
+  /* 第二十批批注 5：卡片只留给需要看图的那一组，其余一行一项；
+     字号与字体各只有一个出处。 */
+  it("only the theme picker is cards, and sizes and fonts have one source each", () => {
+    expect(preferences).toContain('label="主题"');
     expect(preferences).toContain('value: "system"');
-    expect(preferences).toContain('"pref-preview"');
-    expect(preferences).toMatch(/role="radio"[\s\S]{0,200}aria-checked=\{checked\}/);
-    // 「系统」是活的：机器切换时界面跟着切，不是只在打开设置时算一次
+    for (const label of ["强调色", "代码配色", "界面字号", "正文字号", "界面字体", "正文字体", "代码字体"]) {
+      expect(preferences).toContain(label);
+    }
+    expect(preferences).toContain('className="pref-rows"');
+    expect(preferences).toContain('type="range"');
+    // 字体栈只许待在 styles.css：组件里出现第二份，切换就会有一半地方不生效
+    expect(preferences).not.toMatch(/Noto Serif|Georgia|Consolas|font-family/);
+    expect(editorPane).not.toMatch(/Noto Serif/);
+    expect(fileEditor).not.toMatch(/Noto Sans SC/);
+    // 字号：界面走 #root 的 zoom，正文走 --prose-size，两个都由 store 独家写
+    expect(css).toMatch(/#root \{\s*\n\s*zoom: var\(--ui-zoom, 1\);/);
+    expect(rule(".editor-body textarea")).toContain("font-size: var(--prose-size)");
+    expect(appearanceStore).toContain('root.style.setProperty("--ui-zoom"');
+    expect(appearanceStore).toContain('root.style.setProperty("--prose-size"');
+    // 指针是视觉像素、style 是 CSS 像素：两者之间只许有一道换算
+    expect(appearanceStore).toContain("export function toCssPx");
+    expect(hScrollThumb).toContain("toCssPx(");
+    expect(workPage).toContain("toCssPx(");
+    expect(treePane).toContain("uiZoom()");
+    // 「系统」仍然是活的
     expect(appSource).toContain('matchMedia("(prefers-color-scheme: dark)")');
     expect(appSource).toContain("followSystem()");
   });

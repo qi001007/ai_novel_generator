@@ -9,7 +9,7 @@ import {
   progressFromPointer,
   thumbGeometry as sharedThumbGeometry,
 } from "./minimap";
-import { tokenValue } from "../store/appearance";
+import { toCssPx, tokenValue } from "../store/appearance";
 
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
@@ -185,7 +185,15 @@ export default function EditorPane() {
     const observer = new MutationObserver(() => setRedraw((count) => count + 1));
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["data-theme", "data-accent", "data-code", "data-prose"],
+      attributeFilter: [
+        "data-theme",
+        "data-accent",
+        "data-code",
+        "data-prose-font",
+        "data-code-font",
+        // 字号不挂在属性上：它写进 html 的 style（--prose-size / --ui-zoom）
+        "style",
+      ],
     });
     return () => observer.disconnect();
   }, []);
@@ -251,11 +259,12 @@ export default function EditorPane() {
     const map = minimapRef.current;
     if (!node || !map) return;
     const rect = map.getBoundingClientRect();
+    // 地图高与指针都在视觉像素里，滑块几何是 CSS 像素：三样一起换算，比例才对得上
     const progress = progressFromPointer(
-      rect.height,
+      toCssPx(rect.height),
       view.height,
-      clientY,
-      rect.top,
+      toCssPx(clientY),
+      toCssPx(rect.top),
       grabRef.current,
     );
     node.scrollTop = progress * Math.max(0, node.scrollHeight - node.clientHeight);
@@ -264,9 +273,10 @@ export default function EditorPane() {
   function onMinimapPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (event.button !== 0) return;
     const rect = event.currentTarget.getBoundingClientRect();
-    const geo = thumbGeometry(rect.height);
-    const offset = event.clientY - rect.top;
-    const inside = isOnThumb(rect.height, view.height, view.progress, offset);
+    const mapHeight = toCssPx(rect.height);
+    const geo = thumbGeometry(mapHeight);
+    const offset = toCssPx(event.clientY - rect.top);
+    const inside = isOnThumb(mapHeight, view.height, view.progress, offset);
     grabRef.current = inside ? offset - geo.top : geo.height / 2;
     event.currentTarget.setPointerCapture(event.pointerId);
     scrubTo(event.clientY);
@@ -292,7 +302,7 @@ export default function EditorPane() {
     function onMove(moveEvent: PointerEvent) {
       const next = Math.min(
         BOTTOM_MAX,
-        Math.max(BOTTOM_MIN, Math.round(startHeight + startY - moveEvent.clientY)),
+        Math.max(BOTTOM_MIN, Math.round(startHeight + toCssPx(startY - moveEvent.clientY))),
       );
       setBottom((prev) => (prev.height === next ? prev : { ...prev, height: next }));
     }

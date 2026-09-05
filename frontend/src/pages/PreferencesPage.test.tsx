@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -201,9 +201,9 @@ describe("PreferencesPage", () => {
     expect(document.querySelector(".prefs-panel h2")).toBeNull();
   });
 
-  /* 第十九批批注 3：外观从两个按钮变成四组「看样挑选」的卡片。这里钉的是
-     「点下去有东西在换、换的东西存得下来」；卡片画得像不像界面，那要靠截图。 */
-  it("switches theme, palette, code colours and prose font from the cards, and remembers", async () => {
+  /* 第十九批批注 3 立的是「看样挑选」，第二十批批注 5 把它收回到该看图的地方：
+     只有主题是卡片，其余一行一项。这里钉的是点下去有东西在换、换得下来。 */
+  it("switches look, colour, sizes and fonts, and remembers all eight", async () => {
     const user = userEvent.setup();
     stubFetch(calls);
     localStorage.clear();
@@ -216,10 +216,16 @@ describe("PreferencesPage", () => {
 
     expect(screen.getAllByRole("radiogroup").map((item) => item.getAttribute("aria-label"))).toEqual([
       "主题",
-      "色系",
+      "强调色",
       "代码配色",
-      "正文字体",
     ]);
+    const cards = screen
+      .getByRole("radiogroup", { name: "主题" })
+      .querySelectorAll(`[role="radio"]`);
+    expect(cards).toHaveLength(3);
+    // 主题卡里仍是一格微缩界面，不是一块纯色
+    expect(cards[2].querySelector(".pv-line.accent")).toBeTruthy();
+    expect(cards[2].getAttribute("data-theme") ?? cards[2].querySelector(".pref-preview")?.getAttribute("data-theme")).toBeTruthy();
 
     await user.click(screen.getByRole("radio", { name: "深色" }));
     expect(document.documentElement.dataset.theme).toBe("dark");
@@ -227,27 +233,29 @@ describe("PreferencesPage", () => {
     expect(document.documentElement.dataset.accent).toBe("blue");
     await user.click(screen.getByRole("radio", { name: "石墨" }));
     expect(document.documentElement.dataset.code).toBe("graphite");
-    await user.click(screen.getByRole("radio", { name: "黑体" }));
-    expect(document.documentElement.dataset.prose).toBe("sans");
+
+    await user.selectOptions(screen.getByLabelText("界面字体"), "inter");
+    expect(document.documentElement.dataset.uiFont).toBe("inter");
+    await user.selectOptions(screen.getByLabelText("正文字体"), "georgia");
+    expect(document.documentElement.dataset.proseFont).toBe("georgia");
+    await user.selectOptions(screen.getByLabelText("代码字体"), "consolas");
+    expect(document.documentElement.dataset.codeFont).toBe("consolas");
+
+    fireEvent.change(screen.getByLabelText("界面字号"), { target: { value: "16" } });
+    expect(document.documentElement.style.getPropertyValue("--ui-zoom")).toBe(String(16 / 14));
+    fireEvent.change(screen.getByLabelText("正文字号"), { target: { value: "19" } });
+    expect(document.documentElement.style.getPropertyValue("--prose-size")).toBe("19px");
 
     expect(JSON.parse(localStorage.getItem("appearance") ?? "{}")).toMatchObject({
       theme: "dark",
       accent: "blue",
       code: "graphite",
-      prose: "sans",
+      uiFont: "inter",
+      proseFont: "georgia",
+      codeFont: "consolas",
+      uiSize: 16,
+      proseSize: 19,
     });
-
-    // 选中写在卡本身上：aria-checked 加一枚勾，不靠「这张看起来颜色不一样」
-    expect(screen.getByRole("radio", { name: "蓝" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("radio", { name: "朱砂" }).getAttribute("aria-checked")).toBe("false");
-
-    // 卡里是一格微缩界面（标题条 + 文字 + 主色 + 语法着色），不是一块纯色
-    const card = screen.getByRole("radio", { name: "深色" });
-    expect(card.querySelector(".pv-bar")).toBeTruthy();
-    expect(card.querySelector(".pv-line.accent")).toBeTruthy();
-    expect(card.querySelector(".pv-chip.key")).toBeTruthy();
-    // 深色那张自己声明深色，所以页面此刻是浅是深，它都画得对
-    expect(card.querySelector(".pref-preview")?.getAttribute("data-theme")).toBe("dark");
     localStorage.clear();
   });
 

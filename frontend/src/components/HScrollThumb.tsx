@@ -12,6 +12,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 
+import { toCssPx } from "../store/appearance";
+
 type Geo = { room: number; width: number; left: number; track: number; trackLeft: number };
 
 export default function HScrollThumb({
@@ -60,7 +62,7 @@ export default function HScrollThumb({
     const el = scroller.current;
     if (!el) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    grabRef.current = event.clientX - (el.getBoundingClientRect().left + geo.left);
+    grabRef.current = toCssPx(event.clientX - el.getBoundingClientRect().left) - geo.left;
     setDragging(true);
   };
 
@@ -68,7 +70,7 @@ export default function HScrollThumb({
     const el = scroller.current;
     if (!el || !dragging) return;
     const travel = Math.max(1, el.clientWidth - geo.width);
-    const at = event.clientX - el.getBoundingClientRect().left - grabRef.current;
+    const at = toCssPx(event.clientX - el.getBoundingClientRect().left) - grabRef.current;
     el.scrollLeft = (Math.min(travel, Math.max(0, at)) / travel) * geo.room;
   };
 
