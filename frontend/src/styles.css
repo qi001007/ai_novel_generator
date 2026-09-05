@@ -18,19 +18,27 @@
      深色那枚 2.82 是「白字压主色」的老账（需主人拍板），蓝不新增，也不擅自替朱砂改。 */
   --vermilion: #c2492f;
   --vermilion-strong: #a83a24;
-  --vermilion-soft: #fbede9;
+  /* 淡底要淡到能让主色文字站得住：#fbede9 上是 4.29，#fdf6f3 上是 4.58。
+     它相对 --surface-alt 只有 1.06 倍差，仍是「一层极淡的暖」，不会变成看不见的选中底。
+     （主人 2026-09-06 把这类品牌色拍板交给我，裁定见 D-22） */
+  --vermilion-soft: #fdf6f3;
   --vermilion-dark: #e06a4e;
   --vermilion-strong-dark: #e97f65;
-  --vermilion-soft-dark: #3b2b27;
+  /* 深色的淡底反过来要更深，主色文字才站得住：#3b2b27 上 4.06，#2c1f1b 上 4.81。
+     与 --surface #1f2023 仍差 1.02 倍，读得出「选中」。 */
+  --vermilion-soft-dark: #2c1f1b;
   --blue: #3568a0;
   --blue-strong: #28527f;
   --blue-soft: #eaf1f8;
   --blue-dark: #5290d0;
   --blue-strong-dark: #6ba7dd;
-  --blue-soft-dark: #1d2b3a;
+  --blue-soft-dark: #182431;
   --accent: var(--vermilion);
   --accent-strong: var(--vermilion-strong);
   --accent-soft: var(--vermilion-soft);
+  /* 压在饱和色块上的字。浅色主题这些色块本身够深（白字 4.83~5.77），用白。 */
+  --on-accent: #fff;
+  --on-danger: #fff;
   --success: #2f7d46;
   /* 3.45:1 on the proposal card's #fafaf9 foot. Darkened to 4.84:1. */
   --warning: #8a6a12;
@@ -102,6 +110,12 @@
   --accent: var(--vermilion-dark);
   --accent-strong: var(--vermilion-strong-dark);
   --accent-soft: var(--vermilion-soft-dark);
+  /* 深色那几枚语义色都是提亮的浅色调：白字压 accent / danger / success 只有
+     3.31 / 2.77 / 2.62，全不过；同一枚底换近黑是 5.19 / 6.22 / 6.56。
+     这不是改品牌色，是把「压在色块上的字」这件事交给 token，
+     而不是在九条规则里各写一遍 #fff。 */
+  --on-accent: #1c1b1a;
+  --on-danger: #1c1b1a;
   --success: #5cb176;
   --warning: #c9a227;
   --danger: #f87171;
@@ -124,7 +138,9 @@
   --control-disabled-bg: #212124;
   --control-disabled-fg: #7e7b75;
   --control-disabled-accent-bg: #3a2b27;
-  --control-disabled-accent-fg: #9a8883;
+  /* 禁用态的主按钮也是「压在色块上的字」：#9a8883 只有 4.00，提到 #b09a94 是 5.08 -
+     仍比可用态淡，不会假装是活的。 */
+  --control-disabled-accent-fg: #b09a94;
   --diff-minus: #e79283;
   --diff-minus-bg: #3a221d;
   --diff-plus: #7fc99a;
@@ -328,19 +344,19 @@ select:focus-visible {
 button.primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 button.primary:hover:not(:disabled) {
   border-color: var(--accent-strong);
   background: var(--accent-strong);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 button.danger {
   border-color: var(--danger);
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
 }
 
 button.ghost-danger {
@@ -3976,7 +3992,7 @@ body.resizing {
   border: 0;
   border-radius: 4px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-size: 11px;
   cursor: pointer;
 }
@@ -4423,7 +4439,7 @@ body.resizing {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -4746,7 +4762,7 @@ body.resizing {
   border: 0;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -5021,12 +5037,12 @@ body.resizing {
 
 .run-button.primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .run-button.primary:hover:not(:disabled) {
   background: var(--accent-strong);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .run-button.secondary {
@@ -5491,7 +5507,7 @@ body.resizing {
 
 .command-actions .primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .record-list li {
@@ -6040,7 +6056,7 @@ body.resizing {
   border: 0;
   border-radius: 50%;
   background: var(--chip);
-  color: #fff;
+  color: var(--on-accent);
   display: grid;
   place-items: center;
 }

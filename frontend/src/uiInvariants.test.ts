@@ -583,6 +583,23 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(bookshelf).toContain('"已经有同一部作品叫这个名字"');
   });
 
+  /* D-22①：压在饱和色块上的字必须是 token。深色主题的语义色都是提亮的浅色调，
+     白字压上去只有 2.6~3.4 - 九条规则各写一遍 #fff 就是这次的病根。 */
+  it("ink on a saturated fill is a token, not a hard-coded white", () => {
+    const offenders =
+      css.match(/background: var\(--(accent|accent-strong|danger|chip)\);[\s\S]{0,40}?color: #fff/g) ?? [];
+    expect(offenders).toEqual([]);
+    expect(css).toContain("--on-accent: #fff;");
+    expect(css).toContain("--on-accent: #1c1b1a;");
+    expect(css).toContain("--on-danger: #1c1b1a;");
+    // 三枚淡底是量出来的：主色文字压上去分别到 4.58 / 4.81 / 4.69
+    expect(css).toContain("--vermilion-soft: #fdf6f3;");
+    expect(css).toContain("--vermilion-soft-dark: #2c1f1b;");
+    expect(css).toContain("--blue-soft-dark: #182431;");
+    // 禁用态主按钮 4.00 -> 5.08
+    expect(css).toContain("--control-disabled-accent-fg: #b09a94;");
+  });
+
   /* 第二十一批批注 1：离开再回来，不许换面。这条断言钉的是「谁优先」，
      因为这一轮真机量出来的两个反例都是优先级错了，不是没写代码。 */
   it("the workbench comes back to the face it was left on", () => {
