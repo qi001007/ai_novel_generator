@@ -3,6 +3,7 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent, KeyboardEvent as Rea
 import { ImagePlus, Settings, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
+import { api } from "../api";
 import { tokenValue } from "../store/appearance";
 import { useWorkbench } from "../store/workbench";
 import type { Novel, NovelUpdatePayload } from "../types";
@@ -23,6 +24,82 @@ const COVER_COLORS = [
   { value: "#7d2f3f", label: "绛" },
   { value: "#37423b", label: "松烟" },
 ];
+
+/* 第二十批批注 3：这本书写多少章、叫什么、简介是什么，建完就再没地方改。
+   下面这一张表是本应用里「一本小说可编辑的字段」的唯一清单一一新建向导与
+   「编辑信息」弹窗都渲染它。两处各列一遍，迟早长成「那边能改名、这边不能」。 */
+type BookDraft = {
+  title: string;
+  description: string;
+  targetChapters: number;
+  styleConstraints: string;
+};
+
+const EMPTY_DRAFT: BookDraft = {
+  title: "",
+  description: "",
+  targetChapters: 300,
+  styleConstraints: "",
+};
+
+const draftOf = (novel: Novel): BookDraft => ({
+  title: novel.title,
+  description: novel.description ?? "",
+  targetChapters: novel.target_chapters ?? 0,
+  styleConstraints: novel.style_constraints ?? "",
+});
+
+type BookFieldDef = {
+  key: keyof BookDraft;
+  label: string;
+  kind: "text" | "textarea" | "number";
+  step: number;
+  placeholder?: string;
+};
+
+const BOOK_FIELDS: BookFieldDef[] = [
+  { key: "title", label: "书名", kind: "text", step: 0 },
+  { key: "description", label: "一句话简介", kind: "textarea", step: 0 },
+  { key: "targetChapters", label: "目标章数上限", kind: "number", step: 1 },
+  { key: "styleConstraints", label: "文风约束", kind: "textarea", step: 1, placeholder: "如：快节奏、强钩子" },
+];
+
+function BookField(props: {
+  field: BookFieldDef;
+  draft: BookDraft;
+  onEdit: (patch: Partial<BookDraft>) => void;
+}) {
+  const { field, draft, onEdit } = props;
+  const value = draft[field.key];
+  return (
+    <label className="book-field">
+      {field.label}
+      {field.kind === "textarea" ? (
+        <textarea
+          rows={2}
+          value={value as string}
+          placeholder={field.placeholder}
+          onChange={(event) => onEdit({ [field.key]: event.target.value })}
+        />
+      ) : (
+        <input
+          type={field.kind === "number" ? "number" : "text"}
+          min={field.kind === "number" ? 0 : undefined}
+          step={field.kind === "number" ? 1 : undefined}
+          value={field.kind === "number" ? String(value) : (value as string)}
+          placeholder={field.placeholder}
+          onChange={(event) =>
+            onEdit(
+              field.kind === "number"
+                ? { [field.key]: Number(event.target.value) }
+                : { [field.key]: event.target.value },
+            )
+          }
+        />
+      )}
+    </label>
+  );
+}
 
 /* The book card's context menu. Same overlay, same widths, same "未开放" honesty as
    the tree's - a second menu language for the same app is how controls start to differ
@@ -81,11 +158,12 @@ export default function BookshelfPage() {
   const [coverColor, setCoverColor] = useState("");
   const [coverError, setCoverError] = useState<string | null>(null);
   const [step, setStep] = useState(0);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [targetChapters, setTargetChapters] = useState(300);
-  const [styleConstraints, setStyleConstraints] = useState("");
+  const [draft, setDraft] = useState<BookDraft>(EMPTY_DRAFT);
   const [busy, setBusy] = useState(false);
+  /* 弹窗里的初值来自服务器，不是本地那份可能已经过期的 novels 缓存。 */
+  const [infoId, setInfoId] = useState<number | null>(null);
+  const [infoDraft, setInfoDraft] = useState<BookDraft | null>(null);
+  const [infoError, setInfoError] = useState<string | null>(null);
   const [bookMenu, setBookMenu] = useState<BookMenu | null>(null);
   const bookMenuRef = useRef<HTMLDivElement | null>(null);
   /* Where the menu came from, so closing it hands the focus back instead of dropping
@@ -148,31 +226,75 @@ export default function BookshelfPage() {
   };
 
   useEffect(() => {
-    if (!coverEditId) return;
+    if (!coverEditId && infoId === null) return;
     function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setCoverEditId(null);
+      if (event.key !== "Escape") return;
+      setCoverEditId(null);
+      setInfoId(null);
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [coverEditId]);
+  }, [coverEditId, infoId]);
 
   function openWizard() {
-    setTitle("");
-    setDescription("");
-    setTargetChapters(300);
-    setStyleConstraints("");
+    setDraft(EMPTY_DRAFT);
     setStep(0);
     setWizardOpen(true);
+  }
+
+  function openInfoEditor(novel: Novel) {
+    setInfoId(novel.id);
+    setInfoDraft(null);
+    setInfoError(null);
+    api.get<Novel>(`/api/novels/${novel.id}`).then(
+      (fresh) => setInfoDraft(draftOf(fresh)),
+      (cause: unknown) => {
+        setInfoDraft(draftOf(novel));
+        setInfoError(cause instanceof Error ? `读不到最新值，显示的是本地缓存：${cause.message}` : "读不到最新值，显示的是本地缓存");
+      },
+    );
+  }
+
+  /* 空书名与重名在这里就拦住，不发一个注定 409 的请求：后端收空标题，
+     发出去就会把一本书改成没名字。 */
+  const infoProblem = !infoDraft
+    ? null
+    : !infoDraft.title.trim()
+      ? "书名不能为空"
+      : infoDraft.targetChapters < 0 || !Number.isInteger(infoDraft.targetChapters)
+        ? "目标章数上限得是不小于 0 的整数"
+        : novels.some((novel) => novel.id !== infoId && novel.title === infoDraft.title.trim())
+          ? "已经有同一部作品叫这个名字"
+          : null;
+
+  function saveInfo() {
+    if (infoId === null || !infoDraft || infoProblem) return;
+    setBusy(true);
+    setInfoError(null);
+    updateNovel(infoId, {
+      title: infoDraft.title.trim(),
+      description: infoDraft.description,
+      target_chapters: infoDraft.targetChapters,
+      style_constraints: infoDraft.styleConstraints,
+    })
+      .then(() => {
+        setInfoId(null);
+        setInfoDraft(null);
+      })
+      .catch((cause: unknown) =>
+        setInfoError(cause instanceof Error ? cause.message : "保存失败"),
+      )
+      .finally(() => setBusy(false));
   }
 
   async function submit() {
     setBusy(true);
     try {
       const novel = await createNovel({
-        title,
-        description,
-        target_chapters: targetChapters,
-        style_constraints: styleConstraints,
+        title: draft.title,
+        description: draft.description,
+        target_chapters: draft.targetChapters,
+        style_constraints: draft.styleConstraints,
       });
       setWizardOpen(false);
       await selectNovel(novel.id);
@@ -337,6 +459,18 @@ export default function BookshelfPage() {
             <span>更换封面…</span>
             <kbd>悬停图标</kbd>
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-menu-item"
+            onClick={runBookAction(() => {
+              const novel = novels.find((item) => item.id === bookMenu.id);
+              if (novel) openInfoEditor(novel);
+            })}
+          >
+            <span>编辑信息…</span>
+            <kbd>书名 简介 章数</kbd>
+          </button>
           <div className="tree-menu-sep" />
           {/* 与树的「重命名 / 删除」同一口径：没有通路就明说未开放，不摆一个会 405 的钮。 */}
           <button
@@ -349,6 +483,60 @@ export default function BookshelfPage() {
             <span>删除作品</span>
             <kbd>未开放</kbd>
           </button>
+        </div>
+      ) : null}
+      {infoId !== null ? (
+        <div
+          className="wizard-backdrop"
+          onClick={() => setInfoId(null)}
+          role="presentation"
+        >
+          <div
+            className="wizard book-info"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="编辑作品信息"
+          >
+            <header className="cover-modal-header">
+              <h2>编辑信息</h2>
+              <button
+                type="button"
+                className="icon-button"
+                aria-label="关闭"
+                onClick={() => setInfoId(null)}
+              >
+                <X size={16} />
+              </button>
+            </header>
+            {infoDraft
+              ? BOOK_FIELDS.map((field) => (
+                  <BookField
+                    key={field.key}
+                    field={field}
+                    draft={infoDraft}
+                    onEdit={(patch) => setInfoDraft({ ...infoDraft, ...patch })}
+                  />
+                ))
+              : null}
+            {!infoDraft ? <p className="book-info-note">正在从服务器读最新值</p> : null}
+            {infoProblem || infoError ? (
+              <p className="book-info-problem">{infoProblem ?? infoError}</p>
+            ) : null}
+            <footer className="cover-modal-footer">
+              <button type="button" onClick={() => setInfoId(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || !infoDraft || infoProblem !== null}
+                onClick={saveInfo}
+              >
+                保存
+              </button>
+            </footer>
+          </div>
         </div>
       ) : null}
       {coverTarget ? (
@@ -482,37 +670,17 @@ export default function BookshelfPage() {
         <div className="wizard-backdrop" onClick={() => setWizardOpen(false)}>
           <div className="wizard" onClick={(event) => event.stopPropagation()}>
             <h2>{STEPS[step]}</h2>
-            {step === 0 ? (
-              <>
-                <input
-                  value={title}
-                  placeholder="书名"
-                  onChange={(event) => setTitle(event.target.value)}
-                />
-                <textarea
-                  value={description}
-                  placeholder="一句话简介"
-                  onChange={(event) => setDescription(event.target.value)}
-                />
-              </>
-            ) : null}
-            {step === 1 ? (
-              <>
-                <input
-                  type="number"
-                  value={targetChapters}
-                  onChange={(event) => setTargetChapters(Number(event.target.value))}
-                />
-                <textarea
-                  value={styleConstraints}
-                  placeholder="文风约束，如：快节奏、强钩子"
-                  onChange={(event) => setStyleConstraints(event.target.value)}
-                />
-              </>
-            ) : null}
+            {BOOK_FIELDS.filter((field) => field.step === step).map((field) => (
+              <BookField
+                key={field.key}
+                field={field}
+                draft={draft}
+                onEdit={(patch) => setDraft({ ...draft, ...patch })}
+              />
+            ))}
             {step === 2 ? (
               <p>
-                《{title}》· 目标 {targetChapters} 章
+                《{draft.title}》· 目标 {draft.targetChapters} 章
               </p>
             ) : null}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
@@ -525,7 +693,7 @@ export default function BookshelfPage() {
                 <button
                   type="button"
                   className="primary"
-                  disabled={!title.trim()}
+                  disabled={!draft.title.trim()}
                   onClick={() => setStep(step + 1)}
                 >
                   下一步

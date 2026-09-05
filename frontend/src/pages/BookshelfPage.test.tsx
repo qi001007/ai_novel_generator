@@ -126,6 +126,7 @@ describe("BookshelfPage", () => {
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "打开作品Enter",
       "更换封面…悬停图标",
+      "编辑信息…书名 简介 章数",
       "删除作品未开放",
     ]);
     const del = within(menu).getByRole("menuitem", { name: /删除作品/ }) as HTMLButtonElement;
@@ -137,6 +138,96 @@ describe("BookshelfPage", () => {
     expect(await screen.findByRole("dialog", { name: "封面编辑" })).toBeTruthy();
     expect(screen.queryByRole("menu")).toBeNull();
     expect(container.querySelector(".book-card")).toBeTruthy();
+  });
+
+  /* 第二十批批注 3：这本书写多少章、叫什么、简介是什么，建完就该还能改。
+     字段清单只有一份（BOOK_FIELDS），这里钉的是「改了能存、取消不写、空名拦住」。 */
+  function stubBookApi(puts: Record<string, unknown>[]) {
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = String(init?.method ?? "GET");
+        if (method === "PUT" && url.endsWith("/api/novels/4")) {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          puts.push(body);
+          return Promise.resolve(ok({ ...shelf[0], ...body }));
+        }
+        if (url.endsWith("/api/novels/4")) return Promise.resolve(ok(shelf[0]));
+        return Promise.resolve(ok(shelf));
+      }),
+    );
+  }
+
+  it("edits the title, the blurb and the chapter target from the menu", async () => {
+    const user = userEvent.setup();
+    const puts: Record<string, unknown>[] = [];
+    stubBookApi(puts);
+    const { container } = renderShelf();
+    const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
+
+    fireEvent.contextMenu(card);
+    const menu = await screen.findByRole("menu", { name: "《演示测试》的操作" });
+    await user.click(within(menu).getByRole("menuitem", { name: /编辑信息/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "编辑作品信息" });
+    // 初值是从服务器读回来的那一份，不是本地缓存的旧值
+    expect((within(dialog).getByLabelText("书名") as HTMLInputElement).value).toBe("演示测试");
+    expect((within(dialog).getByLabelText("目标章数上限") as HTMLInputElement).value).toBe("286");
+
+    await user.clear(within(dialog).getByLabelText("书名"));
+    await user.type(within(dialog).getByLabelText("书名"), "演示测试改名");
+    await user.clear(within(dialog).getByLabelText("一句话简介"));
+    await user.type(within(dialog).getByLabelText("一句话简介"), "改过的简介");
+    await user.clear(within(dialog).getByLabelText("目标章数上限"));
+    await user.type(within(dialog).getByLabelText("目标章数上限"), "400");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(puts.length).toBe(1));
+    expect(puts[0]).toEqual({
+      title: "演示测试改名",
+      description: "改过的简介",
+      target_chapters: 400,
+      style_constraints: "",
+    });
+    // 卡面与菜单的可访问名一起跟上
+    await waitFor(() =>
+      expect(container.querySelector(`.book-card[data-novel-id="4"] h3`)?.textContent).toBe("演示测试改名"),
+    );
+    fireEvent.contextMenu(container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement);
+    expect(await screen.findByRole("menu", { name: "《演示测试改名》的操作" })).toBeTruthy();
+  });
+
+  it("cancelling the info dialog writes nothing, and an empty title is blocked before the request", async () => {
+    const user = userEvent.setup();
+    const puts: Record<string, unknown>[] = [];
+    stubBookApi(puts);
+    const { container } = renderShelf();
+    const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
+
+    fireEvent.contextMenu(card);
+    await user.click(
+      within(await screen.findByRole("menu", { name: "《演示测试》的操作" })).getByRole("menuitem", { name: /编辑信息/ }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "编辑作品信息" });
+    await user.clear(within(dialog).getByLabelText("书名"));
+    await user.type(within(dialog).getByLabelText("书名"), "   ");
+
+    // 空书名当场拦住，并且说清为什么 - 不发一个注定把书改成没名字的请求
+    const save = within(dialog).getByRole("button", { name: "保存" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    expect(within(dialog).getByText("书名不能为空")).toBeTruthy();
+
+    await user.clear(within(dialog).getByLabelText("书名"));
+    await user.type(within(dialog).getByLabelText("书名"), "日向家的叛忍");
+    expect(save.disabled).toBe(true);
+    expect(within(dialog).getByText("已经有同一部作品叫这个名字")).toBeTruthy();
+
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "编辑作品信息" })).toBeNull();
+    expect(puts).toHaveLength(0);
   });
 
   it("closes the book menu with Escape and gives the focus back to the card", async () => {

@@ -566,6 +566,21 @@ const componentSources = import.meta.glob("./**/*.tsx", {
 
   /* 前几轮点名项（书卡右键菜单）定下来的三件事：卡面动作是图标不是句子、
      右键菜单复用树那一套、没有通路的条目老实写「未开放」。 */
+  /* 第二十批批注 3：一本小说可改哪几个字段，只许有一张表；写回只许有一条口。 */
+  it("the editable fields of a book are listed exactly once", () => {
+    expect(bookshelf).toContain("const BOOK_FIELDS: BookFieldDef[]");
+    // 新建向导与「编辑信息」弹窗都渲染这张表；谁再手写一遍输入框，这里就红
+    expect(bookshelf.match(/BOOK_FIELDS\.(filter|map)/g)?.length).toBe(2);
+    expect(bookshelf).not.toMatch(/placeholder="书名"/);
+    expect(bookshelf).not.toMatch(/value=\{description\}/);
+    // D-01：弹窗自己不许开第二条写通路
+    expect(bookshelf).not.toMatch(/method:\s*"PUT"/);
+    expect(bookshelf).toContain("updateNovel(infoId, {");
+    // 空名与重名在发请求之前就拦住
+    expect(bookshelf).toContain('"书名不能为空"');
+    expect(bookshelf).toContain('"已经有同一部作品叫这个名字"');
+  });
+
   /* 第二十批批注 1、2：同一处根因，修的是整类。 */
   it("a bare button centres its icon without shoving row text around", () => {
     // 剥掉注释再查：这条规则里就写着「不写 justify-content」这句话，

@@ -3242,6 +3242,46 @@ select:focus-visible {
   width: min(480px, 100% - 32px);
 }
 
+/* 第二十批批注 3：「编辑信息」弹窗与新建向导共用 BookField，
+   所以这里的字段样式就是向导里那一份。 */
+.book-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.book-field input,
+.book-field textarea {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-alt);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.book-field input:focus-visible,
+.book-field textarea:focus-visible {
+  outline: 0;
+  border-color: var(--border-strong);
+}
+
+.book-info-problem {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.book-info-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
 .cover-modal-header {
   display: flex;
   align-items: center;
