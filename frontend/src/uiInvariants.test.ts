@@ -196,8 +196,14 @@ describe("settled UI decisions must not regress", () => {
     // the tree reads the same buffer the tab reads, and subscribes to it
     // 第十四批批注 2: the toggle is for every document, and its state is one map
     expect(fileEditor).not.toContain("RENDERED_PATHS");
-    expect(fileEditor).toContain("file-rendered");
-    expect(css).toMatch(/\.file-rendered \{[\s\S]*?inset: 0;/);
+    // 第十六批批注 8 retired the generic overlay: a document whose "rendered" side is
+    // the same characters with bold applied is not a second view. The decision these
+    // lines pinned - an overlay covers its own body, never a magic offset - is now
+    // carried by the two overlays that remain, asserted below and in the 批注 1 block.
+    expect(fileEditor).not.toContain("file-rendered");
+    expect(css).not.toContain(".file-rendered");
+    expect(css).toMatch(/\.toc-list-overlay \{[\s\S]*?inset: 0;/);
+    expect(css).toMatch(/\.character-doc-overlay \{[\s\S]*?inset: 0;/);
     // 批注 3.3: there is one draft buffer, the draft.md file entry, so a second
     // private copy in the workbench store is exactly what must never come back.
     expect(treePane).toContain("useFiles");
@@ -282,6 +288,15 @@ describe("settled UI decisions must not regress", () => {
     // the map, not a per-component copy, is the state
     expect(filesStore).toContain("views: Record<string, boolean>");
     expect(filesStore).toContain("export const isSourceView");
+    // 第十六批批注 8: but only for a document that HAS a rendering. Three kinds do -
+    // the directory table, the character card, draft.md's prose page. For everything
+    // else the strip shows no button, because a click that changes nothing is a dead
+    // control, and §0.7 条一 says don't park one in the interface.
+    expect(filesStore).toContain("export const hasRenderedView");
+    expect(filesStore).toMatch(
+      /hasRenderedView = \(path: string\) =>\s*\n?\s*path === TOC_PATH \|\| CHARACTER_PATH\.test\(path\) \|\| draftChapter\(path\) !== null/,
+    );
+    expect(fileEditor).toContain("hasRenderedView(active!)");
   });
 
   it("the toggle is one component, and its icon names the surface you are on (第十六批批注 2)", () => {

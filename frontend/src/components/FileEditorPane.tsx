@@ -17,7 +17,7 @@ import {
 } from "./cmDoc";
 import {
   briefPath,
-  draftChapter,
+  hasRenderedView,
   isDirty,
   isSourceView,
   TOC_PATH,
@@ -32,7 +32,6 @@ import {
 import HScrollThumb from "./HScrollThumb";
 import ViewToggle from "./ViewToggle";
 import CharacterDocCard, { isCharacterDoc } from "./CharacterDocCard";
-import MarkdownText from "./MarkdownText";
 import TocListView, { parseToc, renderToc } from "./TocListView";
 import { useWorkbench } from "../store/workbench";
 
@@ -342,14 +341,10 @@ export default function FileEditorPane() {
   // the card is what the file exists to fill in.
   const showCharacterCard =
     isCharacterDoc(active ?? "") && Boolean(entry?.doc) && !sourceView;
-  // A draft.md has no overlay: its rendered view is the prose page, a different
-  // component (第十五批批注 3.2 - the owner asked for 正文, not for typeset markdown).
-  const showRendered =
-    Boolean(entry?.doc) &&
-    !sourceView &&
-    active !== TOC_PATH &&
-    draftChapter(active ?? "") === null &&
-    !isCharacterDoc(active ?? "");
+  // There is no generic "typeset markdown" overlay any more (第十六批批注 8): the only
+  // renderings are the three named by hasRenderedView() - the directory table, the
+  // character card, and draft.md's prose page, which is a different component entirely
+  // (第十五批批注 3.2 - the owner asked for 正文, not for typeset markdown).
 
   if (!tabs.length) {
     return (
@@ -409,7 +404,7 @@ export default function FileEditorPane() {
         {/* One persistent icon, pinned outside the scroller, for every document -
             the label says which pair it is switching (a table for the directory,
             typeset prose for everything else). */}
-        {entry?.doc ? (
+        {entry?.doc && hasRenderedView(active!) ? (
           <div className="file-tabs-actions">
             {/* One component now, so the chapter strip and this one cannot point
                 different ways - that is what drifted before 第十六批批注 2. */}
@@ -483,13 +478,6 @@ export default function FileEditorPane() {
         {showCharacterCard && entry?.doc ? (
           <div className="character-doc-overlay">
             <CharacterDocCard text={entry.draft} />
-          </div>
-        ) : null}
-        {showRendered && entry?.doc ? (
-          <div className="file-rendered" aria-label="渲染视图（只读）">
-            <div className="file-rendered-inner">
-              <MarkdownText text={entry.draft} />
-            </div>
           </div>
         ) : null}
         <div className="file-code">

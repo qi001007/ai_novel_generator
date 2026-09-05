@@ -57,6 +57,14 @@ const CHARACTER_PATH = /^settings\/characters\/[0-9]{1,6}\.md$/;
 /** Which rendered view a document has, in the author's words. The button on the
  *  tab strip says what it will switch *to*, so the two strips cannot drift: they
  *  ask this one function (第十五批批注 1.4). */
+/** Which documents have a rendering of their own at all.
+ *  第十六批批注 8: typesetting markdown is not a second view. A document whose
+ *  "rendered" side is the same characters with the bold applied gets no toggle, because
+ *  a button that changes nothing is worse than no button - the owner's words were
+ *  「点了之后，让它没反应就行」, and the strip has no dead control in it instead. */
+export const hasRenderedView = (path: string) =>
+  path === TOC_PATH || CHARACTER_PATH.test(path) || draftChapter(path) !== null;
+
 export const renderedViewLabel = (path: string) => {
   if (path === TOC_PATH) return "列表视图";
   if (CHARACTER_PATH.test(path)) return "人物卡片";

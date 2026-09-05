@@ -4085,23 +4085,6 @@ body.resizing {
   position: relative;
 }
 
-/* The rendered view of any markdown document (第十四批批注 2): same measure as the
-   prose editor, same typography as a chat answer - one .chat-md rule set, not a
-   second one invented here. */
-.file-rendered {
-  position: absolute;
-  inset: 0;
-  overflow-y: auto;
-  scrollbar-width: none;
-  background: var(--bg);
-  padding: 20px 28px 60px;
-}
-
-.file-rendered-inner {
-  width: min(720px, 100%);
-  margin: 0 auto;
-}
-
 .toc-list-overlay {
   /* 批注 1: this used to hang off the top of the whole editor at a hardcoded 70px,
      which left a 4px seam showing the CodeMirror underneath - "后面还覆盖着别的
