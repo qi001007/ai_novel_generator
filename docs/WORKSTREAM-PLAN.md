@@ -739,6 +739,23 @@
       不变量同步：`uiInvariants.test.ts` 里「树读的是同一份 buffer」那条从
       `chapterDrafts` 改钉 `useFiles` + `draftPath`，并新增反向断言——workbench 里再出现
       `chapterDrafts`／`draftSaved` 就红，防止第二份 buffer 悄悄长回来。
+
+- [x] **第十五批·批注 1.3 + 1.4 + 3.2 + 3.4（2026-09-05）：一个文档一个钮，出现在它所在的每一条标签条上**：
+      责任提交是我自己：`9bfb8b2` 把「渲染 ↔ 原文件」推广到所有文档时，只推广了**文件条**，
+      章节条（`.editor-tabs`）一个钮都没加——主人本轮第 4 点就是「你这里根本没改」。
+      现在两条条都调同一对函数：`isSourceView(path, views)` 给状态、`toggleViewLabel(path, views)`
+      给文案，`renderedViewLabel()` 按 kind 选渲染视图（`toc.md`→列表、`characters/N.md`→人物卡片、
+      `draft.md`→**正文页**、其余 md→排版）。draft.md 从此不再就地排版：它的渲染视图就是正文页，
+      切换走 `setView` 一个同步写（views + tabs + active + 换台信号），不许任何组件长出自己的第二处状态。
+      真机（作品 5，裸 Edge + CDP 真点）：正文页 `.editor-tabs-actions` 「切到源码视图」→
+      右栏 `editor-pane`→`file-editor`、CodeMirror 出现 `# 第 1 章正文` 结构行、
+      文件条钮变「切到正文页」→ 点回 `editor-pane`；从树里点 `draft.md` 直接落在源码侧。
+      加钮后 stripH 38 / tabH 32 **不变**（tab 没被压）。命中区审计两种台面各 0/0/0。
+      防再犯：`uiInvariants.test.ts` 断言块 15 → **16**（新增一条钉「两条条共用一个函数、
+      谁都不许再有自己的 `sourceView` state、不许硬编码『切到渲染视图』」），
+      §0.9 表同时补两行（钮属于每一条标签条 / 正文只有一份 buffer）。
+      注：交接简报里写的「现 18 条」与文件不符——改前实测是 15 个 `it`、63 个 `expect`。
+      测试：前端 112 → **114 passed / 17 files**；`tsc -b --force` 干净；build 干净。
 ---
 
 ## 三、历史（已完成，只留一行结论）

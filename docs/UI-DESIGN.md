@@ -270,6 +270,8 @@ A/B/C/D 四层规划**各就是一份 Markdown 文档**，内容一律在右栏�
 | 章节标签**只有一个点** | `EditorPane` 不含 `StatusBadge` | 第十二批批注 1 |
 | 换人**留 52px** | `.chat-row.user + .chat-row.assistant` 的 `margin-top: 40px` | 第十三批批注 5、7 |
 | 深色「灰」= 主人给的 #191A1B | `--surface-alt: #191a1b`、`--surface: #1f2023` | 第十轮批注 1 |
+| 一份文档一个「渲染 ↔ 原文件」钮，**出现在它所在的每一条标签条上**，两条都只读 `views[path]` | `.editor-tabs-actions` 存在；两侧都调 `toggleViewLabel`／`isSourceView`；任一组件里不得出现自己的 `sourceView` state；不硬编码「切到渲染视图」 | 第十五批批注 1.3、1.4、3.2、3.4 |
+| 正文页只有一份 buffer，就是 `draft.md` 的文件条目 | workbench 里不存在 `chapterDrafts`／`draftSaved`；树读 `useFiles` + `draftPath`；`draftBody`↔`draftDocument` 按字节互逆有测试 | 第十五批批注 3.3 |
 
 **给下一个接手的人**：新增或推翻一条界面决定时，**同一提交里**改这张表和那个测试文件。
 只改代码不改断言，就是下一次「你怎么越改越回去了」。

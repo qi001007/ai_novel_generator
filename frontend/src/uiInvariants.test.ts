@@ -25,6 +25,7 @@ import chatPane from "./components/ChatPane.tsx?raw";
 import editorPane from "./components/EditorPane.tsx?raw";
 import workbenchStore from "./store/workbench.ts?raw";
 import fileEditor from "./components/FileEditorPane.tsx?raw";
+import filesStore from "./store/files.ts?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
 import tocList from "./components/TocListView.tsx?raw";
 
@@ -173,6 +174,26 @@ describe("settled UI decisions must not regress", () => {
       if (painted.length) offenders.push(sel.replace(/\s+/g, " ") + " -> " + painted.join(" / "));
     }
     expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
+  it("one document, one toggle, on every strip that holds it (第十五批批注 1.3、1.4、3.4)", () => {
+    // The chapter strip used to have no button at all, so the prose page was a dead
+    // end; and a private useState in either pane would put the pair back to two.
+    expect(editorPane).toContain("editor-tabs-actions");
+    expect(editorPane).toContain("toggleViewLabel");
+    expect(editorPane).toContain("isSourceView");
+    expect(fileEditor).toContain("toggleViewLabel");
+    // and neither side hardcodes the words, or the two strips describe one action
+    // in two vocabularies (the file strip used to say 渲染视图, the owner asked 正文)
+    // (the minimap keeps a `view` state of its own - that is a scroll ratio, not a
+    // second opinion about which side of the pair is showing, so match by name)
+    expect(editorPane).not.toMatch(/const \[(source|raw|render|markdown)View, set/);
+    expect(fileEditor).not.toMatch(/const \[(source|raw|render|markdown)View, set/);
+    expect(fileEditor).not.toContain('"切到渲染视图"');
+    expect(fileEditor).not.toContain('"切到列表视图"');
+    // the map, not a per-component copy, is the state
+    expect(filesStore).toContain("views: Record<string, boolean>");
+    expect(filesStore).toContain("export const isSourceView");
   });
 
   it("the dark theme stays at the owner's measured grey (第十轮批注1)", () => {

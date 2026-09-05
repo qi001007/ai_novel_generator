@@ -26,6 +26,10 @@ const dirtyOf = (chapter: Chapter): boolean => {
 /** Open the draft.md buffer for a chapter the prose page is about to show. */
 function hydrateChapterDraft(chapter: Chapter) {
   const path = chapterDraftPath(chapter);
+  // The prose page is the rendered side of the pair, so it stamps the same map the
+  // toggle reads - otherwise a chapter opened from the tree keeps showing the old
+  // label from an earlier visit to its file page (第十五批批注 1.4).
+  useFiles.setState((state) => ({ views: { ...state.views, [path]: false } }));
   // Seed from the chapter record so the page is never blank while the file read
   // is in flight; ensure() then replaces it with the server text unless someone
   // typed in the meantime.

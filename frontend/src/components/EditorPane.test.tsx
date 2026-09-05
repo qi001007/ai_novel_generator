@@ -43,6 +43,8 @@ function seed(chapters: Chapter[], content = "") {
     tabs: [],
     active: null,
     pending: {},
+    // the toggle map has to start empty, or a previous test's stage leaks into this one
+    stage: null,
     views: {},
     entries: first
       ? {
@@ -169,6 +171,34 @@ describe("EditorPane", () => {
     // no longer takes them with it.
     expect(document.querySelector(".editor-status")?.textContent).toContain("字");
     expect(window.localStorage.getItem("novelgen.editor-bottom")).toContain("true");
+  });
+
+  /* 第十五批批注 1.4: the pair-toggle used to exist only on the file strip, so the
+     chapter strip had no button at all and the prose page was a dead end. */
+  it("offers the same render/source toggle the file strip has", () => {
+    seed([emptyChapter], emptyChapter.content);
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+
+    const button = document.querySelector(".editor-tabs .editor-tabs-actions button");
+    expect(button).toBeTruthy();
+    // the prose page IS the rendered view, so the button offers the source
+    expect(button?.getAttribute("aria-label")).toBe("切到源码视图");
+    expect(button?.getAttribute("aria-pressed")).toBe("false");
+    expect(button?.querySelector("svg")).toBeTruthy();
+
+    // one press -> the source side; the file column comes forward through revealSeq
+    const revealed = useFiles.getState().revealSeq;
+    fireEvent.click(button!);
+    expect(useFiles.getState().views["chapters/0001/draft.md"]).toBe(true);
+    expect(useFiles.getState().revealSeq).toBeGreaterThan(revealed);
+    expect(button?.getAttribute("aria-label")).toBe("切到正文页");
+    expect(button?.getAttribute("aria-pressed")).toBe("true");
+
+    // and back: the prose page is asked for by name, on the same single boolean
+    fireEvent.click(button!);
+    expect(useFiles.getState().views["chapters/0001/draft.md"]).toBe(false);
+    expect(useFiles.getState().stage?.path).toBe("chapters/0001/draft.md");
+    expect(button?.getAttribute("aria-label")).toBe("切到源码视图");
   });
 
   it("shows the empty-state placeholder without a chapter", () => {

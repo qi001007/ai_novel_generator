@@ -17,8 +17,11 @@ import {
 } from "./cmDoc";
 import {
   briefPath,
+  draftChapter,
   isDirty,
+  isSourceView,
   TOC_PATH,
+  toggleViewLabel,
   useFiles,
 } from "../store/files";
 import {
@@ -87,7 +90,9 @@ export default function FileEditorPane() {
   // file cannot be "source" in one pane and "rendered" in another.
   const views = useFiles((state) => state.views);
   const toggleView = useFiles((state) => state.toggleView);
-  const sourceView = active ? Boolean(views[active]) : false;
+  // One boolean for both tab strips - 第十五批批注 1.4: the same button appears on
+  // the chapter strip too, and it reads this same map through this same function.
+  const sourceView = active ? isSourceView(active, views) : false;
 
   // Switching to source must show the same draft the list just rendered,
   // including chapter rows that exist before their B-layer entry is saved.
@@ -332,7 +337,10 @@ export default function FileEditorPane() {
   const conflict = entry?.conflict ?? false;
   const error = entry?.error ?? null;
   const showTocList = active === TOC_PATH && Boolean(entry?.doc) && !sourceView;
-  const showRendered = Boolean(entry?.doc) && !sourceView && active !== TOC_PATH;
+  // A draft.md has no overlay: its rendered view is the prose page, a different
+  // component (第十五批批注 3.2 - the owner asked for 正文, not for typeset markdown).
+  const showRendered =
+    Boolean(entry?.doc) && !sourceView && active !== TOC_PATH && draftChapter(active ?? "") === null;
 
   if (!tabs.length) {
     return (
@@ -394,19 +402,13 @@ export default function FileEditorPane() {
             typeset prose for everything else). */}
         {entry?.doc ? (
           <div className="file-tabs-actions">
+            {/* The label comes from the same function the chapter strip calls, so the
+                pair can never be described two different ways. */}
             <button
               type="button"
               className="icon-button"
-              aria-label={
-                sourceView
-                  ? active === TOC_PATH ? "切到列表视图" : "切到渲染视图"
-                  : "切到源码视图"
-              }
-              title={
-                sourceView
-                  ? active === TOC_PATH ? "切到列表视图" : "切到渲染视图"
-                  : "切到源码视图"
-              }
+              aria-label={toggleViewLabel(active!, views)}
+              title={toggleViewLabel(active!, views)}
               aria-pressed={sourceView}
               onClick={() => (sourceView ? toggleView(active!) : handleToSource())}
             >

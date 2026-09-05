@@ -30,12 +30,23 @@
 - [ ] **1.2 悬停不出现移动滑块**，与文件条不一致。判据：悬停时 `.h-scroll` 存在且
       `opacity` 由 0→1，拖动可改 `scrollLeft`，且 tab 高度不被压。
       （第十四批批注 4 的同一个要求，文件条做到了、章节条没做到 = 又没扫完同类。）
-- [ ] **1.3 文件条上 draft.md 的切换钮「点了没作用」**。主人要的不是"就地排版"，
+- [x] **1.3 文件条上 draft.md 的切换钮「点了没作用」**。主人要的不是"就地排版"，
       而是**切到正文页**（见 §3.2）。判据：在文件编辑器打开 `chapters/0001/draft.md`
       点钮 → 出现的是**正文编辑视图**，再点回来。
-- [ ] **1.4 章节标签条后面也要有同一个切换钮**，能从正文切回 draft.md 源码。
+      **已做（与 §1.4 同一次改动，2026-09-05 真机点过）**：draft.md 的渲染视图 = 正文页，
+      不再是就地 `MarkdownText`。实测 `.right-column` 从 `file-editor` 变 `editor-pane`、
+      `.file-rendered` 覆盖层对 draft 不再出现、往返一次后 `aria-label` 回到「切到源码视图」。
+- [x] **1.4 章节标签条后面也要有同一个切换钮**，能从正文切回 draft.md 源码。
       判据：`.editor-tabs` 里有 `.editor-tabs-actions`，`aria-label` 随状态变化，
       且它与文件条读写**同一个** `useFiles.views[path]`（不是第二处状态）。
+      **已做**：钮在 scroller 之外（与文件条同一条 CSS：`.file-tabs-actions,
+      .editor-tabs-actions`），两条条都只调 `toggleViewLabel(path, views)` /
+      `isSourceView(path, views)` —— 文案与状态各只有一个出处。
+      实测：正文页 stripH 38 / tabH 32（加钮前后不变，tab 没被压）、
+      钮的 `aria-label` 「切到源码视图」→ 点 → 文件条「切到正文页」→ 点 → 回正文页；
+      命中区审计两种台面上都是 0 small / 0 clipped / 0 unreachable。
+      防再犯：`uiInvariants.test.ts` 新增一条，钉「两条条共用一个函数、
+      任何一侧都不许再长出自己的 `sourceView` state、不许硬编码『切到渲染视图』」。
 
 ### 2 编辑页拖窄后的两件事
 
@@ -51,7 +62,11 @@
 
 - [ ] **3.1 人物 `.md` 的切换钮要切到「人物卡片渲染页」**，不是 markdown 排版。
       判据：打开 `settings/characters/6.md` 点钮 → 出现人物卡片视图，再点回源码。
-- [ ] **3.2 `draft.md` 的切换钮要切到「正文渲染页」**（章节编辑器那个正文）。
+      §3.2 已把「按 kind 选渲染视图」收进 `renderedViewLabel()`，人物卡片是它的第二项；
+      卡片本身（`CharacterLibrary` 的单条视图）要能在右栏原地出现。
+- [x] **3.2 `draft.md` 的切换钮要切到「正文渲染页」**（章节编辑器那个正文）。
+      **已做**（同 §1.3）：`renderedViewLabel()` 按 kind 选渲染视图——
+      `toc.md`→列表视图、`settings/characters/N.md`→人物卡片、`draft.md`→正文页、其余 md→渲染视图。
       §3.3 已把两边并成一份 buffer，剩下的就是让钮把右栏在「正文页 ↔ draft.md 源码」之间搬。
       实测记一笔：现在从树里点 `draft.md` 会经 `open()` 把右栏切到文件页，而点章节号切回正文页
       时 `openChapterTab → hydrateChapterDraft` 只 seed 空槽、不覆盖已有 buffer（这是 §3.3 的正确行为）。
@@ -72,8 +87,10 @@
       两处 dirty 状态一致（树行、标签、文件 tab 三处同步）。
       正解：`draft.md` 的 entry 成为唯一 buffer，正文 = 它的投影（去掉结构行），
       章节编辑器不再自己存一份。写通路仍只有 `PUT /api/novels/{id}/files/{path}`（红线 D-01/D-02）。
-- [ ] **3.4 渲染页也要有切回去的钮**（双向）。判据：任一渲染视图里都能找到同一个钮
-      切回源码，`aria-label` 与状态一致。
+- [x] **3.4 渲染页也要有切回去的钮**（双向）。判据：任一渲染视图里都能找到同一个钮
+      切回源码，`aria-label` 与状态一致。**已做**：正文页（章节条）、目录列表视图与
+      其余 md 的排版覆盖层（文件条）都挂着同一个钮、读同一个 `views[path]`；
+      人物卡片那一处随 §3.1 一起接。
 
 **本轮开工前实测（1570px 视口，作品 5，点开 7 个章节标签）**：
 `.editor-tabs` 只有一个子元素 `.editor-tabs-scroll`；7 个 tab 各 124px、

@@ -44,6 +44,10 @@ function seed(over: Partial<FileEntry> = {}) {
     active: "blueprint.md",
     entries: { "blueprint.md": entry(over) },
     pending: {},
+    // Not clearing these would leak one test's toggle into the next: the view map
+    // is the only state the button reads, so it has to start from nothing.
+    views: {},
+    stage: null,
     jump: null,
     focus: null,
     revealSeq: 1,

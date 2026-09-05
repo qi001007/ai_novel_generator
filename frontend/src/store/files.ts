@@ -52,6 +52,30 @@ export const briefChapter = (path: string) => {
   const m = /^(?:briefs\/([0-9]{4})\.md|chapters\/([0-9]{4})\/brief\.md)$/.exec(path);
   return m ? Number(m[1]) : null;
 };
+const CHARACTER_PATH = /^settings\/characters\/[0-9]{1,6}\.md$/;
+
+/** Which rendered view a document has, in the author's words. The button on the
+ *  tab strip says what it will switch *to*, so the two strips cannot drift: they
+ *  ask this one function (第十五批批注 1.4). */
+export const renderedViewLabel = (path: string) => {
+  if (path === TOC_PATH) return "列表视图";
+  if (CHARACTER_PATH.test(path)) return "人物卡片";
+  if (draftChapter(path) !== null) return "正文页";
+  return "渲染视图";
+};
+
+/** Is this document showing its source? One answer, read by the button on both tab
+ *  strips, out of one map. Absent means rendered - that is what a chapter opens on
+ *  - and every transition that puts one side of the pair on stage writes this map,
+ *  so a button can never describe a view the reader is not looking at.
+ *  第十五批批注 1.4: the file strip had this state, the chapter strip had nothing. */
+export const isSourceView = (path: string, views: Record<string, boolean>) =>
+  Boolean(views[path]);
+
+/** The shared label of the toggle, on whichever strip it is drawn. */
+export const toggleViewLabel = (path: string, views: Record<string, boolean>) =>
+  isSourceView(path, views) ? `切到${renderedViewLabel(path)}` : "切到源码视图";
+
 export const draftChapter = (path: string) => {
   const m = /^(?:chapters\/([0-9]{4})(?:\.md|\/draft\.md)|chapters\/([0-9]{4})\/draft\.md)$/.exec(path);
   return m ? Number(m[1] ?? m[2]) : null;
@@ -113,6 +137,14 @@ type FilesState = {
    * that has the same rendered-vs-source relation had no button at all.
    */
   views: Record<string, boolean>;
+  /**
+   * A document asking to be seen as its rendered view. Only needed when that view
+   * is a *different* component - draft.md's rendered view is the prose page - and
+   * it is a signal, not a second copy of the state: `views[path]` stays the one
+   * boolean every button reads. The other direction reuses `revealSeq`.
+   * 第十五批批注 3.4.
+   */
+  stage: { path: string; seq: number } | null;
   jump: JumpSource | null;
   focus: FileFocus | null;
   revealSeq: number;
@@ -134,6 +166,8 @@ type FilesState = {
   applyProposal: (path: string) => Promise<boolean>;
   discardProposal: (path: string) => void;
   toggleView: (path: string) => void;
+  /** Ask for one side of the pair, from anywhere, without duplicating the state. */
+  setView: (path: string, source: boolean) => void;
   reset: () => void;
 };
 
@@ -169,6 +203,7 @@ export const useFiles = create<FilesState>((set, get) => ({
   entries: {},
   pending: {},
   views: {},
+  stage: null,
   jump: null,
   focus: null,
   revealSeq: 0,
@@ -184,6 +219,7 @@ export const useFiles = create<FilesState>((set, get) => ({
       entries: {},
       pending: {},
       views: {},
+      stage: null,
       jump: null,
       focus: null,
       revealSeq: 0,
@@ -199,10 +235,13 @@ export const useFiles = create<FilesState>((set, get) => ({
   async open(path, opts = {}) {
     const { novelId, tabs, entries, revealSeq } = get();
     if (novelId === null) return;
-    // Opening a file is also the gesture that brings the editor column forward.
+    // Opening a file is also the gesture that brings the editor column forward,
+    // and for a chapter it puts the *source* side of the pair on stage - the same
+    // map the toggle writes, so the pane and its button cannot disagree.
     set({ revealSeq: revealSeq + 1,
       tabs: tabs.includes(path) ? tabs : [...tabs, path],
       active: path,
+      ...(draftChapter(path) !== null ? { views: { ...get().views, [path]: true } } : {}),
       jump: opts.jump ?? null,
       ...(opts.field ? { focus: { path, field: opts.field, seq: ++focusSeq } } : {}),
     });
@@ -351,7 +390,28 @@ export const useFiles = create<FilesState>((set, get) => ({
   },
 
   toggleView(path) {
-    set((state) => ({ views: { ...state.views, [path]: !state.views[path] } }));
+    get().setView(path, !isSourceView(path, get().views));
+  },
+
+  /* Everything a press changes happens in this one synchronous write: the map every
+     button on both strips reads, the tab the document needs, and which column takes
+     the stage. Reading the file is kicked off but not waited for - the prose page
+     falls back to the chapter record meanwhile, so there is no blank frame. */
+  setView(path, source) {
+    const prose = draftChapter(path) !== null;
+    const tabs = get().tabs;
+    set((state) => ({
+      views: { ...state.views, [path]: source },
+      tabs: !prose || tabs.includes(path) ? tabs : [...tabs, path],
+      ...(prose ? { active: path } : {}),
+      ...(prose && !source
+        ? { stage: { path, seq: (state.stage?.seq ?? 0) + 1 } }
+        : {}),
+      // Asking for a source is the same gesture the tree makes when you click the
+      // file, so it brings the editor column forward through the same signal.
+      ...(source && prose ? { revealSeq: state.revealSeq + 1 } : {}),
+    }));
+    if (prose) void get().ensure(path);
   },
 
   discardProposal(path) {
@@ -369,6 +429,7 @@ export const useFiles = create<FilesState>((set, get) => ({
       entries: {},
       pending: {},
       views: {},
+      stage: null,
       jump: null,
       focus: null,
       metasError: null,

@@ -4386,13 +4386,22 @@ body.resizing {
 
 /* The tab bar owns the rendered/source switch (批注 13), so its controls sit at
    the right end of the strip and never move when the view changes. */
-.file-tabs-actions {
+/* Pinned OUTSIDE the scroller on both strips, so the one button that switches a
+   document between its rendered view and its source never scrolls out of sight
+   (第十五批批注 1.4: the chapter strip had no slot for it, so it had no button). */
+.file-tabs-actions,
+.editor-tabs-actions {
   display: flex;
   align-items: center;
   gap: 2px;
   flex: none;
   margin-left: auto;
   padding-right: 4px;
+}
+
+.editor-tabs-actions {
+  align-self: flex-end;
+  height: 31px;
 }
 
 /* No divider should touch the selected pill from either side. */

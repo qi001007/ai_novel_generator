@@ -13,7 +13,7 @@ import Splitter, { type PaneKey } from "../components/Splitter";
 import ActivityRail, { type RailPage } from "../components/ActivityRail";
 import TreePane, { type BriefRow } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
-import { briefChapter, briefPath, useFiles } from "../store/files";
+import { briefChapter, briefPath, draftChapter, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
 type RightView = "editor" | "files" | "feedback" | "worldmap" | "foreshadow" | "characters";
@@ -105,6 +105,7 @@ export default function WorkbenchPage() {
   const metas = useFiles((store) => store.metas);
   const activeFile = useFiles((store) => store.active);
   const revealSeq = useFiles((store) => store.revealSeq);
+  const stage = useFiles((store) => store.stage);
   const attachFiles = useFiles((store) => store.attach);
   const openFile = useFiles((store) => store.open);
   const refreshMetas = useFiles((store) => store.refreshMetas);
@@ -269,6 +270,24 @@ export default function WorkbenchPage() {
     if (previous === revealSeq || !revealSeq) return;
     setRightView("files");
   }, [revealSeq]);
+
+  /* The other direction, same one-signal rule: a draft.md asking to be seen as its
+     rendered view means the prose page, which is a different component. 第十五批批注
+     1.4 / 3.2: the toggle is one button on one boolean, and the column moves with it
+     instead of keeping a second idea of what is open. The sequence is stamped only
+     once the chapter is actually there, so a stage request that arrives before the
+     chapter list is retried when it lands, rather than being eaten. */
+  const lastStage = useRef(stage?.seq ?? 0);
+  useEffect(() => {
+    if (!stage || stage.seq === lastStage.current) return;
+    const number = draftChapter(stage.path);
+    if (number === null) return;
+    const found = state.chapters.find((item) => item.chapter_number === number);
+    if (!found) return;
+    lastStage.current = stage.seq;
+    state.openChapterTab(found.id);
+    setRightView("editor");
+  }, [stage, state.chapters]);
 
   // Brief rows: every file the server knows about, plus one empty slot for the
   // chapter after the last, which the backend happily creates on first write.
