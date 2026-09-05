@@ -4317,6 +4317,82 @@ body.resizing {
   background: var(--surface);
 }
 
+/* 第十五批批注 3.1: settings/characters/N.md renders as the card, not as typeset
+   markdown. Same covering rule as the directory list - inset:0 over the body it
+   replaces, never a guessed offset. */
+.character-doc-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: var(--bg);
+  padding: 20px 28px 60px;
+}
+
+.character-doc {
+  display: grid;
+  gap: 18px;
+  width: min(560px, 100%);
+  margin: 0 auto;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.character-doc-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.character-doc .card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The badge carries the level colour exactly as the library card does, so the same
+   person is the same colour in both places. */
+.character-doc.level-protagonist .level-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.character-doc.level-boss .level-badge {
+  background: var(--warn-soft);
+  color: var(--warning);
+}
+
+.character-doc-fields {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.character-doc-fields > div {
+  display: grid;
+  gap: 4px;
+}
+
+.character-doc-fields dt {
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.character-doc-fields dd {
+  margin: 0;
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.75;
+}
+
+.character-doc-empty {
+  color: var(--text-3);
+}
+
 /* A drag line is a line, not a bar: 2px visible, ~10px of invisible hit area.
    min-height:0 is load-bearing — the global button rule would inflate this
    into a slab that lights up as a rectangle the moment you hover it. */

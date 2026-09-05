@@ -31,6 +31,7 @@ import {
   thumbGeometry,
 } from "./minimap";
 import HScrollThumb from "./HScrollThumb";
+import CharacterDocCard, { isCharacterDoc } from "./CharacterDocCard";
 import MarkdownText from "./MarkdownText";
 import TocListView, { parseToc, renderToc } from "./TocListView";
 import { useWorkbench } from "../store/workbench";
@@ -337,10 +338,18 @@ export default function FileEditorPane() {
   const conflict = entry?.conflict ?? false;
   const error = entry?.error ?? null;
   const showTocList = active === TOC_PATH && Boolean(entry?.doc) && !sourceView;
+  // 第十五批批注 3.1: a character file renders as the card, not as typeset markdown -
+  // the card is what the file exists to fill in.
+  const showCharacterCard =
+    isCharacterDoc(active ?? "") && Boolean(entry?.doc) && !sourceView;
   // A draft.md has no overlay: its rendered view is the prose page, a different
   // component (第十五批批注 3.2 - the owner asked for 正文, not for typeset markdown).
   const showRendered =
-    Boolean(entry?.doc) && !sourceView && active !== TOC_PATH && draftChapter(active ?? "") === null;
+    Boolean(entry?.doc) &&
+    !sourceView &&
+    active !== TOC_PATH &&
+    draftChapter(active ?? "") === null &&
+    !isCharacterDoc(active ?? "");
 
   if (!tabs.length) {
     return (
@@ -480,6 +489,11 @@ export default function FileEditorPane() {
         {/* 批注 2: the same relation, everywhere. Read-only typesetting of the draft
             the reader is editing - unsaved words included, so toggling never hides
             their own edits. Editing happens in the source view. */}
+        {showCharacterCard && entry?.doc ? (
+          <div className="character-doc-overlay">
+            <CharacterDocCard text={entry.draft} />
+          </div>
+        ) : null}
         {showRendered && entry?.doc ? (
           <div className="file-rendered" aria-label="渲染视图（只读）">
             <div className="file-rendered-inner">

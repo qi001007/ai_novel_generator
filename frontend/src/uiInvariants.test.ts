@@ -27,6 +27,7 @@ import workbenchStore from "./store/workbench.ts?raw";
 import fileEditor from "./components/FileEditorPane.tsx?raw";
 import layout from "./pages/WorkbenchPage.tsx?raw";
 import filesStore from "./store/files.ts?raw";
+import cardView from "./components/CharacterDocCard.tsx?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
 import tocList from "./components/TocListView.tsx?raw";
 
@@ -65,6 +66,21 @@ describe("settled UI decisions must not regress", () => {
   it("the thread's bar fades without moving the page (第十二批批注2.1)", () => {
     expect(rule(".chat-messages")).toContain("scrollbar-gutter: stable both-edges");
     expect(css).toMatch(/\.chat-messages:hover::-webkit-scrollbar-thumb/);
+  });
+
+  it("a character file renders as the card, not as typeset markdown (第十五批批注 3.1)", () => {
+    // The owner named the path: opening settings/characters/6.md and pressing the
+    // button has to show the card. A .file-rendered overlay of the same bytes is
+    // what it used to be, and that is still "a file", not the thing the file is for.
+    expect(cardView).toContain("character-doc");
+    expect(fileEditor).toContain("character-doc-overlay");
+    expect(fileEditor).toContain("isCharacterDoc");
+    // one label function decides what the button offers, for every kind
+    expect(filesStore).toContain('return "人物卡片"');
+    // and the card covers its own body the way the directory list does - inset: 0,
+    // never a guessed pixel offset that leaves a seam
+    expect(rule(".character-doc-overlay")).toContain("inset: 0");
+    expect(css).not.toMatch(/\.character-doc-overlay \{[^}]*inset: [0-9]+px/);
   });
 
   it("no resizable column may paint over its neighbour, and the toolbar wraps (第十五批批注 2.1)", () => {

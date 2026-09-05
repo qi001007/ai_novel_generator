@@ -53,7 +53,8 @@ const levelTabs = [
   { key: "extra", label: "龙套" },
 ] as const;
 
-const levelLabels: Record<string, string> = {
+/* Shared with the document's rendered view, so one level never reads two ways. */
+export const LEVEL_LABELS: Record<string, string> = {
   protagonist: "主角团",
   supporting: "重要配角",
   boss: "小 Boss",
@@ -280,7 +281,7 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
                       : "常驻"}
                   </span>
                 </span>
-                <span className="level-badge">{levelLabels[character.level] ?? "未分级"}</span>
+                <span className="level-badge">{LEVEL_LABELS[character.level] ?? "未分级"}</span>
               </span>
               <span className="card-identity">{character.identity || "暂无身份设定"}</span>
             </button>
