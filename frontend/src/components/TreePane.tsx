@@ -56,6 +56,8 @@ type TreePaneProps = {
   onCreateChapter: () => void;
   /** 导出是读。树这边只负责把「章号 + 格式」交给上层，不碰 API。 */
   onExport: (chapterNumber: number, format: "txt" | "md") => void;
+  /** 导出这份文档本身（投影出来的那份文本），第二十五批批注 4。 */
+  onExportDocument: (path: string) => void;
   exportError: string | null;
   onOpenCharacters: () => void;
   onOpenFeedback: () => void;
@@ -103,6 +105,7 @@ export default function TreePane({
   onSelectChapter,
   onCreateChapter,
   onExport,
+  onExportDocument,
   exportError,
   onOpenCharacters,
   onOpenFeedback,
@@ -567,6 +570,23 @@ export default function TreePane({
                 onClick={runMenuAction(() => onExport(menuChapter, "md"))}
               >
                 <span>导出本章 Markdown</span>
+                <kbd>.md</kbd>
+              </button>
+            </>
+          ) : null}
+          {menuPath && menuChapter === null ? (
+            /* 正文那份文件已经有「导出本章」两行了 - 再来一行同名不同义的
+               「导出为 Markdown」只会让人猜哪条才是他要的。其余每一份文档
+               （蓝图 / 目录 / 剧情弧 / 简报 / 设定库）都补这一行。 */
+            <>
+              <div className="tree-menu-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-menu-item"
+                onClick={runMenuAction(() => onExportDocument(menuPath))}
+              >
+                <span>导出为 Markdown</span>
                 <kbd>.md</kbd>
               </button>
             </>

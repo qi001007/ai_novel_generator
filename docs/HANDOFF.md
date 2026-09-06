@@ -79,7 +79,7 @@
 
 ```powershell
 cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 208 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 202 passed / 21 files
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 204 passed / 21 files
 cd E:\novel-generator\frontend; npx tsc -b --force --pretty false           # 必须 clean（--force，别信增量）
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 cd E:\novel-generator\.scratch; node hit-area-audit.mjs                     # 期望 0 small / 0 clipped / 0 unreachable

@@ -55,6 +55,20 @@ function fileNameFromDisposition(header: string | null): string {
   return plain?.[1] ?? "export.txt";
 }
 
+/** 落一个文本文件到浏览器下载。用 blob 而不是直接把 <a href> 指过去，
+ *  是为了让 404/409 能显示成人话 - 否则浏览器会把错误体当成文件存下来，
+ *  主人就得到一个 0 字节的「导出成功」。 */
+function saveTextFile(text: string, fileName: string): void {
+  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const api = {
   get: async <T,>(path: string): Promise<T> => request<T>(path),
   post: async <T,>(path: string, body?: unknown): Promise<T> =>
@@ -160,8 +174,7 @@ export const api = {
   },
 
   /** 导出是**读**：拿回文本，在浏览器里造一个下载。写通路仍然只有那一条（D-01）。
-   *  用 blob 而不是直接把 <a href> 指过去，是为了让 404/409 能显示成人话 -
-   *  否则浏览器会把错误体当成文件存下来，主人就得到一个 0 字节的「导出成功」。 */
+   *  用 blob 而不是直接把 <a href> 指过去，是为了让 404/409 能显示成人话。 */
   exportProse: async (
     novelId: number,
     params: { scope: "book" | "chapter"; chapterNumber?: number; format: "txt" | "md" },
@@ -176,14 +189,20 @@ export const api = {
       throw new Error(detail?.detail ?? `导出失败（${response.status}）`);
     }
     const fileName = fileNameFromDisposition(response.headers.get("Content-Disposition"));
-    const url = URL.createObjectURL(await response.blob());
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
+    saveTextFile(await response.text(), fileName);
+    return fileName;
+  },
+
+  /** 第二十五批批注 4：导出不止正文 - 蓝图、目录、剧情弧、每章简报、设定库的每一份文档
+   *  都要能拿走。导的就是**屏上源码面那份文本**（投影 GET，不新增端点、不写库）。
+   *  文件名用这份文档自己的 label（「第 1 章简报」这种），比 chapters_0001_brief.md 可读。 */
+  exportDocument: async (novelId: number, path: string): Promise<string> => {
+    const doc = await api.get<{ label?: string; text: string }>(`/api/novels/${novelId}/files/${path}`);
+    const text = doc.text ?? "";
+    if (!text.trim()) throw new Error("这份文档还没有内容，导出来是空的");
+    const base = (doc.label && doc.label.trim()) || path.split("/").pop() || "document";
+    const fileName = `${base.replace(/[\\/:*?"<>|]/g, "_")}.md`;
+    saveTextFile(text, fileName);
     return fileName;
   },
 

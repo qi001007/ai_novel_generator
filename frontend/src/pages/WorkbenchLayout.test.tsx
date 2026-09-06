@@ -143,6 +143,57 @@ describe("workbench layout", () => {
     vi.unstubAllGlobals();
   });
 
+  /* 第二十五批批注 4：导出不止正文 - 蓝图、目录、剧情弧、每章简报这些也要能拿走。
+     导的就是屏上源码面那份文本，文件名用文档自己的 label。 */
+  it("exports any document from the tree menu, named by its own label", async () => {
+    const user = userEvent.setup();
+    const { container } = await openWorkbench();
+    const inner = fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/files/toc.md")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ path: "toc.md", label: "目录", text: "# 目录\n\n一条一章。" }), {
+              status: 200,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
+        return inner(input, init);
+      }),
+    );
+    URL.createObjectURL = vi.fn(() => "blob:fake");
+    URL.revokeObjectURL = vi.fn();
+    const downloads: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+
+    const row = [...container.querySelectorAll(".tree-row")].find((node) =>
+      node.textContent?.includes("目录"),
+    ) as HTMLElement;
+    fireEvent.contextMenu(row);
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: /导出为 Markdown/ }));
+    await waitFor(() => expect(downloads).toEqual(["目录.md"]));
+  });
+
+  /* 正文那份文件不给这一行 - 它已经有「导出本章」两行了，菜单里不该出现
+     两个名字不同、意思几乎一样的动作。 */
+  it("does not offer a second markdown export on draft.md, which already exports the chapter", async () => {
+    const { container } = await openWorkbench();
+    const row = [...container.querySelectorAll("button.tree-row.file")].find((node) =>
+      node.textContent?.trim() === "draft.md",
+    ) as HTMLElement;
+    fireEvent.contextMenu(row);
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).queryByRole("menuitem", { name: /导出为 Markdown/ })).toBeNull();
+    // 两行都在：纯文本与 Markdown（第二十四批那条不回退）
+    expect(within(menu).getAllByRole("menuitem", { name: /导出本章/ })).toHaveLength(2);
+  });
+
   /* 第二十五批批注 2：「这里我右键的选项里选择折叠之后，就再也打不开了」。
      真机复现过：折叠后 nav 只剩页头，root 那一行 0×0。这条测的是状态机那一半
      （折叠后那一行仍在、点它能回来、页头钮的标签跟着状态改口）；

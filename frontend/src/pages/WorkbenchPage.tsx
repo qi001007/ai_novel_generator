@@ -186,6 +186,14 @@ export default function WorkbenchPage() {
 
   const [exportError, setExportError] = useState<string | null>(null);
 
+  function handleExportDocument(path: string) {
+    setExportError(null);
+    const novelId = Number(novelIdParam);
+    api.exportDocument(novelId, path).catch((cause: unknown) =>
+      setExportError(cause instanceof Error ? cause.message : "导出失败"),
+    );
+  }
+
   function handleExport(chapterNumber: number, format: "txt" | "md") {
     setExportError(null);
     const novelId = Number(novelIdParam);
@@ -680,6 +688,7 @@ export default function WorkbenchPage() {
             createError={state.createError}
             onCreateChapter={() => void handleCreateChapter()}
             onExport={handleExport}
+            onExportDocument={handleExportDocument}
             exportError={exportError}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
