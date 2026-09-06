@@ -532,10 +532,9 @@ export default function TreePane({
             <kbd>Enter</kbd>
           </button>
           <div className="tree-menu-sep" />
-          <button type="button" role="menuitem" className="tree-menu-item" disabled title="中间插入要顺延章号，牵动文件名、目录锚点与弧范围">
-            <span>在其后新建章节</span>
-            <kbd>未开放</kbd>
-          </button>
+          {/* 第二十三批批注 2：这一条和第一项是同一件事的重叠占位，删掉。
+              「未开放」的理由（章号顺延牵动文件名/目录锚点/弧范围）已经挂在
+              下面那条「重命名 / 删除」上，不需要再占一行。 */}
           <button type="button" role="menuitem" className="tree-menu-item" disabled title="重命名与删除尚未开放">
             <span>重命名 / 删除</span>
             <kbd>未开放</kbd>

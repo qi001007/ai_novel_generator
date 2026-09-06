@@ -197,9 +197,12 @@ describe("新建章节三通道", () => {
     expect(menu.textContent).toContain("新建下一章简报");
     expect(menu.textContent).toContain("Ctrl+Alt+N");
 
-    const insert = screen.getByRole("menuitem", { name: /在其后新建章节/ });
-    expect((insert as HTMLButtonElement).disabled).toBe(true);
-    expect(insert.getAttribute("title")).toContain("顺延章号");
+    // 第二十三批批注 2：「在其后新建章节」与第一项是同一件事的重叠占位，已删。
+    // 「顺延章号」这条理由仍然要看得见 - 它现在挂在唯一剩下的禁用项上。
+    expect(menu.textContent).not.toContain("在其后新建章节");
+    const rename = screen.getByRole("menuitem", { name: /重命名 \/ 删除/ });
+    expect((rename as HTMLButtonElement).disabled).toBe(true);
+    expect(rename.textContent).toContain("未开放");
   });
 
   it("后端 409 时把 detail 原文显示出来，不静默", async () => {

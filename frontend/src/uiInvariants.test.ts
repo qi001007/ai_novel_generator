@@ -669,9 +669,15 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(bookshelf).toContain('className="tree-menu"');
     expect(bookshelf).toContain('className="tree-menu-item primary"');
     expect(bookshelf).toContain('className="tree-menu-sep"');
-    // 全局 button.primary 会把这些行刷成实心主色条（字也是主色＝看不见），
-    // 菜单项必须自己声明无底；这条断言是那张截图换来的。
-    expect(rule(".tree-menu-item.primary")).toContain("background: none");
+    // 全局 button.primary / button.danger 会把这些行刷成实心色条（字也是同色＝看不见），
+    // 菜单项必须自己声明无底。第二十三批批注 1：我记下 T-19 之后的第二个提交里
+    // 又给 .danger 踩了同一条坑，所以这里改成扫整类，不再一条一条点名。
+    for (const variant of [".primary", ".danger"]) {
+      expect(rule(`.tree-menu-item${variant}`)).toContain("background: none");
+    }
+    // 批注 2：树菜单里不许同时出现两条「新建…章节/简报」
+    expect(treePane).toContain("新建下一章简报");
+    expect(treePane).not.toContain("在其后新建章节");
     // D-22③ 推翻了「删除一律未开放」：书与人物现在有真端点，
     // 而树里的「重命名 / 删除」仍然 disabled（章号是主键，D-13 未决）。
     expect(bookshelf).toContain("删除作品…");

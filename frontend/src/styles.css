@@ -4553,10 +4553,19 @@ body.resizing {
 
 .tree-menu-item kbd { font-size: 10px; color: inherit; opacity: 0.75; }
 
-/* 破坏性动作在菜单里靠颜色说，不靠方框说（§0.6：一屏最多一个方框主按钮）。 */
-.tree-menu-item.danger { color: var(--danger); }
+/* 破坏性动作在菜单里靠颜色说，不靠方框说（§0.6：一屏最多一个方框主按钮）。
+   background 必须自己写：全局 button.danger 是 (0,1,1)，压过 .tree-menu-item 的 (0,1,0)，
+   不写就会把这一行刷成实心红条、而条上的字也是红 - 主人原话「颜色已经完全覆盖了它的
+   字体，我什么都看不清」。**这就是 T-19 那条坑，我在记下它之后的第二个提交里又踩了一遍**，
+   所以断言从「只钉 primary」扩成钉住整类。 */
+.tree-menu-item.danger {
+  color: var(--danger);
+  background: none;
+}
 
-.tree-menu-item.danger:hover:not(:disabled) { background: var(--diff-minus-bg); }
+.tree-menu-item.danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
 
 .book-delete-note {
   margin: 0;
