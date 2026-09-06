@@ -47,14 +47,16 @@
 
 ### 27.1 顺手抓到一条真缺陷：流式路径会**丢掉**原生 `tool_calls`（登记，本轮不改）
 
-写计划时做的前置取证，三处都是本机实测行号：
+写计划时做的前置取证。**行号是 2026-09-06 的快照，会随编辑漂移**，下次核对请认代码文本：
+`payload["tools"] = tools` / `content = delta.get("content")` / `calls = found + parse_native_calls(raw)`。
 
 - `llm.py` **确实把工具表发出去了**：`payload["tools"] = tools`
-  （`complete_messages` 155 行、`stream_messages` 191 行）——
+  （`complete_messages` 159 行、`stream_messages` 202 行）——
   所以「这台网关到底有没有那条通道」这个问题，我们是真问过的。
-- 但流式分支只读两样：`delta.content`（223 行）与 `delta.reasoning_content`（232 行）。
+- 但流式分支只读两样：`delta.content`（224 行）与 `delta.reasoning_content`（232 行）。
   **`delta.tool_calls` 一个字都没读。**
-- `agent.py:418` 那行 `parse_native_calls(raw)` 在流式分支里拿到的 `raw` 永远是 `{}`
+- `agent.py:433` 那行 `calls = found + parse_native_calls(raw)` 在流式分支里拿到的 `raw`
+  永远是 `{}`
   （只有 `streaming=False` 那条 `complete_messages` 会填它）。
 - 唯一相关的测试 `test_agent_loop.py:165` 是把 `parse_native_calls` 当**纯函数**测，
   不经过任何通路 —— 又是「测试绿 ≠ 通路存在」那条老病，我这次自己撞上了。

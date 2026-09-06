@@ -166,8 +166,10 @@
 - `agent.py` 头部注释记录 2026-09-04 实测：网关回 `finish_reason: stop`、
   **没有 `tool_calls` 字段**，模型想调工具时把厂商私有 XML 塞进 `content`。
 - 铁证在数据库里：上一轮按主人授权删掉的那条脏数据（`chat_message id=20`）原文就是
-  ```[TOOL_CALL] {tool => "read_file", args => { --path "settings/foreshadow.md" }} [/TOOL_CALL]```。
-- 同一个模型在连续三轮里分别用过 ```tool 围栏、厂商 XML、hashrocket **三种写法**，
+  内容是 `[TOOL_CALL] {tool => "read_file", args => { --path "settings/foreshadow.md" }}
+  `[/TOOL_CALL]`：方括号里包一段 hashrocket 风格的伪代码，既不是 JSON、也不是 `tool_calls` 数组。
+- 同一个模型在连续三轮里分别用过**三种写法**：我们自家的 tool 围栏（三个反引号开收）、
+  厂商私有 XML、上面那种 hashrocket 块，
   所以解析必须三种都认 —— 那 161 行就是为这件事存在的，它不是「重复造轮子」。
 
 **结论**：框架能替我写循环，替不了这台网关翻译方言。所以新计划的形状是
@@ -199,7 +201,7 @@
 |---|---|
 | 方言适配器（约 150 行） | §6.2：这台网关不给 `tool_calls`，翻译是我们独有的 |
 | 三个只读工具的定义 | 读的就是那份投影，和主人在界面上看到的同一份数据（D-02 / D-15） |
-| 提案协议 ```markdown @path``` | Agent **没有写权力**，改动只能靠主人点应用（D-01） |
+| 提案协议（三个反引号 + `markdown` + 路径 那个围栏块） | Agent **没有写权力**，改动只能靠主人点应用（D-01） |
 | 上下文构造 | 仍然只有 `collect_items()` 一个入口，**框架自带的 history / sessions 一概不用**（D-04） |
 | 思考过程单独存列 | D-18 不变，适配器照旧把 `reasoning_content` 交出来 |
 
