@@ -97,8 +97,15 @@ def snapshot(session: Session, novel_id: int, title: str, reason: str = "deleted
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     safe = SAFE_NAME.sub("_", title)[:40] or "unnamed"
     target = root / f"{reason}-{stamp}-{novel_id}-{safe}.db"
-    with sqlite3.connect(str(src)) as source, sqlite3.connect(str(target)) as dest:
+    # `with sqlite3.connect(...)` 只 commit，**不 close** - 上一版就是这么把快照句柄
+    # 留在自己进程里，删不掉的不是文件而是我们的礼貌（26.7）。显式关掉两条连接。
+    source = sqlite3.connect(str(src))
+    dest = sqlite3.connect(str(target))
+    try:
         source.backup(dest)
+    finally:
+        dest.close()
+        source.close()
     prune(root)
     return target
 

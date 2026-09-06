@@ -115,6 +115,20 @@
   5. 删掉的章能从「导出与恢复」里按文件取回（复用 25.5），有测试；
   6. 真机：删一章 → 树与工作台都少一条 → 从快照取回 → 截图看过。
 
+### 26.7 快照文件被自家进程占着删不掉（清理演练痕迹时抓到，已修）
+
+- 现象：`Remove-Item backend\backups\deleted-*.db` 报「being used by another process」。
+- 两处成因、一处能测：
+  1. `snapshot()` 里 `with sqlite3.connect(...)` **只 commit 不 close** - 改成显式关闭两条连接
+     （这条是卫生，测不出来：函数返回后局部连接已被回收）；
+  2. `_snapshot_session` 用默认连接池，Session 关了池子仍留着那条 sqlite 连接 -
+     **这才是真凶**，上一批已改 `NullPool`，但当时没有测试钉住。
+- 判据（已满足）：走一遍真会打开快照的那条路（设置页「取一个文件」= `GET /api/backups/documents`），
+  然后立刻 `rename` 那个快照文件 - Windows 上句柄没关就抛 `PermissionError`。
+  **变异验证过**：把 `poolclass=NullPool` 删掉，这条测试立刻红（`1 failed`）；装回去绿。
+  第一版测试写的是「删完就改名」，那样**测不出来**（那时连接早已随函数返回回收），
+  已改成先驱动读快照的那条路。
+
 ### 26.6 仓库里多出一个未跟踪的 `novel-export/`（顺手发现，登记）
 
 - 主人把导出目录设成了 `E:\novel-generator\novel-export`，于是 `git status` 里多了一个未跟踪目录，

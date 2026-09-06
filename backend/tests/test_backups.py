@@ -53,6 +53,29 @@ def test_deleting_a_book_leaves_a_snapshot_and_lists_it(file_client: TestClient,
     assert (tmp_path / "backups" / listed[0]["file"]).exists()
 
 
+def test_a_snapshot_is_not_held_open_by_our_own_process(file_client: TestClient, tmp_path) -> None:
+    """删完书，那份快照必须立刻能改名/删掉。
+
+    只在 Windows 上有意义：POSIX 允许 unlink 一个还开着的文件，这条测试就会白过。
+    本机就是 Windows，所以它真能钉住「连接没关」这类泄漏（26.7 就是这么抓出来的）。
+    """
+    novel_id = _book(file_client)
+    file_client.delete(f"/api/novels/{novel_id}")
+    listed = file_client.get("/api/backups").json()["snapshots"][0]["file"]
+    path = tmp_path / "backups" / listed
+    assert path.exists()
+
+    # 走一遍真会打开快照的那条路（设置页里「取一个文件」就是这个）。
+    # 光删完就改名是测不出来的：那时 snapshot() 的局部连接已经随函数返回被回收了；
+    # 真正长期持有句柄的是读快照内容的那条 Session。
+    docs = file_client.get(f"/api/backups/documents?file={listed}").json()
+    assert any(item["path"] == "blueprint.md" for item in docs)
+
+    probe = tmp_path / "probe.db"
+    path.rename(probe)  # 句柄还开着的话，Windows 在这里抛 PermissionError
+    assert probe.exists() and not path.exists()
+
+
 def test_restoring_a_whole_book_brings_the_prose_back(file_client: TestClient) -> None:
     novel_id = _book(file_client)
     file_client.delete(f"/api/novels/{novel_id}")
