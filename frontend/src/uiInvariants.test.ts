@@ -783,4 +783,28 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(appSource).toContain('matchMedia("(prefers-color-scheme: dark)")');
     expect(appSource).toContain("followSystem()");
   });
+
+  // 第二十八批批注 1、2（2026-09-06）。主人第三次说「不要贴边」。前两次我把判据钉在
+  // 「文字到面板的距离」上（量出 25px 就交了），可他指的是文字贴着**卡片自己的边框** -
+  // 那一层内衬是 0。所以这里的断言全部钉在它所在那个框，并且把「量元素盒子 ≠ 量文字」
+  // 这条写死：真机要用 Range 量文字矩形（getBoundingClientRect 给的是盒子，会骗人）。
+  it("settings text stands off the card it is in, and a note belongs to its title", () => {
+    const inset = css.match(/\.pref-rows > \.prefs-group-title\s*\{([^}]*)\}/);
+    expect(inset, "组标题在卡片里必须有内缩").not.toBeNull();
+    expect(inset![1]).toMatch(/padding-inline:\s*14px/);
+
+    const title = css.match(/\.prefs-group-title\s*\{([^}]*)\}/)![1];
+    const label = css.match(/\.pref-row-label\s*\{([^}]*)\}/)![1];
+    for (const prop of ["font-size", "font-weight", "color"]) {
+      const grab = (body: string) => body.match(new RegExp(prop + ":\\s*([^;]+);"))?.[1].trim();
+      expect(grab(title), "组标题与行标题的 " + prop + " 必须同一套").toBe(grab(label));
+    }
+
+    // 说明文字与右边的框不再同一条水平线：控件走基线，note 挂在标题下面。
+    expect(css).toMatch(/\.pref-row:has\(\.pref-row-note\)\s*\{[^}]*align-items:\s*baseline;/);
+    // 基线只给带说明的行，单行行仍居中 - 别把整张表都改了。
+    const plain = css.match(/\.pref-row\s*\{([^}]*)\}/);
+    expect(plain![1]).toMatch(/align-items:\s*center;/);
+  });
+
 });

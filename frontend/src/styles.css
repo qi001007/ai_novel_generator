@@ -6014,12 +6014,28 @@ body.resizing {
 }
 
 /* 第十九批批注 2: providers are a list, and every task picks one of them. */
+/* 批注 28.2, 2026-09-06: the group title is a heading of the same column as the row
+   labels under it, so it wears the same type and starts at the same x. It used to sit
+   1px off the card border (padding lived on .pref-row, not on the group) - the owner has
+   now asked three times for text that does not touch an edge, and each time my check
+   measured the distance to the panel instead of to the box the text is actually in.
+   Measured here: text left 528, card left 513, gap 15px, and the same three computed
+   values as .pref-row-label. */
 .prefs-group-title {
-  margin: 4px 0 0;
-  color: var(--text-2);
-  font-size: 11.5px;
-  font-weight: 500;
+  margin: 0;
+  padding: 12px 0 2px;
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+/* The inset belongs to the card, not to the heading: only titles that live inside a
+   .pref-rows box have a border to stand off. The 模型接入 panel has no box, and giving
+   its headings the same 14px made each title hang right of the field under it (checked
+   in the screenshot, then reverted to flush). */
+.pref-rows > .prefs-group-title {
+  padding-inline: 14px;
 }
 
 .prefs-providers,
@@ -6264,6 +6280,10 @@ body.resizing {
   overflow: hidden;
 }
 
+/* 批注 28.1: with a two-line label, centring the row put the note on the same
+   horizontal line as the control, so the sentence read as if it belonged to the box.
+   Baselines make the control line up with the title and the note hang under the title.
+   Scoped with :has so a single-line row keeps today's centring. */
 .pref-row {
   display: flex;
   align-items: center;
@@ -6271,6 +6291,10 @@ body.resizing {
   gap: 16px;
   min-height: 46px;
   padding: 8px 14px;
+}
+
+.pref-row:has(.pref-row-note) {
+  align-items: baseline;
 }
 
 .pref-row + .pref-row {
