@@ -67,6 +67,8 @@ type WorkbenchState = {
   init: () => Promise<void>;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
   updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
+  /** 重新读一遍书架（第二十六批批注 2：恢复之后本地那份数组必须跟上）。 */
+  refreshNovels: () => Promise<void>;
   /** 一本书的全部派生行由后端那一条级联删掉（D-23）；这里只负责让列表说实话。 */
   deleteNovel: (novelId: number) => Promise<void>;
   setTab: (tab: WorkspaceTab) => void;
@@ -155,6 +157,13 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       novels: now.novels.filter((item) => item.id !== novelId),
       selectedNovelId: now.selectedNovelId === novelId ? null : now.selectedNovelId,
     });
+  },
+
+  /** 第二十六批批注 2：恢复是后端干的活，本地那份 novels 数组没人通知，
+   *  于是「已回到书架」和首页看到的书架对不上。增删改都是本地改数组，
+   *  唯独少一条「重新读」- 补上它，恢复之后必须调。 */
+  async refreshNovels() {
+    set({ novels: await api.get<Novel[]>("/api/novels") });
   },
 
   async updateNovel(novelId, payload) {

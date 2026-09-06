@@ -197,6 +197,9 @@ describe("PreferencesPage", () => {
         if (url.startsWith("/api/backups/restore/novel")) {
           return ok({ result: { novel_id: 7, title: "演练", rows: 3 } });
         }
+        if (url === "/api/novels") {
+          return ok([{ id: 7, title: "演练", description: "", target_chapters: 0, style_constraints: "", cover_image: "" }]);
+        }
         if (url.startsWith("/api/backups")) return ok({ export_dir: "", snapshots: [snapshot] });
         return ok(config);
       }),
@@ -230,6 +233,14 @@ describe("PreferencesPage", () => {
     // ③ 恢复整本书
     await user.click(screen.getByRole("button", { name: "恢复整本书" }));
     expect(await screen.findByText("《演练》已回到书架")).toBeTruthy();
+    // 第二十六批批注 2：恢复是后端干的活，本地那份 novels 数组不重读就永远看不见它。
+    // 关键不是「有没有读」而是「读在恢复之后」- 读早了拿到的还是没有这本书的那份。
+    await waitFor(() => {
+      const restoredAt = calls.findIndex((call) => call.url.startsWith("/api/backups/restore/novel"));
+      const readAt = calls.findLastIndex((call) => call.method === "GET" && call.url === "/api/novels");
+      expect(restoredAt).toBeGreaterThan(-1);
+      expect(readAt).toBeGreaterThan(restoredAt);
+    });
   });
 
   it("runs the connection test against the backend, not a model", async () => {

@@ -65,6 +65,9 @@ def test_restoring_a_whole_book_brings_the_prose_back(file_client: TestClient) -
     body = restored.json()["result"]
     assert body["novel_id"] == novel_id and body["title"] == "观星"
     assert body["rows"] > 0
+    # 首页读的就是这条 - 恢复之后它必须数得回来（第二十六批批注 2 的根因
+    # 是前端本地那份 novels 数组没人重读，后端这条先自证清白）
+    assert [item["id"] for item in file_client.get("/api/novels").json()] == [novel_id]
     chapters = file_client.get(f"/api/novels/{novel_id}/chapters").json()
     assert [item["chapter_number"] for item in chapters] == [1]
     assert "雪夜碑鸣。" in chapters[0]["content"]

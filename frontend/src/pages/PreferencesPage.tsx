@@ -4,6 +4,8 @@ import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { useFiles } from "../store/files";
+import { useWorkbench } from "../store/workbench";
 import type { BackupDocument, BackupSnapshot } from "../types";
 import {
   CODE_FONTS,
@@ -266,6 +268,7 @@ function CardGroup<T extends string>(props: {
    这一栏还要长（删除记录与恢复在下一批），所以自己一个组件、自己的状态，
    不往设置页那张表里堆。 */
 function StoragePanel() {
+  const refreshNovels = useWorkbench((state) => state.refreshNovels);
   const [dir, setDir] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<BackupSnapshot[]>([]);
   const [openFile, setOpenFile] = useState<string | null>(null);
@@ -302,13 +305,17 @@ function StoragePanel() {
     reload();
   }, []);
 
-  /** 恢复动作共三种，全部走后端；这里只负责把结果说成人话。 */
-  function run(action: Promise<unknown>, note: string) {
+  /** 恢复动作共三种，全部走后端；这里只负责把结果说成人话。
+   *  成功后必须把本地缓存抹掉（第二十六批批注 2）：书架那份 novels 是内存数组，
+   *  不重新读就永远看不见刚恢复的书；文件层同理，不 reset 回工作台还是旧影。 */
+  function run(action: Promise<unknown>, note: string, invalidates: "book" | "files" | null) {
     setError(null);
     setNote(null);
     action
       .then(() => {
         setNote(note);
+        if (invalidates === "book") void refreshNovels();
+        if (invalidates) useFiles.getState().reset();
         reload();
       })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "恢复失败"));
@@ -391,7 +398,11 @@ function StoragePanel() {
             <button
               type="button"
               onClick={() =>
-                run(api.restoreNovel(item.file).then(() => undefined), `《${item.title}》已回到书架`)
+                run(
+                  api.restoreNovel(item.file).then(() => undefined),
+                  `《${item.title}》已回到书架`,
+                  "book",
+                )
               }
             >
               恢复整本书
@@ -421,6 +432,7 @@ function StoragePanel() {
                             })
                             .then(() => undefined),
                           `已放回《${doc.novel_title}》的 ${doc.path}`,
+                          "files",
                         )
                       }
                     >
@@ -459,6 +471,7 @@ function StoragePanel() {
                       .restoreDocument({ ...target, into: "dir" })
                       .then(() => undefined),
                     "已写到导出目录",
+                    null,
                   );
                 }}
               >
@@ -470,7 +483,11 @@ function StoragePanel() {
                 onClick={() => {
                   const target = ask;
                   setAsk(null);
-                  run(api.restoreNovel(target.file).then(() => undefined), "整本书已回到书架");
+                  run(
+                    api.restoreNovel(target.file).then(() => undefined),
+                    "整本书已回到书架",
+                    "book",
+                  );
                 }}
               >
                 连书一起恢复
