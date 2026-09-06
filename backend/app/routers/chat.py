@@ -15,7 +15,9 @@ from app.services.chat import (
     ChatDomainError,
     ChatTurn,
     complete_turn,
+    current_conversation,
     extract_proposals,
+    next_conversation,
     prepare_turn,
     stream_turn,
 )
@@ -73,7 +75,7 @@ class ChatProposalOut(SQLModel):
 
 
 _MESSAGE_FIELDS = (
-    "id", "novel_id", "role", "content", "reasoning", "mode", "model", "mentions",
+    "id", "novel_id", "conversation_id", "role", "content", "reasoning", "mode", "model", "mentions",
     "context_refs", "token_input", "token_output", "created_at",
 )
 
@@ -81,6 +83,7 @@ _MESSAGE_FIELDS = (
 class ChatMessageOut(SQLModel):
     id: int
     novel_id: int
+    conversation_id: int = 1
     role: str
     content: str
     # Out of the list endpoint too: the fold has to survive a reload, not only the
@@ -133,13 +136,16 @@ def _event_stream(
 def list_chat_messages(
     novel_id: int,
     limit: int = 200,
+    conversation: int | None = None,
     session: Session = Depends(get_session),
 ) -> list[ChatMessageOut]:
     get_novel_or_404(novel_id, session)
+    thread = conversation or current_conversation(session, novel_id)
     rows = list(
         session.exec(
             select(ChatMessage)
             .where(ChatMessage.novel_id == novel_id)
+            .where(ChatMessage.conversation_id == thread)
             .order_by(ChatMessage.created_at, ChatMessage.id)
         ).all()
     )
@@ -234,6 +240,17 @@ def stream_chat_reply(
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
+
+
+@router.post("/{novel_id}/chat/conversation", response_model=dict)
+def start_chat_conversation(novel_id: int, session: Session = Depends(get_session)) -> dict:
+    """「新建对话」: close the current thread and open the next one.
+
+    Only a config row moves: the old messages stay exactly where they are, so the
+    snapshot and the 会话 page can still reach them.
+    """
+    get_novel_or_404(novel_id, session)
+    return {"conversation_id": next_conversation(session, novel_id)}
 
 
 @router.delete("/{novel_id}/chat/messages", status_code=204)

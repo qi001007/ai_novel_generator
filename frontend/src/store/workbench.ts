@@ -64,6 +64,10 @@ type WorkbenchState = {
   busy: boolean;
   creatingChapter: boolean;
   createError: string | null;
+  /** Bumped by 「新建对话」. The messages themselves stay on the server; this
+   *  is only the signal that tells the middle column to reload onto the new thread. */
+  chatEpoch: number;
+  startChatConversation: () => Promise<void>;
   init: () => Promise<void>;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
   updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
@@ -113,6 +117,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   busy: false,
   creatingChapter: false,
   createError: null,
+  chatEpoch: 0,
+
+  async startChatConversation() {
+    const novelId = get().selectedNovelId;
+    if (!novelId) return;
+    await api.post<{ conversation_id: number }>(`/api/novels/${novelId}/chat/conversation`);
+    set({ chatEpoch: get().chatEpoch + 1 });
+  },
 
   async createNovel(payload) {
     const novel = await api.post<Novel>("/api/novels", payload);

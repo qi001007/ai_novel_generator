@@ -343,3 +343,29 @@ describe("one draft buffer, read by both pages (批注 3.3)", () => {
     expect(useFiles.getState().entries[pathA]).toBeUndefined();
   });
 });
+
+/* 第二十八批批注 8：「新建对话」只让服务端开下一条线程，本地一样东西都不删。 */
+describe("workbench new conversation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("opens the next thread on the server and bumps the epoch", async () => {
+    useWorkbench.setState({ selectedNovelId: 5, chatEpoch: 0 });
+    vi.mocked(api.post).mockResolvedValueOnce({ conversation_id: 2 });
+
+    await useWorkbench.getState().startChatConversation();
+
+    expect(api.post).toHaveBeenCalledWith("/api/novels/5/chat/conversation");
+    expect(useWorkbench.getState().chatEpoch).toBe(1);
+  });
+
+  it("does nothing when no book is selected", async () => {
+    useWorkbench.setState({ selectedNovelId: null, chatEpoch: 3 });
+
+    await useWorkbench.getState().startChatConversation();
+
+    expect(api.post).not.toHaveBeenCalled();
+    expect(useWorkbench.getState().chatEpoch).toBe(3);
+  });
+});

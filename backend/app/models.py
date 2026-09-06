@@ -334,6 +334,9 @@ class ChatMessage(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     novel_id: int = Field(foreign_key="novel.id", index=True)
+    # One book holds several conversations: 「新建对话」retires the current thread and
+    # opens a fresh one, it never deletes the old messages (第二十八批批注 8).
+    conversation_id: int = Field(default=1, index=True)
     role: str = Field(index=True)
     content: str = ""
     # The model's own reasoning for this answer, kept beside it and shown collapsed.

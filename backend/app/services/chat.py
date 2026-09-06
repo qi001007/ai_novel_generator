@@ -10,7 +10,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from app.db import engine
-from app.models import Chapter, ChatMessage, GenerationRun, Novel
+from app.models import AppConfig, Chapter, ChatMessage, GenerationRun, Novel, utc_now
 from app.services.documents import (
     DocumentError,
     current_text_reader,
@@ -197,6 +197,7 @@ class ChatTurn:
     unknown_mentions: list[str]
     question: str
     user_message_id: int
+    conversation_id: int = 1
     model: str | None = None
     chapter_id: int | None = None
     manifest: str = ""
@@ -298,12 +299,55 @@ def _system_prompt(
     )
 
 
-def _history_messages(session: Session, novel_id: int) -> list[dict[str, str]]:
-    """Most recent window of the thread, oldest first."""
+def _conversation_key(novel_id: int) -> str:
+    return f"chat.conversation:{novel_id}"
+
+
+def current_conversation(session: Session, novel_id: int) -> int:
+    """The thread a book is on right now.
+
+    The row that 「新建对话」writes wins, so a thread that has been opened but not yet
+    typed into stays open across a reload - the middle column comes back empty, which
+    is what closing the previous conversation actually means (第二十八批批注 8). With no
+    such row the book sits on its newest stored thread; a book that never talked starts
+    at 1, which is also what every existing row already carries.
+    """
+    stored = session.get(AppConfig, _conversation_key(novel_id))
+    if stored is not None and stored.value.strip().isdigit():
+        return int(stored.value.strip())
+    found = session.exec(
+        select(ChatMessage.conversation_id)
+        .where(ChatMessage.novel_id == novel_id)
+        .order_by(ChatMessage.conversation_id.desc())
+        .limit(1)
+    ).all()
+    return int(found[0]) if found else 1
+
+
+def next_conversation(session: Session, novel_id: int) -> int:
+    """Close the current thread and open the one after it. Nothing is deleted."""
+    thread = current_conversation(session, novel_id) + 1
+    key = _conversation_key(novel_id)
+    row = session.get(AppConfig, key)
+    if row is None:
+        row = AppConfig(key=key, value=str(thread))
+    else:
+        row.value = str(thread)
+    row.updated_at = utc_now()
+    session.add(row)
+    session.commit()
+    return thread
+
+
+def _history_messages(
+    session: Session, novel_id: int, conversation_id: int
+) -> list[dict[str, str]]:
+    """Most recent window of *this* thread, oldest first."""
     rows = list(
         session.exec(
             select(ChatMessage)
             .where(ChatMessage.novel_id == novel_id)
+            .where(ChatMessage.conversation_id == conversation_id)
             .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
             .limit(HISTORY_WINDOW)
         ).all()
@@ -362,8 +406,12 @@ def prepare_turn(
         note=f"{MODE_LABEL[mode]} · 指令「{_one_line(text, 40)}」",
     )
 
+    # Resolved once per turn, then carried by ChatTurn so the reply lands in the
+    # same thread as the question that asked for it.
+    conversation = current_conversation(session, novel.id)
     user_message = ChatMessage(
         novel_id=novel.id,
+        conversation_id=conversation,
         role="user",
         content=text,
         mode=mode,
@@ -384,7 +432,7 @@ def prepare_turn(
             "content": _system_prompt(novel, mode, items, unknown, chapter),
         }
     ]
-    messages.extend(_history_messages(session, novel.id))
+    messages.extend(_history_messages(session, novel.id, conversation))
 
     session.commit()  # release the read txn before the stream opens its own
 
@@ -397,6 +445,7 @@ def prepare_turn(
         unknown_mentions=unknown,
         question=text,
         user_message_id=user_message_id,
+        conversation_id=conversation,
         model=model,
         chapter_id=chapter.id if chapter else None,
         manifest=writing_context.manifest_json(),
@@ -416,6 +465,7 @@ def persist_reply(
     """Store the reply twice: message-level tokens plus aggregated run usage."""
     message = ChatMessage(
         novel_id=turn.novel_id,
+        conversation_id=turn.conversation_id,
         role="assistant",
         content=content,
         reasoning=reasoning,

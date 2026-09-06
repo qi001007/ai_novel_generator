@@ -55,6 +55,8 @@ type TreePaneProps = {
   onOpenFile: (path: string) => void;
   onSelectChapter: (chapterId: number) => void;
   onCreateChapter: () => void;
+  /** 「新建对话」：当前线程收尾，开一条新的；旧的留着不删（第二十八批批注 8）。 */
+  onNewConversation: () => void;
   /** 导出是读。树这边只负责把「章号 + 格式」交给上层，不碰 API。 */
   onExport: (chapterNumber: number, format: "txt" | "md") => void;
   /** 导出这份文档本身（投影出来的那份文本），第二十五批批注 4。 */
@@ -107,6 +109,7 @@ export default function TreePane({
   onOpenFile,
   onSelectChapter,
   onCreateChapter,
+  onNewConversation,
   onExport,
   onExportDocument,
   onDeleteChapter,
@@ -261,6 +264,17 @@ export default function TreePane({
               title={creatingChapter ? "正在新建" : "新建下一章简报（Ctrl+Alt+N）"}
               disabled={creatingChapter}
               onClick={onCreateChapter}
+            >
+              <Plus size={14} />
+            </button>
+          ) : null}
+          {page === "chat" ? (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="新建对话"
+              title="新建对话"
+              onClick={onNewConversation}
             >
               <Plus size={14} />
             </button>

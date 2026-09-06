@@ -170,6 +170,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const llmStatus = useWorkbench((s) => s.llmStatus);
   const busy = useWorkbench((s) => s.busy);
   const setTab = useWorkbench((s) => s.setTab);
+  const chatEpoch = useWorkbench((s) => s.chatEpoch);
   const [rows, setRows] = useState<Row[]>([]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ChatMode>("write");
@@ -237,7 +238,8 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     };
   }, [modelMenuOpen]);
 
-  // Switching books reloads that book's own thread.
+  // Switching books - or opening a new conversation (第二十八批批注 8) - reloads
+  // whatever thread that book is on now. The server decides which one that is.
   useEffect(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -269,7 +271,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedNovelId]);
+  }, [selectedNovelId, chatEpoch]);
 
   // The @mention list is backed by the same retriever the agent uses.
   useEffect(() => {

@@ -691,6 +691,14 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(treePane).toMatch(/className="tree-menu-item danger"\n\s+onClick=\{runMenuAction\(\(\) => onDeleteChapter/);
     expect(treePane).toMatch(/disabled title="改章号会牵动文件名、目录锚点与弧范围，尚未定"/);
     expect(treePane).not.toContain("重命名与删除尚未开放");
+    // 第二十八批批注 8：「对话」页头必须有新建对话的加号，尺寸与规划页头那组同源
+    // （同一个 .icon-button，不是新造一个类）。它只做「收尾」：全仓不许出现
+    // 前端拿这个按钮去调 DELETE /chat/messages 的写法 - 旧的对话要留着。
+    expect(treePane).toMatch(/\{page === "chat" \? \(\n\s+<button\n\s+type="button"\n\s+className="icon-button"\n\s+aria-label="新建对话"\n\s+title="新建对话"\n\s+onClick=\{onNewConversation\}/);
+    // 线程号由服务端定，前端只报一次「开下一条」并等 epoch 变化重新拉取（D-02：DB 是真源）。
+    expect(workbenchStore).toContain('/api/novels/${novelId}/chat/conversation');
+    expect(workbenchStore).not.toMatch(/del\([^\n]{0,40}chat\/messages/);
+    expect(chatPane).toContain('}, [selectedNovelId, chatEpoch]);');
     // 鼠标与键盘两扇门
     expect(bookshelf).toContain("onContextMenu={(event) => openBookMenu(event, novel)}");
     expect(bookshelf).toContain('event.key === "ContextMenu"');

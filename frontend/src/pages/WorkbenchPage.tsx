@@ -736,6 +736,7 @@ export default function WorkbenchPage() {
             creatingChapter={state.creatingChapter}
             createError={state.createError}
             onCreateChapter={() => void handleCreateChapter()}
+            onNewConversation={() => void state.startChatConversation()}
             onExport={handleExport}
             onExportDocument={handleExportDocument}
             onDeleteChapter={(chapterNumber) => {
