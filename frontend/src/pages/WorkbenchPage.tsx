@@ -186,6 +186,10 @@ export default function WorkbenchPage() {
 
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  /* 第二十六批批注 6：删一章。口径与删书一致 - 一次确认、不打字、焦点在取消。 */
+  const [chapterDelete, setChapterDelete] = useState<number | null>(null);
+  const [chapterDeleteError, setChapterDeleteError] = useState<string | null>(null);
+  const chapterCancelRef = useRef<HTMLButtonElement | null>(null);
 
   function reportExport(promise: Promise<string>) {
     setExportError(null);
@@ -195,6 +199,38 @@ export default function WorkbenchPage() {
       .catch((cause: unknown) =>
         setExportError(cause instanceof Error ? cause.message : "导出失败"),
       );
+  }
+
+  useEffect(() => {
+    if (chapterDelete !== null) chapterCancelRef.current?.focus();
+  }, [chapterDelete]);
+
+  useEffect(() => {
+    if (chapterDelete === null) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setChapterDelete(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chapterDelete]);
+
+  function confirmDeleteChapter() {
+    const number = chapterDelete;
+    if (number === null) return;
+    const novelId = Number(novelIdParam);
+    setChapterDeleteError(null);
+    api
+      .deleteChapter(novelId, number)
+      .then(async () => {
+        setChapterDelete(null);
+        // 删完按同一本书重读所有切片：少清一片就是「章没了、它的调用记录还挂在屏上」
+        await state.reloadNovel(novelId);
+        await refreshMetas();
+      })
+      .catch((cause: unknown) => {
+        setChapterDelete(null);
+        setChapterDeleteError(cause instanceof Error ? cause.message : "删除失败");
+      });
   }
 
   function handleExportDocument(path: string) {
@@ -702,6 +738,10 @@ export default function WorkbenchPage() {
             onCreateChapter={() => void handleCreateChapter()}
             onExport={handleExport}
             onExportDocument={handleExportDocument}
+            onDeleteChapter={(chapterNumber) => {
+              setChapterDeleteError(null);
+              setChapterDelete(chapterNumber);
+            }}
             exportError={exportError ?? exportNote}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
@@ -730,6 +770,34 @@ export default function WorkbenchPage() {
             foreshadowOpen={rightView === "foreshadow"}
           />
         </aside>
+
+        {chapterDelete !== null ? (
+          <div className="wizard-backdrop" role="presentation" onClick={() => setChapterDelete(null)}>
+            <div
+              className="wizard book-delete"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="删除章节"
+            >
+              <h2>删除第 {chapterDelete} 章</h2>
+              <p className="book-delete-note">正文、简报与它的记录一起删</p>
+              {chapterDeleteError ? <p className="book-info-problem">{chapterDeleteError}</p> : null}
+              <footer className="cover-modal-footer">
+                <button
+                  type="button"
+                  ref={chapterCancelRef}
+                  onClick={() => setChapterDelete(null)}
+                >
+                  取消
+                </button>
+                <button type="button" className="danger" onClick={confirmDeleteChapter}>
+                  删除
+                </button>
+              </footer>
+            </div>
+          </div>
+        ) : null}
 
         <Splitter
           pane="sidebar"

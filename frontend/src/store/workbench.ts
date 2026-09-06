@@ -69,6 +69,8 @@ type WorkbenchState = {
   updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
   /** 重新读一遍书架（第二十六批批注 2：恢复之后本地那份数组必须跟上）。 */
   refreshNovels: () => Promise<void>;
+  /** 删章后按同一本书重读所有切片；原来选中的章还在就把选中还给它。 */
+  reloadNovel: (novelId: number) => Promise<void>;
   /** 一本书的全部派生行由后端那一条级联删掉（D-23）；这里只负责让列表说实话。 */
   deleteNovel: (novelId: number) => Promise<void>;
   setTab: (tab: WorkspaceTab) => void;
@@ -164,6 +166,17 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
    *  唯独少一条「重新读」- 补上它，恢复之后必须调。 */
   async refreshNovels() {
     set({ novels: await api.get<Novel[]>("/api/novels") });
+  },
+
+  async reloadNovel(novelId) {
+    const keep = get().selectedChapterId;
+    // 复用 selectNovel 而不是自己拼：它已经负责把上一本书的切片全清空，
+    // 少清一片就是「删掉的章的调用记录还挂在界面上」这种 bug 的来路。
+    await get().selectNovel(novelId);
+    const now = get();
+    if (keep !== null && now.chapters.some((item) => item.id === keep)) {
+      set({ selectedChapterId: keep });
+    }
   },
 
   async updateNovel(novelId, payload) {

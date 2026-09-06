@@ -143,6 +143,47 @@ describe("workbench layout", () => {
     vi.unstubAllGlobals();
   });
 
+  /* 第二十六批批注 6：树里那个「删除」他点了三轮，今天真的能删。
+     确认口径与删书一致：一次确认、不打字、取消不发请求。 */
+  it("deletes a chapter from the tree menu after one confirmation", async () => {
+    const user = userEvent.setup();
+    const { container } = await openWorkbench();
+    const seen: string[] = [];
+    const inner = fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = String(init?.method ?? "GET");
+        seen.push(method + " " + url);
+        if (method === "DELETE") {
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+        return inner(input, init);
+      }),
+    );
+    const row = [...container.querySelectorAll(".tree-row")].find((node) =>
+      node.textContent?.includes("0042"),
+    ) as HTMLElement;
+
+    fireEvent.contextMenu(row);
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: /删除章节/ }));
+    const dialog = await screen.findByRole("dialog", { name: "删除章节" });
+    expect(dialog.textContent).toContain("删除第 42 章");
+
+    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "删除章节" })).toBeNull();
+    expect(seen.filter((line) => line.startsWith("DELETE"))).toHaveLength(0);
+
+    fireEvent.contextMenu(row);
+    const again = await screen.findByRole("menu");
+    await user.click(within(again).getByRole("menuitem", { name: /删除章节/ }));
+    const second = await screen.findByRole("dialog", { name: "删除章节" });
+    await user.click(within(second).getByRole("button", { name: "删除" }));
+    await waitFor(() => expect(seen).toContain("DELETE /api/novels/1/chapters/by-number/42"));
+  });
+
   /* 第二十五批批注 4：导出不止正文 - 蓝图、目录、剧情弧、每章简报这些也要能拿走。
      导的就是屏上源码面那份文本，文件名用文档自己的 label。 */
   it("exports any document from the tree menu, named by its own label", async () => {
@@ -267,7 +308,8 @@ describe("workbench layout", () => {
       "打开Enter",
       "导出本章…纯文本",
       "导出本章 Markdown.md",
-      "重命名 / 删除未开放",
+      "删除章节章号不补",
+      "重命名未开放",
     ]);
 
     await user.click(within(menu).getByRole("menuitem", { name: /导出本章…/ }));

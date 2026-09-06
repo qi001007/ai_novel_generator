@@ -59,6 +59,8 @@ type TreePaneProps = {
   onExport: (chapterNumber: number, format: "txt" | "md") => void;
   /** 导出这份文档本身（投影出来的那份文本），第二十五批批注 4。 */
   onExportDocument: (path: string) => void;
+  /** 删一章（第二十六批批注 6）：确认弹窗在工作台那边，这里只报章号。 */
+  onDeleteChapter: (chapterNumber: number) => void;
   exportError: string | null;
   onOpenCharacters: () => void;
   onOpenFeedback: () => void;
@@ -107,6 +109,7 @@ export default function TreePane({
   onCreateChapter,
   onExport,
   onExportDocument,
+  onDeleteChapter,
   exportError,
   onOpenCharacters,
   onOpenFeedback,
@@ -175,6 +178,10 @@ export default function TreePane({
      在这里是同一扇门，brief.md 不给导出。 */
   const menuChapterFile = menuPath ? /^chapters\/(\d{4})\/draft\.md$/.exec(menuPath) : null;
   const menuChapter = menuChapterFile ? Number(menuChapterFile[1]) : null;
+  // 章节的任一份文件（draft.md 与 brief.md）都指同一章 - 删除是对「这一章」做的，
+  // 不该因为右键的是哪一片叶子而时有时无
+  const menuAnyChapter = menuPath ? /^chapters\/(\d{4})\//.exec(menuPath) : null;
+  const menuChapterTarget = menuAnyChapter ? Number(menuAnyChapter[1]) : null;
   const bookName = (meta: FileMeta) => meta.path.split("/").pop() ?? meta.path;
   const LIBRARY_GROUPS: LibraryGroup[] = [
     {
@@ -602,8 +609,21 @@ export default function TreePane({
           {/* 第二十三批批注 2：这一条和第一项是同一件事的重叠占位，删掉。
               「未开放」的理由（章号顺延牵动文件名/目录锚点/弧范围）已经挂在
               下面那条「重命名 / 删除」上，不需要再占一行。 */}
-          <button type="button" role="menuitem" className="tree-menu-item" disabled title="重命名与删除尚未开放">
-            <span>重命名 / 删除</span>
+          {menuChapterTarget !== null ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-menu-item danger"
+              onClick={runMenuAction(() => onDeleteChapter(menuChapterTarget))}
+            >
+              <span>删除章节</span>
+              <kbd>章号不补</kbd>
+            </button>
+          ) : null}
+          {/* 删除这一半已经做了（第二十六批批注 6）；重命名仍然不开：
+              改章号等于换一本书的另一半，那是 D-13 真没定的事。 */}
+          <button type="button" role="menuitem" className="tree-menu-item" disabled title="改章号会牵动文件名、目录锚点与弧范围，尚未定">
+            <span>重命名</span>
             <kbd>未开放</kbd>
           </button>
         </div>

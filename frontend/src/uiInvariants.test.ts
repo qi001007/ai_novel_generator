@@ -686,7 +686,11 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 门槛被主人取消了，断言就钉新的口径 - 不是删掉不凑数。
     expect(bookshelf).not.toMatch(/输入书名确认/);
     expect(bookshelf).toMatch(/className="book-delete-note">\s*删除后无法恢复/);
-    expect(treePane).toMatch(/disabled[^>]*title="重命名与删除尚未开放"/);
+    // 第二十六批批注 6：删除这一半做了（章号不顺延），重命名仍然不开。
+    // 断言跟着决定搬家：不是把旧的那条删掉不凑数。
+    expect(treePane).toMatch(/className="tree-menu-item danger"\n\s+onClick=\{runMenuAction\(\(\) => onDeleteChapter/);
+    expect(treePane).toMatch(/disabled title="改章号会牵动文件名、目录锚点与弧范围，尚未定"/);
+    expect(treePane).not.toContain("重命名与删除尚未开放");
     // 鼠标与键盘两扇门
     expect(bookshelf).toContain("onContextMenu={(event) => openBookMenu(event, novel)}");
     expect(bookshelf).toContain('event.key === "ContextMenu"');

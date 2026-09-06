@@ -256,6 +256,10 @@ export const api = {
       body,
     ),
 
+  /** 删一章。章号不顺延（第二十六批批注 6 定下的语义）。 */
+  deleteChapter: (novelId: number, chapterNumber: number) =>
+    api.del<void>(`/api/novels/${novelId}/chapters/by-number/${chapterNumber}`),
+
   updateNovel: (novelId: number, payload: NovelUpdatePayload) =>
     api.put<Novel>(`/api/novels/${novelId}`, payload),
 

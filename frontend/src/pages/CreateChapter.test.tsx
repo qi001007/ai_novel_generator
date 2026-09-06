@@ -198,11 +198,15 @@ describe("新建章节三通道", () => {
     expect(menu.textContent).toContain("Ctrl+Alt+N");
 
     // 第二十三批批注 2：「在其后新建章节」与第一项是同一件事的重叠占位，已删。
-    // 「顺延章号」这条理由仍然要看得见 - 它现在挂在唯一剩下的禁用项上。
+    // 第二十六批批注 6：「重命名 / 删除」这一行拆成两行 - 删除可用（章号不顺延），
+    // 重命名仍然不开，理由挂在它自己身上。
     expect(menu.textContent).not.toContain("在其后新建章节");
-    const rename = screen.getByRole("menuitem", { name: /重命名 \/ 删除/ });
+    const rename = screen.getByRole("menuitem", { name: /^重命名/ });
     expect((rename as HTMLButtonElement).disabled).toBe(true);
     expect(rename.textContent).toContain("未开放");
+    const del = screen.getByRole("menuitem", { name: /删除章节/ });
+    expect((del as HTMLButtonElement).disabled).toBe(false);
+    expect(del.textContent).toContain("章号不补");
   });
 
   it("后端 409 时把 detail 原文显示出来，不静默", async () => {
