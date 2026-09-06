@@ -21,6 +21,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import MarkdownText from "./MarkdownText";
+import { layerOfLabel, layerRank } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
@@ -874,7 +875,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             );
           }
           const usage = tokens(row.meta.tokenInput, row.meta.tokenOutput);
-          const refs = row.meta.refs ?? [];
+          // 第二十三批批注 3：A 跟 A 在一起、B 跟 B 在一起。同层内保持原顺序
+          // （Array.prototype.sort 在 V8 里是稳定的），不按字数或字母乱排。
+          const refs = [...(row.meta.refs ?? [])].sort(
+            (a, b) => layerRank(layerOfLabel(a.label)) - layerRank(layerOfLabel(b.label)),
+          );
           // The trace is not prose. Fold it above the answer instead of printing it.
           const { prose, trace } = splitTrace(row.text);
           const reasoning = reasoningParagraphs(row.meta.reasoning ?? "");

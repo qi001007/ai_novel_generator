@@ -3,6 +3,13 @@ import { ArrowLeft, Copy, FileText, RefreshCcw } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
+import {
+  fileNameOfKind,
+  groupKeyOf,
+  layerOfKind,
+  layerRank,
+  sectionNameOf,
+} from "../contextLayers";
 import type {
   Chapter,
   ChapterBrief,
@@ -41,18 +48,19 @@ const KIND_LABELS: Record<string, string> = {
   feedback: "审稿意见",
 };
 
-const LAYERS: Array<{ short: string; kinds: string[] }> = [
-  { short: "A", kinds: ["novel", "blueprint"] },
-  { short: "B", kinds: ["toc"] },
-  { short: "C", kinds: ["arc"] },
-  { short: "D", kinds: ["brief"] },
-  { short: "正文", kinds: ["chapter", "chapter_tail", "summary"] },
-  { short: "设定", kinds: ["setting", "character", "foreshadow", "feedback"] },
-];
+/* 层序与分组键都在 contextLayers.ts - 对话里的清单要用同一份（第二十三批批注 3、4、5）。 */
+const layerOf = layerOfKind;
 
-function layerOf(kind: string) {
-  return LAYERS.find((layer) => layer.kinds.includes(kind))?.short ?? "—";
-}
+/** 清单里的一行 = 一份文件；blocks 是这份文件被切进去的那几节。 */
+type ManifestGroup = {
+  key: string;
+  kind: string;
+  layer: string;
+  first: number;
+  blocks: ContextManifestBlock[];
+  chars: number;
+  injected: number;
+};
 
 const TASK_LABELS: Record<string, string> = {
   draft: "正文生成",
@@ -163,16 +171,45 @@ export default function GenerationRunDetailPage() {
   );
 
 
-  const selectedBlock = useMemo<ContextManifestBlock | null>(() => {
-    if (!manifest) return null;
-    const blocks = manifest.blocks;
-    return (
-      blocks.find((block, index) => `${block.ref}:${block.index ?? index}` === selectedKey) ??
-      blocks.find((block) => block.injected && block.kind === "brief") ??
-      blocks.find((block) => block.injected) ??
-      null
+  /* 一行 = 一份文件（批注 5）。blueprint.md 的主线/主题/核心冲突是一行里的几节，
+     而三份 chapters/NNNN/brief.md 是三行 - 分组键在 contextLayers.ts 里，
+     那里写着哪些 kind 是「一份文件多节」。组序按 A→B→C→D→正文→设定→附件（批注 4）。 */
+  const groups = useMemo<ManifestGroup[]>(() => {
+    if (!manifest) return [];
+    const byKey = new Map<string, ManifestGroup>();
+    manifest.blocks.forEach((block, index) => {
+      const key = groupKeyOf(block);
+      const found = byKey.get(key);
+      if (found) {
+        found.blocks.push(block);
+        found.chars += block.chars;
+        if (block.injected) found.injected += 1;
+        return;
+      }
+      byKey.set(key, {
+        key,
+        kind: block.kind,
+        layer: layerOf(block.kind),
+        first: index,
+        blocks: [block],
+        chars: block.chars,
+        injected: block.injected ? 1 : 0,
+      });
+    });
+    return [...byKey.values()].sort(
+      (a, b) => layerRank(a.layer) - layerRank(b.layer) || a.first - b.first,
     );
-  }, [manifest, selectedKey]);
+  }, [manifest]);
+
+  const selectedGroup = useMemo<ManifestGroup | null>(() => {
+    if (!groups.length) return null;
+    return (
+      groups.find((group) => group.key === selectedKey) ??
+      groups.find((group) => group.kind === "brief" && group.injected) ??
+      groups.find((group) => group.injected) ??
+      groups[0]
+    );
+  }, [groups, selectedKey]);
 
   async function retryRun() {
     if (!brief || !run) return;
@@ -290,45 +327,61 @@ export default function GenerationRunDetailPage() {
                   {/* One table. The layer is a column beside the row it
                       describes, not a heading that splits the list. */}
                   <div className="manifest-list">
-                    {manifest.blocks.map((block, index) => (
-                      <button
-                        key={`${block.ref}-${block.index ?? index}`}
-                        type="button"
-                        className={`manifest-row ${block.injected ? "" : "dropped"} ${
-                          selectedKey === `${block.ref}:${block.index ?? index}` ? "selected" : ""
-                        }`}
-                        onClick={() => setSelectedKey(`${block.ref}:${block.index ?? index}`)}
-                      >
-                        <span className="index">{block.index ?? "—"}</span>
-                        <span className="layer">{layerOf(block.kind)}</span>
-                        <span className="kind">{KIND_LABELS[block.kind] ?? block.kind}</span>
-                        <span className="source">
-                          <strong>{block.label}</strong>
-                        </span>
-                        <span className="chars tabular">{block.chars}</span>
-                        <span className="reason">
-                          {block.injected
-                            ? block.reason || "已交给模型"
-                            : block.reason || "本次未交给模型"}
-                        </span>
-                      </button>
-                    ))}
+                    {groups.map((group, index) => {
+                      const file = fileNameOfKind(group.kind);
+                      const sections = group.blocks.map((block) => sectionNameOf(block.label));
+                      return (
+                        <button
+                          key={group.key}
+                          type="button"
+                          className={`manifest-row ${
+                            group.injected === 0 ? "dropped" : ""
+                          } ${selectedGroup?.key === group.key ? "selected" : ""}`}
+                          onClick={() => setSelectedKey(group.key)}
+                        >
+                          <span className="index">{index + 1}</span>
+                          <span className="layer">{group.layer}</span>
+                          <span className="kind">{KIND_LABELS[group.kind] ?? group.kind}</span>
+                          <span className="source">
+                            <strong>{file ?? group.blocks[0].label}</strong>
+                            {group.blocks.length > 1 ? (
+                              /* 小节名直接摊在行里：不用点也知道这份文件交了哪几节 */
+                              <span className="manifest-sections">{sections.join("、")}</span>
+                            ) : null}
+                          </span>
+                          <span className="chars tabular">
+                            {group.blocks.length > 1 ? `${group.chars} / ${group.blocks.length} 节` : group.chars}
+                          </span>
+                          <span className="reason">
+                            {group.injected === group.blocks.length
+                              ? "已交给模型"
+                              : group.injected === 0
+                                ? "本次未交给模型"
+                                : `${group.injected} 节已交 · ${group.blocks.length - group.injected} 节未交`}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {selectedBlock ? (
+                  {selectedGroup ? (
                     <div className="manifest-detail">
-                      <header>
-                        <strong>{selectedBlock.label}</strong>
-                        <span>
-                          {selectedBlock.chars} 字 ·
-                          {selectedBlock.injected
-                            ? "以下就是模型当时读到的内容"
-                            : "这一份没有交给模型"}
-                        </span>
-                      </header>
-                      <pre>
-                        {selectedBlock.excerpt ||
-                          "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到"}
-                      </pre>
+                      {selectedGroup.blocks.map((block, index) => (
+                        <section className="manifest-section" key={`${block.ref}-${index}`}>
+                          <header>
+                            <strong>{block.label}</strong>
+                            <span>
+                              {block.chars} 字 ·
+                              {block.injected
+                                ? "以下就是模型当时读到的内容"
+                                : "这一节没有交给模型"}
+                            </span>
+                          </header>
+                          <pre>
+                            {block.excerpt ||
+                              "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到"}
+                          </pre>
+                        </section>
+                      ))}
                     </div>
                   ) : null}
                 </>

@@ -5277,6 +5277,17 @@ body.resizing {
   -webkit-line-clamp: 2;
 }
 
+/* 第二十三批批注 5：一行一份文件，小节名摊在行里 -
+   不点也知道这份蓝图交了主线、主题还是约束。 */
+.manifest-sections {
+  display: block;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .manifest-detail,
 .run-output {
   display: flex;
@@ -5289,6 +5300,20 @@ body.resizing {
 
 .manifest-detail {
   padding: 14px 16px;
+  /* 一份文件可能有好几节，展开后整块自己滚，别把页面撑走。 */
+  overflow-y: auto;
+}
+
+/* 展开一份文件 = 它被切进去的每一节，各自带标题与原文摘录。 */
+.manifest-section {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  margin-bottom: 16px;
+}
+
+.manifest-section:last-child {
+  margin-bottom: 0;
 }
 
 .manifest-detail header,

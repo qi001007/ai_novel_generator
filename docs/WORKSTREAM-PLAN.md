@@ -223,6 +223,10 @@ UI 的未结一律在 `UI-BACKLOG.md`，此处不复述。
 
 ---
 
+| 第二十三批 23.3＋23.4＋23.5 | 注入清单看不出注入了哪些 | 层序与分组键收进**一处** `contextLayers.ts`（两处各写一遍就会出现「对话里 A 在前、详情里 D 在前」）。对话 chip 真机实测从 `B、D、正文、A×5…` 变成 **A→B→C→D→正文→设定→附件**（同层稳定）。调用详情**一行一份文件**：blueprint/toc/arc/foreshadow/setting/worldview 按 kind 并、brief/character/chapter/novel/attachment 按 ref 并 - run 15 **18 行收敛到 10 行**，而三份 `brief.md` 仍是三行（并了就撒谎）；组行摊开小节名，点一行展开这份文件的**每一节**。顺手记下 `arcs.md` 在详情里叫「分卷」、在树里叫「剧情弧」 |
+
+---
+
 ## 四、历史（已完成，只留一行结论）
 
 细节、取证、废止口径全在 `DECISIONS.md`；某一批的完整过程可用
