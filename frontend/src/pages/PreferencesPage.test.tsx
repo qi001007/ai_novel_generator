@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -155,6 +155,81 @@ describe("PreferencesPage", () => {
     expect(model.value).toBe("");
     // reserved, not wired: the row says so instead of hiding or faking a control
     expect(model.placeholder).toBe("未启用");
+  });
+
+  /* 第二十五批批注 5：撤销入口。三种恢复语义是他逐条给的，
+     所以这条测试把三条都走一遍：放回书里（书没了要如实报错）、
+     只取文件（先弹「要不要连书一起恢复」）、恢复整本书。 */
+  it("lists deletions and offers the three ways back", async () => {
+    const user = userEvent.setup();
+    const calls: { method: string; url: string; body: unknown }[] = [];
+    const snapshot = {
+      file: "deleted-20260906-161335-7-演练.db",
+      reason: "删除前",
+      taken_at: "2026-09-06 16:13:35",
+      novel_id: 7,
+      title: "演练",
+      bytes: 434176,
+    };
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ method: String(init?.method ?? "GET"), url, body: null });
+        if (url.startsWith("/api/export/settings")) return ok({ export_dir: "" });
+        if (url.startsWith("/api/backups/documents")) {
+          return ok([{ novel_id: 7, novel_title: "演练", path: "blueprint.md", label: "全书蓝图" }]);
+        }
+        if (url.startsWith("/api/backups/restore/document")) {
+          const body = JSON.parse(String(init?.body));
+          if (body.into === "book") {
+            return Promise.resolve(
+              new Response(JSON.stringify({ detail: "这本书已经不在书架上了" }), {
+                status: 409,
+                headers: { "Content-Type": "application/json" },
+              }),
+            );
+          }
+          return ok({ result: { restored: "dir", saved_to: "E:\\exports\\演练_全书蓝图.md" } });
+        }
+        if (url.startsWith("/api/backups/restore/novel")) {
+          return ok({ result: { novel_id: 7, title: "演练", rows: 3 } });
+        }
+        if (url.startsWith("/api/backups")) return ok({ export_dir: "", snapshots: [snapshot] });
+        return ok(config);
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+    await user.click(await screen.findByRole("tab", { name: "导出与恢复" }));
+
+    const row = await screen.findByText("《演练》");
+    expect(row.closest(".backup-row")?.textContent).toContain("2026-09-06 16:13:35");
+    expect(row.closest(".backup-row")?.textContent).toContain("删除前快照");
+
+    // ① 放回书里：书已经没了，就如实报错，不假装成功
+    await user.click(screen.getByRole("button", { name: "取一个文件" }));
+    await screen.findByText("全书蓝图 · blueprint.md");
+    await user.click(screen.getByRole("button", { name: "放回书里" }));
+    expect(await screen.findByText("这本书已经不在书架上了")).toBeTruthy();
+
+    // ② 只取这个文件：先问他要不要连整本书一起恢复
+    await user.click(screen.getByRole("button", { name: "只取这个文件" }));
+    const dialog = await screen.findByRole("dialog", { name: "恢复方式" });
+    expect(dialog.textContent).toContain("这本书已经不在书架上");
+    await user.click(within(dialog).getByRole("button", { name: "只取文件" }));
+    expect(await screen.findByText("已写到导出目录")).toBeTruthy();
+    expect(calls.some((call) => call.url.startsWith("/api/backups/restore/document"))).toBe(true);
+
+    // ③ 恢复整本书
+    await user.click(screen.getByRole("button", { name: "恢复整本书" }));
+    expect(await screen.findByText("《演练》已回到书架")).toBeTruthy();
   });
 
   it("runs the connection test against the backend, not a model", async () => {

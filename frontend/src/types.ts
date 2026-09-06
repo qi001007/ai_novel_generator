@@ -147,6 +147,24 @@ export type ChatReference = {
 
 export type ChatContextItem = ChatReference & { mention: string };
 
+/** 一次删除前留下的现场（`backend/backups/`）。 */
+export type BackupSnapshot = {
+  file: string;
+  reason: string;
+  taken_at: string;
+  novel_id: number;
+  title: string;
+  bytes: number;
+};
+
+/** 快照里的一份文档 - 恢复时按「哪本书的哪个路径」定位。 */
+export type BackupDocument = {
+  novel_id: number;
+  novel_title: string;
+  path: string;
+  label: string;
+};
+
 // A write the agent offered inside a stored reply. The server re-derives
 // it from the message body, so a reload can put the review card back.
 export type StoredProposal = {

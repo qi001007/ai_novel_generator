@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import type { BackupDocument, BackupSnapshot } from "../types";
 import {
   CODE_FONTS,
   PROSE_FONTS,
@@ -266,10 +267,27 @@ function CardGroup<T extends string>(props: {
    不往设置页那张表里堆。 */
 function StoragePanel() {
   const [dir, setDir] = useState<string | null>(null);
+  const [snapshots, setSnapshots] = useState<BackupSnapshot[]>([]);
+  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [docs, setDocs] = useState<BackupDocument[]>([]);
+  const [ask, setAsk] = useState<{ file: string; novel_id: number; path: string } | null>(null);
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  function reload() {
+    api
+      .listBackups()
+      .then((data) => {
+        setSnapshots(data.snapshots ?? []);
+        if (dir === null) {
+          setDir(data.export_dir);
+          setDraft(data.export_dir);
+        }
+      })
+      .catch(() => setSnapshots([]));
+  }
 
   useEffect(() => {
     api
@@ -281,7 +299,34 @@ function StoragePanel() {
       .catch((cause: unknown) =>
         setError(cause instanceof Error ? cause.message : "读不到导出目录"),
       );
+    reload();
   }, []);
+
+  /** 恢复动作共三种，全部走后端；这里只负责把结果说成人话。 */
+  function run(action: Promise<unknown>, note: string) {
+    setError(null);
+    setNote(null);
+    action
+      .then(() => {
+        setNote(note);
+        reload();
+      })
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "恢复失败"));
+  }
+
+  function openDocuments(file: string) {
+    setError(null);
+    if (openFile === file) {
+      setOpenFile(null);
+      setDocs([]);
+      return;
+    }
+    setOpenFile(file);
+    api
+      .backupDocuments(file)
+      .then(setDocs)
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "读不到快照内容"));
+  }
 
   function save() {
     setBusy(true);
@@ -329,6 +374,111 @@ function StoragePanel() {
       </div>
       {error ? <p className="book-info-problem">{error}</p> : null}
       {note ? <p className="export-note">{note}</p> : null}
+
+      <p className="prefs-group-title">删除记录</p>
+      {snapshots.length === 0 ? (
+        <p className="prefs-muted">还没有删除记录。删一本书之前会先复制一份现场，这里就是它的清单</p>
+      ) : null}
+      {snapshots.map((item) => (
+        <div className="backup-row" key={item.file}>
+          <div className="backup-row-main">
+            <strong>《{item.title}》</strong>
+            <span className="tabular">
+              {item.taken_at} · {item.reason}快照 · {Math.round(item.bytes / 1024)} KB
+            </span>
+          </div>
+          <div className="backup-row-actions">
+            <button
+              type="button"
+              onClick={() =>
+                run(api.restoreNovel(item.file).then(() => undefined), `《${item.title}》已回到书架`)
+              }
+            >
+              恢复整本书
+            </button>
+            <button type="button" onClick={() => openDocuments(item.file)}>
+              {openFile === item.file ? "收起文件" : "取一个文件"}
+            </button>
+          </div>
+          {openFile === item.file
+            ? docs
+                .filter((doc) => doc.novel_id === item.novel_id)
+                .map((doc) => (
+                  <div className="backup-doc" key={`${doc.novel_id}-${doc.path}`}>
+                    <span title={doc.path}>
+                      {doc.label} · {doc.path}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        run(
+                          api
+                            .restoreDocument({
+                              file: item.file,
+                              novel_id: doc.novel_id,
+                              path: doc.path,
+                              into: "book",
+                            })
+                            .then(() => undefined),
+                          `已放回《${doc.novel_title}》的 ${doc.path}`,
+                        )
+                      }
+                    >
+                      放回书里
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setAsk({ file: item.file, novel_id: doc.novel_id, path: doc.path })
+                      }
+                    >
+                      只取这个文件
+                    </button>
+                  </div>
+                ))
+            : null}
+        </div>
+      ))}
+
+      {ask ? (
+        <div className="wizard-backdrop" role="presentation" onClick={() => setAsk(null)}>
+          <div className="wizard backup-ask" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="恢复方式">
+            <h2>这本书已经不在书架上</h2>
+            <p className="book-delete-note">只取这个文件就不动书架</p>
+            <footer className="cover-modal-footer">
+              <button type="button" onClick={() => setAsk(null)}>
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const target = ask;
+                  setAsk(null);
+                  run(
+                    api
+                      .restoreDocument({ ...target, into: "dir" })
+                      .then(() => undefined),
+                    "已写到导出目录",
+                  );
+                }}
+              >
+                只取文件
+              </button>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  const target = ask;
+                  setAsk(null);
+                  run(api.restoreNovel(target.file).then(() => undefined), "整本书已回到书架");
+                }}
+              >
+                连书一起恢复
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

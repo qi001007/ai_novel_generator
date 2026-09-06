@@ -4593,6 +4593,58 @@ body.resizing {
   padding: 20px 22px;
 }
 
+/* 第二十五批批注 5：删除记录一行一条，动作贴着它自己那一条放（§0.7 条二）。 */
+.backup-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.backup-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  font-size: 12.5px;
+}
+
+.backup-row-main span {
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.backup-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.backup-doc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.backup-doc span {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard.backup-ask {
+  width: min(420px, 100% - 32px);
+  gap: 12px;
+  padding: 20px 22px;
+}
+
 /* 导出与恢复的回执：与错误行同一个位置、同一档字号，只是不涂红。
    主人要的「已保存到哪儿」必须看得见，否则他不知道文件到底落在哪。 */
 .export-note {

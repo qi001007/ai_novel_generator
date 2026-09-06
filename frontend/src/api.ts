@@ -1,4 +1,6 @@
 import type {
+  BackupDocument,
+  BackupSnapshot,
   ChatContextItem,
   ChatStreamEvent,
   FileDoc,
@@ -232,6 +234,27 @@ export const api = {
       return `浏览器已下载 ${name}`;
     }
   },
+
+  /** 撤销入口（第二十五批批注 5）：删除前留下的快照清单 + 三种恢复动作。 */
+  listBackups: () =>
+    api.get<{ export_dir: string; snapshots: BackupSnapshot[] }>("/api/backups"),
+  backupDocuments: (file: string) =>
+    api.get<BackupDocument[]>(`/api/backups/documents?file=${encodeURIComponent(file)}`),
+  restoreNovel: (file: string) =>
+    api.post<{ result: { novel_id: number; title: string; rows: number } }>(
+      "/api/backups/restore/novel",
+      { file },
+    ),
+  restoreDocument: (body: {
+    file: string;
+    novel_id: number;
+    path: string;
+    into: "book" | "dir";
+  }) =>
+    api.post<{ result: { restored: string; saved_to?: string; path?: string } }>(
+      "/api/backups/restore/document",
+      body,
+    ),
 
   updateNovel: (novelId: number, payload: NovelUpdatePayload) =>
     api.put<Novel>(`/api/novels/${novelId}`, payload),
