@@ -227,7 +227,10 @@ describe("PreferencesPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "恢复方式" });
     expect(dialog.textContent).toContain("这本书已经不在书架上");
     await user.click(within(dialog).getByRole("button", { name: "只取文件" }));
-    expect(await screen.findByText("已写到导出目录")).toBeTruthy();
+    // 批注 3：回执必须报完整路径 - 后端本来就给了 saved_to，是我上一版把它丢了
+    expect(
+      await screen.findByText("已写到 E:\\exports\\演练_全书蓝图.md"),
+    ).toBeTruthy();
     expect(calls.some((call) => call.url.startsWith("/api/backups/restore/document"))).toBe(true);
 
     // ③ 恢复整本书
@@ -237,7 +240,9 @@ describe("PreferencesPage", () => {
     // 关键不是「有没有读」而是「读在恢复之后」- 读早了拿到的还是没有这本书的那份。
     await waitFor(() => {
       const restoredAt = calls.findIndex((call) => call.url.startsWith("/api/backups/restore/novel"));
-      const readAt = calls.findLastIndex((call) => call.method === "GET" && call.url === "/api/novels");
+      const reads = calls.filter((call) => call.method === "GET" && call.url === "/api/novels");
+      // 不用 findLastIndex：本项目的 lib 目标里没有它（写完这一条才 tsc 才发现）
+      const readAt = reads.length ? calls.indexOf(reads[reads.length - 1]) : -1;
       expect(restoredAt).toBeGreaterThan(-1);
       expect(readAt).toBeGreaterThan(restoredAt);
     });

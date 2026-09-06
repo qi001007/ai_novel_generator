@@ -308,12 +308,18 @@ function StoragePanel() {
   /** 恢复动作共三种，全部走后端；这里只负责把结果说成人话。
    *  成功后必须把本地缓存抹掉（第二十六批批注 2）：书架那份 novels 是内存数组，
    *  不重新读就永远看不见刚恢复的书；文件层同理，不 reset 回工作台还是旧影。 */
-  function run(action: Promise<unknown>, note: string, invalidates: "book" | "files" | null) {
+  function run(
+    action: Promise<{ result: Record<string, string | number> }>,
+    noteOf: (result: Record<string, string | number>) => string,
+    invalidates: "book" | "files" | null,
+  ) {
     setError(null);
     setNote(null);
     action
-      .then(() => {
-        setNote(note);
+      .then((data) => {
+        // 回执由**后端的返回值**拼出来 - 上一版把文案写死成「已写到导出目录」，
+        // 后端明明给了 saved_to 却被我丢掉，于是主人问「那文件放哪儿了」（批注 3）
+        setNote(noteOf(data.result));
         if (invalidates === "book") void refreshNovels();
         if (invalidates) useFiles.getState().reset();
         reload();
@@ -399,8 +405,8 @@ function StoragePanel() {
               type="button"
               onClick={() =>
                 run(
-                  api.restoreNovel(item.file).then(() => undefined),
-                  `《${item.title}》已回到书架`,
+                  api.restoreNovel(item.file),
+                  () => `《${item.title}》已回到书架`,
                   "book",
                 )
               }
@@ -423,15 +429,13 @@ function StoragePanel() {
                       type="button"
                       onClick={() =>
                         run(
-                          api
-                            .restoreDocument({
-                              file: item.file,
-                              novel_id: doc.novel_id,
-                              path: doc.path,
-                              into: "book",
-                            })
-                            .then(() => undefined),
-                          `已放回《${doc.novel_title}》的 ${doc.path}`,
+                          api.restoreDocument({
+                            file: item.file,
+                            novel_id: doc.novel_id,
+                            path: doc.path,
+                            into: "book",
+                          }),
+                          () => `已放回《${doc.novel_title}》的 ${doc.path}`,
                           "files",
                         )
                       }
@@ -467,10 +471,8 @@ function StoragePanel() {
                   const target = ask;
                   setAsk(null);
                   run(
-                    api
-                      .restoreDocument({ ...target, into: "dir" })
-                      .then(() => undefined),
-                    "已写到导出目录",
+                    api.restoreDocument({ ...target, into: "dir" }),
+                    (result) => `已写到 ${result.saved_to ?? "导出目录"}`,
                     null,
                   );
                 }}
@@ -483,11 +485,7 @@ function StoragePanel() {
                 onClick={() => {
                   const target = ask;
                   setAsk(null);
-                  run(
-                    api.restoreNovel(target.file).then(() => undefined),
-                    "整本书已回到书架",
-                    "book",
-                  );
+                  run(api.restoreNovel(target.file), () => "整本书已回到书架", "book");
                 }}
               >
                 连书一起恢复
