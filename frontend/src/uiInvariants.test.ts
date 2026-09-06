@@ -705,6 +705,21 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(runDetailPage).toContain('arc: "剧情弧"');
   });
 
+  /* 第二十五批批注 1：「这个用思考过程中用的那种字体」。
+     关键是**特异性**：这两行都是 <p>，而 `.chat-card p` 是 (0,1,1)，
+     单类 (0,1,0) 压不过它 - 以前那 11px 从来没生效，这行一直用正文那张脸站着。 */
+  it("the reply's meta lines wear the thinking face, not the prose face", () => {
+    for (const sel of [".chat-card .chat-detail-line", ".chat-card .chat-detail-empty"]) {
+      const block = rule(sel);
+      expect(block, sel).toContain("font-style: italic");
+      expect(block, sel).toContain("color: var(--text-2)");
+      expect(block, sel).toContain("font-size: 12px");
+    }
+    // 去掉 .chat-card 前缀就等于把这两行交还给 `.chat-card p`
+    expect(css).not.toContain("\n.chat-detail-line {");
+    expect(css).not.toContain("\n.chat-detail-empty {");
+  });
+
   /* 第二十五批批注 2：折叠一段之后必须留一条看得见的回头路。
      我为「一个词不说三遍」加的 .tree > .tree-root { display: none } 把唯一能点开的
      那一行也藏了 - 真机复现：nav 只剩 32px 页头，root 的 rect 是 0×0。 */

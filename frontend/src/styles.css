@@ -3573,16 +3573,25 @@ select:focus-visible {
   border-top: 1px dashed var(--border);
 }
 
-.chat-detail-line {
+/* 第二十五批批注 1：「这个用思考过程中用的那种字体」。
+   写成 .chat-card .chat-detail-line 而不是单类：这两行都是 <p>，而 `.chat-card p`
+   是 (0,1,1) - 单类 (0,1,0) 压不过它，所以以前那 11px 从来没生效过，
+   这行一直是用**正文那张脸**（13px / --text-1）在屏上站着。第十七批批注 1
+   在同一条坑上记过一次：要 out-specify，不许靠源码顺序。 */
+.chat-card .chat-detail-line {
   margin: 0;
-  font-size: 11px;
-  color: var(--text-1);
+  color: var(--text-2);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.7;
 }
 
-.chat-detail-empty {
+.chat-card .chat-detail-empty {
   margin: 4px 0 0;
-  font-size: 11px;
   color: var(--text-2);
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.7;
 }
 
 .chat-refs {

@@ -188,6 +188,8 @@
 | 注入摘要**同一份文件并一枚、按章号压成范围**，枚数**不随章数线性增长** | `contextLayers.test.ts` 用真库导出的 fixture：29 条 → 8 枚；100 章与 9 章枚数相同；每枚 `title` 仍带全清单，「引用 N 份资料」报的是真份数 | 第二十四批批注 3 |
 | 展开一份文件时**名字／节数／字数／交付状态只说一次**，每节不许各自套一个盒子；长原文截到六行，给不给「展开全文」由**真溢出**算 | `uiInvariants`：提示句与无摘录回退句各出现 1 次、交付文案只有 `deliveryText` 一个出处、`.manifest-section` 不许有 background/border-radius、`.manifest-excerpt.clamped` 必须是 `-webkit-line-clamp: 6` | 第二十四批批注 2 |
 | **导出是读**：书架书卡两行、章节行两行、`draft.md` 叶子两行，`brief.md` 不给；失败必须说原因，不许产生 0 字节文件 | `test_export.py` 四条（含「导出前后 chapters 逐字段不变」这条红线）；前端三条（下载名跟随 `format`、树菜单打的是那个只读 URL）；`draft.md`/`brief.md` 叶子以前**没有** onContextMenu，已补 | 第二十四批新功能 |
+| 折叠过的段落**必须留一条看得见的回头路**：root 行只在折叠态显形；页头折叠钮的标签由「有任何东西折叠着」决定 | `uiInvariants` 同时钉 CSS 覆盖（`.tree > .tree-root[aria-expanded="false"]` 有 `display: flex`）与 `collapseLabel = anyCollapsed ? "展开全部" : "折叠全部"`，并反向钉 `preCollapse` 不许回来 | 第二十五批批注 2 |
+| 回复展开区那两行 meta（token 行与「本轮没有检索到资料」）**用思考过程那张脸**：italic + `--text-2` + 12px | 两处选择器必须带 `.chat-card` 前缀（单类压不过 `.chat-card p` 的 (0,1,1)，第十七批同一条坑的第二次命中），无前缀的 `.chat-detail-line {` 不许回来 | 第二十五批批注 1 |
 
 | **聚焦不画一圈**：无 outline、无 `0 0 0` 光晕、无主色；只许光标 + 边框提亮一档 | 任何含 `focus` 的规则不得出现 `outline: <非 none/0>`、`box-shadow: 0 0 0`、`--accent`（caret 是唯一例外），`border-color` 提亮只许 `--border-strong`；`.editor-body:focus-within .editor-scroll` 这条规则不许存在；压过 CodeMirror 自带 `.cm-focused` 描边的规则不许被删 | 第十五批批注 4.1、4.2 |
 
