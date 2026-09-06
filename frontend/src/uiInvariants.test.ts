@@ -681,7 +681,11 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // D-22③ 推翻了「删除一律未开放」：书与人物现在有真端点，
     // 而树里的「重命名 / 删除」仍然 disabled（章号是主键，D-13 未决）。
     expect(bookshelf).toContain("删除作品…");
-    expect(bookshelf).toContain("confirmTitle !== deleteTarget.title");
+    // 第二十四批批注 1 推翻了「打字才能删」：弹窗里不许再有输入框，
+    // 说明只许一行短话（原本是 62 字 + 一个标签）。旧断言钉的是那道门槛，
+    // 门槛被主人取消了，断言就钉新的口径 - 不是删掉不凑数。
+    expect(bookshelf).not.toMatch(/输入书名确认/);
+    expect(bookshelf).toMatch(/className="book-delete-note">\s*删除后无法恢复/);
     expect(treePane).toMatch(/disabled[^>]*title="重命名与删除尚未开放"/);
     // 鼠标与键盘两扇门
     expect(bookshelf).toContain("onContextMenu={(event) => openBookMenu(event, novel)}");

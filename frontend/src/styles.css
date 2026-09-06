@@ -4567,6 +4567,14 @@ body.resizing {
   background: color-mix(in srgb, var(--danger) 12%, transparent);
 }
 
+/* 第二十四批批注 1：弹窗从「62 字说明 + 输入框」缩成「一行话 + 两枚按钮」，
+   560px 的空盒子比长说明更难看 - 确认框的宽度要贴着内容走。 */
+.wizard.book-delete {
+  width: min(400px, 100% - 32px);
+  gap: 12px;
+  padding: 20px 22px;
+}
+
 .book-delete-note {
   margin: 0;
   font-size: 12.5px;

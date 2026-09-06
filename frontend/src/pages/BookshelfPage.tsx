@@ -163,7 +163,6 @@ export default function BookshelfPage() {
   const [busy, setBusy] = useState(false);
   /* 弹窗里的初值来自服务器，不是本地那份可能已经过期的 novels 缓存。 */
   const [deleteTarget, setDeleteTarget] = useState<Novel | null>(null);
-  const [confirmTitle, setConfirmTitle] = useState("");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [infoId, setInfoId] = useState<number | null>(null);
   const [infoDraft, setInfoDraft] = useState<BookDraft | null>(null);
@@ -173,6 +172,7 @@ export default function BookshelfPage() {
   /* Where the menu came from, so closing it hands the focus back instead of dropping
      the keyboard reader on the top of the page. */
   const menuOpener = useRef<HTMLElement | null>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 
   const coverTarget = novels.find((novel) => novel.id === coverEditId) ?? null;
   /* 前几轮点名项：八枚预设之外要有一枚真·调色盘。取色用的是系统取色器，
@@ -242,6 +242,12 @@ export default function BookshelfPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [coverEditId, infoId, deleteTarget]);
+
+  /* 第二十四批批注 1：主人去掉了「把书名打一遍」这道门槛，那剩下的一次点击
+   就更不能是误按得来的 - 焦点落在「取消」上，Enter 关掉的是弹窗，不是这本书。 */
+  useEffect(() => {
+    if (deleteTarget) deleteCancelRef.current?.focus();
+  }, [deleteTarget]);
 
   function openWizard() {
     setDraft(EMPTY_DRAFT);
@@ -496,13 +502,12 @@ export default function BookshelfPage() {
             onClick={runBookAction(() => {
               const novel = novels.find((item) => item.id === bookMenu.id);
               if (!novel) return;
-              setConfirmTitle("");
               setDeleteError(null);
               setDeleteTarget(novel);
             })}
           >
             <span>删除作品…</span>
-            <kbd>输书名确认</kbd>
+            <kbd>不可恢复</kbd>
           </button>
         </div>
       ) : null}
@@ -516,28 +521,16 @@ export default function BookshelfPage() {
             aria-label="删除作品"
           >
             <h2>删除《{deleteTarget.title}》</h2>
-            <p className="book-delete-note">
-              这本书的章节、简报、目录、弧、人物、伏笔、对话记录、生成运行与审稿会一起从数据库里删掉，
-              没有回收站。要删，请把书名原样打一遍
-            </p>
-            <label className="book-field">
-              输入书名确认
-              <input
-                value={confirmTitle}
-                placeholder={deleteTarget.title}
-                aria-label="输入书名确认删除"
-                onChange={(event) => setConfirmTitle(event.target.value)}
-              />
-            </label>
+            <p className="book-delete-note">删除后无法恢复</p>
             {deleteError ? <p className="book-info-problem">{deleteError}</p> : null}
             <footer className="cover-modal-footer">
-              <button type="button" onClick={() => setDeleteTarget(null)}>
+              <button type="button" ref={deleteCancelRef} onClick={() => setDeleteTarget(null)}>
                 取消
               </button>
               <button
                 type="button"
                 className="danger"
-                disabled={busy || confirmTitle !== deleteTarget.title}
+                disabled={busy}
                 onClick={() => {
                   const target = deleteTarget;
                   setBusy(true);

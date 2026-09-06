@@ -127,7 +127,7 @@ describe("BookshelfPage", () => {
       "打开作品Enter",
       "更换封面…悬停图标",
       "编辑信息…书名 简介 章数",
-      "删除作品…输书名确认",
+      "删除作品…不可恢复",
     ]);
 
     // 点菜单项只开弹窗，不许顺带把读者送进工作台
@@ -246,8 +246,10 @@ describe("BookshelfPage", () => {
     expect(screen.queryByRole("menu")).toBeNull();
   });
 
-  /* D-22③：删除从「未开放」变成真端点。安全不靠回收站，靠把书名原样打一遍这一步。 */
-  it("asks for the title before it deletes a book, and sends nothing on cancel", async () => {
+  /* 第二十四批批注 1：主人去掉了「把书名打一遍」——右键哪本点删除，指的就是那本。
+     确认过程保留（一次点击 + 一条退路），但门槛不再靠打字；焦点在「取消」，
+     回车关掉的是弹窗不是这本书。删除仍然只走那一条 DELETE（D-23）。 */
+  it("confirms a delete with one click and no typing, and sends nothing on cancel", async () => {
     const user = userEvent.setup();
     const deletes: string[] = [];
     const ok = (data: unknown) =>
@@ -265,33 +267,35 @@ describe("BookshelfPage", () => {
       }),
     );
     const { container } = renderShelf();
-    const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
-    fireEvent.contextMenu(card);
-    await user.click(
-      within(await screen.findByRole("menu", { name: "《演示测试》的操作" })).getByRole("menuitem", { name: /删除作品/ }),
-    );
+    const openDelete = async () => {
+      fireEvent.contextMenu(container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement);
+      await user.click(
+        within(await screen.findByRole("menu", { name: "《演示测试》的操作" })).getByRole("menuitem", { name: /删除作品/ }),
+      );
+      return screen.findByRole("dialog", { name: "删除作品" });
+    };
 
-    const dialog = await screen.findByRole("dialog", { name: "删除作品" });
-    const confirm = within(dialog).getByRole("button", { name: "删除" }) as HTMLButtonElement;
-    // 一个字没打，删除是死的
-    expect(confirm.disabled).toBe(true);
-    await user.type(within(dialog).getByLabelText("输入书名确认删除"), "演示");
-    expect(confirm.disabled).toBe(true);
+    const dialog = await openDelete();
+    expect(dialog.querySelector("input")).toBeNull();
+    expect(within(dialog).getByText("删除后无法恢复")).not.toBeNull();
+    expect((within(dialog).getByRole("button", { name: "删除" }) as HTMLButtonElement).disabled).toBe(false);
     expect(deletes).toHaveLength(0);
-    await user.click(within(dialog).getByRole("button", { name: "取消" }));
+
+    // 焦点落在取消上：回车关弹窗，不发请求
+    expect((document.activeElement as HTMLElement).textContent).toBe("取消");
+    await user.keyboard("{Enter}");
     expect(screen.queryByRole("dialog", { name: "删除作品" })).toBeNull();
     expect(deletes).toHaveLength(0);
 
-    // 打对了才真删，删完那张卡从书架上消失
-    fireEvent.contextMenu(container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement);
-    await user.click(
-      within(await screen.findByRole("menu", { name: "《演示测试》的操作" })).getByRole("menuitem", { name: /删除作品/ }),
-    );
-    // 重新查一次：上一轮的 dialog 节点已经随取消被卸载，往 detached 节点里打字
-    // 不会进 React 的 state（这条测试第一次就是这么假失败的）
-    const again = await screen.findByRole("dialog", { name: "删除作品" });
-    await user.type(within(again).getByLabelText("输入书名确认删除"), "演示测试");
-    await user.click(within(again).getByRole("button", { name: "删除" }));
+    // 取消也是同样
+    const second = await openDelete();
+    await user.click(within(second).getByRole("button", { name: "取消" }));
+    expect(screen.queryByRole("dialog", { name: "删除作品" })).toBeNull();
+    expect(deletes).toHaveLength(0);
+
+    // 一次点击就删，删完那张卡从书架上消失
+    const third = await openDelete();
+    await user.click(within(third).getByRole("button", { name: "删除" }));
     await waitFor(() => expect(deletes).toEqual(["/api/novels/4"]));
     await waitFor(() => expect(container.querySelector(`.book-card[data-novel-id="4"]`)).toBeNull());
   });
