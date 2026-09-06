@@ -212,20 +212,28 @@ describe("PreferencesPage", () => {
     );
     await user.click(await screen.findByRole("tab", { name: "导出与恢复" }));
 
-    const row = await screen.findByText("《演练》");
-    expect(row.closest(".backup-row")?.textContent).toContain("2026-09-06 16:13:35");
-    expect(row.closest(".backup-row")?.textContent).toContain("删除前快照");
+    // 第二十六批批注 1、4：一行一项，标题与说明在左、动作在右（复用外观那组的 .pref-row）
+    const group = (await screen.findByText("《演练》")).closest(".storage-group") as HTMLElement;
+    expect(group.textContent).toContain("09-06 16:13");
+    expect(group.querySelector(".pref-row-label")).toBeTruthy();
+    // 说明文字必须短（每句 <= 22 字），且不许出现上一版那段 62 字的话
+    const notes = [...document.querySelectorAll(".pref-row-note")].map((n) => n.textContent ?? "");
+    for (const note of notes) expect(note.length, note).toBeLessThanOrEqual(22);
+    expect(document.body.textContent).not.toContain("全书、单章与每一份文档的导出都写到这个目录");
 
     // ① 放回书里：书已经没了，就如实报错，不假装成功
     await user.click(screen.getByRole("button", { name: "取一个文件" }));
-    await screen.findByText("全书蓝图 · blueprint.md");
+    await screen.findByText("全书蓝图");
+    await screen.findByText("blueprint.md");
     await user.click(screen.getByRole("button", { name: "放回书里" }));
     expect(await screen.findByText("这本书已经不在书架上了")).toBeTruthy();
 
     // ② 只取这个文件：先问他要不要连整本书一起恢复
-    await user.click(screen.getByRole("button", { name: "只取这个文件" }));
+    await user.click(screen.getByRole("button", { name: "只取文件" }));
     const dialog = await screen.findByRole("dialog", { name: "恢复方式" });
-    expect(dialog.textContent).toContain("这本书已经不在书架上");
+    // 标题直接点名是哪本书，说明只留一句
+    expect(dialog.textContent).toContain("《演练》已经不在书架上");
+    expect(dialog.querySelector(".book-delete-note")?.textContent).toBe("只取文件就不动书架");
     await user.click(within(dialog).getByRole("button", { name: "只取文件" }));
     // 批注 3：回执必须报完整路径 - 后端本来就给了 saved_to，是我上一版把它丢了
     expect(
@@ -235,7 +243,8 @@ describe("PreferencesPage", () => {
 
     // ③ 恢复整本书
     await user.click(screen.getByRole("button", { name: "恢复整本书" }));
-    expect(await screen.findByText("《演练》已回到书架")).toBeTruthy();
+    // 状态行就在那一行下面，不必再把书名重复一遍
+    expect(await screen.findByText("已回到书架")).toBeTruthy();
     // 第二十六批批注 2：恢复是后端干的活，本地那份 novels 数组不重读就永远看不见它。
     // 关键不是「有没有读」而是「读在恢复之后」- 读早了拿到的还是没有这本书的那份。
     await waitFor(() => {

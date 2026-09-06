@@ -4598,49 +4598,86 @@ body.resizing {
 }
 
 /* 第二十五批批注 5：删除记录一行一条，动作贴着它自己那一条放（§0.7 条二）。 */
-.backup-row {
-  display: grid;
-  gap: 6px;
-  padding: 10px 0;
-  border-top: 1px solid var(--border);
+/* 第二十六批批注 1、4：这一栏重做。一行一项复用 .pref-row，
+   这里只补它没有的两件事：目录那一行的「输入框 + 更改」，和展开出来的文件行。 */
+.storage-dir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
-.backup-row-main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 10px;
+.storage-dir-input {
+  width: min(30rem, 44vw);
   min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
   font-size: 12.5px;
 }
 
-.backup-row-main span {
-  color: var(--text-2);
-  font-size: 11.5px;
+.storage-dir-input:focus-visible {
+  outline: 0;
+  border-color: var(--border-strong);
 }
 
-.backup-row-actions {
+.storage-group {
+  display: grid;
+  gap: 2px;
+  padding-bottom: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.backup-actions {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+/* 两枚按钮等宽：右对齐成一列时，宽度不一会让每一行看起来都在跳 */
+.backup-actions button {
+  min-width: 7.5rem;
+  min-height: 30px;
 }
 
 .backup-doc {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(6rem, 0.8fr) minmax(0, 1.6fr) auto;
   align-items: center;
-  gap: 8px;
-  padding-left: 12px;
+  gap: 10px;
+  padding: 5px 0 5px 18px;
+  border-top: 1px dashed var(--border);
   color: var(--text-2);
   font-size: 12px;
 }
 
-.backup-doc span {
-  flex: 1 1 12rem;
+.backup-doc-name,
+.backup-doc-path {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.backup-doc-path {
+  font-size: 11.5px;
+}
+
+/* 状态贴在它所属那一行下面：成功不涂色，失败才用 danger */
+.storage-status {
+  margin: 2px 0 8px;
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.storage-status.err {
+  color: var(--danger);
 }
 
 .wizard.backup-ask {

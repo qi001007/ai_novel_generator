@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
 import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -267,200 +267,203 @@ function CardGroup<T extends string>(props: {
 /* 第二十五批批注 3：导出与恢复**共用一个目录设置项** - 他明确要求不要做成两个。
    这一栏还要长（删除记录与恢复在下一批），所以自己一个组件、自己的状态，
    不往设置页那张表里堆。 */
+/* 第二十六批批注 1、4：这一栏上一版是我边写功能边堆出来的 - 62 字的说明、
+   文字贴着边框、按钮散在下一行。现在照 §0.7 与外观那组一样：
+   **一行一项、左标题+一句说明、右控件**，复用同一个 Row，不再另起一套布局。 */
 function StoragePanel() {
   const refreshNovels = useWorkbench((state) => state.refreshNovels);
   const [dir, setDir] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
   const [snapshots, setSnapshots] = useState<BackupSnapshot[]>([]);
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [docs, setDocs] = useState<BackupDocument[]>([]);
-  const [ask, setAsk] = useState<{ file: string; novel_id: number; path: string } | null>(null);
-  const [draft, setDraft] = useState("");
-  const [note, setNote] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [ask, setAsk] = useState<
+    { file: string; novel_id: number; path: string; title: string } | null
+  >(null);
+  /* 状态跟着它所属的那一行，不再整页顶部飘一条（批注 1：谁的结果就该贴在谁下面） */
+  const [status, setStatus] = useState<{ row: string; kind: "ok" | "err"; text: string } | null>(null);
 
   function reload() {
     api
       .listBackups()
       .then((data) => {
         setSnapshots(data.snapshots ?? []);
-        if (dir === null) {
-          setDir(data.export_dir);
-          setDraft(data.export_dir);
-        }
+        setDir(data.export_dir);
+        setDraft((current) => (current === "" && !touched.current ? data.export_dir : current));
       })
       .catch(() => setSnapshots([]));
   }
 
+  const touched = useRef(false);
+
   useEffect(() => {
-    api
-      .exportSettings()
-      .then((data) => {
-        setDir(data.export_dir);
-        setDraft(data.export_dir);
-      })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "读不到导出目录"),
-      );
     reload();
   }, []);
 
-  /** 恢复动作共三种，全部走后端；这里只负责把结果说成人话。
-   *  成功后必须把本地缓存抹掉（第二十六批批注 2）：书架那份 novels 是内存数组，
-   *  不重新读就永远看不见刚恢复的书；文件层同理，不 reset 回工作台还是旧影。 */
-  function run(
-    action: Promise<{ result: Record<string, string | number> }>,
-    noteOf: (result: Record<string, string | number>) => string,
-    invalidates: "book" | "files" | null,
-  ) {
-    setError(null);
-    setNote(null);
-    action
-      .then((data) => {
-        // 回执由**后端的返回值**拼出来 - 上一版把文案写死成「已写到导出目录」，
-        // 后端明明给了 saved_to 却被我丢掉，于是主人问「那文件放哪儿了」（批注 3）
-        setNote(noteOf(data.result));
-        if (invalidates === "book") void refreshNovels();
-        if (invalidates) useFiles.getState().reset();
-        reload();
-      })
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "恢复失败"));
+  function report(row: string, kind: "ok" | "err", text: string) {
+    setStatus({ row, kind, text });
   }
 
-  function openDocuments(file: string) {
-    setError(null);
-    if (openFile === file) {
-      setOpenFile(null);
-      setDocs([]);
-      return;
-    }
-    setOpenFile(file);
-    api
-      .backupDocuments(file)
-      .then(setDocs)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "读不到快照内容"));
-  }
-
-  function save() {
-    setBusy(true);
-    setNote(null);
-    setError(null);
+  function saveDir() {
+    report("dir", "ok", "正在保存");
     api
       .setExportDir(draft.trim())
       .then((data) => {
         setDir(data.export_dir);
         setDraft(data.export_dir);
-        setNote(
-          data.export_dir ? `导出文件会写到 ${data.export_dir}` : "已清空：导出改走浏览器下载",
-        );
+        report("dir", "ok", data.export_dir ? `已设为 ${data.export_dir}` : "已清空，改用浏览器下载");
       })
       .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "保存失败"),
-      )
-      .finally(() => setBusy(false));
+        report("dir", "err", cause instanceof Error ? cause.message : "保存失败"),
+      );
+  }
+
+  /** 恢复动作全部走后端；回执由后端返回值拼出来（路径不许我再写死一次）。 */
+  function run(row: string, action: Promise<{ result: Record<string, string | number> }>, noteOf: (r: Record<string, string | number>) => string, invalidates: "book" | "files" | null) {
+    action
+      .then((data) => {
+        report(row, "ok", noteOf(data.result));
+        if (invalidates === "book") void refreshNovels();
+        if (invalidates) useFiles.getState().reset();
+        reload();
+      })
+      .catch((cause: unknown) =>
+        report(row, "err", cause instanceof Error ? cause.message : "恢复失败"),
+      );
+  }
+
+  function toggleDocs(item: BackupSnapshot) {
+    if (openFile === item.file) {
+      setOpenFile(null);
+      setDocs([]);
+      return;
+    }
+    setOpenFile(item.file);
+    setDocs([]);
+    api
+      .backupDocuments(item.file)
+      .then(setDocs)
+      .catch((cause: unknown) =>
+        report(item.file, "err", cause instanceof Error ? cause.message : "读不到快照内容"),
+      );
   }
 
   return (
     <div className="pref-rows">
-      <label className="prefs-field">
-        导出目录
-        <input
-          value={draft}
-          placeholder="例如 E:\novel-exports（留空 = 浏览器下载）"
-          aria-label="导出目录"
-          onChange={(event) => setDraft(event.target.value)}
-        />
-      </label>
-      <p className="prefs-muted">
-        全书、单章与每一份文档的导出都写到这个目录；从快照里取「已经不在书架上的那本书的一个文件」时，
-        也落到同一个地方 - 只有一个目录设置，不做两个
-      </p>
-      <div className="prefs-actions">
-        <button
-          type="button"
-          className="primary"
-          disabled={busy || dir === null || draft.trim() === (dir ?? "")}
-          onClick={save}
-        >
-          保存
-        </button>
-      </div>
-      {error ? <p className="book-info-problem">{error}</p> : null}
-      {note ? <p className="export-note">{note}</p> : null}
+      <Row label="导出目录" note="建议选在仓库外 · 导出与恢复共用">
+        <div className="storage-dir">
+          <input
+            className="storage-dir-input mono"
+            value={draft}
+            placeholder="E:\novel-exports"
+            aria-label="导出目录"
+            onChange={(event) => {
+              touched.current = true;
+              setDraft(event.target.value);
+            }}
+          />
+          <button
+            type="button"
+            disabled={dir === null || draft.trim() === (dir ?? "")}
+            onClick={saveDir}
+          >
+            更改
+          </button>
+        </div>
+      </Row>
+      {status?.row === "dir" ? (
+        <p className={`storage-status ${status.kind}`}>{status.text}</p>
+      ) : null}
 
       <p className="prefs-group-title">删除记录</p>
-      {snapshots.length === 0 ? (
-        <p className="prefs-muted">还没有删除记录。删一本书之前会先复制一份现场，这里就是它的清单</p>
-      ) : null}
+      {snapshots.length === 0 ? <p className="prefs-muted">还没有删除记录</p> : null}
       {snapshots.map((item) => (
-        <div className="backup-row" key={item.file}>
-          <div className="backup-row-main">
-            <strong>《{item.title}》</strong>
-            <span className="tabular">
-              {item.taken_at} · {item.reason}快照 · {Math.round(item.bytes / 1024)} KB
-            </span>
-          </div>
-          <div className="backup-row-actions">
-            <button
-              type="button"
-              onClick={() =>
-                run(
-                  api.restoreNovel(item.file),
-                  () => `《${item.title}》已回到书架`,
-                  "book",
-                )
-              }
-            >
-              恢复整本书
-            </button>
-            <button type="button" onClick={() => openDocuments(item.file)}>
-              {openFile === item.file ? "收起文件" : "取一个文件"}
-            </button>
-          </div>
+        <div className="storage-group" key={item.file}>
+          <Row
+            label={`《${item.title}》`}
+            note={item.taken_at.slice(5, 16)}
+          >
+            <div className="backup-actions">
+              <button
+                type="button"
+                onClick={() =>
+                  run(
+                    item.file,
+                    api.restoreNovel(item.file),
+                    () => "已回到书架",
+                    "book",
+                  )
+                }
+              >
+                恢复整本书
+              </button>
+              <button type="button" onClick={() => toggleDocs(item)}>
+                {openFile === item.file ? "收起" : "取一个文件"}
+              </button>
+            </div>
+          </Row>
           {openFile === item.file
             ? docs
                 .filter((doc) => doc.novel_id === item.novel_id)
                 .map((doc) => (
                   <div className="backup-doc" key={`${doc.novel_id}-${doc.path}`}>
-                    <span title={doc.path}>
-                      {doc.label} · {doc.path}
+                    <span className="backup-doc-name">{doc.label}</span>
+                    <span className="backup-doc-path mono" title={doc.path}>
+                      {doc.path}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        run(
-                          api.restoreDocument({
+                    <div className="backup-actions">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          run(
+                            item.file,
+                            api.restoreDocument({
+                              file: item.file,
+                              novel_id: doc.novel_id,
+                              path: doc.path,
+                              into: "book",
+                            }),
+                            () => `已放回 ${doc.path}`,
+                            "files",
+                          )
+                        }
+                      >
+                        放回书里
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setAsk({
                             file: item.file,
                             novel_id: doc.novel_id,
                             path: doc.path,
-                            into: "book",
-                          }),
-                          () => `已放回《${doc.novel_title}》的 ${doc.path}`,
-                          "files",
-                        )
-                      }
-                    >
-                      放回书里
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setAsk({ file: item.file, novel_id: doc.novel_id, path: doc.path })
-                      }
-                    >
-                      只取这个文件
-                    </button>
+                            title: doc.novel_title,
+                          })
+                        }
+                      >
+                        只取文件
+                      </button>
+                    </div>
                   </div>
                 ))
             : null}
+          {status?.row === item.file ? (
+            <p className={`storage-status ${status.kind}`}>{status.text}</p>
+          ) : null}
         </div>
       ))}
 
       {ask ? (
         <div className="wizard-backdrop" role="presentation" onClick={() => setAsk(null)}>
-          <div className="wizard backup-ask" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-label="恢复方式">
-            <h2>这本书已经不在书架上</h2>
-            <p className="book-delete-note">只取这个文件就不动书架</p>
+          <div
+            className="wizard backup-ask"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="恢复方式"
+          >
+            <h2>《{ask.title}》已经不在书架上</h2>
+            <p className="book-delete-note">只取文件就不动书架</p>
             <footer className="cover-modal-footer">
               <button type="button" onClick={() => setAsk(null)}>
                 取消
@@ -471,6 +474,7 @@ function StoragePanel() {
                   const target = ask;
                   setAsk(null);
                   run(
+                    target.file,
                     api.restoreDocument({ ...target, into: "dir" }),
                     (result) => `已写到 ${result.saved_to ?? "导出目录"}`,
                     null,
@@ -485,7 +489,7 @@ function StoragePanel() {
                 onClick={() => {
                   const target = ask;
                   setAsk(null);
-                  run(api.restoreNovel(target.file), () => "整本书已回到书架", "book");
+                  run(target.file, api.restoreNovel(target.file), () => "整本书已回到书架", "book");
                 }}
               >
                 连书一起恢复
