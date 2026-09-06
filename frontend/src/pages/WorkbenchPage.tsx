@@ -188,6 +188,10 @@ export default function WorkbenchPage() {
   const [exportNote, setExportNote] = useState<string | null>(null);
   /* 第二十六批批注 6：删一章。口径与删书一致 - 一次确认、不打字、焦点在取消。 */
   const [chapterDelete, setChapterDelete] = useState<number | null>(null);
+  // 重命名只改名字：序号是位置，由插入 / 删除决定（第二十八批批注 6）。
+  const [chapterRename, setChapterRename] = useState<number | null>(null);
+  const [chapterRenameValue, setChapterRenameValue] = useState("");
+  const [chapterRenameError, setChapterRenameError] = useState<string | null>(null);
   const [chapterDeleteError, setChapterDeleteError] = useState<string | null>(null);
   const chapterCancelRef = useRef<HTMLButtonElement | null>(null);
 
@@ -213,6 +217,15 @@ export default function WorkbenchPage() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [chapterDelete]);
+
+  function confirmRenameChapter() {
+    const number = chapterRename;
+    if (number === null) return;
+    void state.renameChapter(number, chapterRenameValue).then((error) => {
+      setChapterRenameError(error);
+      if (error === null) setChapterRename(null);
+    });
+  }
 
   function confirmDeleteChapter() {
     const number = chapterDelete;
@@ -737,6 +750,20 @@ export default function WorkbenchPage() {
             createError={state.createError}
             onCreateChapter={() => void handleCreateChapter()}
             onNewConversation={() => void state.startChatConversation()}
+            onRenameChapter={(chapterNumber) => {
+              const chapter = state.chapters.find((item) => item.chapter_number === chapterNumber);
+              setChapterRenameError(null);
+              setChapterRenameValue(chapter?.title ?? "");
+              setChapterRename(chapterNumber);
+            }}
+            onInsertChapterAfter={(chapterNumber) => {
+              void state.insertChapterAfter(chapterNumber).then(async (made) => {
+                if (made === null) return;
+                await refreshMetas();
+                setRightView("files");
+                void openFile(briefPath(made));
+              });
+            }}
             onExport={handleExport}
             onExportDocument={handleExportDocument}
             onDeleteChapter={(chapterNumber) => {
@@ -794,6 +821,41 @@ export default function WorkbenchPage() {
                 </button>
                 <button type="button" className="danger" onClick={confirmDeleteChapter}>
                   删除
+                </button>
+              </footer>
+            </div>
+          </div>
+        ) : null}
+
+        {chapterRename !== null ? (
+          <div className="wizard-backdrop" role="presentation" onClick={() => setChapterRename(null)}>
+            <div
+              className="wizard book-delete"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="重命名章节"
+            >
+              <h2>第 {chapterRename} 章叫什么</h2>
+              <p className="book-delete-note">序号由位置决定，这里只改名字</p>
+              <input
+                className="chapter-rename-input"
+                value={chapterRenameValue}
+                autoFocus
+                placeholder="留空就只显示序号"
+                onChange={(event) => setChapterRenameValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") confirmRenameChapter();
+                  if (event.key === "Escape") setChapterRename(null);
+                }}
+              />
+              {chapterRenameError ? <p className="book-info-problem">{chapterRenameError}</p> : null}
+              <footer className="cover-modal-footer">
+                <button type="button" onClick={() => setChapterRename(null)}>
+                  取消
+                </button>
+                <button type="button" className="primary" onClick={confirmRenameChapter}>
+                  保存
                 </button>
               </footer>
             </div>

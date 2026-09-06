@@ -22,7 +22,7 @@ import {
   ARCS_PATH,
   BLUEPRINT_PATH,
   chapterMatches,
-  chapterNumberLabel,
+  chapterListLabel,
   draftBody,
   draftPath,
   TOC_PATH,
@@ -57,6 +57,10 @@ type TreePaneProps = {
   onCreateChapter: () => void;
   /** 「新建对话」：当前线程收尾，开一条新的；旧的留着不删（第二十八批批注 8）。 */
   onNewConversation: () => void;
+  /** 改章名（序号不动，第二十八批批注 6）：弹窗在工作台那边，这里只报章号。 */
+  onRenameChapter: (chapterNumber: number) => void;
+  /** 在其后插入一章：后面的序号自动 +1，章名跟着章走。 */
+  onInsertChapterAfter: (chapterNumber: number) => void;
   /** 导出是读。树这边只负责把「章号 + 格式」交给上层，不碰 API。 */
   onExport: (chapterNumber: number, format: "txt" | "md") => void;
   /** 导出这份文档本身（投影出来的那份文本），第二十五批批注 4。 */
@@ -110,6 +114,8 @@ export default function TreePane({
   onSelectChapter,
   onCreateChapter,
   onNewConversation,
+  onRenameChapter,
+  onInsertChapterAfter,
   onExport,
   onExportDocument,
   onDeleteChapter,
@@ -396,10 +402,10 @@ export default function TreePane({
                   <button
                     type="button"
                     className="tree-label mono"
-                    title={`打开第 ${chapter.chapter_number} 章正文页`}
+                    title={`打开 ${chapterListLabel(chapter)}`}
                     onClick={() => onSelectChapter(chapter.id)}
                   >
-                    {chapterNumberLabel(chapter.chapter_number)}
+                    {chapterListLabel(chapter)}
                   </button>
                   {/* One dot, one fact: unsaved outranks status, because that is the
                       thing the tab already shouts about and the two must agree. */}
@@ -624,22 +630,37 @@ export default function TreePane({
               「未开放」的理由（章号顺延牵动文件名/目录锚点/弧范围）已经挂在
               下面那条「重命名 / 删除」上，不需要再占一行。 */}
           {menuChapterTarget !== null ? (
-            <button
-              type="button"
-              role="menuitem"
-              className="tree-menu-item danger"
-              onClick={runMenuAction(() => onDeleteChapter(menuChapterTarget))}
-            >
-              <span>删除章节</span>
-              <kbd>章号不补</kbd>
-            </button>
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-menu-item"
+                onClick={runMenuAction(() => onRenameChapter(menuChapterTarget))}
+              >
+                <span>重命名</span>
+                <kbd>只改名字</kbd>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-menu-item"
+                disabled={creatingChapter}
+                onClick={runMenuAction(() => onInsertChapterAfter(menuChapterTarget))}
+              >
+                <span>在其后插入一章</span>
+                <kbd>后面 +1</kbd>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-menu-item danger"
+                onClick={runMenuAction(() => onDeleteChapter(menuChapterTarget))}
+              >
+                <span>删除章节</span>
+                <kbd>后面 -1</kbd>
+              </button>
+            </>
           ) : null}
-          {/* 删除这一半已经做了（第二十六批批注 6）；重命名仍然不开：
-              改章号等于换一本书的另一半，那是 D-13 真没定的事。 */}
-          <button type="button" role="menuitem" className="tree-menu-item" disabled title="改章号会牵动文件名、目录锚点与弧范围，尚未定">
-            <span>重命名</span>
-            <kbd>未开放</kbd>
-          </button>
         </div>
       )}
     </nav>

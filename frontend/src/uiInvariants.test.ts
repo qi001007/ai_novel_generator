@@ -489,7 +489,11 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(editorPane).toContain('title={`第 ${item.chapter_number} 章 ${item.title || "未命名"}`}');
     // one source for the digits: the tree row, the tab and the search all read it
     expect(filesStore).toContain("export const chapterNumberLabel");
-    expect(treePane).toContain("chapterNumberLabel(chapter.chapter_number)");
+    // 第二十八批批注 6：树上显示「0007 · 章名」。标签条仍只显示序号（那是他自己定的：
+    // 「第 1 章 未命名」会被截成「第 1 章」，反而分不清是哪个 tab），名字进 title 与无障碍名。
+    // 所以这里钉的是两个不同的函数，不是把旧那条改一个字。
+    expect(treePane).toContain("chapterListLabel(chapter)");
+    expect(filesStore).toContain("export const chapterListLabel");
   });
 
   it("interface hints do not end with a full stop (第十六批批注 5、6)", () => {
@@ -686,10 +690,16 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 门槛被主人取消了，断言就钉新的口径 - 不是删掉不凑数。
     expect(bookshelf).not.toMatch(/输入书名确认/);
     expect(bookshelf).toMatch(/className="book-delete-note">\s*删除后无法恢复/);
-    // 第二十六批批注 6：删除这一半做了（章号不顺延），重命名仍然不开。
+    // 第二十六批批注 6 做了删除、当时「章号不顺延」；第二十八批批注 6 推翻后半句。
     // 断言跟着决定搬家：不是把旧的那条删掉不凑数。
     expect(treePane).toMatch(/className="tree-menu-item danger"\n\s+onClick=\{runMenuAction\(\(\) => onDeleteChapter/);
-    expect(treePane).toMatch(/disabled title="改章号会牵动文件名、目录锚点与弧范围，尚未定"/);
+    // 第二十八批批注 6 推翻了「重命名未开放」：序号定死、名字可改。断言因此不再钉
+    // 「有没有 disabled」，改钉「改的是名字、不是号」，并钉住插入 / 删除的补位方向。
+    expect(treePane).toMatch(/<span>重命名<\/span>\n\s+<kbd>只改名字<\/kbd>/);
+    expect(treePane).toContain("在其后插入一章");
+    expect(treePane).toMatch(/<span>删除章节<\/span>\n\s+<kbd>后面 -1<\/kbd>/);
+    expect(treePane).not.toContain("章号不补");
+    expect(workbenchStore).toContain("/chapters/make-room-after/");
     expect(treePane).not.toContain("重命名与删除尚未开放");
     // 第二十八批批注 8：「对话」页头必须有新建对话的加号，尺寸与规划页头那组同源
     // （同一个 .icon-button，不是新造一个类）。它只做「收尾」：全仓不许出现

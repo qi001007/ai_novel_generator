@@ -94,6 +94,10 @@ type WorkbenchState = {
   extractChapterFacts: () => Promise<void>;
   loadChapterRecords: () => Promise<void>;
   createNextChapter: () => Promise<number | null>;
+  /** 改章名（序号不动）。返回错误文本，null 表示成功。 */
+  renameChapter: (chapterNumber: number, title: string) => Promise<string | null>;
+  /** 在其后插入一章：先让后面的整体后移，再走那条唯一写通路落一个空简报。 */
+  insertChapterAfter: (chapterNumber: number) => Promise<number | null>;
 };
 
 export const useWorkbench = create<WorkbenchState>((set, get) => ({
@@ -118,6 +122,61 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   creatingChapter: false,
   createError: null,
   chatEpoch: 0,
+
+  async renameChapter(chapterNumber, title) {
+    const novelId = get().selectedNovelId;
+    if (novelId === null) return "先选一本书";
+    try {
+      await api.patch<Chapter>(
+        `/api/novels/${novelId}/chapters/by-number/${chapterNumber}/title`,
+        { title },
+      );
+    } catch (cause) {
+      return cause instanceof Error ? cause.message : "改名失败";
+    }
+    // 章名住在目录那一行；这里只换内存里那一章的名字，序号不动。
+    set({
+      chapters: get().chapters.map((item) =>
+        item.chapter_number === chapterNumber ? { ...item, title } : item,
+      ),
+    });
+    return null;
+  },
+
+  async insertChapterAfter(chapterNumber) {
+    const novelId = get().selectedNovelId;
+    if (novelId === null || get().creatingChapter) return null;
+    set({ creatingChapter: true, createError: null });
+    let made: number;
+    try {
+      const room = await api.post<{ number: number; moved: number }>(
+        `/api/novels/${novelId}/chapters/make-room-after/${chapterNumber}`,
+      );
+      made = room.number;
+      const blank = await api.readFile(novelId, briefPath(made));
+      await api.writeFile(novelId, blank.path, blank.text, { baseRevision: blank.revision });
+    } catch (cause) {
+      set({
+        creatingChapter: false,
+        createError: String(cause instanceof Error ? cause.message : "插入章节失败"),
+      });
+      return null;
+    }
+    const [freshBriefs, freshChapters] = await Promise.all([
+      api.get<ChapterBrief[]>(`/api/novels/${novelId}/planning/briefs`),
+      api.get<Chapter[]>(`/api/novels/${novelId}/chapters`),
+    ]);
+    set({
+      briefs: freshBriefs,
+      chapters: freshChapters,
+      selectedBriefId: freshBriefs.find((item) => item.chapter_number === made)?.id ?? null,
+      selectedChapterId:
+        freshChapters.find((item) => item.chapter_number === made)?.id ?? get().selectedChapterId,
+      creatingChapter: false,
+      createError: null,
+    });
+    return made;
+  },
 
   async startChatConversation() {
     const novelId = get().selectedNovelId;

@@ -80,6 +80,8 @@ export const api = {
     }),
   put: async <T,>(path: string, body: unknown): Promise<T> =>
     request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
+  patch: async <T,>(path: string, body: unknown): Promise<T> =>
+    request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   del: async <T,>(path: string): Promise<T> => request<T>(path, { method: "DELETE" }),
 
   // EventSource cannot POST, so the SSE body is decoded by hand here.

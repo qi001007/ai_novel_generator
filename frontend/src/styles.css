@@ -4718,6 +4718,26 @@ body.resizing {
   color: var(--text-2);
 }
 
+/* 第二十八批批注 6：重命名弹窗里那一个输入框。外观与设置页的输入框同一套
+   token（边框 / 圆角 / 底色 / 聚焦只改边框色，不画第二圈轮廓 - §0.9 那条「聚焦不画框」）。 */
+.chapter-rename-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-1);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.chapter-rename-input:focus-visible {
+  outline: 0;
+  border-color: var(--border-strong);
+}
+
 .tree-menu-sep {
   height: 1px;
   margin: 4px 6px;

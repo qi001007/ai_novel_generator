@@ -12,6 +12,7 @@ from app.models import (
     GenerationRun,
     Novel,
     Review,
+    TocEntry,
 )
 from app.routers.planning import get_novel_or_404
 from app.services.chapters import (
@@ -20,7 +21,9 @@ from app.services.chapters import (
     get_chapter_or_error,
     machine_check,
 )
+from app.services import documents
 from app.services.context import build_writing_context, log_injection
+from app.services.renumber import shift_after, vacate
 from app.services.draft import build_template_draft
 from app.services.llm import LLMClient, get_llm_client
 from app.services import storage
@@ -46,19 +49,45 @@ def _retired_write(message: str) -> HTTPException:
     return HTTPException(status_code=410, detail=message)
 
 
+class ChapterTitleUpdate(SQLModel):
+    """自定义章名。序号不在这个请求里 - 它是位置，不是身份（批注 6）。"""
+
+    title: str
+
+
+def _titles_from_toc(session: Session, novel_id: int) -> dict[int, str]:
+    """章名的唯一出处是 B 目录；`Chapter.title` 读的时候从这里取。
+
+    两处各存一份章名就是第十五批 3.3 那个「两份 buffer 互相覆盖」的形状，
+    所以这里不回写 chapter 表。
+    """
+    return {
+        row.chapter_number: row.title
+        for row in session.exec(
+            select(TocEntry).where(
+                TocEntry.novel_id == novel_id, TocEntry.is_active == True  # noqa: E712
+            )
+        ).all()
+    }
+
+
 @router.get("/{novel_id}/chapters", response_model=list[Chapter])
 def list_chapters(
     novel_id: int,
     session: Session = Depends(get_session),
 ) -> list[Chapter]:
     get_novel_or_404(novel_id, session)
-    return list(
+    chapters = list(
         session.exec(
             select(Chapter)
             .where(Chapter.novel_id == novel_id)
             .order_by(Chapter.chapter_number)
         ).all()
     )
+    titles = _titles_from_toc(session, novel_id)
+    for chapter in chapters:
+        chapter.title = titles.get(chapter.chapter_number, "")
+    return chapters
 
 
 @router.post("/{novel_id}/chapters", response_model=Chapter, status_code=201)
@@ -235,21 +264,23 @@ def get_chapter(
 ) -> Chapter:
     get_novel_or_404(novel_id, session)
     try:
-        return get_chapter_or_error(session, novel_id, chapter_id)
+        chapter = get_chapter_or_error(session, novel_id, chapter_id)
     except ChapterDomainError as cause:
         raise _to_http(cause) from cause
+    chapter.title = _titles_from_toc(session, novel_id).get(chapter.chapter_number, "")
+    return chapter
 
 
 @router.delete("/{novel_id}/chapters/by-number/{chapter_number}", status_code=204)
 def delete_chapter(
     novel_id: int, chapter_number: int, session: Session = Depends(get_session)
 ) -> None:
-    """删掉一章，**不顺延后面的章号**。
+    """删掉一章，后面的章号自动前移（第二十八批批注 6 推翻了第二十六批的「不顺延」）。
 
-    第二十六批批注 6：树里那个「删除」他点了三轮，我前两轮都拿「D-13 未决」挡回去。
-    这次我把话定了：章号是主键（D-11），顺延会把文件名、目录锚点、弧起止、
-    已生成的运行记录一起拖着改，而且改完不可逆；留一个空洞是伤害最小的语义，
-    和 D-13「章号只允许末尾追加」也不冲突。
+    我当时怕的是「顺延拖着改的东西太多」，主人把这件事定了：序号由位置决定、名字由他
+    决定。那就整类一起搬 - 目录、简报、摘要、人物出场、弧起止、伏笔章号、设定来源章，
+    一个都不留在原处（清单见 services/renumber.py）。运行记录按 chapter_id 走，
+    跟着被删那一章一起删，不受搬家影响。
     路径写成 by-number/ 而不是 {chapter_id}：同一个前缀下两种 id 混在一列是事故源。
     """
     novel = get_novel_or_404(novel_id, session)
@@ -267,7 +298,83 @@ def delete_chapter(
     session.delete(chapter)
     if brief is not None:
         session.delete(brief)
+    # 目录行 / 章摘要 / 人物出场也说的是这一章，先一起腾空，压号才不会撞唯一约束。
+    vacate(session, novel_id, number=chapter_number)
     session.commit()
+    # 空洞不留在书架上：后面每一章往前挪一格。
+    shift_after(session, novel_id, above=chapter_number, delta=-1)
+    session.commit()
+
+
+@router.post("/{novel_id}/chapters/make-room-after/{chapter_number}", response_model=dict)
+def make_room_after(
+    novel_id: int, chapter_number: int, session: Session = Depends(get_session)
+) -> dict:
+    """「在其后插入一章」的前半：把后面的整体后移一格，腾出 chapter_number + 1。
+
+    只搬位置、不建内容 - 新章仍由首写 chapters/{N}/brief.md 落地（D-01 那条唯一写通路
+    不变），所以这个端点一行正文都不碰。
+    """
+    get_novel_or_404(novel_id, session)
+    if session.exec(
+        select(Chapter).where(
+            Chapter.novel_id == novel_id, Chapter.chapter_number == chapter_number
+        )
+    ).first() is None:
+        raise HTTPException(status_code=404, detail=f"第 {chapter_number} 章还不存在")
+    novel = session.get(Novel, novel_id)
+    storage.snapshot(session, novel_id, novel.title)
+    moved = shift_after(session, novel_id, above=chapter_number, delta=1)
+    session.commit()
+    return {"number": chapter_number + 1, "moved": moved}
+
+
+@router.patch("/{novel_id}/chapters/by-number/{chapter_number}/title", response_model=Chapter)
+def rename_chapter(
+    novel_id: int,
+    chapter_number: int,
+    payload: ChapterTitleUpdate,
+    session: Session = Depends(get_session),
+) -> Chapter:
+    """改章名：写的是 B 目录那一行，走 documents.write_file，也就是唯一那条写通路。
+
+    序号不在可改范围内 - 它由位置决定，要挪位置请用插入 / 删除，别在这里改号。
+    """
+    get_novel_or_404(novel_id, session)
+    chapter = session.exec(
+        select(Chapter).where(
+            Chapter.novel_id == novel_id, Chapter.chapter_number == chapter_number
+        )
+    ).first()
+    if chapter is None:
+        raise HTTPException(status_code=404, detail=f"第 {chapter_number} 章还不存在")
+    title = payload.title.strip()
+    try:
+        doc = documents.read_file(session, novel_id, documents.TOC_PATH)
+        rows = documents.load_document("toc", doc.text)
+        hit = False
+        for row in rows:
+            if int(row["chapter"]) == chapter_number:
+                row["title"] = title
+                hit = True
+        if not hit:
+            rows.append(
+                {"chapter": chapter_number, "title": title, "plot_function": "", "notes": ""}
+            )
+        documents.write_file(
+            session,
+            novel_id,
+            documents.TOC_PATH,
+            documents.render_document("toc", rows),
+            base_revision=doc.revision,
+        )
+    except documents.DocumentError as cause:
+        raise HTTPException(status_code=cause.status_code, detail=cause.detail) from cause
+    # write_file 里 commit 过，对象已经过期；不先 refresh 就只赋一个 title，
+    # 序列化出来会只剩 title 这一个键（我第一次就这么栽的）。
+    session.refresh(chapter)
+    chapter.title = title
+    return chapter
 
 
 @router.put("/{novel_id}/chapters/{chapter_id}", response_model=Chapter)

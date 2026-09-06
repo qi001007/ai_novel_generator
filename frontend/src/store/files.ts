@@ -89,6 +89,18 @@ export const toggleViewLabel = (path: string, views: Record<string, boolean>) =>
  *  could not find "0001" while showing it (第十五批之后的第十六批批注 4). */
 export const chapterNumberLabel = (n: number) => String(n).padStart(4, "0");
 
+/** 树上那一行的文字：序号是位置，名字是主人给的（第二十八批批注 6）。
+ *  标签条仍然只放序号 - 那是他自己定的（「第 1 章 未命名」会被截成「第 1 章」，
+ *  反而分不清是哪个 tab），名字进 title 与无障碍名。 */
+export const chapterListLabel = (chapter: {
+  chapter_number: number;
+  title?: string | null;
+}): string => {
+  const name = (chapter.title ?? "").trim();
+  const label = chapterNumberLabel(chapter.chapter_number);
+  return name ? `${label} · ${name}` : label;
+};
+
 /** Does a chapter answer the tree's search box? Compared against what the row shows:
  *  the padded number, or the title. Lives here so the tree and its test read one rule. */
 export const chapterMatches = (
