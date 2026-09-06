@@ -249,6 +249,12 @@ def restore_document(session: Session, file: str, novel_id: int, path: str, into
     into="book" writes it through the single document write path (D-01) - no second door,
     not even for a restore. into="dir" drops it in the export directory instead, which is
     what the owner asked for when the book itself is gone and he only wants that one file.
+
+    第二十八批批注 7：删过一章以后号会前移（28.6），所以快照里那个 `chapters/0002/...`
+    今天可能住着**另一章** - 直接写回去就是把别人的正文盖掉。恢复前先认一次身份：
+    快照里占这个号的 chapter id 和现在占这个号的 id 不是同一个，就把 >= 这个号的整体
+    后移一格，让它弹回原位（他原话：「后面的这些序号也会自动弹回去」）。
+    号空着（删的是最后一章）就直接落，不挪任何东西。
     """
     from app.services import documents
 
@@ -260,14 +266,73 @@ def restore_document(session: Session, file: str, novel_id: int, path: str, into
             raise StorageError(cause.status_code, cause.detail) from cause
         title_row = snap.exec(_select_novels()).all()
         novel_title = next((n.title for n in title_row if n.id == novel_id), "")
+        from sqlmodel import select
+
+        from app.models import Chapter
+
+        kind, number = documents.resolve_path(path)
+        # 参照物是快照自己：记下「快照里每一章住在第几号」。恢复时拿现在占着这个号的
+        # 那一章去对照 - 它在快照里住别的号，才说明它是被 28.6 的前移顶上来的。
+        snap_positions: dict[int, int] = (
+            {int(cid): int(cnum) for cid, cnum in snap.exec(
+                select(Chapter.id, Chapter.chapter_number).where(Chapter.novel_id == novel_id)
+            ).all()}
+            if number is not None
+            else {}
+        )
     if into == "book":
         if not session.exec(_select_novels().where(_novel_id_col() == novel_id)).first():
             raise StorageError(409, "这本书已经不在书架上了")
+        made_room = 0
+        if number is not None:
+            from app.services.renumber import shift_after
+
+            # 判据是「有没有章被那次删除挤下来过」：某章在快照里住 p 号、现在住 q 号，
+            # p > 要恢复的号 且 q < p，就是它当初前移顶上了这个位置 - 恢复时得整体后移
+            # 让它弹回去（主人原话「后面的这些序号也会自动弹回去」）。
+            # 只看「现在占这个号的是不是别人」是不够的：删掉中间一章后那个号常常是空的
+            # （空洞在别处），真机第一次跑就是这样，结果只放回了被恢复那一章、
+            # 被挤下来的 9->8、10->9 没弹回去。也不能拿 id 比 - 恢复会新建一行。
+            live_rows = session.exec(
+                select(Chapter.id, Chapter.chapter_number).where(
+                    Chapter.novel_id == novel_id
+                )
+            ).all()
+            needs_room = any(
+                snap_positions.get(int(cid)) is not None
+                and int(snap_positions[int(cid)]) > number
+                and int(q) < int(snap_positions[int(cid)])
+                for cid, q in live_rows
+            )
+            if needs_room:
+                made_room = shift_after(session, novel_id, above=number - 1, delta=1)
+                session.commit()
+        # 正文不能凭空建章（D-13 的底线：简报才是建章那一步，AI 也不能靠写 draft.md
+        # 塞一章进来）。所以恢复一份 draft.md 时，若让位之后那个号上没有章，先把同一份
+        # 快照里的 brief.md 放回去 - 它才是把章建回来的那一步，走的还是同一条写通路。
+        if number is not None and kind == "draft" and session.exec(
+            select(Chapter.id).where(
+                Chapter.novel_id == novel_id, Chapter.chapter_number == number
+            )
+        ).first() is None:
+            sibling = documents.brief_path(number)
+            try:
+                sibling_text = documents.read_file(snap, novel_id, sibling).text
+            except documents.DocumentError as cause:
+                raise StorageError(
+                    409, f"这一章的简报不在快照里，先把 {sibling} 放回书里再放正文"
+                ) from cause
+            documents.write_file(session, novel_id, sibling, sibling_text, actor="human")
         try:
             documents.write_file(session, novel_id, path, doc.text, actor="human")
         except documents.DocumentError as cause:
             raise StorageError(cause.status_code, cause.detail) from cause
-        return {"restored": "book", "path": path, "novel_id": novel_id}
+        return {
+            "restored": "book",
+            "path": path,
+            "novel_id": novel_id,
+            "made_room": made_room,
+        }
     if into != "dir":
         raise StorageError(400, "into 只支持 book 或 dir")
     saved = write_export(session, f"{novel_title}_{doc.label}.md", doc.text)

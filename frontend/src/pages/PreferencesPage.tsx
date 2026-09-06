@@ -440,7 +440,11 @@ function StoragePanel() {
                               path: doc.path,
                               into: "book",
                             }),
-                            () => `已放回 ${doc.path}`,
+                            (result) =>
+                              `已放回 ${doc.path}` +
+                              (Number(result.made_room ?? 0) > 0
+                                ? `，后面 ${(result.made_room ?? 0) as number} 处章号让位`
+                                : ""),
                             "files",
                           )
                         }
