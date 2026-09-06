@@ -376,7 +376,6 @@ function StoragePanel() {
       ) : null}
 
       <p className="prefs-group-title">删除记录</p>
-      {snapshots.length === 0 ? <p className="prefs-muted">还没有删除记录</p> : null}
       {snapshots.map((item) => (
         <div className="storage-group" key={item.file}>
           <Row

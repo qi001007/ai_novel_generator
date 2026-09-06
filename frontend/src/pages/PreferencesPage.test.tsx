@@ -360,3 +360,32 @@ describe("PreferencesPage", () => {
   });
 
 });
+
+describe("the storage tab keeps an empty list silent (第二十八批批注 3)", () => {
+  it("writes nothing when there is no delete record", async () => {
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.startsWith("/api/export/settings")) return ok({ export_dir: "" });
+        if (url.startsWith("/api/backups")) return ok({ export_dir: "", snapshots: [] });
+        if (url === "/api/novels") return ok([]);
+        return ok(config);
+      }),
+    );
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+    await user.click(await screen.findByRole("tab", { name: "导出与恢复" }));
+    const panel = await screen.findByRole("tabpanel");
+    // 主人：「这句话没必要填，删掉」。空着就是空着。
+    expect(panel.textContent).not.toContain("还没有删除记录");
+    expect(panel.querySelector(".prefs-muted")).toBeNull();
+    expect(within(panel).getByText("删除记录")).toBeTruthy();
+  });
+});
