@@ -190,6 +190,41 @@
 理由就是 §6.2。OpenAI Agents SDK 是次选，落选的真实理由只有一条：
 **「不花 token 就能调循环」这一格它给不了，而这一格正是这次换框架要解决的问题本身。**
 
+### 6.3b 主人问的 piAgent（Pi）：查到的事实，以及为什么还是不用它
+
+「piAgent」在中文生态里指的就是 **Pi**（GitHub MCP 查到的：仓库 `earendil-works/pi`，
+旧名 `badlogic/pi-mono`，npm 包 `@earendil-works/pi-coding-agent`，README 标题
+"Pi Agent Harness"）。下面每个数字都是刚才从 GitHub 读回来的，不是印象。
+
+| 事实（2026-09-06 查） | Pi | Pydantic AI |
+|---|---|---|
+| 语言 | **TypeScript** | Python |
+| star / fork | **102,260 / 12,760** | 19,746 / 2,656 |
+| open issues | 158 | 824 |
+| 创建 / 最后更新 | 2025-08-09 / 今天 | 2024-06-21 / 今天 |
+| 许可 | MIT | MIT |
+| 它自己是什么 | 交互式**编码 agent** CLI + TUI + session 分享；包分`pi-ai`（多供应商统一 API）、`pi-agent-core`（带工具调用与状态管理的运行时）、`pi-coding-agent`、`pi-tui` | 类型安全的 agent 框架，跑在你自己的进程里 |
+| 权限模型 | README 原文：**"Pi does not include a built-in permission system for restricting filesystem, process, network, or credential access. By default, it runs with the permissions of the user and process that launched it."** 内置工具是 Read/Edit/Write/Bash | 工具由我注册，注册表里没有写工具就是没有 |
+
+三条不用它的理由，按分量排：
+
+1. **语言不匹配是决定性的**。后端是 Python（FastAPI + SQLModel），数据在同一个 SQLite 文件里。
+   要用 Pi 只有两条路：起一个 Node 子进程当 agent 服务（多一个运行时、多一套部署、
+   每轮对话跨一次进程边界），或者把对话这条链改写成 TS（那等于把「唯一写入口」D-01
+   变成跨进程的第二条通路）。**这两条都比多一个 pip 依赖贵，而且 debug 成本正是主人要省的那个东西。**
+2. **它的默认方向和我们相反**。它默认能写文件、能起进程，边界要你自己上容器或 micro-VM；
+   我们的红线是「Agent 永远没有写工具」。用它得先把它最像样的一部分关掉。
+3. **它是给人用的编码 agent，不是应用内嵌的库**。TUI、AGENTS.md、自扩展 CLI、session 分享
+   对一个本地写作应用是负担，不是资产。
+
+但它有一件事**我们抄**：它的供应链做法。README 写明直接依赖全部 pin 精确版本、
+`.npmrc` 设 `min-release-age=2`（当天发布的依赖不许进锁文件）、锁文件当依赖事实源、
+发布包带 `shrinkwrap` 固定传递依赖。这条写进 D-28 的边界，装 Pydantic AI 时照做。
+
+社区规模它确实大 5 倍，这一点我不替自己遮：**如果主人愿意把对话 Agent 拆成独立 Node 服务**
+（那是架构级决定，不是换库），Pi 是比 Pydantic AI 更强的产品，我可以按它重做这份计划。
+不擅自做，是因为它改的是 D-01/D-02 那两条红线，不是改一个 import。
+
 ### 6.4 定了：Pydantic AI + 自写方言适配器。哪些交出去、哪些留下
 
 **交出去**（框架承担，我不再维护）：步数 / 调用数 / token 预算、失败重试、

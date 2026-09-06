@@ -381,6 +381,23 @@ D-22③ 授权后的具体策略。
 - 它自带的 sessions / memory 会造出**第二个「谁持有历史」的持有者**，
   与 D-02（DB 唯一真源）、D-04（上下文只有一个构造器）正面冲突 —— 一律不用，历史照旧从库里读。
 
+**第四条（2026-09-06 主人当面问的：为什么不用 piAgent）**：
+「Pi 有 10 万 star、是真 harness，社区是 Pydantic AI 的 5 倍，这条不假。」
+回应分两层。**技术层不改变裁定**：Pi 是 TypeScript（仓库 `earendil-works/pi`，旧名
+`badlogic/pi-mono`，README 自述"Pi Agent Harness"），而后端是 Python + 同一个 SQLite 文件；
+用它要么加一个 Node 子进程、每轮对话跨进程边界，要么把对话链改写成 TS
+—— 后者等于把 D-01 那条唯一写入口变成跨进程的第二条通路。
+且它 README 明写**没有内置权限系统、默认以启动它的用户权限运行**、内置工具是 Read/Edit/Write/Bash，
+而我们的红线是「Agent 永远没有写工具」。事实表与三条理由在 `WORKSTREAM-PLAN §6.3b`。
+**组织层记一句**：如果主人要把对话 Agent 拆成独立 Node 服务（那是架构级决定，不是换库），
+Pi 比 Pydantic AI 强，这份计划应按它重做。我不擅自做，因为它动的是 D-01/D-02 两条红线。
+
+**从 Pi 抄回来的一条工程实践**（它 README 的 "Supply-chain hardening" 一节）：
+直接依赖全部 pin 精确版本、`.npmrc` 设 `min-release-age=2`（当天发布的依赖不进锁文件）、
+锁文件当依赖事实源、发布物带 shrinkwrap 固定传递依赖。
+落到本项目 = 第 1 步装 `pydantic-ai-slim[openai]` 时**在 requirements 里 pin 精确版本**，
+并把 `pip show` 的依赖清单原样贴回 §六，让体积可查。
+
 **判据（实施时用）**：`agent.py` 行数 < 150；测试条数只增不减；`legacy` 在第 5 步之前一直可切回；
 「注册表里没有写工具」的断言保留；对话与正文生成共用的资料池仍然只有一个构造器。
 
