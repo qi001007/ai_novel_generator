@@ -32,6 +32,7 @@ app.include_router(characters.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(export.router, prefix="/api")
+app.include_router(export.settings_router, prefix="/api")
 app.include_router(config.router, prefix="/api")
 
 

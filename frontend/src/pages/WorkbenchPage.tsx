@@ -185,21 +185,34 @@ export default function WorkbenchPage() {
   const refreshMetas = useFiles((store) => store.refreshMetas);
 
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNote, setExportNote] = useState<string | null>(null);
+
+  function reportExport(promise: Promise<string>) {
+    setExportError(null);
+    setExportNote(null);
+    promise
+      .then(setExportNote)
+      .catch((cause: unknown) =>
+        setExportError(cause instanceof Error ? cause.message : "导出失败"),
+      );
+  }
 
   function handleExportDocument(path: string) {
-    setExportError(null);
     const novelId = Number(novelIdParam);
-    api.exportDocument(novelId, path).catch((cause: unknown) =>
-      setExportError(cause instanceof Error ? cause.message : "导出失败"),
+    reportExport(
+      api.runExport(novelId, { document_path: path }, () => api.exportDocument(novelId, path)),
     );
   }
 
   function handleExport(chapterNumber: number, format: "txt" | "md") {
-    setExportError(null);
     const novelId = Number(novelIdParam);
-    api
-      .exportProse(novelId, { scope: "chapter", chapterNumber, format })
-      .catch((cause: unknown) => setExportError(cause instanceof Error ? cause.message : "导出失败"));
+    reportExport(
+      api.runExport(
+        novelId,
+        { scope: "chapter", chapter_number: chapterNumber, format },
+        () => api.exportProse(novelId, { scope: "chapter", chapterNumber, format }),
+      ),
+    );
   }
 
   // All three entries land here, so they cannot drift apart.
@@ -689,7 +702,7 @@ export default function WorkbenchPage() {
             onCreateChapter={() => void handleCreateChapter()}
             onExport={handleExport}
             onExportDocument={handleExportDocument}
-            exportError={exportError}
+            exportError={exportError ?? exportNote}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
             onOpenFile={(path) => void openFile(path)}

@@ -70,7 +70,7 @@ const TASKS: Array<[string, string]> = [
   ["image", "生图（未启用）"],
 ];
 
-type GroupKey = "llm" | "appearance";
+type GroupKey = "llm" | "appearance" | "storage";
 
 /** A new row gets an id the owner never sees or types; it is only the join key between
  *  a provider and the tasks that point at it. */
@@ -257,6 +257,78 @@ function CardGroup<T extends string>(props: {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* 第二十五批批注 3：导出与恢复**共用一个目录设置项** - 他明确要求不要做成两个。
+   这一栏还要长（删除记录与恢复在下一批），所以自己一个组件、自己的状态，
+   不往设置页那张表里堆。 */
+function StoragePanel() {
+  const [dir, setDir] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [note, setNote] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .exportSettings()
+      .then((data) => {
+        setDir(data.export_dir);
+        setDraft(data.export_dir);
+      })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "读不到导出目录"),
+      );
+  }, []);
+
+  function save() {
+    setBusy(true);
+    setNote(null);
+    setError(null);
+    api
+      .setExportDir(draft.trim())
+      .then((data) => {
+        setDir(data.export_dir);
+        setDraft(data.export_dir);
+        setNote(
+          data.export_dir ? `导出文件会写到 ${data.export_dir}` : "已清空：导出改走浏览器下载",
+        );
+      })
+      .catch((cause: unknown) =>
+        setError(cause instanceof Error ? cause.message : "保存失败"),
+      )
+      .finally(() => setBusy(false));
+  }
+
+  return (
+    <div className="pref-rows">
+      <label className="prefs-field">
+        导出目录
+        <input
+          value={draft}
+          placeholder="例如 E:\novel-exports（留空 = 浏览器下载）"
+          aria-label="导出目录"
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      </label>
+      <p className="prefs-muted">
+        全书、单章与每一份文档的导出都写到这个目录；从快照里取「已经不在书架上的那本书的一个文件」时，
+        也落到同一个地方 - 只有一个目录设置，不做两个
+      </p>
+      <div className="prefs-actions">
+        <button
+          type="button"
+          className="primary"
+          disabled={busy || dir === null || draft.trim() === (dir ?? "")}
+          onClick={save}
+        >
+          保存
+        </button>
+      </div>
+      {error ? <p className="book-info-problem">{error}</p> : null}
+      {note ? <p className="export-note">{note}</p> : null}
     </div>
   );
 }
@@ -696,6 +768,11 @@ export default function PreferencesPage() {
           </div>
         </>
       ),
+    },
+    {
+      key: "storage",
+      label: "导出与恢复",
+      body: <StoragePanel />,
     },
   ];
   const activeGroup = groups.find((item) => item.key === group) ?? groups[0];

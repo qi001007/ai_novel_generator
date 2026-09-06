@@ -4593,6 +4593,15 @@ body.resizing {
   padding: 20px 22px;
 }
 
+/* 导出与恢复的回执：与错误行同一个位置、同一档字号，只是不涂红。
+   主人要的「已保存到哪儿」必须看得见，否则他不知道文件到底落在哪。 */
+.export-note {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
 .book-delete-note {
   margin: 0;
   font-size: 12.5px;

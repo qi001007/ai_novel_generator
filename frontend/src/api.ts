@@ -206,6 +206,33 @@ export const api = {
     return fileName;
   },
 
+  /** 导出目录（这台机器要把文件放到哪儿）。空 = 走浏览器下载。 */
+  exportSettings: () => api.get<{ export_dir: string }>("/api/export/settings"),
+  setExportDir: (dir: string) =>
+    api.put<{ export_dir: string }>("/api/export/settings", { dir }),
+
+  /** 一条导出、两条落点（第二十五批批注 3）：设置里有导出目录就交给后端写盘并回报路径；
+   *  没有就退回浏览器下载。**真错误照样抛出去** - 只有「还没有设置导出目录」这一条
+   *  才允许静默降级，否则用户会以为导出成功了其实只是弹了个下载。 */
+  runExport: async (
+    novelId: number,
+    saveBody: Record<string, unknown>,
+    download: () => Promise<string>,
+  ): Promise<string> => {
+    try {
+      const saved = await api.post<{ saved_to: string }>(
+        `/api/novels/${novelId}/export/save`,
+        saveBody,
+      );
+      return `已保存到 ${saved.saved_to}`;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      if (!message.includes("还没有设置导出目录")) throw cause;
+      const name = await download();
+      return `浏览器已下载 ${name}`;
+    }
+  },
+
   updateNovel: (novelId: number, payload: NovelUpdatePayload) =>
     api.put<Novel>(`/api/novels/${novelId}`, payload),
 

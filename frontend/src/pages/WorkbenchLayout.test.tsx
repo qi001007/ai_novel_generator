@@ -153,6 +153,15 @@ describe("workbench layout", () => {
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
+        if (url.endsWith("/export/save")) {
+          // 没设导出目录 -> 后端 409 -> 走浏览器下载（这一条测的就是下载那条路）
+          return Promise.resolve(
+            new Response(JSON.stringify({ detail: "还没有设置导出目录" }), {
+              status: 409,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
         if (url.includes("/files/toc.md")) {
           return Promise.resolve(
             new Response(JSON.stringify({ path: "toc.md", label: "目录", text: "# 目录\n\n一条一章。" }), {
@@ -231,7 +240,18 @@ describe("workbench layout", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
-        seen.push(String(input));
+        const url = String(input);
+        seen.push(url);
+        // 导出有两条落点（第二十五批批注 3）：这里演的是「没设导出目录」那一条，
+        // 后端回 409，前端才退回浏览器下载。
+        if (url.endsWith("/export/save")) {
+          return Promise.resolve(
+            new Response(JSON.stringify({ detail: "还没有设置导出目录" }), {
+              status: 409,
+              headers: { "Content-Type": "application/json" },
+            }),
+          );
+        }
         return inner(input, init);
       }),
     );

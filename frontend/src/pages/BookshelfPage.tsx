@@ -166,6 +166,7 @@ export default function BookshelfPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   /* 导出是读，不走那条唯一的写通路（D-01）；失败的理由要说得出口。 */
   const [exportError, setExportError] = useState<string | null>(null);
+  const [exportNote, setExportNote] = useState<string | null>(null);
   const [infoId, setInfoId] = useState<number | null>(null);
   const [infoDraft, setInfoDraft] = useState<BookDraft | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
@@ -230,9 +231,13 @@ export default function BookshelfPage() {
 
   function exportBook(novelId: number, format: "txt" | "md") {
     setExportError(null);
-    api.exportProse(novelId, { scope: "book", format }).catch((cause: unknown) =>
-      setExportError(cause instanceof Error ? cause.message : "导出失败"),
-    );
+    setExportNote(null);
+    api
+      .runExport(novelId, { scope: "book", format }, () =>
+        api.exportProse(novelId, { scope: "book", format }),
+      )
+      .then(setExportNote)
+      .catch((cause: unknown) => setExportError(cause instanceof Error ? cause.message : "导出失败"));
   }
 
   const runBookAction = (action: () => void) => () => {
@@ -353,6 +358,7 @@ export default function BookshelfPage() {
         <div className="bookshelf-header">
           <h1>我的作品</h1>
         {exportError ? <p className="book-info-problem">{exportError}</p> : null}
+        {exportNote ? <p className="export-note">{exportNote}</p> : null}
           {/* 批注 1: the grid already ends with a 新建作品 card, so a filled button
               up here said the same thing twice and was the loudest object on the page. */}
         </div>

@@ -186,7 +186,7 @@ describe("PreferencesPage", () => {
       </MemoryRouter>,
     );
     const nav = await screen.findByRole("tablist", { name: "设置项" });
-    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["模型接入", "外观"]);
+    expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["模型接入", "外观", "导出与恢复"]);
     // only the selected group is on screen
     expect(await screen.findByLabelText("API Key")).toBeTruthy();
     expect(screen.queryByRole("radio", { name: "浅色" })).toBeNull();
