@@ -197,16 +197,19 @@ describe("新建章节三通道", () => {
     expect(menu.textContent).toContain("新建下一章简报");
     expect(menu.textContent).toContain("Ctrl+Alt+N");
 
-    // 第二十三批批注 2：「在其后新建章节」与第一项是同一件事的重叠占位，已删。
-    // 第二十六批批注 6：「重命名 / 删除」这一行拆成两行 - 删除可用（章号不顺延），
-    // 重命名仍然不开，理由挂在它自己身上。
+    // 第二十三批批注 2 删掉了与第一项重叠的「在其后新建章节」；第二十六批批注 6 把
+    // 「重命名 / 删除」拆成两行但只放开删除；**第二十八批批注 6 把重命名放开了**，
+    // 并给了一个真正的「在其后插入一章」（它和「新建下一章简报」不是同一件事：
+    // 一个在末尾追加，一个在中间腾位）。序号一律不可改，所以两条 kbd 说的是补位方向。
     expect(menu.textContent).not.toContain("在其后新建章节");
     const rename = screen.getByRole("menuitem", { name: /^重命名/ });
-    expect((rename as HTMLButtonElement).disabled).toBe(true);
-    expect(rename.textContent).toContain("未开放");
+    expect((rename as HTMLButtonElement).disabled).toBe(false);
+    expect(rename.textContent).toContain("只改名字");
+    const insert = screen.getByRole("menuitem", { name: /在其后插入一章/ });
+    expect((insert as HTMLButtonElement).disabled).toBe(false);
     const del = screen.getByRole("menuitem", { name: /删除章节/ });
     expect((del as HTMLButtonElement).disabled).toBe(false);
-    expect(del.textContent).toContain("章号不补");
+    expect(del.textContent).toContain("后面 -1");
   });
 
   it("后端 409 时把 detail 原文显示出来，不静默", async () => {

@@ -308,13 +308,61 @@ describe("workbench layout", () => {
       "打开Enter",
       "导出本章…纯文本",
       "导出本章 Markdown.md",
-      "删除章节章号不补",
-      "重命名未开放",
+      "重命名只改名字",
+      "在其后插入一章后面 +1",
+      "删除章节后面 -1",
     ]);
 
     await user.click(within(menu).getByRole("menuitem", { name: /导出本章…/ }));
     await waitFor(() =>
       expect(seen).toContain("/api/novels/1/export?scope=chapter&format=txt&chapter_number=42"),
+    );
+  });
+
+  /* 第二十八批批注 6：重命名只改名字，序号不动，写的是 B 目录那一行。 */
+  it("renames a chapter through the title endpoint and leaves the number alone", async () => {
+    const user = userEvent.setup();
+    const { container } = await openWorkbench();
+    const seen: string[] = [];
+    const inner = fetch;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        seen.push(method + " " + url);
+        if (method === "PATCH") {
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({ id: 70, novel_id: 1, chapter_number: 42, title: "雪夜碑鸣" }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            ),
+          );
+        }
+        return inner(input, init);
+      }),
+    );
+
+    const chapterRow = [...container.querySelectorAll(".tree-row")].find((node) =>
+      node.textContent?.includes("0042"),
+    ) as HTMLElement;
+    fireEvent.contextMenu(chapterRow);
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: /^重命名/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "重命名章节" });
+    const field = within(dialog).getByRole("textbox") as HTMLInputElement;
+    await user.clear(field);
+    await user.type(field, "雪夜碑鸣");
+    await user.click(within(dialog).getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(seen).toContain("PATCH /api/novels/1/chapters/by-number/42/title"),
+    );
+    // 号还是 42，名字换了 - 而且它没有去碰任何改号的端点
+    expect(seen.some((line) => /make-room-after/.test(line))).toBe(false);
+    await waitFor(() =>
+      expect(document.querySelector(".tree-label.mono")?.textContent).toBe("0042 · 雪夜碑鸣"),
     );
   });
 
@@ -528,9 +576,9 @@ describe("workbench layout", () => {
   it("groups chapter prose and brief files under one chapter node", async () => {
     await openWorkbench();
     await waitFor(() => {
-      // The editor tab carries the same four digits now (第十六批批注 3), so this has to
-      // say which 0042 it means instead of accepting whichever came first.
-      expect(document.querySelector(".tree-label.mono")?.textContent).toBe("0042");
+      // 第二十八批批注 6：树上那一行是「序号 · 章名」，标签条仍只有四个数字
+      // （第十六批批注 3 定的），所以这里钉的是带名字的那一份。
+      expect(document.querySelector(".tree-label.mono")?.textContent).toBe("0042 · 星渊碑影");
     });
     expect(screen.getByText("draft.md")).toBeTruthy();
     expect(screen.getByText("brief.md")).toBeTruthy();
