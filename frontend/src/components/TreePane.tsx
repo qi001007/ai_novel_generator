@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { uiZoom } from "../store/appearance";
+import { useMenuPlacement } from "../menuPlacement";
 import {
   Bookmark,
   ChevronDown,
@@ -156,10 +157,9 @@ export default function TreePane({
 
   const openMenu = (event: React.MouseEvent, target: MenuTarget) => {
     event.preventDefault();
-    // 指针给的是视觉像素，菜单的 left/top 是 CSS 像素（#root 上有 zoom）
-    const z = uiZoom();
-    const x = Math.min(event.clientX / z, (window.innerWidth - 8) / z - MENU_WIDTH);
-    setMenu({ x: Math.max(8 / z, x), y: event.clientY / z, target });
+    // 只记点击点（视觉像素）。方位交给 useMenuPlacement：它量得到菜单**这一回**有多高，
+    // 而以前这里只夹 x、y 完全不管 - 底部右键就被裁掉（第二十六批批注 5）。
+    setMenu({ x: event.clientX, y: event.clientY, target });
   };
 
   const runMenuAction = (action: () => void) => () => {
@@ -168,6 +168,8 @@ export default function TreePane({
   };
 
   const menuPath = menu?.target.kind === "file" ? menu.target.path : null;
+  // 方位由实测高度决定（两处菜单共用同一份算法，见 menuPlacement.ts）
+  const placement = useMenuPlacement(menuRef, menu, MENU_WIDTH);
   /* 章节行与它的 draft.md 右键指向同一个目标（路径就是 draft.md），
      所以主人要的「每一个章节的右键」和「每一个 draft.md 的右键」
      在这里是同一扇门，brief.md 不给导出。 */
@@ -529,7 +531,12 @@ export default function TreePane({
           ref={menuRef}
           className="tree-menu"
           role="menu"
-          style={{ left: menu.x, top: menu.y, width: MENU_WIDTH }}
+          style={{
+            left: placement?.left ?? menu.x / uiZoom(),
+            top: placement?.top ?? menu.y / uiZoom(),
+            width: MENU_WIDTH,
+            maxHeight: placement?.maxHeight,
+          }}
         >
           <button type="button" role="menuitem" className="tree-menu-item primary" disabled={creatingChapter} onClick={runMenuAction(onCreateChapter)}>
             <span>新建下一章简报</span>

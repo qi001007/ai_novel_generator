@@ -4531,7 +4531,11 @@ body.resizing {
   border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-pop);
-}
+
+  /* 第二十六批批注 5：上下都放不下时贴下沿，剩下的靠内部滚动，
+     而不是让最后几项掉到视口外面（那正是他截图里的样子）。 */
+  overflow-y: auto;
+  overscroll-behavior: contain;}
 
 .tree-menu-item {
   display: flex;

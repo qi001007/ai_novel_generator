@@ -5,6 +5,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import { tokenValue, uiZoom } from "../store/appearance";
+import { useMenuPlacement } from "../menuPlacement";
 import { useWorkbench } from "../store/workbench";
 import type { Novel, NovelUpdatePayload } from "../types";
 
@@ -175,6 +176,8 @@ export default function BookshelfPage() {
   /* Where the menu came from, so closing it hands the focus back instead of dropping
      the keyboard reader on the top of the page. */
   const menuOpener = useRef<HTMLElement | null>(null);
+  // 方位由实测高度决定，与树里那套共用一份算法（menuPlacement.ts）
+  const placement = useMenuPlacement(bookMenuRef, bookMenu, BOOK_MENU_WIDTH);
   const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
 
   const coverTarget = novels.find((novel) => novel.id === coverEditId) ?? null;
@@ -217,13 +220,14 @@ export default function BookshelfPage() {
     menuOpener.current = host;
     const rect = host.getBoundingClientRect();
     // A keyboard-opened menu has no pointer: it hangs off the card's own top-left.
-    // 同上：指针与 rect 是视觉像素，菜单的 left/top 要写成 CSS 像素
-    const z = uiZoom();
+    // 指针与 rect 都是视觉像素；换算与方位一起在 useMenuPlacement 里做。
     const rawX = "clientX" in event && event.clientX ? event.clientX : rect.left + 14;
     const rawY = "clientY" in event && event.clientY ? event.clientY : rect.top + 42;
+    // 只记点击点（视觉像素）。以前这里用写死的 150px 当菜单高度，
+    // 而菜单六项实测约 230px - 底部右键照样被裁（第二十六批批注 5）。
     setBookMenu({
-      x: Math.max(8 / z, Math.min(rawX / z, (window.innerWidth - 8) / z - BOOK_MENU_WIDTH)),
-      y: Math.max(8 / z, Math.min(rawY / z, (window.innerHeight - 8) / z - 150)),
+      x: rawX,
+      y: rawY,
       id: novel.id,
       title: novel.title,
     });
@@ -471,7 +475,12 @@ export default function BookshelfPage() {
           className="tree-menu"
           role="menu"
           aria-label={`《${bookMenu.title}》的操作`}
-          style={{ left: bookMenu.x, top: bookMenu.y, width: BOOK_MENU_WIDTH }}
+          style={{
+            left: placement?.left ?? bookMenu.x / uiZoom(),
+            top: placement?.top ?? bookMenu.y / uiZoom(),
+            width: BOOK_MENU_WIDTH,
+            maxHeight: placement?.maxHeight,
+          }}
         >
           <button
             type="button"
