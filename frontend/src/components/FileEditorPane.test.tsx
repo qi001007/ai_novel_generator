@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -306,5 +306,39 @@ describe("FileEditorPane", () => {
     await waitFor(() => expect(caretLine()).toBe(21));
     expect(character.text.split("\n")[20]).toBe("碑前");
   });
+
+  // 批注 28.5, 2026-09-06: entering the workbench and then restoring a document left the
+  // editor permanently blank. The pane's first render had no tabs, so the empty-state
+  // branch rendered without the CodeMirror host; the mount effect bailed on a null host
+  // and its deps (three stable zustand functions) never changed again - so no later
+  // document could ever mount. Every existing test seeded a non-empty tab strip, which
+  // is why 310 lines of this file never caught it.
+  it("mounts CodeMirror when a document arrives after an empty first render", async () => {
+    useFiles.setState({
+      novelId: 1,
+      metas: [{ path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图" }],
+      tabs: [],
+      active: null,
+      entries: {},
+      pending: {},
+      views: {},
+      stage: null,
+      jump: null,
+      focus: null,
+      revealSeq: 0,
+      metasError: null,
+    });
+    render(<FileEditorPane />);
+    expect(document.querySelector(".cm-editor")).toBeNull();
+
+    await act(async () => {
+      await useFiles.getState().open("blueprint.md");
+    });
+
+    const editors = document.querySelectorAll(".cm-editor");
+    expect(editors).toHaveLength(1);
+    expect(editors[0].textContent).toContain("全书蓝图");
+  });
+
 });
 

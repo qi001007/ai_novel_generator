@@ -75,11 +75,19 @@ export default function FileEditorPane() {
   const save = useFiles((state) => state.save);
   const reload = useFiles((state) => state.reload);
 
-  const hostRef = useRef<HTMLDivElement>(null);
+  // 批注 28.5: the host must be *state*, not a ref. The pane's first render can be the
+  // empty state (no tabs yet - e.g. entering the workbench and restoring the last file a
+  // tick later), and a ref leaves the mount effect with nothing to depend on: it bails on a
+  // null host and its other deps are stable store functions, so it never runs again and no
+  // document can ever mount. A callback ref hands the node to React as a value.
+  const [host, setHost] = useState<HTMLDivElement | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const tabsScrollRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
-  const viewRef = useRef<EditorView | null>(null);
+  // 批注 28.5: the view is state, not a ref. Effects that write into the buffer must be
+  // able to see the moment it exists - a ref gives them nothing to depend on, which is
+  // how an editor created after the first document arrived stayed forever empty.
+  const [view, setView] = useState<EditorView | null>(null);
   const activeRef = useRef<string | null>(null);
   activeRef.current = active;
   // Offset inside the thumb where the pointer grabbed it; null when not dragging.
@@ -142,11 +150,10 @@ export default function FileEditorPane() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [save]);
 
-  // --- CodeMirror lives once; the store owns which document is loaded ------
+  // --- CodeMirror lives once per host node; the store owns which document is loaded --
   useEffect(() => {
-    const host = hostRef.current;
     if (!host) return undefined;
-    const view = new EditorView({
+    const editor = new EditorView({
       parent: host,
       state: EditorState.create({
         doc: "",
@@ -176,8 +183,8 @@ export default function FileEditorPane() {
         ],
       }),
     });
-    viewRef.current = view;
-    jumpHandlers.set(view, (chapter, from, to) => {
+    setView(editor);
+    jumpHandlers.set(editor, (chapter, from, to) => {
       const path = activeRef.current;
       void open(briefPath(chapter), {
         jump: path ? { fromPath: path, chapter, field: from } : null,
@@ -185,21 +192,20 @@ export default function FileEditorPane() {
       });
     });
     return () => {
-      jumpHandlers.delete(view);
-      view.destroy();
-      viewRef.current = null;
+      jumpHandlers.delete(editor);
+      editor.destroy();
+      setView(null);
     };
-  }, [open, save, setDraft]);
+  }, [host, open, save, setDraft]);
 
   // --- load the active document into the buffer ---------------------------
   const draft = entry?.draft ?? "";
   useEffect(() => {
-    const view = viewRef.current;
     if (!view || !entry?.doc) return;
     if (view.state.doc.toString() !== entry.draft) {
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: entry.draft } });
     }
-  }, [active, draft, entry?.doc]);
+  }, [view, active, draft, entry?.doc]);
 
   // --- rail + pending + jumpable depend on which file is on screen --------
   const pendingLines = useMemo(() => {
@@ -222,7 +228,6 @@ export default function FileEditorPane() {
   }, [proposal, entry?.doc]);
 
   useEffect(() => {
-    const view = viewRef.current;
     if (!view) return;
     view.dispatch({
       effects: setDocConfig({
@@ -231,15 +236,14 @@ export default function FileEditorPane() {
         jumpFrom: kind === "toc",
       }),
     });
-  }, [kind, pendingLines, active]);
+  }, [view, kind, pendingLines, active]);
 
   // --- the B→D jump parks the caret on the mapped field -------------------
   useEffect(() => {
-    const view = viewRef.current;
     if (!view || !focus || !entry?.doc || focus.path !== active) return;
     const timer = window.setTimeout(() => focusField(view, focus.field), 0);
     return () => window.clearTimeout(timer);
-  }, [focus, active, entry?.doc]);
+  }, [view, focus, active, entry?.doc]);
 
   // --- minimap geometry ---------------------------------------------------
   const lines = useMemo(() => draft.split("\n"), [draft]);
@@ -256,7 +260,6 @@ export default function FileEditorPane() {
   // numbers, so the thumb sits under the cursor from the first pixel instead of
   // jumping there.
   function scrubTo(clientY: number, mapTop: number) {
-    const view = viewRef.current;
     if (!view) return;
     const dom = view.scrollDOM;
     const progress = progressFromPointer(
@@ -485,7 +488,7 @@ export default function FileEditorPane() {
         ) : null}
         <div className="file-code">
           {entry?.loading && !entry.doc ? <p className="file-loading">读取中…</p> : null}
-          <div ref={hostRef} className="file-cm" />
+          <div ref={setHost} className="file-cm" />
         </div>
         <div
           className="minimap file-minimap"
