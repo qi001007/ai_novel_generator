@@ -281,7 +281,10 @@ function StoragePanel() {
     { file: string; novel_id: number; path: string; title: string } | null
   >(null);
   /* 状态跟着它所属的那一行，不再整页顶部飘一条（批注 1：谁的结果就该贴在谁下面） */
-  const [status, setStatus] = useState<{ row: string; kind: "ok" | "err"; text: string } | null>(null);
+  const [status, setStatus] = useState<{ row: string; kind: "busy" | "err"; text: string } | null>(null);
+  // 批注 28.4: 成功回执改成弹窗，由主人自己关。失败仍留在它所属那一行的下面 -
+  // 错误被关掉就没了，那不对。
+  const [receipt, setReceipt] = useState<string | null>(null);
 
   function reload() {
     api
@@ -300,12 +303,27 @@ function StoragePanel() {
     reload();
   }, []);
 
-  function report(row: string, kind: "ok" | "err", text: string) {
+  // 判据：点遮罩或按 Esc 都要关得掉（弹窗拦着人，就该两条路都能退）。
+  useEffect(() => {
+    if (receipt === null) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setReceipt(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [receipt]);
+
+  function report(row: string, kind: "ok" | "busy" | "err", text: string) {
+    if (kind === "ok") {
+      setReceipt(text);
+      setStatus(null);
+      return;
+    }
     setStatus({ row, kind, text });
   }
 
   function saveDir() {
-    report("dir", "ok", "正在保存");
+    report("dir", "busy", "正在保存");
     api
       .setExportDir(draft.trim())
       .then((data) => {
@@ -451,6 +469,25 @@ function StoragePanel() {
           ) : null}
         </div>
       ))}
+
+      {receipt ? (
+        <div className="wizard-backdrop" role="presentation" onClick={() => setReceipt(null)}>
+          <div
+            className="wizard receipt"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="回执"
+          >
+            <p className="receipt-line">{receipt}</p>
+            <footer className="cover-modal-footer">
+              <button type="button" className="primary" onClick={() => setReceipt(null)}>
+                知道了
+              </button>
+            </footer>
+          </div>
+        </div>
+      ) : null}
 
       {ask ? (
         <div className="wizard-backdrop" role="presentation" onClick={() => setAsk(null)}>

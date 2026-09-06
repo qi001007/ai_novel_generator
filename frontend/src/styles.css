@@ -4680,6 +4680,22 @@ body.resizing {
   color: var(--danger);
 }
 
+/* 批注 28.4: a receipt is one line of fact plus one way out - no heading, no
+   explanation. The path must stay selectable end to end, so it wraps anywhere. */
+.wizard.receipt {
+  width: min(560px, 100% - 32px);
+  gap: 14px;
+}
+
+.receipt-line {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text-1);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .wizard.backup-ask {
   width: min(420px, 100% - 32px);
   gap: 12px;

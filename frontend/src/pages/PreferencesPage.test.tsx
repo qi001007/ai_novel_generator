@@ -235,10 +235,12 @@ describe("PreferencesPage", () => {
     expect(dialog.textContent).toContain("《演练》已经不在书架上");
     expect(dialog.querySelector(".book-delete-note")?.textContent).toBe("只取文件就不动书架");
     await user.click(within(dialog).getByRole("button", { name: "只取文件" }));
-    // 批注 3：回执必须报完整路径 - 后端本来就给了 saved_to，是我上一版把它丢了
-    expect(
-      await screen.findByText("已写到 E:\\exports\\演练_全书蓝图.md"),
-    ).toBeTruthy();
+    // 批注 3：回执必须报完整路径 - 后端本来就给了 saved_to，是我上一版把它丢了。
+    // 批注 28.4：这条改成弹窗，由主人自己关；关掉之后不许留下第二份。
+    const receipt = await screen.findByRole("dialog", { name: "回执" });
+    expect(receipt.textContent).toContain("已写到 E:\\exports\\演练_全书蓝图.md");
+    await user.click(within(receipt).getByRole("button", { name: "知道了" }));
+    expect(screen.queryByRole("dialog", { name: "回执" })).toBeNull();
     expect(calls.some((call) => call.url.startsWith("/api/backups/restore/document"))).toBe(true);
 
     // ③ 恢复整本书
