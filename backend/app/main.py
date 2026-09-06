@@ -6,6 +6,7 @@ from app.routers import (
     chat,
     config,
     documents,
+    export,
     feedback,
     generation_runs,
     llm,
@@ -30,6 +31,7 @@ app.include_router(settings.router, prefix="/api")
 app.include_router(characters.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
+app.include_router(export.router, prefix="/api")
 app.include_router(config.router, prefix="/api")
 
 

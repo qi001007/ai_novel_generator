@@ -114,7 +114,8 @@ describe("BookshelfPage", () => {
 
   /* 前几轮点名项：书卡右键菜单。两条纪律一起钉 - 菜单里不许有会 405 的假按钮，
      卡面那枚动作钮不许再带文字（「按钮能用图标就用图标」）。 */
-  it("opens a context menu on the book card with the four doors that actually work", async () => {
+  /* 第二十四批：菜单从四扇门变六扇 - 多的两扇是导出全书。 */
+  it("opens a context menu on the book card with the six doors that actually work", async () => {
     const user = userEvent.setup();
     const { container } = renderShelf();
     const card = container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement;
@@ -127,6 +128,8 @@ describe("BookshelfPage", () => {
       "打开作品Enter",
       "更换封面…悬停图标",
       "编辑信息…书名 简介 章数",
+      "导出全书…纯文本",
+      "导出全书 Markdown.md",
       "删除作品…不可恢复",
     ]);
 
@@ -298,6 +301,73 @@ describe("BookshelfPage", () => {
     await user.click(within(third).getByRole("button", { name: "删除" }));
     await waitFor(() => expect(deletes).toEqual(["/api/novels/4"]));
     await waitFor(() => expect(container.querySelector(`.book-card[data-novel-id="4"]`)).toBeNull());
+  });
+
+  /* 第二十四批新功能：导出是读。这里钉两件事 -
+     打开的是后端说的那个文件名（不是前端自己编的），以及失败的时候
+     把理由说出口，而不是给一个 0 字节的「导出成功」。 */
+  it("downloads the whole book under the name the backend chose, and reports a refusal", async () => {
+    const user = userEvent.setup();
+    const urls: string[] = [];
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    let failNext = false;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/export")) {
+          urls.push(url);
+          if (failNext) {
+            return Promise.resolve(
+              new Response(JSON.stringify({ detail: "这本书还没有任何正文" }), {
+                status: 404,
+                headers: { "Content-Type": "application/json" },
+              }),
+            );
+          }
+          const format = new URLSearchParams(url.split("?")[1]).get("format");
+          return Promise.resolve(
+            new Response("第1章\n\n雪。", {
+              status: 200,
+              headers: {
+                "Content-Type": "text/plain; charset=utf-8",
+                // 文件名是后端给的，前端只照抄 - 两边各编一份就会对不上
+                "Content-Disposition":
+                  `attachment; filename="book.${format}"; filename*=UTF-8\'\'` +
+                  encodeURIComponent(`演示测试_全书.${format}`),
+              },
+            }),
+          );
+        }
+        return Promise.resolve(ok(url.endsWith("/api/novels") ? shelf : shelf[0]));
+      }),
+    );
+    // jsdom 没有 createObjectURL，下载这一步要自己造；点击也不能真导航
+    URL.createObjectURL = vi.fn(() => "blob:fake");
+    URL.revokeObjectURL = vi.fn();
+    const downloads: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download);
+    });
+
+    const { container } = renderShelf();
+    fireEvent.contextMenu(container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement);
+    const menu = await screen.findByRole("menu", { name: "《演示测试》的操作" });
+    await user.click(within(menu).getByRole("menuitem", { name: /导出全书 Markdown/ }));
+
+    await waitFor(() =>
+      expect(urls).toEqual(["/api/novels/4/export?scope=book&format=md"]),
+    );
+    expect(downloads).toEqual(["演示测试_全书.md"]);
+
+    // 失败要说原因，不许静静地什么都没发生
+    failNext = true;
+    fireEvent.contextMenu(container.querySelector(`.book-card[data-novel-id="4"]`) as HTMLElement);
+    const again = await screen.findByRole("menu", { name: "《演示测试》的操作" });
+    await user.click(within(again).getByRole("menuitem", { name: /导出全书…/ }));
+    expect(await screen.findByText("这本书还没有任何正文")).not.toBeNull();
+    expect(downloads).toEqual(["演示测试_全书.md"]);
   });
 
   /* 前几轮点名项：预设八枚之外要有一枚真·调色盘，而且挑完当场看得见。 */

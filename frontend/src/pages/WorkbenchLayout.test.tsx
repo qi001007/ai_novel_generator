@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -141,6 +141,41 @@ describe("workbench layout", () => {
     localStorage.clear();
     useFiles.getState().reset();
     vi.unstubAllGlobals();
+  });
+
+  /* 第二十四批新功能：文件树里每一个章节的右键要能导出本章。
+     这里钉的是那扇门存在、且打的是那个只读端点。 */
+  it("offers a chapter export on the tree menu and asks the read-only endpoint", async () => {
+    const user = userEvent.setup();
+    const { container } = await openWorkbench();
+    const seen: string[] = [];
+    const inner = fetch; // 把现在这个 stub 包起来，只多记一下 URL
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        seen.push(String(input));
+        return inner(input, init);
+      }),
+    );
+
+    const chapterRow = [...container.querySelectorAll(".tree-row")].find((node) =>
+      node.textContent?.includes("0042"),
+    ) as HTMLElement;
+    fireEvent.contextMenu(chapterRow);
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((node) => node.textContent)).toEqual([
+      "新建下一章简报Ctrl+Alt+N",
+      "折叠 / 展开←→",
+      "打开Enter",
+      "导出本章…纯文本",
+      "导出本章 Markdown.md",
+      "重命名 / 删除未开放",
+    ]);
+
+    await user.click(within(menu).getByRole("menuitem", { name: /导出本章…/ }));
+    await waitFor(() =>
+      expect(seen).toContain("/api/novels/1/export?scope=chapter&format=txt&chapter_number=42"),
+    );
   });
 
   /* 第二十一批批注 1：「我进入这个页面之前是 draft.md 的那个页面，退出之后再回来，

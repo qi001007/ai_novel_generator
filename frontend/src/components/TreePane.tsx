@@ -54,6 +54,9 @@ type TreePaneProps = {
   onOpenFile: (path: string) => void;
   onSelectChapter: (chapterId: number) => void;
   onCreateChapter: () => void;
+  /** 导出是读。树这边只负责把「章号 + 格式」交给上层，不碰 API。 */
+  onExport: (chapterNumber: number, format: "txt" | "md") => void;
+  exportError: string | null;
   onOpenCharacters: () => void;
   onOpenFeedback: () => void;
   onOpenWorldMap: () => void;
@@ -99,6 +102,8 @@ export default function TreePane({
   onOpenFile,
   onSelectChapter,
   onCreateChapter,
+  onExport,
+  exportError,
   onOpenCharacters,
   onOpenFeedback,
   onOpenWorldMap,
@@ -161,6 +166,11 @@ export default function TreePane({
   };
 
   const menuPath = menu?.target.kind === "file" ? menu.target.path : null;
+  /* 章节行与它的 draft.md 右键指向同一个目标（路径就是 draft.md），
+     所以主人要的「每一个章节的右键」和「每一个 draft.md 的右键」
+     在这里是同一扇门，brief.md 不给导出。 */
+  const menuChapterFile = menuPath ? /^chapters\/(\d{4})\/draft\.md$/.exec(menuPath) : null;
+  const menuChapter = menuChapterFile ? Number(menuChapterFile[1]) : null;
   const bookName = (meta: FileMeta) => meta.path.split("/").pop() ?? meta.path;
   const LIBRARY_GROUPS: LibraryGroup[] = [
     {
@@ -393,6 +403,12 @@ export default function TreePane({
                         onSelectChapter(chapter.id);
                         onOpenFile(draftPath(chapter.chapter_number));
                       }}
+                      /* 第二十四批：这两片叶子以前只有 onClick，右键什么都不出来 -
+                         主人要的「每一个 draft.md 也要有右键导出」就落在这里。目标
+                         和章节行是同一个 draft 路径，菜单因此天然带导出两行。 */
+                      onContextMenu={(event) =>
+                        openMenu(event, { kind: "file", path: draftPath(chapter.chapter_number) })
+                      }
                     >
                       draft.md
                     </button>
@@ -402,6 +418,9 @@ export default function TreePane({
                       disabled={!brief}
                       title={brief ? undefined : "先写入简报后出现"}
                       onClick={() => brief && onOpenFile(brief.path)}
+                      onContextMenu={(event) =>
+                        brief && openMenu(event, { kind: "file", path: brief.path })
+                      }
                     >
                       brief.md
                     </button>
@@ -503,6 +522,7 @@ export default function TreePane({
         </p>
       ) : null}
       {createError && <p className="tree-action-error">{createError}</p>}
+      {exportError && <p className="tree-action-error">{exportError}</p>}
 
       {menu && (
         <div
@@ -531,6 +551,29 @@ export default function TreePane({
             <span>打开</span>
             <kbd>Enter</kbd>
           </button>
+          {menuChapter !== null ? (
+            <>
+              <div className="tree-menu-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-menu-item"
+                onClick={runMenuAction(() => onExport(menuChapter, "txt"))}
+              >
+                <span>导出本章…</span>
+                <kbd>纯文本</kbd>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-menu-item"
+                onClick={runMenuAction(() => onExport(menuChapter, "md"))}
+              >
+                <span>导出本章 Markdown</span>
+                <kbd>.md</kbd>
+              </button>
+            </>
+          ) : null}
           <div className="tree-menu-sep" />
           {/* 第二十三批批注 2：这一条和第一项是同一件事的重叠占位，删掉。
               「未开放」的理由（章号顺延牵动文件名/目录锚点/弧范围）已经挂在

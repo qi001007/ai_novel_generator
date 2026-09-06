@@ -47,6 +47,14 @@ function parseSseBlock<T = unknown>(block: string): T | null {
   }
 }
 
+/** 后端给的中文文件名走 RFC 5987；老客户端只看 filename="..." 那一段。 */
+function fileNameFromDisposition(header: string | null): string {
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header ?? "");
+  if (utf8) return decodeURIComponent(utf8[1]);
+  const plain = /filename="([^"]+)"/i.exec(header ?? "");
+  return plain?.[1] ?? "export.txt";
+}
+
 export const api = {
   get: async <T,>(path: string): Promise<T> => request<T>(path),
   post: async <T,>(path: string, body?: unknown): Promise<T> =>
@@ -149,6 +157,34 @@ export const api = {
     return api.get<ChatContextItem[]>(
       `/api/novels/${novelId}/chat/context${suffix ? `?${suffix}` : ""}`,
     );
+  },
+
+  /** 导出是**读**：拿回文本，在浏览器里造一个下载。写通路仍然只有那一条（D-01）。
+   *  用 blob 而不是直接把 <a href> 指过去，是为了让 404/409 能显示成人话 -
+   *  否则浏览器会把错误体当成文件存下来，主人就得到一个 0 字节的「导出成功」。 */
+  exportProse: async (
+    novelId: number,
+    params: { scope: "book" | "chapter"; chapterNumber?: number; format: "txt" | "md" },
+  ): Promise<string> => {
+    const query = new URLSearchParams({ scope: params.scope, format: params.format });
+    if (params.chapterNumber !== undefined) {
+      query.set("chapter_number", String(params.chapterNumber));
+    }
+    const response = await fetch(`/api/novels/${novelId}/export?${query.toString()}`);
+    if (!response.ok) {
+      const detail = await response.json().catch(() => null);
+      throw new Error(detail?.detail ?? `导出失败（${response.status}）`);
+    }
+    const fileName = fileNameFromDisposition(response.headers.get("Content-Disposition"));
+    const url = URL.createObjectURL(await response.blob());
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    return fileName;
   },
 
   updateNovel: (novelId: number, payload: NovelUpdatePayload) =>

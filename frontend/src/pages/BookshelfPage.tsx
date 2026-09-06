@@ -164,6 +164,8 @@ export default function BookshelfPage() {
   /* 弹窗里的初值来自服务器，不是本地那份可能已经过期的 novels 缓存。 */
   const [deleteTarget, setDeleteTarget] = useState<Novel | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  /* 导出是读，不走那条唯一的写通路（D-01）；失败的理由要说得出口。 */
+  const [exportError, setExportError] = useState<string | null>(null);
   const [infoId, setInfoId] = useState<number | null>(null);
   const [infoDraft, setInfoDraft] = useState<BookDraft | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
@@ -224,6 +226,13 @@ export default function BookshelfPage() {
       id: novel.id,
       title: novel.title,
     });
+  }
+
+  function exportBook(novelId: number, format: "txt" | "md") {
+    setExportError(null);
+    api.exportProse(novelId, { scope: "book", format }).catch((cause: unknown) =>
+      setExportError(cause instanceof Error ? cause.message : "导出失败"),
+    );
   }
 
   const runBookAction = (action: () => void) => () => {
@@ -343,6 +352,7 @@ export default function BookshelfPage() {
       <main className="bookshelf-main">
         <div className="bookshelf-header">
           <h1>我的作品</h1>
+        {exportError ? <p className="book-info-problem">{exportError}</p> : null}
           {/* 批注 1: the grid already ends with a 新建作品 card, so a filled button
               up here said the same thing twice and was the loudest object on the page. */}
         </div>
@@ -491,6 +501,27 @@ export default function BookshelfPage() {
           >
             <span>编辑信息…</span>
             <kbd>书名 简介 章数</kbd>
+          </button>
+          <div className="tree-menu-sep" />
+          {/* 第二十四批新功能：全书导出。纯文本给起点这类平台粘贴，
+              Markdown 留给自己存档与再编辑。 */}
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-menu-item"
+            onClick={runBookAction(() => exportBook(bookMenu.id, "txt"))}
+          >
+            <span>导出全书…</span>
+            <kbd>纯文本</kbd>
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="tree-menu-item"
+            onClick={runBookAction(() => exportBook(bookMenu.id, "md"))}
+          >
+            <span>导出全书 Markdown</span>
+            <kbd>.md</kbd>
           </button>
           <div className="tree-menu-sep" />
           {/* D-22③：这条从「未开放」变成真端点。树里的「重命名 / 删除」仍然未开放 -

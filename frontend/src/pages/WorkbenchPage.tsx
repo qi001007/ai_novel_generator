@@ -3,6 +3,7 @@ import type { PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeft, MessagesSquare, PanelLeft, PanelRight, Settings } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
+import { api } from "../api";
 import CharacterLibrary from "../components/CharacterLibrary";
 import ChatPane from "../components/ChatPane";
 import EditorPane from "../components/EditorPane";
@@ -182,6 +183,16 @@ export default function WorkbenchPage() {
   const attachFiles = useFiles((store) => store.attach);
   const openFile = useFiles((store) => store.open);
   const refreshMetas = useFiles((store) => store.refreshMetas);
+
+  const [exportError, setExportError] = useState<string | null>(null);
+
+  function handleExport(chapterNumber: number, format: "txt" | "md") {
+    setExportError(null);
+    const novelId = Number(novelIdParam);
+    api
+      .exportProse(novelId, { scope: "chapter", chapterNumber, format })
+      .catch((cause: unknown) => setExportError(cause instanceof Error ? cause.message : "导出失败"));
+  }
 
   // All three entries land here, so they cannot drift apart.
   async function handleCreateChapter() {
@@ -668,6 +679,8 @@ export default function WorkbenchPage() {
             creatingChapter={state.creatingChapter}
             createError={state.createError}
             onCreateChapter={() => void handleCreateChapter()}
+            onExport={handleExport}
+            exportError={exportError}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
             onOpenFile={(path) => void openFile(path)}
