@@ -5,7 +5,14 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, SQLModel, select
 
 from app.db import get_session
-from app.models import Chapter, ChapterBrief, GenerationRun, Novel
+from app.models import (
+    Chapter,
+    ChapterBrief,
+    ChapterSummary,
+    GenerationRun,
+    Novel,
+    Review,
+)
 from app.routers.planning import get_novel_or_404
 from app.services.chapters import (
     ChapterDomainError,
@@ -16,6 +23,7 @@ from app.services.chapters import (
 from app.services.context import build_writing_context, log_injection
 from app.services.draft import build_template_draft
 from app.services.llm import LLMClient, get_llm_client
+from app.services import storage
 from app.services.prompts import build_draft_user_prompt
 
 
@@ -230,6 +238,36 @@ def get_chapter(
         return get_chapter_or_error(session, novel_id, chapter_id)
     except ChapterDomainError as cause:
         raise _to_http(cause) from cause
+
+
+@router.delete("/{novel_id}/chapters/by-number/{chapter_number}", status_code=204)
+def delete_chapter(
+    novel_id: int, chapter_number: int, session: Session = Depends(get_session)
+) -> None:
+    """删掉一章，**不顺延后面的章号**。
+
+    第二十六批批注 6：树里那个「删除」他点了三轮，我前两轮都拿「D-13 未决」挡回去。
+    这次我把话定了：章号是主键（D-11），顺延会把文件名、目录锚点、弧起止、
+    已生成的运行记录一起拖着改，而且改完不可逆；留一个空洞是伤害最小的语义，
+    和 D-13「章号只允许末尾追加」也不冲突。
+    路径写成 by-number/ 而不是 {chapter_id}：同一个前缀下两种 id 混在一列是事故源。
+    """
+    novel = get_novel_or_404(novel_id, session)
+    chapter = session.exec(
+        select(Chapter).where(Chapter.novel_id == novel_id, Chapter.chapter_number == chapter_number)
+    ).first()
+    if chapter is None:
+        raise HTTPException(status_code=404, detail=f"第 {chapter_number} 章还不存在")
+    brief = session.get(ChapterBrief, chapter.brief_id) if chapter.brief_id else None
+    # 删之前照例留一份现场：删一章同样是手滑，快照要能把它取回来（见「导出与恢复」）
+    storage.snapshot(session, novel_id, novel.title)
+    for model in (Review, GenerationRun, ChapterSummary):
+        for row in session.exec(select(model).where(model.chapter_id == chapter.id)).all():
+            session.delete(row)
+    session.delete(chapter)
+    if brief is not None:
+        session.delete(brief)
+    session.commit()
 
 
 @router.put("/{novel_id}/chapters/{chapter_id}", response_model=Chapter)

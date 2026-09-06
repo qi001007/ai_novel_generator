@@ -4,34 +4,14 @@
 拿它测「删完之后还能拿回来」就是自欺。所以这里自带一个 tmp_path 上的库。
 """
 
-from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session, SQLModel, create_engine
 
-from app.db import get_session
-from app.main import app
 from tests.planning_helpers import create_chapter
 
 
-@pytest.fixture()
-def file_client(tmp_path) -> Iterator[TestClient]:
-    engine = create_engine(
-        f"sqlite:///{(tmp_path / 'live.db').as_posix()}",
-        connect_args={"check_same_thread": False},
-    )
-    SQLModel.metadata.create_all(engine)
-
-    def override() -> Iterator[Session]:
-        with Session(engine) as session:
-            yield session
-
-    app.dependency_overrides[get_session] = override
-    yield TestClient(app)
-    app.dependency_overrides.clear()
-
+# file_client（跑在文件库上的客户端）住在 conftest - 备份相关的两组测试都要它。
 
 def _book(client: TestClient, title: str = "观星") -> int:
     novel_id = client.post("/api/novels", json={"title": title}).json()["id"]
