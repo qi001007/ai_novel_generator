@@ -74,6 +74,89 @@ export function fileNameOfKind(kind: string): string | null {
   return FILE_OF_KIND[kind] ?? null;
 }
 
+/* ---------- 对话 chip 的压缩（第二十四批批注 3） ---------- */
+
+/** 这三类是「一样一份文件」，彼此的区别只有章号，所以可以报成一个范围。
+ *  主人点名的就是 B 目录与 D 简报；正文同理。
+ *  注意这只用于 **摘要 chip**：调用详情那张表仍是一行一份文件（§23.5），
+ *  因为点开要逐节看原文，并成一行就没法展开了。 */
+const RANGE_KINDS = new Set(["toc", "brief", "chapter"]);
+
+/** 从「B 目录 · 第 1 章 雪夜碑鸣」里抽出 1。抽不到就不做范围。 */
+const CHAPTER_IN_LABEL = /第\s*(\d+)\s*章/;
+
+export type RefChip = {
+  key: string;
+  label: string;
+  /** 压缩丢掉的东西全在这里，悬停可查 — 压缩不许等于丢信息。 */
+  detail: string[];
+};
+
+function chipKeyOf(item: { kind: string; ref: string }): string {
+  return RANGE_KINDS.has(item.kind) ? `range:${item.kind}` : groupKeyOf(item);
+}
+
+/** 取「 · 」前面那段当基名；没有分隔符就整条用。 */
+function baseNameOf(label: string): string {
+  const head = label.split(" · ")[0].trim();
+  return head || label;
+}
+
+function chapterRange(numbers: number[]): string {
+  const sorted = [...new Set(numbers)].sort((a, b) => a - b);
+  const runs: number[][] = [];
+  for (const n of sorted) {
+    const last = runs[runs.length - 1];
+    if (last && last[last.length - 1] === n - 1) last.push(n);
+    else runs.push([n]);
+  }
+  return runs.map((run) => (run.length > 1 ? `${run[0]}–${run[run.length - 1]}` : `${run[0]}`)).join("、");
+}
+
+/**
+ * 把一串注入记录压成少数几枚 chip。
+ * 主判据：**写到 100 章时枚数不许随章数增长**（单测钉住）。
+ * 三条规则：只有一条 -> 原文照抄；同一份文件的多节 -> `N 节`；
+ * 按章号排的一类 -> `X–Y章`，断号写成 `1–3、7–9章`。
+ */
+export function compressRefs(
+  refs: Array<{ kind: string; ref: string; label: string }>,
+): RefChip[] {
+  // 先按层排序再分组：稳定排序保证同层不乱，首次出现顺序决定 chip 顺序。
+  const sorted = [...refs].sort(
+    (a, b) => layerRank(layerOfLabel(a.label)) - layerRank(layerOfLabel(b.label)),
+  );
+  const buckets = new Map<string, RefChip & { kind: string; numbers: number[] }>();
+  for (const item of sorted) {
+    const key = chipKeyOf(item);
+    const number = Number(CHAPTER_IN_LABEL.exec(item.label)?.[1] ?? NaN);
+    const existing = buckets.get(key);
+    if (existing) {
+      existing.detail.push(item.label);
+      if (Number.isFinite(number)) existing.numbers.push(number);
+      continue;
+    }
+    buckets.set(key, {
+      key,
+      label: item.label,
+      detail: [item.label],
+      kind: item.kind,
+      numbers: Number.isFinite(number) ? [number] : [],
+    });
+  }
+  return [...buckets.values()].map((bucket) => {
+    const { detail, kind } = bucket;
+    if (detail.length === 1) return { key: bucket.key, label: bucket.label, detail };
+    const base = baseNameOf(detail[0]);
+    const numbers = RANGE_KINDS.has(kind) ? bucket.numbers : [];
+    const label =
+      numbers.length === detail.length
+        ? `${base} · 第${chapterRange(numbers)}章`
+        : `${base} · ${detail.length} 节`;
+    return { key: bucket.key, label, detail };
+  });
+}
+
 /** 「A 全书蓝图 · 主线」-> 「主线」：一行里列小节名用。 */
 export function sectionNameOf(label: string): string {
   const parts = label.split(" · ");

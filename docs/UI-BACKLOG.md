@@ -79,6 +79,23 @@
   6. 分组与范围**只写在 `contextLayers.ts` 一处**，`ChatPane` 与调用详情共用，不许出现第二份；
   7. 真机截图看过（压缩前后的展开态各一张）。
 
+- **已做（2026-09-06 真机六条回复全量过，截图看过）**。
+  · 真机 novel 5 那条「引用 29 份资料」的回复：**29 枚 → 8 枚**，两行排完（原来是七行）。
+    实测八枚依次是 `A 全书蓝图 · 5 节 / 作品信息 / B 目录 · 第1–9章 / C 剧情弧 · 碑鸣（1-3） /
+    D 简报 · 第1–9章 / 正文 · 第 1 章 未命名 / 伏笔 · 2 节 / 附件 · 附件样本.md`。
+    同一页另五条回复也量了：3 枚、3 枚、5 枚、7 枚、6 枚，没有一条回退到逐节一枚。
+  · **主判据落成测试**：`frontend/src/contextLayers.test.ts` 喂 100 章的 toc + brief，
+    chip 枚数与 9 章时相同（都是 3 枚），文案 `第1–100章`；断号那条测 `第1–3、7–9章`。
+  · fixture 是真数据不是编的：29 条 refs 取自 `chat_message id=31`、18 条 blocks 取自
+    `generation_run id=15`，用只读 SQL 原样导出后贴进测试。**顺手补上第二十三批 §23.5 判据 4
+    欠的那条**（「18 行收敛成 10 行」当时只写在文档里、没进测试），现在钉住了。
+  · 压缩不丢信息：每枚 chip 的 `title` 仍是它盖掉的原文列表（真机量到 B 目录那枚悬停 9 行、
+    蓝图那枚 5 行）；「引用 29 份资料」那句仍报真实份数，压缩只改画几个框。
+  · 一处定义：`compressRefs` 与层序、分组键同在 `contextLayers.ts`。调用详情那张表
+    **仍是一行一份文件**（点开要逐节看原文，并成一行就没法展开）- 摘要面与检视面共用同一份
+    规则表，但各自决定压不压，这不是第二处真源。
+  · 层序不回退：测试断言 chip 的层秩单调不减（A→B→C→D→正文→设定→附件）。
+
 ### 24.3 调用详情的展开区：一份文件多节不许再堆成一片（批注 2）
 
 - 主人：「你这里的形式很不好看，显得很杂乱……A 层级全本蓝图是直接把所有的内容堆在一起。
@@ -204,8 +221,9 @@
 ## 四、门禁（每次推送前必须全绿）
 
 ```
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q      # 200 passed
-cd E:\novel-generator\frontend; npm run test -- --run                        # 182 passed / 20 files
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q
+cd E:\novel-generator\frontend; npm run test -- --run
+# 期望条数只写在 HANDOFF.md 的门禁段（同一数字抄两处，必有一处是错的 - 已错过三次）
 cd E:\novel-generator\frontend; npx tsc -b --force --pretty false            # 必须 clean，--force 别信增量
 cd E:\novel-generator\frontend; npm run build                                # 必须 clean
 cd E:\novel-generator\.scratch; node hit-area-audit.mjs <url>                # 0 small / 0 clipped / 0 unreachable

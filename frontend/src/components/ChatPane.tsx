@@ -21,7 +21,7 @@ import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
 import MarkdownText from "./MarkdownText";
-import { layerOfLabel, layerRank } from "../contextLayers";
+import { compressRefs } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
@@ -875,11 +875,12 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             );
           }
           const usage = tokens(row.meta.tokenInput, row.meta.tokenOutput);
-          // 第二十三批批注 3：A 跟 A 在一起、B 跟 B 在一起。同层内保持原顺序
-          // （Array.prototype.sort 在 V8 里是稳定的），不按字数或字母乱排。
-          const refs = [...(row.meta.refs ?? [])].sort(
-            (a, b) => layerRank(layerOfLabel(a.label)) - layerRank(layerOfLabel(b.label)),
-          );
+          // 第二十三批批注 3 排序、第二十四批批注 3 压缩，都在 compressRefs 里做
+          // 完：层序表与分组键只许有一个出处，这里再排一遍就是第二个真源。
+          // refs 仍留着原本的条数 - 「引用 29 份资料」那句话说的是真数，
+          // 压缩只改变它画成几个框子，不改变注入了多少份。
+          const refs = row.meta.refs ?? [];
+          const chips = compressRefs(refs);
           // The trace is not prose. Fold it above the answer instead of printing it.
           const { prose, trace } = splitTrace(row.text);
           const reasoning = reasoningParagraphs(row.meta.reasoning ?? "");
@@ -1063,9 +1064,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       ) : null}
                       {refs.length ? (
                         <ul className="chat-refs">
-                          {refs.map((ref) => (
-                            <li key={`${ref.kind}:${ref.ref}`} title={ref.label}>
-                              {ref.label}
+                          {chips.map((chip) => (
+                            <li key={chip.key} title={chip.detail.join("\n")}>
+                              {chip.label}
                             </li>
                           ))}
                         </ul>
