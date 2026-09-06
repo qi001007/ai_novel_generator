@@ -2,7 +2,9 @@
 
 职责边界：本文件**只记未完成的界面条目**。理由在 `DECISIONS.md`，进度史在
 `WORKSTREAM-PLAN.md`，视觉规格在 `UI-DESIGN.md`。做完一条就把结论写成
-`WORKSTREAM-PLAN`《四、历史》一行，然后**把整条从本文件删掉**，不要在这里堆历史。
+`WORKSTREAM-PLAN.md` 的「已经能用的 / 还差什么」里改一句，然后**把整条从本文件删掉** -
+不要在这里堆历史。过程细节不用抄：每条批注的提交信息里都带着实测数字，
+`git log --oneline` 与 `git show <提交>:docs/UI-BACKLOG.md` 随时能翻回来。
 处理闭环（先写文件→按严重度一条一条做→真机截图→同批改断言→单独提交）在
 `AGENTS.md`《UI 批注处理闭环》。
 

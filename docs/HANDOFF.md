@@ -4,7 +4,8 @@
 # 交接索引 — AI 网文工作台（novel-generator）
 
 
-**界面待清账在 `docs/UI-BACKLOG.md`**：新会话开工前先读它，做完一条勾一条，并把结论同步一行到 `WORKSTREAM-PLAN.md`。
+**界面待清账在 `docs/UI-BACKLOG.md`**：新会话开工前先读它，做完一条就把整条删掉，
+并把结论同步进 `docs/WORKSTREAM-PLAN.md` 的 §一 / §二 两张表。
 
 ## 工作方式（必须遵守）
 
@@ -14,7 +15,8 @@
       落不进文件的请求等于没提。每做完一条：勾掉 + 结论写 `WORKSTREAM-PLAN.md` + **单独提交**。
 - 称呼主人，全程中文。
 - 大块完整交付：做完整、验证通过再汇报，不要做一点说一点。
-- 按 `docs/WORKSTREAM-PLAN.md` 的 S 系列主干顺序推进，每完成一项打勾。
+- 按 `docs/WORKSTREAM-PLAN.md` §三「接下来我做什么」的顺序推进，做完一条更新那两份表
+  （§一 已经能用的 / §二 还差什么）。**进度只看这一份。**
 - 及时 commit + push。git 需 `sandbox_permissions=require_escalated`（`.git` 只读挂载）；
   直连 push 必失败，走代理：`git -c http.proxy=http://127.0.0.1:7890 push origin main`
 - **UI 铁律**：先在 Figma 画帧 → 截图给主人审批 → 批准后才写前端代码。主动发截图。
@@ -93,10 +95,13 @@ S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scrip
 默认模板草稿，加 `--live` 才会真实调用模型。
 
 **文档自己也要清账**（主人两次明确要求：「删一些，给后端纪要留空间」）。2026-09-06 这一轮：
-`UI-BACKLOG` 31.3KB → 5.9KB、`UI-DESIGN` 48.3KB → 35.4KB、`WORKSTREAM-PLAN` 加了 §五。
+`UI-BACKLOG` 31.3KB → 5.9KB、`UI-DESIGN` 48.3KB → 35.4KB、
+`WORKSTREAM-PLAN` 34.6KB → 7.6KB（第二十三批：整份改成说人话的进度表，S/U 编号与
+《四、历史》流水表删除，结论改由提交信息与 DECISIONS 承载）。
 判断标准只有一条——**本文件是开新对话要读的最小信息，任何「正文」都不该在这里**。
 删掉的都是已被别处接管的过程记录，未结项一条没丢；每轮删了什么记在
-`WORKSTREAM-PLAN.md` §五，追溯用 `git show <提交>:docs/<文件>`。
+`git log --oneline -- docs/`；要看某一份的旧版，
+`git show <提交>:docs/<文件>`。
 
 ## 读哪份文件
 
@@ -107,10 +112,14 @@ S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scrip
 | 改需求、加功能 | `docs/PRD.md` → 同步 `docs/REQUIREMENTS.md` |
 | 改界面 | `docs/UI-DESIGN.md`（§0 令牌、§0.7-§0.9 纪律与不可回退清单、§1-§7 页面规格） |
 | 界面还有什么没做 | `docs/UI-BACKLOG.md`（只记未完成，勾完即删） |
-| 看进度、待办与**下一步顺序** | `docs/WORKSTREAM-PLAN.md`（§五＝等主人认可的后端顺序） |
+| **看进度、还差什么、下一步** | `docs/WORKSTREAM-PLAN.md`（**只看这一份**，已改成说人话，不再用 S/U 编号组织） |
 | 工具报错怎么定责 | `AGENTS.md` 四桶（NAME / ARGS / SCRIPT / QUOTA） |
 
-## 当前主干进度（细节与验收在 WORKSTREAM-PLAN）
+## 当前主干进度
+
+一句话：**主链能跑（规划 → 注入 → 生成 → 校验 → 审稿 → 落库），界面已冻结，
+接下来按 `WORKSTREAM-PLAN.md` §三 的顺序接后端**。以前这段是手抄的摘要，
+抄一次就旧一次，现在只留这一句 + 指向。
 
 ```text
 S0 上下文可观测   代码就绪，欠一次「/generate 全链真调 API 跑给主人看」（要点头，会烧 token）

@@ -431,7 +431,7 @@ D-12 的前置条件仍然是一个可复现的「该给的章节没给」，而
 | `docs/PRD.md` | 需求与验收标准 | 文件路径实现细节、进度、理由历史 |
 | `docs/REQUIREMENTS.md` | PRD 的功能拆解勾选 | 设计令牌、架构决策 |
 | `docs/UI-DESIGN.md` | 视觉与交互规格 | 后端契约、进度 |
-| `docs/WORKSTREAM-PLAN.md` | 当前主干进度与勾选 | 已完成的历史纪要（去 DECISIONS）、后端契约（去 ARCHITECTURE） |
+| `docs/WORKSTREAM-PLAN.md` | **唯一的进度入口**，说人话：已经能用的 / 还差什么 / 下一步顺序 / 需要主人点头的事 | S・U 编号组织法（第二十三批删）、已完成流水表（结论在提交信息与本文件）、后端契约（去 ARCHITECTURE） |
 | `docs/UI-BACKLOG.md` | **未完成条目的可勾选清单**，做完一条勾掉并把结论写进 WORKSTREAM-PLAN | 已完成的历史、理由、视觉规格 |
 | `docs/HANDOFF.md` | 开新对话所需的最小信息：环境、验证命令、指向 | 上面任何一类的正文 |
 
