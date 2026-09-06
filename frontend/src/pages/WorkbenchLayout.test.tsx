@@ -143,6 +143,33 @@ describe("workbench layout", () => {
     vi.unstubAllGlobals();
   });
 
+  /* 第二十五批批注 2：「这里我右键的选项里选择折叠之后，就再也打不开了」。
+     真机复现过：折叠后 nav 只剩页头，root 那一行 0×0。这条测的是状态机那一半
+     （折叠后那一行仍在、点它能回来、页头钮的标签跟着状态改口）；
+     「看得见」那一半由 CSS 与 uiInvariants 钉，jsdom 不跑样式。 */
+  it("keeps a way back after folding a section from the context menu", async () => {
+    const user = userEvent.setup();
+    const { container } = await openWorkbench();
+    const row = [...container.querySelectorAll(".tree-row")].find((node) =>
+      node.textContent?.includes("全本蓝图"),
+    ) as HTMLElement;
+    fireEvent.contextMenu(row);
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: /折叠 \/ 展开/ }));
+
+    const root = container.querySelector(
+      '.tree-root-plan[aria-expanded="false"]',
+    ) as HTMLButtonElement;
+    expect(root).toBeTruthy();
+    expect(container.querySelectorAll(".tree-section-plan .tree-row")).toHaveLength(0);
+    // 标签必须与状态一致：只要有任何东西折叠着，这枚钮就该写「展开全部」
+    expect(screen.getByRole("button", { name: "展开全部" })).toBeTruthy();
+
+    await user.click(root);
+    expect(root.getAttribute("aria-expanded")).toBe("true");
+    expect(container.querySelectorAll(".tree-section-plan .tree-row").length).toBeGreaterThan(0);
+  });
+
   /* 第二十四批新功能：文件树里每一个章节的右键要能导出本章。
      这里钉的是那扇门存在、且打的是那个只读端点。 */
   it("offers a chapter export on the tree menu and asks the read-only endpoint", async () => {

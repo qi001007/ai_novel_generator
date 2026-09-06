@@ -705,6 +705,20 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(runDetailPage).toContain('arc: "剧情弧"');
   });
 
+  /* 第二十五批批注 2：折叠一段之后必须留一条看得见的回头路。
+     我为「一个词不说三遍」加的 .tree > .tree-root { display: none } 把唯一能点开的
+     那一行也藏了 - 真机复现：nav 只剩 32px 页头，root 的 rect 是 0×0。 */
+  it("a folded section keeps a visible way back", () => {
+    expect(rule(".tree > .tree-root")).toContain("display: none");
+    // 展开态可以藏；折叠态那一行既是唯一的名字，也是唯一的门
+    expect(rule('.tree > .tree-root[aria-expanded="false"]')).toContain("display: flex");
+    // 页头那枚钮的标签必须与状态一致：有任何折叠就写「展开全部」
+    expect(treePane).toContain("anyCollapsed");
+    expect(treePane).toContain('collapseLabel = anyCollapsed ? "展开全部" : "折叠全部"');
+    // 旧的「上一次展开」快照机制随这条口径一起废掉，不许留着半死
+    expect(treePane).not.toContain("preCollapse");
+  });
+
   /* 第二十四批批注 2：展开一份文件时「堆得密集」的两个来源都要钉住 -
      重复的文件名与提示句，以及每一节各自一个灰盒子。 */
   it("an expanded document says its name once and stops boxing every section", () => {

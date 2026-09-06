@@ -721,6 +721,15 @@ select:focus-visible {
   display: none;
 }
 
+/* 但折叠态必须留一条看得见的回头路。第二十五批批注 2 复现的死路是我自己造的：
+   右键「折叠 / 展开」把整段收起来之后，唯一能点开它的那一行被上面这条藏掉了 -
+   实测 nav 只剩 32px 的页头、.tree-root-plan 的 rect 是 0×0、行数 33 → 0。
+   展开态照旧隐藏（同一个词不要在同一侧出现三次，§0.7 条六不回退）；
+   折叠态屏上已经没有任何内容，这一行是唯一的名字，也是唯一的门。 */
+.tree > .tree-root[aria-expanded="false"] {
+  display: flex;
+}
+
 /* One page at a time; the rail decides which. */
 .tree[data-page="plan"] .tree-root-library,
 .tree[data-page="plan"] .tree-section-library,

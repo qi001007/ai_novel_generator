@@ -127,7 +127,6 @@ export default function TreePane({
   const [searchOpen, setSearchOpen] = useState(false);
   // 批注 5, 6: the second press is "put it back", not "open everything". What you
   // had open before folding is the state worth returning to.
-  const preCollapse = useRef<Record<string, boolean> | null>(null);
   const [chapterQuery, setChapterQuery] = useState("");
   const [menu, setMenu] = useState<MenuState>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -218,12 +217,12 @@ export default function TreePane({
   // the file, not to make the reader expand each one after finding it.
   const isCollapsed = (key: string) => !filtering && collapsed[key] === true;
 
-  const allCollapsed =
-    collapsed.plan &&
-    collapsed.library &&
-    chapters.every((chapter) => collapsed[`chapter-${chapter.chapter_number}`]) &&
-    LIBRARY_GROUPS.every((group) => collapsed[`lib-${group.kind}`]);
-  const collapseLabel = allCollapsed ? "展开全部" : "折叠全部";
+  /* 标签必须与状态一致（第二十五批批注 2 的另一半）。以前这里要求 plan + library +
+     每一章 + 每一组**全部**折叠才改口叫「展开全部」，于是部分折叠时点它只会折得更多 -
+     「折叠之后打不开」因此有第二条路。现在只要有任何东西是折叠的，这枚钮就写「展开全部」，
+     点一下全展开；全展开时才写「折叠全部」。 */
+  const anyCollapsed = Object.values(collapsed).some(Boolean);
+  const collapseLabel = anyCollapsed ? "展开全部" : "折叠全部";
 
   return (
     <nav className="tree" data-page={page} aria-label="项目结构">
@@ -257,17 +256,16 @@ export default function TreePane({
           <button
             type="button"
             className="icon-button"
-            title={preCollapse.current ? "恢复上一次的展开" : collapseLabel}
-            aria-label={preCollapse.current ? "恢复上一次的展开" : collapseLabel}
+            title={collapseLabel}
+            aria-label={collapseLabel}
             onClick={() => {
-              if (preCollapse.current) {
-                setCollapsed(preCollapse.current);
-                preCollapse.current = null;
+              if (anyCollapsed) {
+                setCollapsed({});
                 return;
               }
               // Scoped to the page you are on: folding 规划 must not quietly fold the
               // 设定库 you cannot even see.
-              const next: Record<string, boolean> = { ...collapsed };
+              const next: Record<string, boolean> = {};
               if (page === "plan") {
                 chapters.forEach((chapter) => {
                   next[`chapter-${chapter.chapter_number}`] = true;
@@ -277,11 +275,10 @@ export default function TreePane({
                   next[`lib-${group.kind}`] = true;
                 });
               }
-              preCollapse.current = collapsed;
               setCollapsed(next);
             }}
           >
-            {preCollapse.current ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+            {anyCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
           </button>
         </div>
       </header>
