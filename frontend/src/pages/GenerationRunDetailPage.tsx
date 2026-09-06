@@ -37,7 +37,7 @@ const KIND_LABELS: Record<string, string> = {
   novel: "作品信息",
   blueprint: "全本蓝图",
   toc: "目录",
-  arc: "分卷",
+  arc: "剧情弧",
   brief: "章简报",
   setting: "设定",
   character: "人物",

@@ -695,6 +695,16 @@ const componentSources = import.meta.glob("./**/*.tsx", {
 
   /* 第二十批批注 5：卡片只留给需要看图的那一组，其余一行一项；
      字号与字体各只有一个出处。 */
+  /* §0.7 条三：一个东西一个词。arcs.md 在树与文档里都叫「剧情弧」，
+     调用详情以前叫「分卷」——同一份资料两个名字，读清单的人会以为是两样东西。
+     扫整类而不是只钉那一行（T-19 的教训：点名式的断言挡不住下一个组件再犯）。 */
+  it("arcs.md is 剧情弧 everywhere and the retired word never comes back", () => {
+    for (const [file, source] of Object.entries(componentSources)) {
+      expect(source, file).not.toMatch(/分卷/);
+    }
+    expect(runDetailPage).toContain('arc: "剧情弧"');
+  });
+
   /* 第二十四批批注 2：展开一份文件时「堆得密集」的两个来源都要钉住 -
      重复的文件名与提示句，以及每一节各自一个灰盒子。 */
   it("an expanded document says its name once and stops boxing every section", () => {
