@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Copy, FileText, RefreshCcw } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -47,6 +47,63 @@ const KIND_LABELS: Record<string, string> = {
   chapter_tail: "上章结尾",
   feedback: "审稿意见",
 };
+
+/** 交付状态一句话。行里与展开区头部都用它 - 两处各写一遍就会出现两种说法。 */
+function deliveryText(group: { blocks: ContextManifestBlock[]; injected: number }): string {
+  return group.injected === group.blocks.length
+    ? "已交给模型"
+    : group.injected === 0
+      ? "本次未交给模型"
+      : `${group.injected} 节已交 · ${group.blocks.length - group.injected} 节未交`;
+}
+
+/**
+ * 展开区里的一节（第二十四批批注 2）。
+ * 之前每一节都自巸一个灰盒子、都重复一遍文件名与那句「以下就是模型
+ * 当时读到的内容」，五节摒下去就是一片。现在名字与状态在头部写一次，
+ * 节里只剩小节名、字数与原文；长原文默认截到六行。
+ */
+function ManifestSection({
+  name,
+  block,
+  showName,
+}: {
+  name: string;
+  block: ContextManifestBlock;
+  showName: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const bodyRef = useRef<HTMLParagraphElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const text =
+    block.excerpt ||
+    "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到";
+  // 只在截断状态下量溢出＜展开后 clientHeight 等于 scrollHeight，
+  // 那时再算会把「收起」按钮自己消灭掉。
+  useEffect(() => {
+    if (open) return;
+    const el = bodyRef.current;
+    if (el) setOverflowing(el.scrollHeight - el.clientHeight > 4);
+  }, [text, open]);
+  return (
+    <section className={`manifest-section ${block.injected ? "" : "dropped"}`}>
+      {showName ? (
+        <h3>
+          <span>{name}</span>
+          <span className="tabular">{block.chars} 字</span>
+        </h3>
+      ) : null}
+      <p ref={bodyRef} className={`manifest-excerpt ${open ? "" : "clamped"}`}>
+        {text}
+      </p>
+      {overflowing || open ? (
+        <button type="button" className="manifest-more" onClick={() => setOpen(!open)}>
+          {open ? "收起" : "展开全文"}
+        </button>
+      ) : null}
+    </section>
+  );
+}
 
 /* 层序与分组键都在 contextLayers.ts - 对话里的清单要用同一份（第二十三批批注 3、4、5）。 */
 const layerOf = layerOfKind;
@@ -352,35 +409,39 @@ export default function GenerationRunDetailPage() {
                           <span className="chars tabular">
                             {group.blocks.length > 1 ? `${group.chars} / ${group.blocks.length} 节` : group.chars}
                           </span>
-                          <span className="reason">
-                            {group.injected === group.blocks.length
-                              ? "已交给模型"
-                              : group.injected === 0
-                                ? "本次未交给模型"
-                                : `${group.injected} 节已交 · ${group.blocks.length - group.injected} 节未交`}
-                          </span>
+                          <span className="reason">{deliveryText(group)}</span>
                         </button>
                       );
                     })}
                   </div>
                   {selectedGroup ? (
                     <div className="manifest-detail">
+                      {/* 文件名、几节、合计字数、交付状态——整块只在这里说一次（批注 2） */}
+                      <div className="manifest-detail-head">
+                        <strong>
+                          {fileNameOfKind(selectedGroup.kind) ?? selectedGroup.blocks[0].label}
+                        </strong>
+                        <span className="tabular">
+                          {selectedGroup.blocks.length > 1
+                            ? `${selectedGroup.blocks.length} 节 · ${selectedGroup.chars} 字`
+                            : `${selectedGroup.chars} 字`}
+                        </span>
+                        <span className={selectedGroup.injected === 0 ? "undelivered" : ""}>
+                          {deliveryText(selectedGroup)}
+                        </span>
+                        {selectedGroup.injected > 0 ? (
+                          <span className="manifest-detail-hint">
+                            以下就是模型当时读到的内容
+                          </span>
+                        ) : null}
+                      </div>
                       {selectedGroup.blocks.map((block, index) => (
-                        <section className="manifest-section" key={`${block.ref}-${index}`}>
-                          <header>
-                            <strong>{block.label}</strong>
-                            <span>
-                              {block.chars} 字 ·
-                              {block.injected
-                                ? "以下就是模型当时读到的内容"
-                                : "这一节没有交给模型"}
-                            </span>
-                          </header>
-                          <pre>
-                            {block.excerpt ||
-                              "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到"}
-                          </pre>
-                        </section>
+                        <ManifestSection
+                          key={`${block.ref}-${index}`}
+                          name={sectionNameOf(block.label)}
+                          block={block}
+                          showName={selectedGroup.blocks.length > 1}
+                        />
                       ))}
                     </div>
                   ) : null}

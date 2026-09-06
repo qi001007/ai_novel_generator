@@ -695,6 +695,25 @@ const componentSources = import.meta.glob("./**/*.tsx", {
 
   /* 第二十批批注 5：卡片只留给需要看图的那一组，其余一行一项；
      字号与字体各只有一个出处。 */
+  /* 第二十四批批注 2：展开一份文件时「堆得密集」的两个来源都要钉住 -
+     重复的文件名与提示句，以及每一节各自一个灰盒子。 */
+  it("an expanded document says its name once and stops boxing every section", () => {
+    expect(runDetailPage).toContain('className="manifest-detail-head"');
+    expect(runDetailPage).toMatch(/name=\{sectionNameOf\(block\.label\)\}/);
+    // 那句提示从「每节一遍」变成「整块一遍」，出现次数就是判据
+    expect(runDetailPage.match(/以下就是模型当时读到的内容/g) ?? []).toHaveLength(1);
+    expect(runDetailPage.match(/这次调用发生在原文摘录上线之前/g) ?? []).toHaveLength(1);
+    // 交付状态只有一个出处（行里与头部共用 deliveryText）
+    expect(runDetailPage.match(/已交给模型"/g) ?? []).toHaveLength(1);
+    expect(runDetailPage).toContain("deliveryText(group)");
+    // 原文不再套盒子：一条左细线；节自己不许有底色与圆角
+    expect(rule(".manifest-excerpt")).toContain("border-left: 2px solid");
+    expect(rule(".manifest-section")).not.toMatch(/background|border-radius/);
+    // 长原文默认截到六行，且是真溢出才给「展开全文」，不是按字数猜
+    expect(rule(".manifest-excerpt.clamped")).toContain("-webkit-line-clamp: 6");
+    expect(runDetailPage).toContain("scrollHeight - el.clientHeight");
+  });
+
   it("only the theme picker is cards, and sizes and fonts have one source each", () => {
     expect(preferences).toContain('label="主题"');
     expect(preferences).toContain('value: "system"');

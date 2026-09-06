@@ -5312,7 +5312,95 @@ body.resizing {
   overflow-y: auto;
 }
 
-/* 展开一份文件 = 它被切进去的每一节，各自带标题与原文摘录。 */
+/* 第二十四批批注 2：展开一份文件时，名字、几节、字数、交付状态只说一次。
+   「堆在一起很密集」来自两件事：每一节都重复一遍文件名与那句提示，
+   以及每一节各自套一个灰底圆角盒子。现在原文只留一条左细线。 */
+.manifest-detail-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 0 0 9px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.manifest-detail-head strong {
+  color: var(--text-1);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.manifest-detail-hint {
+  margin-left: auto;
+}
+
+.manifest-detail-head .undelivered {
+  color: var(--danger);
+}
+
+.manifest-section {
+  display: block;
+  margin: 14px 0 0;
+}
+
+.manifest-section h3 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  color: var(--text-1);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.manifest-section h3 span:last-child {
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.manifest-excerpt {
+  margin: 6px 0 0;
+  padding-left: 11px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-1);
+  font-size: 12.5px;
+  line-height: 1.75;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.manifest-excerpt.clamped {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  overflow: hidden;
+}
+
+.manifest-section.dropped .manifest-excerpt {
+  border-left-color: var(--border);
+  color: var(--text-2);
+}
+
+.manifest-more {
+  min-height: 24px;
+  margin: 4px 0 0;
+  padding: 3px 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+/* 旧口径（每节一个盒子）已废，保留这行注释位置以免有人把它改回去。 */
 .manifest-section {
   display: flex;
   flex: none;
