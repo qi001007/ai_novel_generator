@@ -190,6 +190,7 @@
 | **导出是读**：书架书卡两行、章节行两行、`draft.md` 叶子两行，`brief.md` 不给；失败必须说原因，不许产生 0 字节文件 | `test_export.py` 四条（含「导出前后 chapters 逐字段不变」这条红线）；前端三条（下载名跟随 `format`、树菜单打的是那个只读 URL）；`draft.md`/`brief.md` 叶子以前**没有** onContextMenu，已补 | 第二十四批新功能 |
 | 折叠过的段落**必须留一条看得见的回头路**：root 行只在折叠态显形；页头折叠钮的标签由「有任何东西折叠着」决定 | `uiInvariants` 同时钉 CSS 覆盖（`.tree > .tree-root[aria-expanded="false"]` 有 `display: flex`）与 `collapseLabel = anyCollapsed ? "展开全部" : "折叠全部"`，并反向钉 `preCollapse` 不许回来 | 第二十五批批注 2 |
 | 回复展开区那两行 meta（token 行与「本轮没有检索到资料」）**用思考过程那张脸**：italic + `--text-2` + 12px | 两处选择器必须带 `.chat-card` 前缀（单类压不过 `.chat-card p` 的 (0,1,1)，第十七批同一条坑的第二次命中），无前缀的 `.chat-detail-line {` 不许回来 | 第二十五批批注 1 |
+| 导出与恢复**只有一个目录设置项**（导出、以及从快照里只取一个文件，共用它）；删除记录一行一条、动作贴着它自己那一条 | `prefs-tab-storage` 那一栏里只有一枚 `input[aria-label="导出目录"]`；出现第二枚目录框即红；恢复动作全部走后端，放回书里必须经 `PUT /api/novels/{id}/files/{path}` 那一条口（D-01） | 第二十五批批注 3、5 |
 
 | **聚焦不画一圈**：无 outline、无 `0 0 0` 光晕、无主色；只许光标 + 边框提亮一档 | 任何含 `focus` 的规则不得出现 `outline: <非 none/0>`、`box-shadow: 0 0 0`、`--accent`（caret 是唯一例外），`border-color` 提亮只许 `--border-strong`；`.editor-body:focus-within .editor-scroll` 这条规则不许存在；压过 CodeMirror 自带 `.cm-focused` 描边的规则不许被删 | 第十五批批注 4.1、4.2 |
 
