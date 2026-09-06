@@ -37,3 +37,7 @@ runtime-workbench.png
 
 # Local patch scripts
 .scratch/
+
+# 主人把导出目录设在了仓库里（第二十六批批注 3 的顺手发现）。
+# 只挡误提交，不动他已有的文件、也不替他搬稿子。
+novel-export/
