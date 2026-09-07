@@ -110,6 +110,7 @@ class LLMClient(Protocol):
         tools: list[dict[str, Any]] | None = None,
         reasoning_out: list[str] | None = None,
         channels: bool = False,
+        tool_calls_out: list[dict[str, Any]] | None = None,
     ) -> Iterator[Any]:
         ...
 
@@ -195,6 +196,7 @@ class OpenAICompatibleClient:
         tools: list[dict[str, Any]] | None = None,
         reasoning_out: list[str] | None = None,
         channels: bool = False,
+        tool_calls_out: list[dict[str, Any]] | None = None,
     ) -> Iterator[Any]:
         """流式回答。
 
@@ -213,6 +215,7 @@ class OpenAICompatibleClient:
             # SCNet returns a trailing usage event only when asked for it.
             "stream_options": {"include_usage": True},
         }
+        by_index: dict[int, dict[str, Any]] = {}
         if tools:
             payload["tools"] = tools
         with self._client.stream(
@@ -250,6 +253,27 @@ class OpenAICompatibleClient:
                         reasoning_out.append(thought)
                     if channels:
                         yield ("reasoning", thought)
+                # 27.1（2026-09-08 实测推翻旧前提）：这台网关在**流式**下就是回标准
+                # `tool_calls` 的 —— finish_reason=tool_calls，arguments 按 index 分片到达。
+                # 这里以前一个字都不读，于是界面那条路只认模型漏进 content 的方言块，
+                # 「Agent 说要去查文件然后断掉」就是这么来的。分片在这里拼回完整调用。
+                for fragment in delta.get("tool_calls") or []:
+                    if not isinstance(fragment, dict):
+                        continue
+                    slot = by_index.setdefault(
+                        int(fragment.get("index", 0)),
+                        {"id": "", "type": "function", "function": {"name": "", "arguments": ""}},
+                    )
+                    if fragment.get("id"):
+                        slot["id"] = str(fragment["id"])
+                    call = fragment.get("function") or {}
+                    if isinstance(call.get("name"), str):
+                        slot["function"]["name"] += call["name"]
+                    if isinstance(call.get("arguments"), str):
+                        slot["function"]["arguments"] += call["arguments"]
+
+        if tool_calls_out is not None and by_index:
+            tool_calls_out.extend(by_index[key] for key in sorted(by_index))
 
     def _resolve_model(self, task_type: str, model: str | None = None) -> str:
         if not self.settings.is_configured:
@@ -484,6 +508,7 @@ class RoutedLLMClient:
         tools: list[dict[str, Any]] | None = None,
         reasoning_out: list[str] | None = None,
         channels: bool = False,
+        tool_calls_out: list[dict[str, Any]] | None = None,
     ):
         return self._for(task_type).stream_messages(
             task_type,
@@ -494,6 +519,7 @@ class RoutedLLMClient:
             tools=tools,
             reasoning_out=reasoning_out,
             channels=channels,
+            tool_calls_out=tool_calls_out,
         )
 
 

@@ -93,6 +93,7 @@ class FakeChatClient:
         tools: list[dict] | None = None,
         reasoning_out: list[str] | None = None,
         channels: bool = False,
+        tool_calls_out: list[dict] | None = None,
     ) -> Iterator[Any]:
         self.calls.append(
             {

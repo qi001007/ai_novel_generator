@@ -60,10 +60,13 @@ class ScriptedLLM:
             raw_message=reply.get("raw_message", {}),
         )
 
-    def stream_messages(self, task_type, messages, temperature=0.2, usage_out=None, model=None, tools=None, reasoning_out=None, channels=False):
+    def stream_messages(self, task_type, messages, temperature=0.2, usage_out=None, model=None, tools=None, reasoning_out=None, channels=False, tool_calls_out=None):
         reply = self.replies[len(self.seen)]
         self.seen.append([dict(item) for item in messages])
         self.tools_seen.append(tools)
+        if tool_calls_out is not None and reply.get("native_tool_calls"):
+            # 真网关把原生调用交给 stream_messages 的收集器，这里照同一形状交出去
+            tool_calls_out.extend(reply["native_tool_calls"])
         if usage_out is not None:
             usage = reply.get("usage", (10, 5))
             usage_out.update({"model": "scripted", "token_input": usage[0], "token_output": usage[1]})
@@ -269,6 +272,32 @@ def test_streaming_holds_back_a_foreign_control_block() -> None:
     assert "tool =>" not in deltas
     assert "我查一下。" in deltas
     assert "查完了。" in deltas
+
+
+def test_a_native_tool_call_on_the_stream_actually_runs_the_tool() -> None:
+    """27.1 的通路测试：正文里**没有**任何方言控制块，调用只走原生通道。
+    修之前流式分支的 raw 恒为 {}，这条会停在「一步工具都没走、也没再问一轮」。"""
+    native = [
+        {
+            "id": "c1",
+            "type": "function",
+            "function": {"name": "read_file", "arguments": '{"path": "arcs.md"}'},
+        }
+    ]
+    llm = ScriptedLLM(
+        [
+            {"chunks": [], "native_tool_calls": native, "usage": (7, 3)},
+            {"chunks": ["弧 1 收在 3 章。"], "usage": (5, 2)},
+        ]
+    )
+    events = list(stream_agent_turn(llm, [{"role": "user", "content": "q"}], ToolRegistry([make_tool()])))
+    steps = [payload for name, payload in events if name == "tool"]
+    assert [step.call.name for step in steps] == ["read_file"]
+    assert steps[0].call.arguments == {"path": "arcs.md"}
+    assert len(llm.seen) == 2, "工具结果没回填、没再问一轮"
+    prose = "".join(payload for name, payload in events if name == "delta")
+    assert "弧 1 收在 3 章。" in prose
+    assert "contents" not in prose, "工具输出不许当正文吐给主人"
 
 
 # --- the loop ---------------------------------------------------------------

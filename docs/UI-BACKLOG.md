@@ -138,6 +138,19 @@ A 层 ~1000 + 世界观 ~250 + B 层 40 条简述 ~3000-6000 + C 层前后弧 ~6
 
 ### 27.1 顺手抓到一条真缺陷：流式路径会**丢掉**原生 `tool_calls`（登记，本轮不改）
 
+- [x] **已做（2026-09-08，提前于 §六 第 1 步做完——它才是「Agent 不干活」的第一现场）**：
+  `llm.py:stream_messages` 按 `index` 把 `delta.tool_calls` 拼回完整调用（新增出参 `tool_calls_out`，
+  `LLMClient` 契约 + `RoutedLLMClient` + 三个测试替身一起改）；`agent.py` 流式分支从此交出
+  `raw = {"tool_calls": native}`，那句 `parse_native_calls(raw)` 不再是死码。
+  **实测**：新增 `tests/test_stream_tool_calls.py` 4 条（分片重组 / 接缝形状 / 双调用按 index 保序 /
+  纯回答不误收）+ `test_agent_loop.py` 1 条通路测试，后端 273 → **278 passed**；
+  变异自检三次：不交回拼好的调用 → 3 红；循环退回 `raw = {}` → 那条通路测试单独红；只丢工具名 → 2 红。
+  **真机**（隔离库副本 + 真网关，两次调用）：事件序列 `context → reasoning → tool → delta → done → end`，
+  `tool {step:1, name:"read_file", arguments:{path:"settings/worldview.md"}, ok:true}`，
+  落库答句 = 「地点。」（该文件第一条设定的类别，模型没背过）。
+  分片原样与前提更正记进 **D-28**。**待主人审批后删条。**
+
+
 写计划时做的前置取证。**行号是 2026-09-06 的快照，会随编辑漂移**，下次核对请认代码文本：
 `payload["tools"] = tools` / `content = delta.get("content")` / `calls = found + parse_native_calls(raw)`。
 

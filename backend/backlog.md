@@ -21,3 +21,12 @@
 - 2026-09-07 · 架构走查候选 1（draft 流水线两个主人）：`routers/chapters.py` 的流式端点原本自己实现了一整条生成流水线（挡已有正文、组上下文、落 `GenerationRun`、机械校验），与非流式的 `services/chapters.py:42-117` 各写一遍。现在四个事实各归一个主人：系统提示→`prompts.py`、温度→`llm.py:DRAFT_TEMPERATURE`、409 文案与离线模型名→`services/chapters.py`、落库+校验→`persist_draft()`；router 只剩 SSE 事件编排（含「事件流里不许抛，必须 yield error + partial」这条保留原语义的要点）。**更正**：走查报的「流式 0.8 / 非流式 0.6」不成立——`complete_messages` 的回退本来就是 `0.8 if task_type == draft`，两条路同值；真问题是同一策略两处各写字面量，今天碰巧一样、明天改一处就分叉。防回归：新增 `tests/test_draft_policy_single_owner.py` 四条源码文本不变量。测试 263 → 267。
 - 2026-09-07 · 架构走查候选 3：新增 `services/errors.py`（域错误→HTTP 的唯一形状）；`StorageError` 与 `DocumentError` 支持 `code`，两处需要调用方分支的错误拿到机器码——`export_dir_not_set`、`write_conflict`；六个 router 映射点收成一个 `HTTPException(**errors.http_kwargs(cause))`。`test_storage.py` 的 detail 断言加强成「码 + 文」。267 passed。
 - 2026-09-07 · 候选 2（SSE 六个主人）后端侧：新增 `app/sse.py` 拥有帧编码与响应头；`routers/chat.py` 与 `routers/chapters.py` 的两个逐字相同的编码器、两份响应头收成一份。**实测到一处真漂移**：对话流带头里 `Connection: keep-alive`，正文生成流没带——现在两条同形（这是本次唯一的行为变化，故意）。新增 `tests/test_sse_single_owner.py` 三条源码不变量。267 passed（流式两条路径的测试本来就在真解析 SSE 字节，等于端到端验过）。
+
+- 2026-09-08 · §六 第 1 步的前半（流式原生 tool_calls）：`llm.py:stream_messages` 新增 `tool_calls_out`，
+  按 `index` 把 `delta.tool_calls` 分片拼回完整调用（这台网关**确实**回标准通道，旧前提只在非流式成立，更正记进 D-28）；
+  `agent.py` 流式分支交出 `raw = {"tool_calls": native}`，`parse_native_calls` 不再是死码；`LLMClient` 契约与
+  `RoutedLLMClient` 同步，三个测试替身补形参。新增 `tests/test_stream_tool_calls.py` 4 条 + `test_agent_loop.py` 通路测试 1 条，
+  273 → 278 passed；变异三次分别 3 红 / 1 红 / 2 红。真机跑在**副本库**（`.scratch/probe-agent.db`，验后已删）上，
+  两次真调用：`tool read_file ok:true`、答出「地点。」。**另记一条不属于本轮的抖动**：子进程里连跑全量偶发 1 条红、
+  每次不是同一条（见过 `test_a_refusal_names_the_chapter_that_is_missing` 与 `test_create_and_list_generation_run`），
+  单跑与直接连跑 4 次全绿 —— 没查，只登记。

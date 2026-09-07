@@ -382,6 +382,7 @@ def stream_agent_turn(
         usage: dict[str, Any] = {}
         calls: list[ToolCall] = []
         raw: dict[str, Any] = {}
+        native: list[dict[str, Any]] = []
 
         if streaming:
             # One accumulator for the whole turn. Deltas are pieces of a single stream
@@ -401,6 +402,8 @@ def stream_agent_turn(
                 reasoning_out=reasoning_out,
                 # 推理单独一路发出去（主人 2026-09-07 批注 6：思考过程要先于正文）
                 channels=True,
+                # 原生工具调用也在这条流上（27.1）：交给传输层按 index 拼好带回来
+                tool_calls_out=native,
             )
             for kind, chunk in chunks:
                 if kind == "reasoning":
@@ -418,6 +421,9 @@ def stream_agent_turn(
                     yield ("delta", visible[released:safe])
                     released = safe
             content = "".join(parts)
+            # 流式这一路从此和整条应答那一路喂同一个形状给 parse_native_calls；
+            # 以前 raw 在这条分支里永远是 {}，那句「认原生 tool_calls」只在非流式成立。
+            raw = {"tool_calls": native}
             spent_in += int(usage.get("token_input", 0))
             spent_out += int(usage.get("token_output", 0))
             model_name = str(usage.get("model") or model_name)
