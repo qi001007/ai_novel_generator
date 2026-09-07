@@ -38,5 +38,5 @@ def create_setting() -> None:
 
 
 @router.put("/{novel_id}/settings/{setting_id}")
-def update_setting(setting_id: int) -> None:
+def update_setting(setting_id: int) -> None:  # noqa: 路径参数故意留着，D-01 的 410 退役桩；删了 OpenAPI 就对不上 {setting_id}
     raise _retired_write()
