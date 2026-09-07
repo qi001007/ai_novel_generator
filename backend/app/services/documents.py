@@ -151,6 +151,12 @@ class FileDoc:
     text: str
     ai_fields: tuple[str, ...]
     revision: str
+    # 投影自带的语法表（字段↔标签）。默认空：只有走 read_file 的投影才有内容可发。
+    grammar: dict = field(default_factory=dict)
+
+    def with_grammar(self):
+        self.grammar = markdown_doc.grammar_for_kind(self.kind)
+        return self
 
 
 @dataclass

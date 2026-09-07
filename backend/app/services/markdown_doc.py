@@ -198,6 +198,31 @@ _RECORD_SPECS = {
     },
 }
 
+# 每个 kind 的「字段 ↔ 读者看到的标签」表，随投影 GET 一起发给前端。
+# 条目全部从上面那些元组派生 —— 在这里再抄一遍标签，就等于制造第三把。
+_GRAMMAR = {
+    "blueprint": {"sections": _BLUEPRINT_SECTIONS},
+    "toc": {"bullets": _TOC_BULLETS},
+    "arcs": {"bullets": _ARC_BULLETS},
+    "brief": {"bullets": _BRIEF_BULLETS, "sections": _BRIEF_SECTIONS},
+    "foreshadow": {"bullets": _FORESHADOW_BULLETS},
+    "worldview": {"bullets": _WORLDVIEW_BULLETS},
+    "character": {"bullets": _CHARACTER_BULLETS, "sections": _CHARACTER_SECTIONS},
+}
+
+
+def grammar_for_kind(kind: str) -> dict:
+    """这个 kind 的语法表：sections 是 ## 标签 行，bullets 是 - **标签**：值 行。
+
+    为什么发出去（候选 4b，2026-09-07）：这套表原先只有这里一份，前端 cmDoc.ts 又抄了一份，
+    于是加字段要改两处、经常只改一处——世界观/伏笔墙/人物档案的标签就是这么漏掉的。
+    以后端这份为准发下去；把前端那份删掉是下一片（4c）。
+    """
+    return {
+        role: [{"field": f, "label": l} for f, l in pairs]
+        for role, pairs in _GRAMMAR.get(kind, {}).items()
+    }
+
 _EMPTY = "—"
 
 

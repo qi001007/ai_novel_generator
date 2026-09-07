@@ -25,6 +25,7 @@ class FileDocOut(SQLModel):
     text: str
     ai_fields: list[str]
     revision: str
+    grammar: dict
 
 
 class FileWriteRequest(SQLModel):
@@ -66,7 +67,7 @@ def read_novel_file(
         doc = documents.read_file(session, novel_id, path)
     except DocumentError as cause:
         raise _to_http(cause) from cause
-    return FileDocOut.model_validate(doc, from_attributes=True)
+    return FileDocOut.model_validate(doc.with_grammar(), from_attributes=True)
 
 
 @router.put("/{novel_id}/files/{path:path}", response_model=FileWriteResult)

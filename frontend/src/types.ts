@@ -304,6 +304,8 @@ export type FileDoc = {
   text: string;
   ai_fields: string[];
   revision: string;
+  /** 后端投影随文档一起发的语法表（4c 之前前端仍用自己那份）。 */
+  grammar?: Record<string, Array<{ field: string; label: string }>>;
 };
 
 export type FileWriteResult = { path: string; changed: string[]; revision: string };
