@@ -20,7 +20,7 @@ const BLUEPRINT: FileDoc = {
   path: "blueprint.md",
   kind: "blueprint",
   layer: "A",
-  label: "全本蓝图",
+  label: "全书蓝图",
   text: "# 全书蓝图（A 层 · 长期）\n\n> 小节标题是结构标识。\n\n## 主线\n\n## 终局\n",
   ai_fields: ["main_line", "ending"],
   revision: "fc7a685c0455",
@@ -40,7 +40,7 @@ const entry = (over: Partial<FileEntry> = {}): FileEntry => ({
 function seed(over: Partial<FileEntry> = {}) {
   useFiles.setState({
     novelId: 1,
-    metas: [{ path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图" }],
+    metas: [{ path: "blueprint.md", kind: "blueprint", layer: "A", label: "全书蓝图" }],
     tabs: ["blueprint.md", "toc.md"],
     active: "blueprint.md",
     entries: { "blueprint.md": entry(over) },
@@ -316,7 +316,7 @@ describe("FileEditorPane", () => {
   it("mounts CodeMirror when a document arrives after an empty first render", async () => {
     useFiles.setState({
       novelId: 1,
-      metas: [{ path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图" }],
+      metas: [{ path: "blueprint.md", kind: "blueprint", layer: "A", label: "全书蓝图" }],
       tabs: [],
       active: null,
       entries: {},

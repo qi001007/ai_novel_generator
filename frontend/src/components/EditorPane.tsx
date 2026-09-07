@@ -10,6 +10,8 @@ import {
   thumbGeometry as sharedThumbGeometry,
 } from "./minimap";
 import { toCssPx, tokenValue } from "../store/appearance";
+import { TASK_LABELS } from "../labels";
+import { formatTime } from "../utils/time";
 
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
@@ -42,20 +44,9 @@ function readBottomPref() {
 
 /* The record list showed raw task keys (draft, fact_extract), which is backend
    vocabulary, not the author's. */
-const TASK_LABELS: Record<string, string> = {
-  draft: "正文生成",
-  review: "AI 审稿",
-  summary: "章摘要",
-  fact_extract: "事实提取",
-  chat: "对话",
-};
 
-function formatTime(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "—"
-    : date.toLocaleString("zh-CN", { hour12: false });
-}
+
+
 
 import HScrollThumb from "./HScrollThumb";
 import ViewToggle from "./ViewToggle";

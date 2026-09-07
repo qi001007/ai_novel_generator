@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { PROVIDER_TASKS } from "../labels";
 import { useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 import type { BackupChapter, BackupDocument, BackupSnapshot } from "../types";
@@ -63,15 +64,8 @@ type ProviderDraft = {
 
 type TestResult = { ok: boolean; detail: string };
 
-const TASKS: Array<[string, string]> = [
-  ["draft", "正文生成"],
-  ["review", "审稿"],
-  ["summary", "章摘要"],
-  ["chat", "对话"],
-  // 第十九批批注 2: the slot is reserved with the same shape as the others. Nothing
-  // calls it yet, so the row says 未启用 instead of pretending a button works.
-  ["image", "生图（未启用）"],
-];
+// 第十九批批注 2 的槽位与顺序都在 labels.ts：这张表不再自己定名字。
+const TASKS = PROVIDER_TASKS;
 
 type GroupKey = "llm" | "appearance" | "storage";
 

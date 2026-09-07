@@ -126,7 +126,7 @@ describe("PreferencesPage", () => {
     );
     await user.type(screen.getByLabelText("供应商 1 API Key"), "key-b");
 
-    const route = await screen.findByLabelText("审稿使用的供应商");
+    const route = await screen.findByLabelText("AI 审稿使用的供应商");
     await user.selectOptions(route, "p1");
     expect((route as HTMLSelectElement).value).toBe("p1");
     // the other tasks stay on the default gateway - routing is per task, not global

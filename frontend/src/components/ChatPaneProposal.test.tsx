@@ -14,7 +14,7 @@ const doc = {
   path: "blueprint.md",
   kind: "blueprint",
   layer: "A",
-  label: "全本蓝图",
+  label: "全书蓝图",
   text: OLD,
   ai_fields: ["constraints"],
   revision: "rev-1",

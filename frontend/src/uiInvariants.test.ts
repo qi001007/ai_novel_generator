@@ -45,6 +45,7 @@ import workPage from "./pages/WorkbenchPage.tsx?raw";
 import bookshelf from "./pages/BookshelfPage.tsx?raw";
 import apiSource from "./api.ts?raw";
 import chatRowsSource from "./components/chatRows.ts?raw";
+import labelsSource from "./labels.ts?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -447,11 +448,12 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(preferences).toContain("prefs-routes");
     expect(preferences).toContain('routes,');
     expect(preferences).toContain("nextProviderId");
+    // 表搬到了 labels.ts（候选 5）：断言跟着搬，**条数一条不减**。
     for (const task of ["draft", "review", "summary", "chat", "image"]) {
-      expect(preferences).toContain(`["${task}",`);
+      expect(labelsSource).toContain(`["${task}",`);
     }
     // the reserved slot says so instead of pretending to work
-    expect(preferences).toContain('["image", "生图（未启用）"]');
+    expect(labelsSource).toContain("image}（未启用）");
     expect(preferences).toContain('placeholder={key === "image" ? "未启用" : ""}');
     // a secret is never echoed into a value, only into a placeholder as a mask
     expect(preferences).toContain("api_key: item.api_key,");
@@ -736,7 +738,13 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     for (const [file, source] of Object.entries(componentSources)) {
       expect(source, file).not.toMatch(/分卷/);
     }
-    expect(runDetailPage).toContain('arc: "剧情弧"');
+    expect(labelsSource).toContain('arc: "剧情弧"');
+    // 界面词不许再有任何第二把（候选 5 的决定就在这一条上）
+    for (const src of [preferences, runDetailPage, editorPane, chatPane, treePane]) {
+      expect(src).not.toMatch(/const (TASK|KIND)_LABELS: Record/);
+    }
+    expect(preferences + runDetailPage + editorPane).not.toMatch(/function formatTime/);
+    expect(labelsSource).toContain('blueprint: "全书蓝图"');
   });
 
   /* 第二十五批批注 1：「这个用思考过程中用的那种字体」。

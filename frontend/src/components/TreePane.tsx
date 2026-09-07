@@ -86,7 +86,7 @@ type TreePaneProps = {
 };
 
 const planningNodes: { layer: PlanningLayer; path: string; label: string }[] = [
-  { layer: "A", path: BLUEPRINT_PATH, label: "全本蓝图" },
+  { layer: "A", path: BLUEPRINT_PATH, label: "全书蓝图" },
   { layer: "B", path: TOC_PATH, label: "目录" },
   { layer: "C", path: ARCS_PATH, label: "剧情弧" },
 ];

@@ -18,7 +18,7 @@ const DOC = {
   path: BLUEPRINT_PATH,
   kind: "blueprint",
   layer: "A",
-  label: "全本蓝图",
+  label: "全书蓝图",
   text: "## 主线\n旧\n",
   ai_fields: ["main_line"],
   revision: "rev-1",
@@ -28,7 +28,7 @@ describe("files store", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useFiles.getState().reset();
-    mocked.listFiles.mockResolvedValue([{ path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全本蓝图" }]);
+    mocked.listFiles.mockResolvedValue([{ path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全书蓝图" }]);
     mocked.readFile.mockResolvedValue(DOC);
     mocked.writeFile.mockResolvedValue({ path: BLUEPRINT_PATH, changed: ["main_line"], revision: "rev-2" });
   });
@@ -139,9 +139,9 @@ describe("files store", () => {
   it("re-reads the file list after a write so a new brief becomes real", async () => {
     const brief = { path: "briefs/0048.md", kind: "brief", layer: "D", label: "第 48 章简报" };
     mocked.listFiles
-      .mockResolvedValueOnce([{ path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全本蓝图" }])
+      .mockResolvedValueOnce([{ path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全书蓝图" }])
       .mockResolvedValueOnce([
-        { path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全本蓝图" },
+        { path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全书蓝图" },
         brief,
       ]);
     await useFiles.getState().attach(1);

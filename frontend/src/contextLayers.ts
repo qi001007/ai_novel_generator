@@ -38,7 +38,7 @@ export function layerOfLabel(label: string): string {
 function headToKind(head: string): string {
   const map: Record<string, string> = {
     作品信息: "novel",
-    全本蓝图: "blueprint",
+    全书蓝图: "blueprint",  // 必须等于后端投影 label，写错这项就是死的（D-34）
     目录: "toc",
     剧情弧: "arc",
     简报: "brief",

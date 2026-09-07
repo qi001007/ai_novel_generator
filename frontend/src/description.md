@@ -6,6 +6,7 @@
 - `styles.css` 全仓样式都在这一个文件里（组件里不写内联样式）。
 - `contextLayers.ts` 把注入清单解析成 A/B/C/D 四层；`menuPlacement.ts` 算右键菜单落点。
 - `uiInvariants.test.ts` 是 `docs/UI-DESIGN.md §0.9` 不可回退清单的**机器版**。
+- `labels.ts` 是 `kind`/`task` 界面词的**唯一**主人（A 层叫「全书蓝图」，D-34）；`utils/time.ts` 拥有 `formatTime`。
 - `test/setup.ts` 是 vitest 脚手架（一个文件，不单列目录说明）。
 
 **往下读**：`components/`（一块一面）、`pages/`（路由级页面）、`store/`（三个持有者）、

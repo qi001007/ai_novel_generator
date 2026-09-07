@@ -7,7 +7,7 @@ import App from "../App";
 import { useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
-const BLUEPRINT = "# A 层 · 全本蓝图（长期）\nmain_line: ''\n";
+const BLUEPRINT = "# A 层 · 全书蓝图（长期）\nmain_line: ''\n";
 
 function stubFetch() {
   const json = (body: unknown, status = 200) =>
@@ -61,7 +61,7 @@ function stubFetch() {
       }
       if (url.endsWith("/api/novels/1/files")) {
         return json([
-          { path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图" },
+          { path: "blueprint.md", kind: "blueprint", layer: "A", label: "全书蓝图" },
           { path: "toc.md", kind: "toc", layer: "B", label: "目录" },
           {
             path: "chapters/0042/draft.md",
@@ -99,7 +99,7 @@ function stubFetch() {
           path: "blueprint.md",
           kind: "blueprint",
           layer: "A",
-          label: "全本蓝图",
+          label: "全书蓝图",
           text: BLUEPRINT,
           ai_fields: ["main_line"],
           revision: "fc7a685c0455",
@@ -322,7 +322,7 @@ describe("workbench layout", () => {
     const user = userEvent.setup();
     const { container } = await openWorkbench();
     const row = [...container.querySelectorAll(".tree-row")].find((node) =>
-      node.textContent?.includes("全本蓝图"),
+      node.textContent?.includes("全书蓝图"),
     ) as HTMLElement;
     fireEvent.contextMenu(row);
     const menu = await screen.findByRole("menu");
@@ -446,7 +446,7 @@ describe("workbench layout", () => {
   it("comes back to the face it was left on, and re-opens the document a reload dropped", async () => {
     const user = userEvent.setup();
     const first = await openWorkbench();
-    await user.click(screen.getByRole("button", { name: "全本蓝图" }));
+    await user.click(screen.getByRole("button", { name: "全书蓝图" }));
     await waitFor(() => expect(document.querySelector(".file-editor")).toBeTruthy());
     first.unmount();
 
@@ -636,7 +636,7 @@ describe("workbench layout", () => {
     const user = userEvent.setup();
     await openWorkbench();
 
-    await user.click(screen.getByRole("button", { name: "全本蓝图" }));
+    await user.click(screen.getByRole("button", { name: "全书蓝图" }));
 
     await waitFor(() => {
       expect(document.querySelector(".file-editor")).toBeTruthy();

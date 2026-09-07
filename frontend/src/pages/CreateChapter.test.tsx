@@ -60,7 +60,7 @@ function makeServer(initial: Partial<Server> = {}) {
       }
       if (url.endsWith("/api/novels/1/files")) {
         return json([
-          { path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图" },
+          { path: "blueprint.md", kind: "blueprint", layer: "A", label: "全书蓝图" },
           ...server.chapters.map((chapter) => ({
             path: `chapters/${String(chapter.chapter_number).padStart(4, "0")}/draft.md`,
             kind: "draft",
@@ -108,7 +108,7 @@ function makeServer(initial: Partial<Server> = {}) {
         });
       }
       if (url.includes("/files/blueprint.md")) {
-        return json({ path: "blueprint.md", kind: "blueprint", layer: "A", label: "全本蓝图", text: "# A\n", ai_fields: ["main_line"], revision: "fc7a685c0455" });
+        return json({ path: "blueprint.md", kind: "blueprint", layer: "A", label: "全书蓝图", text: "# A\n", ai_fields: ["main_line"], revision: "fc7a685c0455" });
       }
       return json([]);
     }),
