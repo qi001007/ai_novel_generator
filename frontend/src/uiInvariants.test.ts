@@ -891,4 +891,21 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(chatPane).toContain(String.raw`className="chat-thinking-body"`);
   });
 
+  // 第二十九批批注 5（2026-09-07）：章号出现 1、2、4、5 这种空洞时，他要一个「刷新」键。
+  // 三条硬要求都钉住：两条可达路径（§0.7 条八）、连续时 disabled + 写明原因（不做假控件）、
+  // 以及**先看逐行报告再动手**（28.6b 那条自动迁移就是缺这一步被驳回的）。
+  it("renumbering has two ways in, a reason when there is nothing to do, and a report first", () => {
+    expect(treePane).toContain("<span>重新编号</span>");
+    expect(treePane).toContain("<kbd>Ctrl+Alt+R</kbd>");
+    expect(treePane).toContain("disabled={!renumberNeeded}");
+    expect(treePane).toContain(String.raw`title={renumberNeeded ? undefined : "章号已经是连续的"}`);
+    // 快捷键那一条在工作台，不在树里 - 两条路各自都要钉住
+    expect(layout).toMatch(/event\.code === "KeyR"/);
+    // 点菜单只读报告；动手是确认框里另一枚按钮发的另一个请求
+    expect(layout).toContain(".renumberPlan(novelId)");
+    expect(layout).toContain(".densifyChapters(novelId)");
+    expect(layout).toContain(String.raw`aria-label="重新编号"`);
+    expect(layout).toContain("只改前面的序号");
+  });
+
 });

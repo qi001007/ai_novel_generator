@@ -4727,6 +4727,37 @@ body.resizing {
   color: var(--text-2);
 }
 
+/* 第二十九批批注 5：重排报告。一行一个「旧号 → 新号」，等宽数字才看得出错位。
+   列表本身不画框 - 弹窗已经是一个框了（§0.7 条七：能靠留白分组就不画线）。 */
+.renumber-list {
+  display: grid;
+  gap: 2px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.renumber-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  min-height: 24px;
+  font-size: 13px;
+  color: var(--text-1);
+}
+
+.renumber-from {
+  text-align: right;
+  color: var(--text-2);
+}
+
+.renumber-to {
+  text-align: left;
+}
+
 /* 第二十八批批注 6：重命名弹窗里那一个输入框。外观与设置页的输入框同一套
    token（边框 / 圆角 / 底色 / 聚焦只改边框色，不画第二圈轮廓 - §0.9 那条「聚焦不画框」）。 */
 .chapter-rename-input {

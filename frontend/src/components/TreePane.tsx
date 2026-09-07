@@ -72,6 +72,10 @@ type TreePaneProps = {
   onExportDocument: (path: string) => void;
   /** 删一章（第二十六批批注 6）：确认弹窗在工作台那边，这里只报章号。 */
   onDeleteChapter: (chapterNumber: number) => void;
+  /** 「重新编号」：把 1、2、4、5 这种空洞压成 1..N（第二十九批批注 5）。 */
+  onRenumber: () => void;
+  /** 已经有空洞才允许按；连续时这条 disabled 并写明原因。 */
+  renumberNeeded: boolean;
   exportError: string | null;
   onOpenCharacters: () => void;
   onOpenFeedback: () => void;
@@ -127,6 +131,8 @@ export default function TreePane({
   onExport,
   onExportDocument,
   onDeleteChapter,
+  onRenumber,
+  renumberNeeded,
   exportError,
   onOpenCharacters,
   onOpenFeedback,
@@ -681,6 +687,21 @@ export default function TreePane({
               >
                 <span>删除章节</span>
                 <kbd>后面 -1</kbd>
+              </button>
+              <div className="tree-menu-sep" />
+              {/* 第二十九批批注 5：1、2、4、5 这种空洞一旦留下，之后怎么插都差一格。
+                  他给的办法是一个刷新键。连续时不隐藏而是 disabled + 写明原因 -
+                  §0.7 条八要两条可达路径，所以它同时挂在 Ctrl+Alt+R 上。 */}
+              <button
+                type="button"
+                role="menuitem"
+                className="tree-menu-item"
+                disabled={!renumberNeeded}
+                title={renumberNeeded ? undefined : "章号已经是连续的"}
+                onClick={runMenuAction(onRenumber)}
+              >
+                <span>重新编号</span>
+                <kbd>Ctrl+Alt+R</kbd>
               </button>
             </>
           ) : null}

@@ -23,7 +23,7 @@ from app.services.chapters import (
 )
 from app.services import documents
 from app.services.context import build_writing_context, log_injection
-from app.services.renumber import shift_after, vacate
+from app.services.renumber import densify, renumber_plan, shift_after, vacate
 from app.services.draft import build_template_draft
 from app.services.llm import LLMClient, get_llm_client
 from app.services import storage
@@ -254,6 +254,50 @@ def stream_generate_chapter_from_brief(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.get("/{novel_id}/chapters/renumber-plan", response_model=dict)
+def read_renumber_plan(
+    novel_id: int, session: Session = Depends(get_session)
+) -> dict:
+    """「重新编号」会改哪些号 - 先给他看这张表，再决定要不要按。
+
+    路径必须排在 /chapters/{chapter_id} 前面注册：那条的 chapter_id 是 int，
+    晚一步这里就只会拿到一个 422，而不是我的报告。
+    """
+    get_novel_or_404(novel_id, session)
+    return renumber_plan(session, novel_id)
+
+
+@router.post("/{novel_id}/chapters/densify", response_model=dict)
+def densify_chapter_numbers(
+    novel_id: int, session: Session = Depends(get_session)
+) -> dict:
+    """把章号压成 1..N。**只搬号，不动章名**（主人 2026-09-07 批注 5 第 3 条）。
+
+    这是他自己按下的键，不是开机自动跑的迁移 - 那正是 28.6b 被驳回的理由。
+    动手前照例落一份快照（reason="renumber"），设置里能拿回来。
+    """
+    novel = get_novel_or_404(novel_id, session)
+    plan = renumber_plan(session, novel_id)
+    if plan["already_contiguous"]:
+        return {"moved": 0, "changes": [], "already": True, "numbers": plan["numbers"]}
+    storage.snapshot(session, novel_id, novel.title, reason="renumber")
+    moved = densify(session, novel_id)
+    session.commit()
+    return {
+        "moved": moved,
+        "changes": plan["changes"],
+        "already": False,
+        # 取的是列不是 ORM 对象：Chapter 不能按下标读（真机 500 过一次）
+        "numbers": list(
+            session.exec(
+                select(Chapter.chapter_number)
+                .where(Chapter.novel_id == novel_id)
+                .order_by(Chapter.chapter_number)
+            ).all()
+        ),
+    }
 
 
 @router.get("/{novel_id}/chapters/{chapter_id}", response_model=Chapter)

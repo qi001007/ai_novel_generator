@@ -2,6 +2,7 @@ import type {
   BackupChapter,
   BackupDocument,
   ChatConversation,
+  RenumberPlan,
   BackupSnapshot,
   ChatContextItem,
   ChatStreamEvent,
@@ -285,6 +286,17 @@ export const api = {
       };
     }>("/api/backups/restore/chapter", body),
 
+  /** 「重新编号」的报告：哪一章从几号变几号。**先看表，再决定按不按**（批注 5）。 */
+  renumberPlan: (novelId: number) =>
+    api.get<RenumberPlan>(`/api/novels/${novelId}/chapters/renumber-plan`),
+  /** 压掉章号空洞。只搬号，章名一个字不动；后端动手前先落一份快照。 */
+  densifyChapters: (novelId: number) =>
+    api.post<{
+      moved: number;
+      changes: { from: number; to: number }[];
+      already: boolean;
+      numbers: number[];
+    }>(`/api/novels/${novelId}/chapters/densify`, {}),
   /** 删一章。章号不顺延（第二十六批批注 6 定下的语义）。 */
   deleteChapter: (novelId: number, chapterNumber: number) =>
     api.del<void>(`/api/novels/${novelId}/chapters/by-number/${chapterNumber}`),

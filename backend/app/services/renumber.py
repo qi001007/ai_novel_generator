@@ -8,9 +8,12 @@
 - novel.target_chapters 是「打算写多少章」的计数，不是对某一章的引用；
 - arc_plan.planned_chapters 只有字段声明，全仓没有一处写它，库里恒为 {}。
 
-这里只有「往后搬 / 往前搬」两种动作。把老数据里的历史空洞压成连续号（densify）
-一度也写在这里，随数据迁移一起撤回了：那会重写主人已有的章号与弧范围、还会删掉
-带章名的目录行，属于未批准的破坏性改写，已另立条目等逐行报告 + 快照之后再谈。
+这里只有「往后搬 / 往前搬」两种动作，外加一条 densify（把空洞压成 1..N）。
+
+densify 曾经以**自动数据迁移**的身份写在这里，被安全审查驳回、驳回成立：迁移会在
+主人没要求的时候重写他的章号与弧范围。2026-09-07 批注 5 把它换成了**他主动按下的
+一个键**：先出逐行报告（renumber_plan），他确认了才动手，动手前照例落一份快照。
+同一件事，谁按下这个按钮，决定了它是破坏性改写还是他要的一次刷新。
 """
 
 from sqlmodel import Session, select
@@ -124,3 +127,68 @@ def shift_after(session: Session, novel_id: int, *, above: int, delta: int) -> i
             moved += 1
     session.flush()
     return moved
+
+
+def renumber_plan(session: Session, novel_id: int) -> dict:
+    """「重新编号」的逐行报告：哪一章从几号变几号、弧范围前后各是什么。
+
+    章本来就是按号排的，重排就是「排第 i 的那一章变成 i+1」，所以这张表直接由
+    位置算出来，不用试跑一遍。**动手之前必须先给他看这张表** - 28.6b 那条被驳回
+    的迁移缺的就是这一步（他当时要的就是逐行报告 + 先落快照）。
+    """
+    numbers = chapter_numbers(session, novel_id)
+    target = list(range(1, len(numbers) + 1))
+    changes = [
+        {"from": old, "to": new}
+        for old, new in zip(numbers, target)
+        if old != new
+    ]
+
+    def clamp(number: int) -> int:
+        """把一个号压回「它前面站着几章」的位置。端点落在空洞上也成立。"""
+        if not numbers:
+            return number
+        below = sum(1 for item in numbers if item < number)
+        return max(1, min(len(numbers), below + 1))
+
+    arcs = [
+        {
+            "id": int(arc.id),
+            "title": arc.title,
+            "before": [arc.start_chapter, arc.end_chapter],
+            "after": [clamp(arc.start_chapter), clamp(arc.end_chapter)],
+        }
+        for arc in session.exec(
+            select(ArcPlan).where(ArcPlan.novel_id == novel_id)
+        ).all()
+    ]
+    return {
+        "numbers": numbers,
+        "target": target,
+        "changes": changes,
+        "arcs": [arc for arc in arcs if arc["before"] != arc["after"]],
+        "already_contiguous": not changes,
+    }
+
+
+def densify(session: Session, novel_id: int) -> int:
+    """把空洞压掉，号排成 1..N。返回搬动了多少行。**只搬号，章名一个字不动。**
+
+    每轮只填一个洞，而且每轮**重算**：一次算完会撞唯一约束 -
+    [1,2,5,6] 若同时做 5→3 和 6→4，第二条的落点还站着东西。逐洞前移才稳，
+    这条由 test_densify_closes_two_holes_without_colliding 钉住。
+    """
+    moved = 0
+    for _ in range(len(chapter_numbers(session, novel_id)) + 2):
+        numbers = chapter_numbers(session, novel_id)
+        if not numbers:
+            return moved
+        present = set(numbers)
+        hole = next(
+            (number for number in range(1, max(present)) if number not in present),
+            None,
+        )
+        if hole is None:
+            return moved
+        moved += shift_after(session, novel_id, above=hole, delta=-1)
+    raise RuntimeError("densify 没收敛：章号空洞比章数还多，先查数据")

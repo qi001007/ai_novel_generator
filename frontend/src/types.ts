@@ -162,6 +162,16 @@ export type BackupSnapshot = {
   bytes: number;
 };
 
+/** 「重新编号」的逐行报告：动手之前先给他看这张表（第二十九批批注 5）。 */
+export type RenumberChange = { from: number; to: number };
+export type RenumberPlan = {
+  numbers: number[];
+  target: number[];
+  changes: RenumberChange[];
+  arcs: { id: number; title: string; before: number[]; after: number[] }[];
+  already_contiguous: boolean;
+};
+
 /** 一条历史对话（= 一个线程）。左栏「对话」那一页就列这个。 */
 export type ChatConversation = {
   conversation_id: number;

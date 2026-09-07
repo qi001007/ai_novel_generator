@@ -145,6 +145,74 @@ describe("workbench layout", () => {
 
   /* 第二十六批批注 6：树里那个「删除」他点了三轮，今天真的能删。
      确认口径与删书一致：一次确认、不打字、取消不发请求。 */
+  /* 第二十九批批注 5（2026-09-07）：1、2、4、5 这种空洞一旦留下，之后怎么插都差一格。
+     他要的是一个刷新键。这一条测三件事：报告先出来、动手只发一次、名字不动。 */
+  it("renumbers the whole book from the tree menu after showing the plan", async () => {
+    const user = userEvent.setup();
+    const { container } = await openWorkbench();
+    const seen: string[] = [];
+    const inner = fetch;
+    const ok = (body: unknown) =>
+      Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = String(init?.method ?? "GET");
+        seen.push(`${method} ${url}`);
+        if (url.includes("/chapters/renumber-plan")) {
+          return ok({
+            numbers: [1, 2, 4, 5],
+            target: [1, 2, 3, 4],
+            changes: [
+              { from: 4, to: 3 },
+              { from: 5, to: 4 },
+            ],
+            arcs: [{ id: 7, title: "第一幕", before: [4, 5], after: [3, 4] }],
+            already_contiguous: false,
+          });
+        }
+        if (url.includes("/chapters/densify")) {
+          return ok({
+            moved: 9,
+            changes: [],
+            already: false,
+            numbers: [1, 2, 3, 4],
+          });
+        }
+        return inner(input, init);
+      }),
+    );
+
+    const chapterRow = [...container.querySelectorAll(".tree-row")].find((node) =>
+      node.textContent?.includes("0042"),
+    ) as HTMLElement;
+    fireEvent.contextMenu(chapterRow);
+    const menu = await screen.findByRole("menu");
+    await user.click(within(menu).getByRole("menuitem", { name: /重新编号/ }));
+
+    // 先给报告，不是直接改书：没看完这张表之前一个字都不该动
+    const dialog = await screen.findByRole("dialog", { name: "重新编号" });
+    expect(dialog.textContent).toContain("只改前面的序号");
+    expect(dialog.textContent).toContain("1 段剧情的起止章号一起跟着挪");
+    expect(seen.some((line) => line.includes("/chapters/densify"))).toBe(false);
+
+    await user.click(within(dialog).getByRole("button", { name: "重排" }));
+    await waitFor(() =>
+      expect(
+        seen.filter((line) => line.includes("/chapters/densify")),
+      ).toHaveLength(1),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "重新编号" })).toBeNull(),
+    );
+  });
+
   it("deletes a chapter from the tree menu after one confirmation", async () => {
     const user = userEvent.setup();
     const { container } = await openWorkbench();
@@ -311,6 +379,8 @@ describe("workbench layout", () => {
       "重命名只改名字",
       "在其后插入一章后面 +1",
       "删除章节后面 -1",
+      // 第二十九批批注 5：刷新章号的键。菜单项 + Ctrl+Alt+R 两条路（§0.7 条八）
+      "重新编号Ctrl+Alt+R",
     ]);
 
     await user.click(within(menu).getByRole("menuitem", { name: /导出本章…/ }));
@@ -601,4 +671,3 @@ describe("workbench layout", () => {
     expect(useFiles.getState().active).toBe("settings/characters/1.md");
   });
 });
-

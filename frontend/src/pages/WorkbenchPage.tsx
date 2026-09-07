@@ -16,6 +16,7 @@ import TreePane, { type BriefRow } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
 import { briefChapter, briefPath, draftChapter, draftPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
+import type { RenumberPlan } from "../types";
 import { toCssPx } from "../store/appearance";
 
 type RightView = "editor" | "files" | "feedback" | "worldmap" | "foreshadow" | "characters";
@@ -193,6 +194,9 @@ export default function WorkbenchPage() {
   const [chapterRenameValue, setChapterRenameValue] = useState("");
   const [chapterRenameError, setChapterRenameError] = useState<string | null>(null);
   const [chapterDeleteError, setChapterDeleteError] = useState<string | null>(null);
+  // 「重新编号」：先看逐行报告，他点头才动手（第二十九批批注 5）
+  const [renumberPlan, setRenumberPlan] = useState<RenumberPlan | null>(null);
+  const [renumberError, setRenumberError] = useState<string | null>(null);
   const chapterCancelRef = useRef<HTMLButtonElement | null>(null);
 
   function reportExport(promise: Promise<string>) {
@@ -246,6 +250,40 @@ export default function WorkbenchPage() {
       });
   }
 
+  const renumberNeeded = useMemo(() => {
+    const numbers = state.chapters
+      .map((item) => item.chapter_number)
+      .sort((a, b) => a - b);
+    return numbers.some((number, index) => number !== index + 1);
+  }, [state.chapters]);
+
+  function openRenumber() {
+    const novelId = Number(novelIdParam);
+    setRenumberError(null);
+    api
+      .renumberPlan(novelId)
+      .then(setRenumberPlan)
+      .catch((cause: unknown) =>
+        setRenumberError(cause instanceof Error ? cause.message : "读不到重排报告"),
+      );
+  }
+
+  function confirmRenumber() {
+    const novelId = Number(novelIdParam);
+    setRenumberError(null);
+    api
+      .densifyChapters(novelId)
+      .then(async () => {
+        setRenumberPlan(null);
+        // 号一动，目录/简报/摘要/弧全都跟着搬：整本书的切片都得重读
+        await state.reloadNovel(novelId);
+        await refreshMetas();
+      })
+      .catch((cause: unknown) =>
+        setRenumberError(cause instanceof Error ? cause.message : "重排失败"),
+      );
+  }
+
   function handleExportDocument(path: string) {
     const novelId = Number(novelIdParam);
     reportExport(
@@ -287,6 +325,8 @@ export default function WorkbenchPage() {
 
   const createChapter = useRef(handleCreateChapter);
   createChapter.current = handleCreateChapter;
+  const openRenumberRef = useRef(openRenumber);
+  openRenumberRef.current = openRenumber;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -294,6 +334,12 @@ export default function WorkbenchPage() {
       if ((event.ctrlKey || event.metaKey) && event.altKey && (event.code === "KeyN" || key === "n")) {
         event.preventDefault();
         void createChapter.current();
+      }
+      // 第二十九批批注 5：他点名的「按两个组合键就把号刷回 1..N」。它弹的是确认框，
+      // 不会一声不吭地改书。
+      if ((event.ctrlKey || event.metaKey) && event.altKey && (event.code === "KeyR" || key === "r")) {
+        event.preventDefault();
+        openRenumberRef.current();
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -753,6 +799,8 @@ export default function WorkbenchPage() {
             conversations={state.conversations}
             activeConversation={state.chatConversation}
             onSelectConversation={(conversationId) => state.openConversation(conversationId)}
+            onRenumber={openRenumber}
+            renumberNeeded={renumberNeeded}
             onRenameChapter={(chapterNumber) => {
               const chapter = state.chapters.find((item) => item.chapter_number === chapterNumber);
               setChapterRenameError(null);
@@ -859,6 +907,59 @@ export default function WorkbenchPage() {
                 </button>
                 <button type="button" className="primary" onClick={confirmRenameChapter}>
                   保存
+                </button>
+              </footer>
+            </div>
+          </div>
+        ) : null}
+
+        {renumberPlan !== null ? (
+          <div className="wizard-backdrop" role="presentation" onClick={() => setRenumberPlan(null)}>
+            <div
+              className="wizard book-delete"
+              onClick={(event) => event.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+              aria-label="重新编号"
+            >
+              <h2>重新编号</h2>
+              {renumberPlan.already_contiguous ? (
+                <p className="book-delete-note">
+                  章号已经是 1 到 {renumberPlan.target.length}，没有要改的
+                </p>
+              ) : (
+                <>
+                  <p className="book-delete-note">
+                    只改前面的序号，章节名一个字不动
+                  </p>
+                  <ul className="renumber-list">
+                    {renumberPlan.changes.map((change) => (
+                      <li key={change.from} className="renumber-row">
+                        <span className="renumber-from mono">{change.from}</span>
+                        <span aria-hidden="true">→</span>
+                        <span className="renumber-to mono">{change.to}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {renumberPlan.arcs.length ? (
+                    <p className="book-delete-note">
+                      {renumberPlan.arcs.length} 段剧情的起止章号一起跟着挪
+                    </p>
+                  ) : null}
+                </>
+              )}
+              {renumberError ? <p className="book-info-problem">{renumberError}</p> : null}
+              <footer className="cover-modal-footer">
+                <button type="button" onClick={() => setRenumberPlan(null)}>
+                  取消
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={renumberPlan.already_contiguous}
+                  onClick={confirmRenumber}
+                >
+                  重排
                 </button>
               </footer>
             </div>
