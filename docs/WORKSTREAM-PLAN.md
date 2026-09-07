@@ -148,6 +148,7 @@
 | 环境怎么起、命令怎么跑 | `HANDOFF.md` |
 | 要改哪个目录、怎么验 | `ARCHITECTURE.md` §0.5 跳转表 ＋ 各层 `description.md` |
 | 什么东西**已经删过、别再建** | `DECISIONS.md` §2 与 §3（删除区） |
+| 某个词到底指什么、代码里叫什么 | `CONTEXT.md`（只给名字下定义） |
 
 ---
 
