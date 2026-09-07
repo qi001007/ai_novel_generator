@@ -97,6 +97,10 @@
     了一次快照。现在那份文本在 `with` 块内读出来。
   · 门禁：backend `248 passed`、frontend `220 passed / 22 files`、`tsc -b --force` clean、
     `npm run build` clean、`hit-area-audit /settings` → 0 small / 0 clipped / 0 unreachable。
+  · **真机图又抓到一条我自己造的缺陷（已单独提交修掉）**：我在 JSX 的孩子位置写了三行
+    `//` 注释 —— 那里它就是**要显示的文字**，整段注释直接糊在设置页每一组下面。
+    责任提交 `448bc67`（就是我这一条）。测试当时全绿，只有截图看得见。
+    顺手加了一条通用防线：设置页渲染出来的文字里不许出现 `//`。
   · 断言：`uiInvariants` 新增一条钉 `wholeBook` 分支、「恢复整本书」全页只出现一次、
     旧函数名 `toggleDocs` 不许回来、`api.restoreChapter` 与回执那句「简报与正文一起」必须在。
 ### 29.2 点「+」开了新对话并聊过之后，左栏「对话」还是空的（批注 6 前半）

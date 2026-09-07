@@ -226,6 +226,9 @@ describe("PreferencesPage", () => {
     const notes = [...document.querySelectorAll(".pref-row-note")].map((n) => n.textContent ?? "");
     for (const note of notes) expect(note.length, note).toBeLessThanOrEqual(22);
     expect(document.body.textContent).not.toContain("全书、单章与每一份文档的导出都写到这个目录");
+    // 源码注释不许糊到界面上：448bc67 在 JSX 的孩子位置写了三行双斜杠注释，
+    // 那在 JSX 里就是**要显示的文字**，测试全绿而页面上挂着一整段注释。
+    expect(document.body.textContent).not.toContain("//");
 
     // ① 放回书里：书已经没了，就如实报错，不假装成功
     await user.click(screen.getByRole("button", { name: "取一个文件" }));
