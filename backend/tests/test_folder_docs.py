@@ -58,3 +58,31 @@ def test_every_description_has_a_backlog_beside_it():
 def test_repo_root_stays_clean():
     for name in ("description.md", "backlog.md"):
         assert not (REPO / name).exists(), f"项目最外层不写 {name}（项目级文档归 docs/）"
+
+DOCS = REPO / "docs"
+
+
+def test_decisions_index_matches_body():
+    """DECISIONS 的 §0 索引必须和正文一一对应。
+
+    正文按时间往下堆、索引按编号查，两边最容易各漂各的（D-24/25 就插到了 D-31 后面）。
+    """
+    doc = (DOCS / "DECISIONS.md").read_text(encoding="utf-8")
+    head, _, rest = doc.partition("## 0. 索引")
+    assert rest, "DECISIONS.md 缺 §0 索引"
+    index_part, _, body = rest.partition("## 1. ")
+    indexed = {m for line in index_part.splitlines()
+               for m in [line.strip("| ").split("|")[0].strip()] if m.startswith("D-")}
+    written = {ln.split()[1] for ln in doc.splitlines() if ln.startswith("### D-")}
+    assert indexed == written, (
+        f"索引与正文不符：只在索引 {sorted(indexed - written)} / 只在正文 {sorted(written - indexed)}")
+
+
+def test_governance_roles_stay_wired():
+    """四角色必须各自有主人，且主人文件里真的写着这个角色（防止接线被悄悄拆掉）。"""
+    agents = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+    assert "文档治理四角色" in agents, "AGENTS.md 里的四角色接线被删了"
+    arch = (DOCS / "ARCHITECTURE.md").read_text(encoding="utf-8")
+    assert "Map 跳转表" in arch, "ARCHITECTURE.md 丢了 Map 跳转表"
+    status = (DOCS / "WORKSTREAM-PLAN.md").read_text(encoding="utf-8")
+    assert "删除区" in status, "WORKSTREAM-PLAN.md 不再指向删除区（DECISIONS §2/§3）"

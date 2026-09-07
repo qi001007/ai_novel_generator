@@ -6,6 +6,31 @@
 - 2.如果要在对话页打印公式，用标准的latex样式的公式回答
 - 3.如果要在对话中使用字母特殊符号，用标准的latex样式回答
 
+  # 项目管理原则
+
+我觉得你现在可以采用这样一种开发方式：
+1. 在每一个文件夹里面写description.md文件，用简略详尽的语气说明这个文件夹是干什么的（项目最外层不用写 description.md 和 backlog.md，用 docs 文件夹去存储整个项目的其他设定文档）。
+2. 在这个文件夹里更改了什么东西，在这个文件夹的backlog.md文件里，去标注你的每一次更改。
+3. 在整个项目最外层的 docs 文件夹里，要有产品需求文档、一个实时进度文档（这个文档用简洁直观的形式向我讲述哪些需求做了，哪些没有做）、建立一个反馈文档（实时记录我发送给你的要改的 bug 和需求。具体改 bug 的时候，参照这个文档一条一条地改，改完一条叉掉一条）、一个技术文档
+4. **贯彻口径（2026-09-07 补，因为前三条我只在 backend/ 与 frontend/ 两个大目录执行了，没下沉到文件树）**：
+   - 凡自产 ≥2 个源码文件的目录都要一份 `description.md`，**上限 20 行 / 2.4 KB**。超了就说明它在替代码写注释——该往下拆到子目录，或写回代码本身。机器检查：`backend/tests/test_folder_docs.py`（漏一份、写太长、缺 `backlog.md`、根目录乱写，四种都直接红）。
+   - 定位要改哪儿，**顺着 `description.md` 一层层往下读**，不要一上来全仓扫描、把源码灌进上下文。父文件只写「一层管什么 + 全局红线」，细节属于子目录。
+   - `docs/` 因此只留**跨目录**的东西：PRD（需求）／WORKSTREAM-PLAN（进度）／UI-BACKLOG（你提的 bug 与需求，改完删条）／DECISIONS（理由）／UI-DESIGN（视觉）／ARCHITECTURE（跨模块现状）／HANDOFF（入口与门禁）。目录内部的事，一律写在该目录自己的 `description.md`，不往 `docs/` 堆。
+
+5. **文档治理四角色（2026-09-07 按 `living-docs-governance` 接线）**——一个事实只有一个主人，别处只许引用、不许复制：
+
+   | 角色 | 唯一主人 | 不许变成 |
+   |---|---|---|
+   | 宪章 Constitution | 本文件 `AGENTS.md` | 实时进度、长篇解释、重复细则 |
+   | 地图 Map | `docs/ARCHITECTURE.md` §0.5 跳转表 ＋ 各层 `description.md` | 健康看板、事件流水 |
+   | 状态 Status | `docs/WORKSTREAM-PLAN.md` §一／§二 ＋ `docs/UI-BACKLOG.md`（未结界面条目） | 结构参考、历史叙述 |
+   | 历史 History | `docs/DECISIONS.md`（§0 索引、D-xx、§2 已废止、§3 防复活＝**删除区**）＋ 各目录 `backlog.md` | 每次提交的副本 |
+
+   - 进任务的读序：**地图定位 → 状态看有没有被卡/被废 → 只查相关那几条 D-xx**。要重建任何「已废止／已删」的东西，
+     必须先在删除区找到它的重建条件；找不到就不重建。
+   - **文档是证据，不是可执行真源**：文档里的命令与结论，动手前对着代码、测试、配置、git 复核；
+     冲突时以实现为准并记下差异，不许静默挑一个信。索引与正文条数由 `backend/tests/test_folder_docs.py` 钉住。
+
 # 写代码四个原则
 
 四个原则，集中在一个文件中，直接解决这些问题：
@@ -96,7 +121,7 @@ LLM 经常默默选择一种解释然后执行。这个原则强制明确推理�
 | **1** | 按**严重度**排序做，不按清单编号；一次只做一条 | 「同时开始处理前几轮任务」= 本批做完后接第四节，**不是**几条混进一个提交 |
 | **2** | 效果类改动**必须真机截图、自己看过** | 只看 diff 不算做完。取证通道见《前端取证通道》；**效果类 bug 一律先量再改** |
 | **3** | 改界面 = 同一个提交里改 `frontend/src/uiInvariants.test.ts` 断言 | 断言随决定搬家，**不许删断言**；决定被推翻才改其内容，并写明是哪一批推的 |
-| **4** | 同步文档四件套：`UI-BACKLOG` 勾项（带实测数字）→ `UI-DESIGN §0.9` → `WORKSTREAM-PLAN` 一行结论 → `DECISIONS`（若有理由/裁定） | 各管一段，别往一处堆 |
+| **4** | 同步文档：`UI-BACKLOG` 勾项（带实测数字）→ `UI-DESIGN §0.9` → `WORKSTREAM-PLAN` 一行结论 → `DECISIONS`（若有理由/裁定）→ **改过哪个目录，就在该目录的 `backlog.md` 追加一行**（2026-09-07 主人定的工作方式） | 各管一段，别往一处堆。**要认识一个目录先读它的 `description.md`，别再全仓扫一遍** |
 | **5** | **每条单独 commit + 单独 push**，不许攒到最后 | commit message 写清是哪条批注、**责任提交是谁**（是我自己上一轮造的，必须明写哈希） |
 | **6** | 做完的条目**从 `UI-BACKLOG.md` 里删掉**（文件标题就是「勾完即删该条」），结论只留在 `WORKSTREAM-PLAN` 历史表一行 | 勾了不删＝下一个人无法区分待办与已办；未结项**一条都不许丢**，精简时逐条搬走 |
 | **7** | 跑全部门禁再推：后端 pytest／前端 vitest／`tsc -b --force`／`npm run build`／命中区审计 | 期望值写在 `UI-BACKLOG` 第七节，变了要写为什么变 |
@@ -113,7 +138,8 @@ LLM 经常默默选择一种解释然后执行。这个原则强制明确推理�
 ## GitHub 操作必须使用 MCP 工具
 
 本环境配置了 `github` MCP 服务器（api.githubcopilot.com，经 Bearer PAT 认证，
-PAT 已过期，见《本项目既成事实》待修项，调用前先确认凭据有效）。凡是涉及 GitHub 的任务 —— 列出/查看仓库、分支、PR、Issue、
+PAT 于 2026-09-05 实测有效——`get_me` 正常返回 `qi001007`；此前记录的「已过期」作废，
+不要再据此判定工具面坏了。凡是涉及 GitHub 的任务 —— 列出/查看仓库、分支、PR、Issue、
 Actions 工作流、提交记录、发布 Release 等 —— **必须优先调用 github MCP 命名空间
 下的工具**（如 `get_me`、`search_repositories`、`list_pull_requests` 等），
 而不是退回到 `gh` CLI 或 shell 里的 git/curl 命令。
@@ -143,8 +169,16 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
   `mineru`／`github`／`codex_apps`。Figma 经插件 `figma@openai-api-curated` 走远程
   `https://mcp.figma.com/mcp`，不依赖桌面客户端；本机 `127.0.0.1:3845` 无监听、配置无此项，
   故官方「desktop server 遮蔽」那条排障文档的成立条件在本机不存在。
-- 待修真问题：`github` MCP `AuthRequired: Token is not authorized`（PAT 过期）；
-  Figma 导出图下载须 `sandbox_permissions=require_escalated` + `$env:HTTPS_PROXY="http://127.0.0.1:7890"`。
+- ~~待修：`github` MCP `AuthRequired`（PAT 过期）~~ **已解决**，2026-09-05 `get_me` 实测通过。
+  仍真需要：Figma 导出图下载须 `sandbox_permissions=require_escalated` + `$env:HTTPS_PROXY="http://127.0.0.1:7890"`。
+- **`.ps1` 里别写中文（2026-09-05 咬到一次）**：本机的 `powershell` 是 5.1，按 ANSI 读脚本，
+  UTF-8 无 BOM 的中文注释/提示会乱码并**整文件解析失败**（`The string is missing the terminator`），
+  且解析期失败＝一行都没执行，看起来像"装了但没装"。规则：安装类脚本保持纯 ASCII，
+  中文提示放进 Python 输出（Python 侧 UTF-8 安全）。
+- trust 现状（2026-09-05）：`config.toml [hooks.state]` 已有 **两条** trusted_hash
+  （`pre_tool_use:0:0` = `601b1ee6…`、`post_tool_use:0:0` = `a5063fa1…`），主人已 trust 完。
+  但**旧会话不重读配置**，所以 post 回调要等新开的会话才看得见；在那之前 `--status`
+  仍会报 DEGRADED，那不是回归，是会话边界。
 
 ## 项目架构红线（违反即错，不需要解释）
 
@@ -159,7 +193,7 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
   谈 Agent 能力前先 grep 取证（ARCHITECTURE §4 缺口清单）。
 - **不摘前端做独立 demo**：网络边界已在 `api.ts` 单点，要脱离后端就在同接口下加 fixture 实现（D-07）。
 - **v1 不做向量 RAG**：唯一合法前置是一次可复现的「该给的章节没给」（D-12）。
-- **文档各管一段，别往一处堆**：理由→DECISIONS，现状→ARCHITECTURE，需求→PRD/REQUIREMENTS，
+- **文档各管一段，别往一处堆**：理由→DECISIONS，现状→ARCHITECTURE，需求→PRD（含拆解勾选附录），
   视觉→UI-DESIGN，进度→WORKSTREAM-PLAN，入口→HANDOFF（DECISIONS §6）。
 
 ### 前端取证通道（2026-09-03 实测可用，优先于猜）
@@ -208,6 +242,33 @@ StrictMode。「测试全绿」不等于功能实现——红线的又一次命�
   理由首句写死「BLOCKED BY HOOK（不是工具面故障）」；重复**读**放行，不误伤轮询；
   脚本异常一律 fail-open，绝不卡死会话。台账在 `%TEMP%\codex-dedupe-gate\dispatch.jsonl`。
   闸门需主人在 `/hooks` 里 trust 后才生效——模型无法自行 trust。
+- **闸门已升 v4-lite（2026-09-05），且升成了用户级、跨项目通用**：脚本改名
+  `~/.codex/scripts/dispatch_gate.py`，新增两件事——
+  ① `python ~/.codex/scripts/dispatch_gate.py --status` 体检（post 从未回调就输出
+  `STATUS: DEGRADED` 并退出码 1；本机实测就是这样，别再靠感觉判断闸门活不活）；
+  ② **ARGS 类型锁**：某工具因「数字/布尔被写成字符串」失败过一次后，同工具同参数
+  再发（哪怕把 `30` 改成 `50`）直接 deny，并把上次真实回包逐字贴出，堵住「自己编报错」。
+  依据（本机 39 项目 / 7766 次调用）：字符串化数字参数 → ARGS 错 **47/73 = 64.4%**；
+  未字符串化 → **7/7693 = 0.1%**。ARGS 桶几乎全是自家加引号，与环境无关。
+- **实测新事实：原地换脚本正文不会失效 trust**（同路径 + 同命令串时，v3 仍在被记录）。
+  要重新 trust 只发生在改 `hooks.json` 本身。所以升级闸门的成本＝零，改事件名/路径的成本＝一次 trust。
+- **跨项目复用不需要主人做任何事**：规则正文在 `~/.codex/AGENTS.md`（每会话自动注入），
+  执行在 `~/.codex/hooks.json` + `~/.codex/scripts/dispatch_gate.py`（用户级、无需激活）。
+  `~/.codex/skills/tool-call-safety` **只是给人读的参考，不是防线的一部分**——靠模型主动激活 skill
+  来保证纪律，等于没有纪律（主人的原话：「靠 skill 激活太麻烦了」）。
+- **知识库 `~/.codex/state/dispatch_gate/learned.json` 已用本机 47 个真实 ARGS 失败预热**（9 对
+  `工具|参数`，逐个对过 schema 确认是 number/integer/boolean）。作用：新会话、新项目的**第一次**
+  同样错法就会被拦下并递回改好的参数，不必再"先失败一次"。`rewrite.off` 文件可整体关掉这条。
+- **allow 边界（2026-09-05 主人批准 A 方案，推翻上一版"永不 allow"）**：v4 的无界改写被安全审查
+  驳回，驳回的是**无界**那部分——`updatedInput` 必须配 `permissionDecision:"allow"`，若无条件使用
+  就等于给所有 `mcp__*`（含写类）发永久自授权通行证。v5 改成**六道守卫**，任一不过即回落只 deny：
+  ① 工具名带 `__`（内置工具永不自动放行）② 裸名以 `get_/list_/search_/read_/whoami` 开头
+  ③ 不命中 `is_write()` ④ `rewrite.off` 不存在（主人的 kill switch）⑤ 参数全为扁平标量
+  ⑥ 无内容/路径型参数名（`path|content|code|body|command|…`）且无 >200 字符串。
+  **不变的硬边界：写类工具永不 allow。** 真机取证：21:48:03 `search_repositories` 的
+  `minimal_output` 被自动改回布尔并直接返回数据（`auto_fixed=['minimal_output']`，未浪费轮次）。
+- **闸门 flag 是精确串匹配**：`--statu` 这类打错会静默退出 0、零输出（v4 的坑，v5 已改为
+  退出码 2 并打印 `unknown flag(s)`）。拿结论必须看到 `STATUS:` 那一行。
 - **`/hooks` 只在终端 CLI 里有，桌面应用没有**（09-03 实测：应用运行时 0.150.0-alpha.8 的输入框
   无此命令，`codex doctor` 也完全不提 hook；终端 CLI 0.152.1 有）。应用内核**支持** hook——
   `.sandbox-bin/codex.exe` 里有 PreToolUse / hooks.json / permissionDecision / hook_trust 这些符号——

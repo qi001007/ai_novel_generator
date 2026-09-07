@@ -12,6 +12,21 @@
 **目录内部的事不写在这里**：从 `backend/description.md`、`frontend/description.md` 顺着
 各层 `description.md` 往下读（每层 ≤20 行，`backend/tests/test_folder_docs.py` 钉着）。
 本文只留**跨模块**的事实：真源与写通路、上下文链路、完成度、缺口、验证命令。
+### 0.5 Map 跳转表（要改什么 → 去哪个目录 → 用什么验）
+
+| 要改的东西 | 去这里（先读它的 description.md） | 验它的方式 |
+|---|---|---|
+| 加/改一张表、一列字段 | `backend/app/models.py` ＋ `backend/alembic/versions/` | `tests/test_migrations.py`；upgrade 与 downgrade 双向都要真跑 |
+| 加一个端点 | `backend/app/routers/`（回 `app/main.py` 挂 router） | `backend/tests/` 对应用例 |
+| 改生成 / 校验 / 恢复的行为 | `backend/app/services/` | `pytest -q` ＋ `scripts/writing_ring_smoke.py`（默认档不花钱） |
+| 改「注入什么上下文」 | 只改 `services/context.py` 的 `collect_items()` 一个分支 | 起后端带 `NOVEL_CONTEXT_DEBUG=1`，看终端清单 |
+| 改对话与 Agent | `services/chat.py` `agent.py` `agent_tools.py` | `tests/test_agent_*.py`；`scripts/smoke_chat_stream.py` 要先起后端 |
+| 改一块界面 | `frontend/src/components/` | `npm run test` ＋ **同批改** `src/uiInvariants.test.ts` ＋ 真机截图 |
+| 改一个页面 / 路由 | `frontend/src/pages/` | 同上 |
+| 改状态持有者 | `frontend/src/store/`（只有三个，多一个要说明理由） | `store/*.test.ts` |
+| 改视觉令牌 / 不可回退项 | `docs/UI-DESIGN.md` §0 与 §0.9 | `uiInvariants.test.ts` 就是它的机器版 |
+| 查「这条为什么这么定」 | `docs/DECISIONS.md` §0 索引 → D-xx | 状态看正文，别处只许引编号 |
+
 
 ## 1. 真源与写通路
 

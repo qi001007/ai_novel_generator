@@ -78,7 +78,7 @@
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 260 passed（2026-09-07 +4：新增 tests/test_folder_docs.py 钉住「每层一份够短的 description.md」）
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 262 passed（09-07 +6：test_folder_docs 四角色与索引防漂移断言，见 DECISIONS 之外的 AGENTS.md 第 5 条）
 cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 226 passed / 22 files
 cd E:\novel-generator\frontend; npx tsc -b --force --pretty false           # 必须 clean（--force，别信增量）
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
