@@ -750,6 +750,9 @@ export default function WorkbenchPage() {
             createError={state.createError}
             onCreateChapter={() => void handleCreateChapter()}
             onNewConversation={() => void state.startChatConversation()}
+            conversations={state.conversations}
+            activeConversation={state.chatConversation}
+            onSelectConversation={(conversationId) => state.openConversation(conversationId)}
             onRenameChapter={(chapterNumber) => {
               const chapter = state.chapters.find((item) => item.chapter_number === chapterNumber);
               setChapterRenameError(null);

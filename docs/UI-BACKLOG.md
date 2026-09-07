@@ -114,6 +114,27 @@
 ④ 只有一组时也列；一组也没有时才给空态，且空态不填解释句（28.3 同一条）；
 ⑤ 真机：开一条新对话说两句 → 左栏立刻同时看得见新线程与那条 12 句的旧线程（截图）。
 
+- [x] **已做（2026-09-07，真机两条路都走过、图自己看过）**。
+  · 后端 `GET /api/novels/{id}/chat/conversations`：按线程分组、最新在前，给
+    `{conversation_id, first_question, message_count, updated_at, is_current}`。首句取该线程
+    **第一条 user**（开场白不落库，拿它当标题每条都一样）；**一条 user 都没有的线程不列**
+    - 这个判断只留在后端一处，前端不自己攒第二份列表（D-02）。
+  · 前端：`chatConversation`（null = 交给后端答「当前线程」）+ `openConversation` +
+    `refreshConversations` 进 workbench store；中栏的取地址跟着带 `?conversation=N`；
+    每一轮答完都重读一次列表，所以**不刷新浏览器**也能看见新长出来的那一条。
+  · 真机（第 5 号书，只读）：`shots/292-A-list.png` 实测列表 =
+    `[{你好,4,选中},{弧 1 的收束太弱。请先用 read_file…,12}]`，`.tree-empty` 数量 **0**；
+    点第二条 → 中栏 5 行、首句变成「弧 1 的收束太弱…」（`shots/292-C-switched.png`）。
+  · 真机（写路径，跑在临时书《验证292》上，测完已删）：新书 `count=0` 且不写任何解释句 →
+    说一句 `count=1`（`first=只回一个字,2 条`）→ 点「新建对话」还没说话仍是 1 →
+    再说一句 `count=2`。全程没刷新浏览器。图 `shots/292-{A-fresh,B-one,D-two}.png`。
+  · **审计抓到一条我自己造的溢出**：首句是一整句不换行的话，`button` 作为 grid item 的
+    自动最小尺寸 = min-content，于是 `.tree` 宽 244 而 scrollWidth 347，页头两枚图标被推到
+    侧栏外 → `hit-area-audit` 报 `unreachable(2)`。补 `min-width: 0`（两层都要，少一层照样撑）
+    后 head 244 / scrollWidth 244、审计 0/0/0，并把这条钉进 `uiInvariants`。
+  · 门禁：backend `250 passed`（本条新增 2 条）、frontend `221 passed / 22 files`、
+    `tsc -b --force` clean、`npm run build` clean、`hit-area-audit /novels/5` → 0/0/0。
+
 ### 29.3 思考过程必须**先于**正文流式出来，且用思考那张脸（批注 6 后半）
 
 主人：「在交流的过程中，他并不是先展现思考过程再生成正文，而是直接生成正文，生成完之后才突然跳出
@@ -461,6 +482,9 @@ DOM 里不许出现 `.prefs-muted` 那句；测试钉「空态不填字」。
 前半句现在也不准（这本书有 12 条），后半句的前提（「得先有会话表」）已经被 28.8 满足了。
 **本轮只登记**：把它改成「按线程列出历史对话、点一条切回去」是另一件事，
 要主人点头才做（判据：列表按线程分组、显示首句与时间、点一条 → 中栏切到那条线程）。
+
+  **2026-09-07 主人当面点了头**（第二十九批批注 6），已随 29.2 做完：那句过期文案从
+  `TreePane.tsx` 删掉，`uiInvariants` 反向钉「还没有会话记录」不许回来。
 
 ## 〇b、2026-09-06 第二十七轮（对话 Agent 换框架：**先出计划，不动代码**）
 

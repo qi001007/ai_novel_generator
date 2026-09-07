@@ -708,7 +708,8 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 线程号由服务端定，前端只报一次「开下一条」并等 epoch 变化重新拉取（D-02：DB 是真源）。
     expect(workbenchStore).toContain('/api/novels/${novelId}/chat/conversation');
     expect(workbenchStore).not.toMatch(/del\([^\n]{0,40}chat\/messages/);
-    expect(chatPane).toContain('}, [selectedNovelId, chatEpoch]);');
+    // 29.2 之后依赖里多了一个线程号：从左边点一条历史对话，中栏要跟着换。
+    expect(chatPane).toContain('}, [selectedNovelId, chatEpoch, chatConversation]);');
     // 鼠标与键盘两扇门
     expect(bookshelf).toContain("onContextMenu={(event) => openBookMenu(event, novel)}");
     expect(bookshelf).toContain('event.key === "ContextMenu"');
@@ -846,6 +847,30 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 28.7b 跟着这条一起做完：恢复一章要连目录那一行（= 章名）一起补回
     expect(preferences).toContain("目录里的章名也补回来了");
     expect(preferences).not.toMatch(/restoreDocument\(\{[^}]*brief\.md/s);
+  });
+
+  // 第二十九批批注 6（2026-09-07）。28.8 之后线程号是真的了，可左栏「对话」那一页
+  // 还挂着一句「得先有会话表那一层」，而且**零请求** - 主人开了新对话聊完，那里照旧
+  // 空的。钉三件事：过期文案不许回来、列表来自后端、中栏跟着切线程。
+  it("the conversation page lists real threads instead of describing a missing table", () => {
+    // 钉的是**会上屏的那半句**，不是「会话表」三个字 - 注释里引用它是历史，
+    // 断言要拦的是它又被渲染出来。
+    expect(treePane).not.toContain("还没有会话记录");
+    expect(treePane).toContain("conversations.map(");
+    expect(treePane).toContain("onSelectConversation");
+    // 列表只许来自后端那一条查询，不许前端自己攒一份第二真源（D-02）
+    expect(workbenchStore).toContain("api.listConversations");
+    expect(workbenchStore).toContain("refreshConversations");
+    // 中栏读的是选中的那条线程；null 才交给后端答「当前线程」
+    expect(chatPane).toContain("chatConversation");
+    expect(chatPane).toContain("?conversation=");
+    // 「新建对话」只 +1 不删；列表里那条**还没问题**的线程由后端过滤，前端不自己追加
+    expect(workbenchStore).toContain("await get().refreshConversations();");
+    // 真机审计抓到的溢出：首句是一整句不换行的话，button 作为 grid item 的自动最小
+    // 尺寸 = min-content，不设 min-width:0 整条侧栏会被撑开、页头图标推出栏外。
+    const conv = css.match(/\.tree-section-conversations,\s*\.tree-row\.conversation\s*\{([^}]*)\}/);
+    expect(conv, "历史对话那一行必须钉住 min-width:0").not.toBeNull();
+    expect(conv![1]).toMatch(/min-width:\s*0;/);
   });
 
 });

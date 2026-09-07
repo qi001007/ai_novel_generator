@@ -1,6 +1,7 @@
 import type {
   BackupChapter,
   BackupDocument,
+  ChatConversation,
   BackupSnapshot,
   ChatContextItem,
   ChatStreamEvent,
@@ -168,6 +169,9 @@ export const api = {
     if (trailing) onEvent(trailing);
   },
 
+  /** 这本书的历史对话，按线程分组、最新在前（第二十九批批注 6）。 */
+  listConversations: (novelId: number) =>
+    api.get<ChatConversation[]>(`/api/novels/${novelId}/chat/conversations`),
   listChatContext: (novelId: number, params: { q?: string; kind?: string }) => {
     const query = new URLSearchParams();
     if (params.q) query.set("q", params.q);

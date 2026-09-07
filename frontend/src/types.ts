@@ -162,6 +162,16 @@ export type BackupSnapshot = {
   bytes: number;
 };
 
+/** 一条历史对话（= 一个线程）。左栏「对话」那一页就列这个。 */
+export type ChatConversation = {
+  conversation_id: number;
+  /** 该线程第一条主人问的话，截断过；Agent 的开场白不落库，不能当标题。 */
+  first_question: string;
+  message_count: number;
+  updated_at: string;
+  is_current: boolean;
+};
+
 /** 快照里少掉的那一章：一行 = 一章，简报与正文成对，不再拆成两个文件。 */
 export type BackupChapter = {
   novel_id: number;

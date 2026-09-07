@@ -75,6 +75,34 @@ def test_the_history_window_does_not_leak_across_threads(client: TestClient) -> 
     assert all("旧线程的话" not in item["content"] for item in sent)
 
 
+def test_the_conversation_list_groups_by_thread(client: TestClient) -> None:
+    """左栏「对话」那一页的数据源（第二十九批批注 6：开了新对话聊过以后那里还是空的）。"""
+    novel_id = make_novel(client)
+    use_fake(client, FakeChatClient(reply="第一线程的回答"))
+    _ask(client, novel_id, "第一个问题")
+    client.post(f"/api/novels/{novel_id}/chat/conversation")
+    use_fake(client, FakeChatClient(reply="第二线程的回答"))
+    _ask(client, novel_id, "第二个问题")
+
+    listed = client.get(f"/api/novels/{novel_id}/chat/conversations").json()
+    assert [item["conversation_id"] for item in listed] == [2, 1], "最新说话的排在前"
+    # 首句取该线程第一条 user - Agent 的开场白不落库，拿它当标题每条都一样
+    assert [item["first_question"] for item in listed] == ["第二个问题", "第一个问题"]
+    assert [item["message_count"] for item in listed] == [2, 2]
+    assert [item["is_current"] for item in listed] == [True, False]
+
+
+def test_an_opened_thread_without_a_question_is_not_listed(client: TestClient) -> None:
+    """开了但没说话的那一条不算历史：它没有首句可显示，列出来是个空壳。"""
+    novel_id = make_novel(client)
+    use_fake(client, FakeChatClient(reply="答"))
+    _ask(client, novel_id, "唯一的问题")
+    client.post(f"/api/novels/{novel_id}/chat/conversation")
+
+    listed = client.get(f"/api/novels/{novel_id}/chat/conversations").json()
+    assert [item["conversation_id"] for item in listed] == [1]
+
+
 def test_two_opens_in_a_row_do_not_reuse_a_number(client: TestClient) -> None:
     novel_id = make_novel(client)
     use_fake(client, FakeChatClient())

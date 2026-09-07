@@ -17,6 +17,7 @@ from app.services.chat import (
     complete_turn,
     current_conversation,
     extract_proposals,
+    list_conversations,
     next_conversation,
     prepare_turn,
     stream_turn,
@@ -151,6 +152,29 @@ def list_chat_messages(
     )
     reader = current_text_reader(session, novel_id)
     return [ChatMessageOut.of(row, reader) for row in rows[-max(limit, 1):]]
+
+
+class ChatConversationOut(SQLModel):
+    conversation_id: int
+    first_question: str
+    message_count: int
+    updated_at: str
+    is_current: bool
+
+
+@router.get("/{novel_id}/chat/conversations", response_model=list[ChatConversationOut])
+def read_conversations(
+    novel_id: int, session: Session = Depends(get_session)
+) -> list[ChatConversationOut]:
+    """左栏「对话」那一页的数据源（第二十九批批注 6）。
+
+    28.8 之后线程号是真的了，可那一页还写着一句「得先有会话表那一层」-
+    前提早就满足，缺的只是把这个列表查出来。
+    """
+    get_novel_or_404(novel_id, session)
+    return [
+        ChatConversationOut(**item) for item in list_conversations(session, novel_id)
+    ]
 
 
 @router.get("/{novel_id}/chat/context", response_model=list[ChatContextItem])

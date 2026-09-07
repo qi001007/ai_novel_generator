@@ -17,7 +17,7 @@ import {
 import type { RailPage } from "./ActivityRail";
 
 import StatusBadge from "./StatusBadge";
-import type { Chapter, FileMeta } from "../types";
+import type { ChatConversation, Chapter, FileMeta } from "../types";
 import {
   ARCS_PATH,
   BLUEPRINT_PATH,
@@ -57,6 +57,11 @@ type TreePaneProps = {
   onCreateChapter: () => void;
   /** 「新建对话」：当前线程收尾，开一条新的；旧的留着不删（第二十八批批注 8）。 */
   onNewConversation: () => void;
+  /** 历史对话（= 线程），最新在前（第二十九批批注 6）。 */
+  conversations: ChatConversation[];
+  /** 中栏现在看的那条线程；null 表示「后端意义上的当前线程」。 */
+  activeConversation: number | null;
+  onSelectConversation: (conversationId: number) => void;
   /** 改章名（序号不动，第二十八批批注 6）：弹窗在工作台那边，这里只报章号。 */
   onRenameChapter: (chapterNumber: number) => void;
   /** 在其后插入一章：后面的序号自动 +1，章名跟着章走。 */
@@ -114,6 +119,9 @@ export default function TreePane({
   onSelectChapter,
   onCreateChapter,
   onNewConversation,
+  conversations,
+  activeConversation,
+  onSelectConversation,
   onRenameChapter,
   onInsertChapterAfter,
   onExport,
@@ -543,12 +551,27 @@ export default function TreePane({
           tree is the loudest possible way to say "you can add one". The same two
           actions are icons in the page header now, revealed with the pointer. */}
       {page === "chat" ? (
-        /* 帧 27: the shell, not a mock. A conversation list needs a conversation
-           table, which is S3 work - until then this says so rather than showing
-           invented threads. */
-        <p className="tree-empty">
-          还没有会话记录。中栏的对话目前按章保存，要在这里列出来，得先有会话表那一层
-        </p>
+        /* 第二十九批批注 6：这一页以前只挂着一句「得先有会话表那一层」，而 28.8 之后
+           线程号早就是真的了 - 缺的从来不是表，是把它们查出来的那一句。
+           一条都没有时一行都不多写（28.3 同一条纪律）。 */
+        <div className="tree-children tree-section-conversations">
+          {conversations.map((item) => {
+            const active =
+              activeConversation === null ? item.is_current : activeConversation === item.conversation_id;
+            return (
+              <button
+                type="button"
+                key={item.conversation_id}
+                className={`tree-row conversation ${active ? "selected" : ""}`}
+                title={`${item.first_question} · ${item.message_count} 条`}
+                onClick={() => onSelectConversation(item.conversation_id)}
+              >
+                <span className="tree-label">{item.first_question}</span>
+                <span className="tree-hint">{item.message_count}</span>
+              </button>
+            );
+          })}
+        </div>
       ) : null}
       {createError && <p className="tree-action-error">{createError}</p>}
       {exportError && <p className="tree-action-error">{exportError}</p>}

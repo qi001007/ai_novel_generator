@@ -5,6 +5,7 @@ import { briefPath, draftBody, draftDocument, draftPath, useFiles } from "../sto
 import type {
   Chapter,
   ChapterBrief,
+  ChatConversation,
   GenerationRun,
   LLMStatus,
   MachineCheckResult,
@@ -68,6 +69,12 @@ type WorkbenchState = {
    *  is only the signal that tells the middle column to reload onto the new thread. */
   chatEpoch: number;
   startChatConversation: () => Promise<void>;
+  /** 中栏现在显示哪一条线程；null = 让后端按「当前线程」答（28.8 那套语义）。 */
+  chatConversation: number | null;
+  /** 左栏「对话」那一页的列表（第二十九批批注 6）。 */
+  conversations: ChatConversation[];
+  openConversation: (conversationId: number) => void;
+  refreshConversations: () => Promise<void>;
   init: () => Promise<void>;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
   updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
@@ -122,6 +129,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   creatingChapter: false,
   createError: null,
   chatEpoch: 0,
+  chatConversation: null,
+  conversations: [],
 
   async renameChapter(chapterNumber, title) {
     const novelId = get().selectedNovelId;
@@ -182,7 +191,30 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const novelId = get().selectedNovelId;
     if (!novelId) return;
     await api.post<{ conversation_id: number }>(`/api/novels/${novelId}/chat/conversation`);
-    set({ chatEpoch: get().chatEpoch + 1 });
+    // 新线程归零本地选择：中栏问的是「当前线程」，由后端答是哪一条。
+    set({ chatConversation: null, chatEpoch: get().chatEpoch + 1 });
+    // 列表里现在多了一条**还没有问题**的线程，它不该出现 - 重读一次而不是本地追加，
+    // 「有没有首句」这个判断只留在后端一处。
+    await get().refreshConversations();
+  },
+
+  openConversation(conversationId) {
+    if (get().chatConversation === conversationId) return;
+    set({ chatConversation: conversationId, chatEpoch: get().chatEpoch + 1 });
+  },
+
+  async refreshConversations() {
+    const novelId = get().selectedNovelId;
+    if (!novelId) {
+      set({ conversations: [] });
+      return;
+    }
+    try {
+      set({ conversations: await api.listConversations(novelId) });
+    } catch {
+      // 读不到列表就把旧的丢掉：留一份过期的比空着更容易被骗。
+      set({ conversations: [] });
+    }
   },
 
   async createNovel(payload) {
@@ -271,6 +303,9 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       generationRuns: [],
       reviews: [],
       chapterTabs: [],
+      // 线程号是**每本书各自**的号，带着上一本的选中过去会把中栏指到不存在的线程上
+      chatConversation: null,
+      conversations: [],
     });
     // The draft buffers live in the file store now, and a path like
     // chapters/0001/draft.md is the same string in every book - so the previous

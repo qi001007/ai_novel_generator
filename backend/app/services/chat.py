@@ -359,6 +359,46 @@ def _history_messages(
     ]
 
 
+def list_conversations(session: Session, novel_id: int) -> list[dict]:
+    """按线程列出这本书的对话：一条 = 一个线程，带首句、条数与最后一次说话。
+
+    首句取该线程里**第一条 user** 的话 - 那是主人问的，Agent 的开场白不落库，
+    拿它当标题等于给每条线程都起同一个名字。一条 user 都没有的线程不列：
+    它确实还没开始（「新建对话」只把号 +1，不写空行）。
+    """
+    rows = list(
+        session.exec(
+            select(ChatMessage)
+            .where(ChatMessage.novel_id == novel_id)
+            .order_by(ChatMessage.created_at, ChatMessage.id)
+        ).all()
+    )
+    grouped: dict[int, dict] = {}
+    for row in rows:
+        thread = int(getattr(row, "conversation_id", 1) or 1)
+        item = grouped.setdefault(
+            thread,
+            {
+                "conversation_id": thread,
+                "first_question": "",
+                "message_count": 0,
+                "updated_at": "",
+            },
+        )
+        if row.role == "user" and not item["first_question"]:
+            text = (row.content or "").replace("\\n", " ").strip()
+            item["first_question"] = text[:40] + ("…" if len(text) > 40 else "")
+        item["message_count"] += 1
+        stamp = row.created_at.isoformat() if row.created_at else ""
+        if stamp >= item["updated_at"]:
+            item["updated_at"] = stamp
+    current = current_conversation(session, novel_id)
+    out = sorted(grouped.values(), key=lambda item: item["updated_at"], reverse=True)
+    for item in out:
+        item["is_current"] = item["conversation_id"] == current
+    return out
+
+
 def prepare_turn(
     session: Session,
     novel: Novel,

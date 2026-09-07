@@ -171,6 +171,10 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const busy = useWorkbench((s) => s.busy);
   const setTab = useWorkbench((s) => s.setTab);
   const chatEpoch = useWorkbench((s) => s.chatEpoch);
+  // 中栏看的是哪一条线程。null 交给后端答「当前线程」（28.8 那套语义）；
+  // 从左边列表点进来时是一个号（第二十九批批注 6）。
+  const chatConversation = useWorkbench((s) => s.chatConversation);
+  const refreshConversations = useWorkbench((s) => s.refreshConversations);
   const [rows, setRows] = useState<Row[]>([]);
   const [input, setInput] = useState("");
   const [mode, setMode] = useState<ChatMode>("write");
@@ -247,8 +251,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     setRows([]);
     if (!selectedNovelId) return;
     let cancelled = false;
+    void refreshConversations();
+    const thread =
+      chatConversation === null ? "" : `?conversation=${chatConversation}`;
     api
-      .get<StoredChatMessage[]>(`/api/novels/${selectedNovelId}/chat/messages`)
+      .get<StoredChatMessage[]>(`/api/novels/${selectedNovelId}/chat/messages${thread}`)
       .then(async (history) => {
         if (cancelled) return;
         setRows(fromHistory(history));
@@ -271,7 +278,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     return () => {
       cancelled = true;
     };
-  }, [selectedNovelId, chatEpoch]);
+    // refreshConversations 是 store 上的稳定引用，不进依赖也不会漏更新：
+    // 线程变化由 chatEpoch 这一路统一触发（StrictMode 双跑同一条路）。
+  }, [selectedNovelId, chatEpoch, chatConversation]);
 
   // The @mention list is backed by the same retriever the agent uses.
   useEffect(() => {
@@ -510,6 +519,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             : row,
         ),
       );
+      // 第一句话落库以后这条线程才**成为**一条历史对话：左栏那一页得跟着长出来，
+      // 不能等主人刷新（第二十九批批注 6）。
+      void refreshConversations();
     }
   }
 

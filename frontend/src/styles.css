@@ -852,6 +852,15 @@ select:focus-visible {
   white-space: nowrap;
 }
 
+/* 第二十九批批注 6：历史对话那一行的正文是一整句不换行的话。button 作为 grid item，
+   自动最小尺寸 = 它的 min-content，所以不设 min-width:0 就会被一句首句撑开 -
+   真机量的：.tree 宽 244 而 scrollWidth 347，页头两枚图标被推到侧栏外，
+   命中区审计当场报 2 个 unreachable。两层都要设，少一层照样撑。 */
+.tree-section-conversations,
+.tree-row.conversation {
+  min-width: 0;
+}
+
 .tree-divider {
   display: flex;
   align-items: center;
