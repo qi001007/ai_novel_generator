@@ -139,6 +139,10 @@ describe("settled UI decisions must not regress", () => {
     expect(paneLayoutSource).toContain("viewport - RAIL_WIDTH - sidebar - SEAM_WIDTH - EDITOR_MIN");
     expect(layout).not.toContain("const EDITOR_MIN");
     // and the actions stay reachable by wrapping instead of being pushed out
+    // 输入框的高度上限只有一个主人：夹它的 JS 常量。CSS 里再写一份就是第二个答案。
+    expect(css).not.toMatch(/\.chat-input textarea \{[^}]*max-height/);
+    expect((chatPane.match(/INPUT_MAX_HEIGHT = /g) ?? []).length).toBe(1);
+    expect(chatPane).toContain("INPUT_MAX_HEIGHT = 180");
     expect(rule(".editor-toolbar")).toContain("flex-wrap: wrap");
     expect(rule(".editor-actions")).toContain("flex-wrap: wrap");
   });

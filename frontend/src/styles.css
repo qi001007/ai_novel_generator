@@ -1793,7 +1793,8 @@ select:focus-visible {
   height: 100%;
   min-width: 0;
   min-height: 44px;
-  max-height: 220px;
+  /* 上限不在这里：输入框的自增高由 ChatPane 的 INPUT_MAX_HEIGHT 夹（180），
+     这里再写一个 220 就永远到不了，只会骗到读代码的人。 */
   padding: 2px 0;
   border: 0;
   background: transparent;

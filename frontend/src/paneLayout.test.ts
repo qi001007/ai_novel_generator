@@ -12,6 +12,7 @@ import {
   chatMaxAt,
   clampPaneAt,
   defaultPanesAt,
+  chatRoomAt,
   dragValueAt,
   editorWidthAt,
 } from "./paneLayout";
@@ -54,6 +55,17 @@ describe("paneLayout", () => {
     expect(editorWidthAt({ ...base, sidebarHidden: false, chatHidden: false })).toBe(623);
     expect(editorWidthAt({ ...base, sidebarHidden: true, chatHidden: false })).toBe(924);
     expect(editorWidthAt({ ...base, sidebarHidden: false, chatHidden: true })).toBe(1095);
+  });
+
+
+  it("放开正文列时，聊天列让出的那点空间按可见的列算", () => {
+    const base = { viewport: 1440, sidebar: 300 };
+    // 两列都在：1440 - 44 导轨 - (300+1 缝) - (0 + 1 缝，聊天列的缝仍占位) - 160 正文地板
+    expect(chatRoomAt({ ...base, sidebarHidden: false, chatHidden: false })).toBe(934);
+    // 树列收起来了，那点宽度就还给聊天列
+    expect(chatRoomAt({ ...base, sidebarHidden: true, chatHidden: false })).toBe(1235);
+    // 聊天列本来就藏着：它的缝也不该算进去
+    expect(chatRoomAt({ ...base, sidebarHidden: false, chatHidden: true })).toBe(935);
   });
 
 });

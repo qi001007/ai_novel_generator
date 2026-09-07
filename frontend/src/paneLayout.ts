@@ -58,6 +58,19 @@ export function clampPaneAt(
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
+/**
+ * 放开正文列时，聊天列最多还能占多少 —— 正文的地板必须留着。
+ * 与 chatMaxAt 同一条规则，只是还要看哪些列此刻是隐藏的（隐藏的列不占位）。
+ */
+export function chatRoomAt(input: {
+  viewport: number;
+  sidebar: number;
+  sidebarHidden: boolean;
+  chatHidden: boolean;
+}): number {
+  return editorWidthAt({ ...input, chat: 0 }) - EDITOR_MIN;
+}
+
 /** 默认两栏宽度（帧 27：280 / 470 / 其余给正文，比例按 1440 设计稿）。 */
 export function defaultPanesAt(viewport: number) {
   return {

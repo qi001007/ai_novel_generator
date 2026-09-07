@@ -26,6 +26,7 @@ import {
   SIDEBAR_MAX,
   SIDEBAR_MIN,
   chatMaxAt,
+  chatRoomAt,
   dragValueAt,
   editorWidthAt,
   RAIL_WIDTH,
@@ -398,12 +399,12 @@ export default function WorkbenchPage() {
     // Un-hiding the prose column takes the room back from the chat pane, which grew
     // into it when the column went away.
     if (key === "editor" && hidden.editor) {
-      const room =
-        window.innerWidth -
-        44 -
-        (hidden.sidebar ? 0 : sidebarWidth + 1) -
-        (hidden.chat ? 0 : 1) -
-        EDITOR_MIN;
+      const room = chatRoomAt({
+        viewport: window.innerWidth,
+        sidebar: sidebarWidth,
+        sidebarHidden: hidden.sidebar,
+        chatHidden: hidden.chat,
+      });
       writePane("chat", clampPane("chat", Math.min(panes.chat, room), sidebarWidth));
     }
     applyHidden({ ...hidden, [key]: !hidden[key] });
