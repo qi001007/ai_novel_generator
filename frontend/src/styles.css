@@ -4659,7 +4659,10 @@ body.resizing {
   grid-template-columns: minmax(6rem, 0.8fr) minmax(0, 1.6fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 5px 0 5px 18px;
+  /* 第二十九批批注 2：右边必须有和 .pref-row 一样的 14px 内衬，否则展开行的两枚按钮
+     会比上面「恢复整本书 / 收起」那两枚整整往右凸一圈（真机量过：两行同名按钮的
+     right 差 14px）。两边都留 14，两列就逐位对齐。 */
+  padding: 5px 14px 5px 18px;
   border-top: 1px dashed var(--border);
   color: var(--text-2);
   font-size: 12px;

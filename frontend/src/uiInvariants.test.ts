@@ -844,6 +844,14 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 一章 = 一次 restore/chapter 调用，简报与正文一起回；不许再退化成两个 restoreDocument
     expect(preferences).toContain("api.restoreChapter");
     expect(preferences).toContain("简报与正文一起");
+    // 第二十九批批注 2：展开行的两枚按钮要和页头那两枚逐位对齐 - 靠的是同一圈
+    // 14px 内衬。.backup-doc 少了右边那份，按钮就会往右凸 14px（真机量出来的）。
+    const docRow = css.match(/\.backup-doc\s*\{([^}]*)\}/);
+    expect(docRow, "展开行缺了样式块").not.toBeNull();
+    const pad = docRow![1].match(/padding:\s*([^;]+);/)![1].trim().split(/\s+/).map(Number);
+    const headRow = css.match(/\.pref-row\s*\{([^}]*)\}/);
+    const headPad = headRow![1].match(/padding:\s*([^;]+);/)![1].trim().split(/\s+/).map(Number);
+    expect(pad[1], "展开行的右内衬必须等于页头的右内衬").toBe(headPad[1]);
     // 28.7b 跟着这条一起做完：恢复一章要连目录那一行（= 章名）一起补回
     expect(preferences).toContain("目录里的章名也补回来了");
     expect(preferences).not.toMatch(/restoreDocument\(\{[^}]*brief\.md/s);
