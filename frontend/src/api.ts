@@ -53,6 +53,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** 一条 SSE 的读取循环：只有一个主人（曾有两份逐字副本，只差事件类型参数）。 */
+async function pumpSse<E>(response: Response, onEvent: (event: E) => void): Promise<void> {
+  const body = response.body;
+  if (!body) return; // 调用方先挡过「当前浏览器不支持流式响应」
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const event = parseSseBlock<E>(buffer.slice(0, boundary));
+      buffer = buffer.slice(boundary + 2);
+      if (event) onEvent(event);
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  const trailing = parseSseBlock<E>(buffer);
+  if (trailing) onEvent(trailing);
+}
+
 function parseSseBlock<T = unknown>(block: string): T | null {
   let event = "";
   let data = "";
@@ -128,26 +154,7 @@ export const api = {
       throw new Error("当前浏览器不支持流式响应");
     }
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary >= 0) {
-        const event = parseSseBlock<ChatStreamEvent>(buffer.slice(0, boundary));
-        buffer = buffer.slice(boundary + 2);
-        if (event) onEvent(event);
-        boundary = buffer.indexOf("\n\n");
-      }
-    }
-
-    const trailing = parseSseBlock<ChatStreamEvent>(buffer);
-    if (trailing) onEvent(trailing);
+    await pumpSse<ChatStreamEvent>(response, onEvent);
   },
 
   streamGeneration: async (
@@ -169,23 +176,7 @@ export const api = {
     }
     if (!response.body) throw new Error("当前浏览器不支持流式响应");
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary >= 0) {
-        const event = parseSseBlock<GenerationStreamEvent>(buffer.slice(0, boundary));
-        buffer = buffer.slice(boundary + 2);
-        if (event) onEvent(event);
-        boundary = buffer.indexOf("\n\n");
-      }
-    }
-    const trailing = parseSseBlock<GenerationStreamEvent>(buffer);
-    if (trailing) onEvent(trailing);
+    await pumpSse<GenerationStreamEvent>(response, onEvent);
   },
 
   /** 这本书的历史对话，按线程分组、最新在前（第二十九批批注 6）。 */

@@ -25,18 +25,12 @@ from app.services.chat import (
 from app.services.agent import AgentConfig, ToolRegistry
 from app.services.agent_tools import build_registry
 from app.services.context import collect_items
+from app import sse
 from app.services.documents import current_text_reader
 from app.services.llm import LLMClient, get_llm_client
 
 
 router = APIRouter(prefix="/novels", tags=["chat"])
-
-SSE_HEADERS = {
-    "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
-    # Dev/prod proxies tend to buffer SSE bodies unless told otherwise.
-    "X-Accel-Buffering": "no",
-}
 
 
 class ChatAttachment(SQLModel):
@@ -110,10 +104,6 @@ def _to_http(cause: ChatDomainError) -> HTTPException:
     return HTTPException(status_code=cause.status_code, detail=cause.detail)
 
 
-def _sse(event: str, payload: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-
 def _event_stream(
     llm: LLMClient,
     turn: ChatTurn,
@@ -125,12 +115,12 @@ def _event_stream(
     # so the generator owns a session of its own for persisting the reply.
     try:
         for event, payload in stream_turn(llm, turn, session_factory, registry=registry, config=config):
-            yield _sse(event, payload)
+            yield sse.encode(event, payload)
     except ChatDomainError as cause:
-        yield _sse("error", {"message": cause.detail, "partial": ""})
+        yield sse.encode("error", {"message": cause.detail, "partial": ""})
     except Exception as cause:  # keep the stream well-formed for the client
-        yield _sse("error", {"message": f"chat stream failed: {cause}", "partial": ""})
-    yield _sse("end", {})
+        yield sse.encode("error", {"message": f"chat stream failed: {cause}", "partial": ""})
+    yield sse.encode("end", {})
 
 
 @router.get("/{novel_id}/chat/messages", response_model=list[ChatMessageOut])
@@ -262,7 +252,7 @@ def stream_chat_reply(
     return StreamingResponse(
         _event_stream(llm, turn, lambda: Session(bind), registry=registry),
         media_type="text/event-stream",
-        headers=SSE_HEADERS,
+        headers=sse.HEADERS,
     )
 
 

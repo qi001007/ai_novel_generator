@@ -2,6 +2,8 @@ import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+
+from app import sse
 from sqlmodel import Session, SQLModel, select
 
 from app.db import get_session
@@ -159,11 +161,8 @@ def stream_generate_chapter_from_brief(
         else (llm.settings.models.get("draft") or llm.settings.provider)
     )
 
-    def sse(event: str, data: dict) -> str:
-        return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
-
     def event_stream():
-        yield sse("context", {"manifest": writing_context.manifest()})
+        yield sse.encode("context", {"manifest": writing_context.manifest()})
 
         chunks: list[str] = []
         usage: dict = {}
@@ -179,15 +178,15 @@ def stream_generate_chapter_from_brief(
                     usage_out=usage,
                 ):
                     chunks.append(chunk)
-                    yield sse("delta", {"text": chunk})
+                    yield sse.encode("delta", {"text": chunk})
             else:
                 full = build_template_draft(brief)
                 for start in range(0, len(full), OFFLINE_CHUNK):
                     chunk = full[start:start + OFFLINE_CHUNK]
                     chunks.append(chunk)
-                    yield sse("delta", {"text": chunk})
+                    yield sse.encode("delta", {"text": chunk})
         except Exception as cause:
-            yield sse("error", {"message": str(cause), "partial": "".join(chunks)})
+            yield sse.encode("error", {"message": str(cause), "partial": "".join(chunks)})
             return
 
         content = "".join(chunks)
@@ -195,7 +194,7 @@ def stream_generate_chapter_from_brief(
             persist_novel = persist.get(Novel, novel.id)
             persist_brief = persist.get(ChapterBrief, brief.id)
             if persist_novel is None or persist_brief is None:
-                yield sse("error", {"message": "章节写入时找不到作品或简报", "partial": content})
+                yield sse.encode("error", {"message": "章节写入时找不到作品或简报", "partial": content})
                 return
 
             try:
@@ -211,9 +210,9 @@ def stream_generate_chapter_from_brief(
                 )
             except ChapterDomainError as cause:
                 # 事件流不能抛：抛了前端只会看到一条断掉的流，拿不到 partial
-                yield sse("error", {"message": cause.detail, "partial": content})
+                yield sse.encode("error", {"message": cause.detail, "partial": content})
                 return
-            yield sse("done", {
+            yield sse.encode("done", {
                 "chapter": outcome["chapter"].model_dump(mode="json"),
                 "generation_run": outcome["generation_run"].model_dump(mode="json"),
                 "machine_check": outcome["machine_check"],
@@ -222,7 +221,7 @@ def stream_generate_chapter_from_brief(
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers=sse.HEADERS,
     )
 
 

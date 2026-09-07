@@ -947,4 +947,13 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect((apiSource.match(/function apiFailure/g) ?? []).length).toBe(1);
   });
 
+
+  // 候选 2（2026-09-07）：SSE 的读取循环在 api.ts 里曾有两份逐字副本（只差类型参数）。
+  it("reads SSE through one pump, not two copies", () => {
+    expect((apiSource.match(/getReader\(\)/g) ?? []).length).toBe(1);
+    expect((apiSource.match(/new TextDecoder\(\)/g) ?? []).length).toBe(1);
+    expect(apiSource).toContain("async function pumpSse<E>");
+    expect((apiSource.match(/await pumpSse</g) ?? []).length).toBe(2);
+  });
+
 });
