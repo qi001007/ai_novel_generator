@@ -291,7 +291,7 @@ def delete_chapter(
         raise HTTPException(status_code=404, detail=f"第 {chapter_number} 章还不存在")
     brief = session.get(ChapterBrief, chapter.brief_id) if chapter.brief_id else None
     # 删之前照例留一份现场：删一章同样是手滑，快照要能把它取回来（见「导出与恢复」）
-    storage.snapshot(session, novel_id, novel.title)
+    storage.snapshot(session, novel_id, novel.title, reason="chapter")
     for model in (Review, GenerationRun, ChapterSummary):
         for row in session.exec(select(model).where(model.chapter_id == chapter.id)).all():
             session.delete(row)
@@ -323,7 +323,7 @@ def make_room_after(
     ).first() is None:
         raise HTTPException(status_code=404, detail=f"第 {chapter_number} 章还不存在")
     novel = session.get(Novel, novel_id)
-    storage.snapshot(session, novel_id, novel.title)
+    storage.snapshot(session, novel_id, novel.title, reason="room")
     moved = shift_after(session, novel_id, above=chapter_number, delta=1)
     session.commit()
     return {"number": chapter_number + 1, "moved": moved}

@@ -27,7 +27,10 @@ def test_deleting_a_book_leaves_a_snapshot_and_lists_it(file_client: TestClient,
 
     listed = file_client.get("/api/backups").json()["snapshots"]
     assert len(listed) == 1
-    assert listed[0]["reason"] == "删除前"
+    # 断言跟着设计搬家（不删条目）：前缀现在记下范围，标签不再是笼统的「删除前」
+    assert listed[0]["scope"] == "book"
+    assert listed[0]["reason"] == "删书前"
+    assert listed[0]["book_on_shelf"] is False
     assert listed[0]["novel_id"] == novel_id
     assert listed[0]["title"] == "观星"
     assert (tmp_path / "backups" / listed[0]["file"]).exists()
@@ -141,6 +144,30 @@ def test_only_real_snapshot_names_are_accepted(file_client: TestClient) -> None:
     for bad in ["../../etc/passwd", "novel_generator.db", "deleted-20260101-000000.db"]:
         refused = file_client.post("/api/backups/restore/novel", json={"file": bad})
         assert refused.status_code == 400, bad
+
+
+def test_the_list_is_newest_first_even_though_the_prefix_is_a_word(file_client, tmp_path) -> None:
+    """前缀记下范围以后（批注 1），排序键不能再是文件名。
+
+    真机第一次跑就撞上：`chapter-` 按字母排在 `deleted-` 后面，刚拍的那份章级快照
+    被挤到 18 份旧文件底下，「最新在前」当场失效。这条钉住排序键是时间戳那一段。
+    """
+    root = tmp_path / "backups"
+    root.mkdir(parents=True, exist_ok=True)
+    for name in [
+        "deleted-20260101-000000-9-旧.db",
+        "chapter-20260907-123003-9-新.db",
+        "book-20260906-000000-9-中.db",
+    ]:
+        (root / name).write_bytes(b"")
+
+    listed = file_client.get("/api/backups").json()["snapshots"]
+    mine = [item["file"] for item in listed if item["novel_id"] == 9]
+    assert mine == [
+        "chapter-20260907-123003-9-新.db",
+        "book-20260906-000000-9-中.db",
+        "deleted-20260101-000000-9-旧.db",
+    ], "排序键必须是时间戳那一段，不是整个文件名"
 
 
 def tmp_export_dir(client: TestClient) -> str:

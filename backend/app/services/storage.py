@@ -73,7 +73,21 @@ def set_export_dir(session: Session, value: str) -> str:
 
 # ---------- 快照：删除之前先复制一份现场 ----------
 
-SNAPSHOT_RE = re.compile(r"^(deleted|manual)-(\d{8}-\d{6})-(\d+)-(.*)\.db$")
+# 快照文件名的前缀就是「它是为什么拍的」。以前删书、删章、插章腾位三处共用一个默认
+# reason="deleted"，快照自己就没记下范围，设置页只能猜 - 它猜成「恢复整本书」，而
+# 主人 2026-09-07 批注 1 指的就是这一条：他根本没删整本书。
+SNAPSHOT_KINDS = ("book", "chapter", "room", "renumber", "deleted", "manual")
+SNAPSHOT_RE = re.compile(
+    r"^(book|chapter|room|renumber|deleted|manual)-(\d{8}-\d{6})-(\d+)-(.*)\.db$"
+)
+SCOPE_LABEL = {
+    "book": "删书前",
+    "chapter": "删章前",
+    "room": "插章前",
+    "renumber": "重编号前",
+    "deleted": "删除前",  # 旧文件分不出删的是书还是章，只能给一个不带范围的词
+    "manual": "手动",
+}
 KEEP = 20
 
 
@@ -82,13 +96,18 @@ def backups_dir(session: Session) -> Path | None:
     return src.parent / "backups" if src else None
 
 
-def snapshot(session: Session, novel_id: int, title: str, reason: str = "deleted") -> Path | None:
+def snapshot(session: Session, novel_id: int, title: str, reason: str) -> Path | None:
     """Copy the live database into backups/<reason>-<时间>-<id>-<书名>.db.
+
+    reason 故意不给默认值：三处删除共用过 reason="deleted"，快照就不记得自己是为什么
+    拍的，界面只能猜（主人 2026-09-07 批注 1）。新增调用点必须挑一个 SNAPSHOT_KINDS。
 
     SQLite's backup API rather than a file copy: the server is running and a plain copy can
     catch the file mid-write. Returns None for an in-memory database (tests), which keeps
     "delete still works" testable without a filesystem.
     """
+    if reason not in SNAPSHOT_KINDS:
+        raise StorageError(500, f"未知的快照类型 {reason!r}，只认 {SNAPSHOT_KINDS}")
     src = database_file(session)
     if src is None or not src.exists():
         return None
@@ -112,25 +131,47 @@ def snapshot(session: Session, novel_id: int, title: str, reason: str = "deleted
 
 def prune(root: Path, keep: int = KEEP) -> None:
     """Keep the newest N snapshots. Unlimited snapshots are just a disk leak with a nice name."""
-    files = sorted([*root.glob("deleted-*.db"), *root.glob("manual-*.db")], reverse=True)
+    # glob 必须跟着前缀走：漏一种，那一种就永不清理，攒成磁盘泄漏（KEEP 就是它的名额）
+    files = sorted(
+        [found for kind in SNAPSHOT_KINDS for found in root.glob(f"{kind}-*.db")],
+        reverse=True,
+    )
     for old in files[keep:]:
         old.unlink(missing_ok=True)
 
 
 def list_snapshots(session: Session) -> list[dict]:
+    """一行能做什么，取决于那本书**现在还在不在书架上**，不取决于文件名前缀。
+
+    旧快照全是 deleted-，靠前缀判就还是批注 1 那个错（他没删整本书，界面却让他恢复
+    整本书）。所以这里查一次活库的 novel 表，把结论随列表一起给出去。
+    """
     root = backups_dir(session)
     if root is None or not root.exists():
         return []
-    found = []
-    for path in sorted(root.glob("*.db"), reverse=True):
+    from sqlmodel import select
+
+    from app.models import Novel
+
+    on_shelf = {int(nid) for nid in session.exec(select(Novel.id)).all()}
+    matches = []
+    for path in root.glob("*.db"):
         match = SNAPSHOT_RE.match(path.name)
-        if not match:
-            continue
+        if match:
+            matches.append((path, match))
+    # 排序键必须是**时间戳那一段**，不是整个文件名。前缀记下范围以后（批注 1），
+    # 按文件名排就成了按字母排：chapter- 永远排在 deleted- 后面，新快照被挤到列表
+    # 末尾，「最新在前」当场失效 - 这条是真机上量出来的，不是推出来的。
+    found = []
+    for path, match in sorted(matches, key=lambda pair: (pair[1].group(2), pair[0].name), reverse=True):
         reason, stamp, novel_id, title = match.groups()
         found.append(
             {
                 "file": path.name,
-                "reason": "删除前" if reason == "deleted" else "手动",
+                "scope": reason,
+                "scope_label": SCOPE_LABEL.get(reason, reason),
+                "book_on_shelf": int(novel_id) in on_shelf,
+                "reason": SCOPE_LABEL.get(reason, reason),
                 "taken_at": f"{stamp[:4]}-{stamp[4:6]}-{stamp[6:8]} {stamp[9:11]}:{stamp[11:13]}:{stamp[13:15]}",
                 "novel_id": int(novel_id),
                 "title": title,
@@ -280,6 +321,17 @@ def restore_document(session: Session, file: str, novel_id: int, path: str, into
             if number is not None
             else {}
         )
+        # 恢复正文时若那个号上没有章，要先放回同一快照里的简报（正文不能凭空建章）。
+        # 这一句必须留在 with 块里读：出了块 Session 已经 close，再读会另开一条没人关
+        # 的连接 - 26.7 那个「快照文件被自己占着删不掉」就是同一个形状。
+        sibling_text: str | None = None
+        if number is not None and kind == "draft":
+            try:
+                sibling_text = documents.read_file(
+                    snap, novel_id, documents.brief_path(number)
+                ).text
+            except documents.DocumentError:
+                sibling_text = None
     if into == "book":
         if not session.exec(_select_novels().where(_novel_id_col() == novel_id)).first():
             raise StorageError(409, "这本书已经不在书架上了")
@@ -316,12 +368,10 @@ def restore_document(session: Session, file: str, novel_id: int, path: str, into
             )
         ).first() is None:
             sibling = documents.brief_path(number)
-            try:
-                sibling_text = documents.read_file(snap, novel_id, sibling).text
-            except documents.DocumentError as cause:
+            if sibling_text is None:
                 raise StorageError(
                     409, f"这一章的简报不在快照里，先把 {sibling} 放回书里再放正文"
-                ) from cause
+                )
             documents.write_file(session, novel_id, sibling, sibling_text, actor="human")
         try:
             documents.write_file(session, novel_id, path, doc.text, actor="human")
@@ -337,6 +387,168 @@ def restore_document(session: Session, file: str, novel_id: int, path: str, into
         raise StorageError(400, "into 只支持 book 或 dir")
     saved = write_export(session, f"{novel_title}_{doc.label}.md", doc.text)
     return {"restored": "dir", "saved_to": str(saved), "path": path}
+
+
+def snapshot_chapters(session: Session, file: str, novel_id: int) -> list[dict]:
+    """这一份快照里**有、当前库里已经没有**的那些章。
+
+    批注 1：「我根本没有删除那些章」——展开清单不能把整本书的章都摊出来，只列真少掉
+    的那些。身份按 `chapter.id` 认，不按章号：删完一章后面的号会自动前移（28.6），
+    拿章号比会把没被删的章也算成少的。
+
+    但只按 id 比还不够 - 恢复会**新建一行**（id 变了），第二次列清单就会把已经回来的
+    那一章永远当成少的（D-29 记过这个坑，本条测试真撞上了）。所以再配一次：活库里
+    那些「id 不在快照中」的行就是恢复回来的，它们占的号不再算少掉。
+    """
+    path = _snapshot_path(session, file)
+    from sqlmodel import select
+
+    from app.models import Chapter, TocEntry
+    from app.services import documents
+
+    live_rows = {
+        int(cid): int(num)
+        for cid, num in session.exec(
+            select(Chapter.id, Chapter.chapter_number).where(
+                Chapter.novel_id == novel_id
+            )
+        ).all()
+    }
+    out: list[dict] = []
+    with _snapshot_session(path) as snap:
+        titles = {
+            row.chapter_number: row.title
+            for row in snap.exec(
+                select(TocEntry).where(
+                    TocEntry.novel_id == novel_id, TocEntry.is_active == True  # noqa: E712
+                )
+            ).all()
+        }
+        rows = snap.exec(
+            select(Chapter)
+            .where(Chapter.novel_id == novel_id)
+            .order_by(Chapter.chapter_number)
+        ).all()
+        snap_ids = {int(chapter.id) for chapter in rows}
+        restored_numbers = {
+            num for cid, num in live_rows.items() if cid not in snap_ids
+        }
+        for chapter in rows:
+            number = int(chapter.chapter_number)
+            if int(chapter.id) in live_rows or number in restored_numbers:
+                continue
+            title = titles.get(number, "")
+            # 顺序就是恢复顺序：简报先落（它是建章那一步），正文后落。
+            paths: list[str] = []
+            if chapter.brief_id is not None:
+                paths.append(documents.brief_path(number))
+            if (chapter.content or "").strip():
+                paths.append(documents.draft_path(number))
+            out.append(
+                {
+                    "novel_id": novel_id,
+                    "chapter_id": int(chapter.id),
+                    "number": number,
+                    "title": title,
+                    "label": f"第 {number} 章" + (f"《{title}》" if title else ""),
+                    "paths": paths,
+                }
+            )
+    return out
+
+
+def _merge_toc_row(session: Session, snap: Session, novel_id: int, number: int) -> bool:
+    """把快照里那一章的目录行**并**回当前目录，别的行一个字不动（28.7b）。
+
+    目录是整本书一份文档，删章时那一行被 vacate 掉了 - 只补文件不补目录，
+    树上就从「0002 · 缺名的那个人」退化成光秃秃的「0002」。但不能整份放回：
+    那会盖掉别的章名。所以读两边的行，只把缺的那一条插进有序列表再写回，
+    走的还是 documents.write_file 那唯一一条口（D-01）。
+    """
+    from app.services import documents
+
+    try:
+        live_rows = documents.load_document(
+            "toc", documents.read_file(session, novel_id, "toc.md").text
+        )
+        if any(int(row["chapter"]) == number for row in live_rows):
+            return False
+        snap_rows = documents.load_document(
+            "toc", documents.read_file(snap, novel_id, "toc.md").text
+        )
+        wanted = next(
+            (row for row in snap_rows if int(row["chapter"]) == number), None
+        )
+        if wanted is None:
+            return False
+        merged = sorted(
+            [*live_rows, wanted], key=lambda row: int(row["chapter"])
+        )
+        documents.write_file(
+            session,
+            novel_id,
+            "toc.md",
+            documents.render_document("toc", merged),
+            actor="human",
+        )
+    except documents.DocumentError as cause:
+        raise StorageError(cause.status_code, cause.detail) from cause
+    return True
+
+
+def restore_chapter(
+    session: Session, file: str, novel_id: int, chapter_id: int, into: str
+) -> dict:
+    """恢复**一章**：简报与正文一起回，不再拆成两次操作（批注 1 后半）。
+
+    「让位」判据不在这里重复实现 - 那是 28.7 定的，唯一出处是 restore_document，
+    这里按顺序调它两次（先简报后正文），两步仍走同一条写通路（D-01）。
+    第三步补目录那一行（28.7b）：章名唯一的出处就是它，不补就是恢复了个半章。
+    """
+    wanted = next(
+        (
+            item
+            for item in snapshot_chapters(session, file, novel_id)
+            if item["chapter_id"] == chapter_id
+        ),
+        None,
+    )
+    if wanted is None:
+        raise StorageError(404, "这一章在这份快照里没有少掉，不用恢复")
+    paths: list[str] = list(wanted["paths"])
+    if not paths:
+        raise StorageError(409, "这一章在快照里既没有简报也没有正文")
+    if into == "book":
+        made_room = 0
+        for one in paths:
+            result = restore_document(session, file, novel_id, one, "book")
+            made_room += int(result.get("made_room", 0))
+        number = int(wanted["number"])
+        toc_row_back = False
+        with _snapshot_session(_snapshot_path(session, file)) as snap:
+            toc_row_back = _merge_toc_row(session, snap, novel_id, number)
+        return {
+            "restored": "book",
+            "novel_id": novel_id,
+            "chapter_number": number,
+            "chapter_title": wanted["title"],
+            "paths": paths,
+            "made_room": made_room,
+            "toc_row": toc_row_back,
+        }
+    if into != "dir":
+        raise StorageError(400, "into 只支持 book 或 dir")
+    saved: list[str] = []
+    for one in paths:
+        result = restore_document(session, file, novel_id, one, "dir")
+        saved.append(str(result.get("saved_to", "")))
+    return {
+        "restored": "dir",
+        # 一章两份文件，回执给一条字符串就够，别让前端去猜数组
+        "saved_to": " · ".join(saved),
+        "paths": paths,
+        "chapter_number": wanted["number"],
+    }
 
 
 def _select_novels():

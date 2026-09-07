@@ -159,13 +159,19 @@ describe("PreferencesPage", () => {
 
   /* 第二十五批批注 5：撤销入口。三种恢复语义是他逐条给的，
      所以这条测试把三条都走一遍：放回书里（书没了要如实报错）、
-     只取文件（先弹「要不要连书一起恢复」）、恢复整本书。 */
+     只取文件（先弹「要不要连书一起恢复」）、恢复整本书。
+     第二十九批批注 1 收窄了它：**只有整本书被删**才有这三条；他删的是一章时
+     这一行既不许出现「恢复整本书」，也不许让他挑那些没删过的章 - 另起一条测。 */
   it("lists deletions and offers the three ways back", async () => {
     const user = userEvent.setup();
     const calls: { method: string; url: string; body: unknown }[] = [];
     const snapshot = {
-      file: "deleted-20260906-161335-7-演练.db",
-      reason: "删除前",
+      file: "book-20260906-161335-7-演练.db",
+      reason: "删书前",
+      scope: "book",
+      scope_label: "删书前",
+      // 书已经不在书架上 - 这一行才允许出现「恢复整本书」（批注 1）
+      book_on_shelf: false,
       taken_at: "2026-09-06 16:13:35",
       novel_id: 7,
       title: "演练",
@@ -257,6 +263,98 @@ describe("PreferencesPage", () => {
       expect(restoredAt).toBeGreaterThan(-1);
       expect(readAt).toBeGreaterThan(restoredAt);
     });
+  });
+
+  /* 第二十九批批注 1（P0）：他只删过某一章。
+     这一条钉三件事：① 那一行不给「恢复整本书」（点下去后端第一句就 409，是假控件）；
+     ② 展开只列出**真少掉的那一章**，不是整本书的每一份文档；
+     ③ 恢复一章 = 一次请求把 brief 与 draft 一起带回，不再让他点两次。 */
+  it("a chapter delete offers one chapter-level way back, not a whole-book one", async () => {
+    const user = userEvent.setup();
+    const calls: { method: string; url: string; body: unknown }[] = [];
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    const snapshot = {
+      file: "chapter-20260907-123003-5-观星.db",
+      reason: "删章前",
+      scope: "chapter",
+      scope_label: "删章前",
+      book_on_shelf: true,
+      taken_at: "2026-09-07 12:30:03",
+      novel_id: 5,
+      title: "观星",
+      bytes: 434176,
+    };
+    const gone = {
+      novel_id: 5,
+      chapter_id: 2,
+      number: 2,
+      title: "缺名的那个人",
+      label: "第 2 章《缺名的那个人》",
+      paths: ["chapters/0002/brief.md", "chapters/0002/draft.md"],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ method: String(init?.method ?? "GET"), url, body: init?.body });
+        if (url.startsWith("/api/export/settings")) return ok({ export_dir: "" });
+        if (url.startsWith("/api/backups/chapters")) return ok([gone]);
+        if (url.startsWith("/api/backups/documents")) {
+          throw new Error("书还在书架上，不该去读整本书的文档清单");
+        }
+        if (url.startsWith("/api/backups/restore/chapter")) {
+          return ok({
+            result: {
+              restored: "book",
+              chapter_number: 2,
+              made_room: 8,
+              toc_row: true,
+            },
+          });
+        }
+        if (url.startsWith("/api/backups/restore/novel")) {
+          throw new Error("书还在书架上，恢复整本书必然 409");
+        }
+        if (url === "/api/novels") return ok([]);
+        if (url.startsWith("/api/backups")) return ok({ export_dir: "", snapshots: [snapshot] });
+        return ok(config);
+      }),
+    );
+
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+    await user.click(await screen.findByRole("tab", { name: "导出与恢复" }));
+
+    const group = (await screen.findByText("《观星》")).closest(".storage-group") as HTMLElement;
+    // ① 没有那枚做不到的事
+    expect(within(group).queryByRole("button", { name: "恢复整本书" })).toBeNull();
+    expect(group.textContent).toContain("删章前");
+    // ② 展开的是章，一行一章，两个路径写在同一行里
+    await user.click(within(group).getByRole("button", { name: "恢复某一章" }));
+    const row = await screen.findByText("第 2 章《缺名的那个人》");
+    expect(row.closest(".backup-doc")?.textContent).toContain("chapters/0002/brief.md");
+    expect(row.closest(".backup-doc")?.textContent).toContain("chapters/0002/draft.md");
+    // ③ 一次请求，两个文件一起回
+    await user.click(within(group).getByRole("button", { name: "放回书里" }));
+    const posted = calls.filter((call) => call.url.startsWith("/api/backups/restore/chapter"));
+    expect(posted).toHaveLength(1);
+    expect(JSON.parse(String(posted[0].body))).toMatchObject({
+      novel_id: 5,
+      chapter_id: 2,
+      into: "book",
+    });
+    const receipt = await screen.findByRole("dialog", { name: "回执" });
+    expect(receipt.textContent).toContain("简报与正文一起");
+    expect(receipt.textContent).toContain("8 处章号让位");
+    // 28.7b：章名唯一的出处是目录那一行，补回来要在回执里说出来
+    expect(receipt.textContent).toContain("目录里的章名也补回来了");
+    await user.click(within(receipt).getByRole("button", { name: "知道了" }));
+    // 恢复完收起：过期的清单留着会让他以为没成功
+    expect(within(group).getByRole("button", { name: "恢复某一章" })).toBeTruthy();
   });
 
   it("runs the connection test against the backend, not a model", async () => {

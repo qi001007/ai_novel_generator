@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import { useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
-import type { BackupDocument, BackupSnapshot } from "../types";
+import type { BackupChapter, BackupDocument, BackupSnapshot } from "../types";
 import {
   CODE_FONTS,
   PROSE_FONTS,
@@ -270,6 +270,35 @@ function CardGroup<T extends string>(props: {
 /* 第二十六批批注 1、4：这一栏上一版是我边写功能边堆出来的 - 62 字的说明、
    文字贴着边框、按钮散在下一行。现在照 §0.7 与外观那组一样：
    **一行一项、左标题+一句说明、右控件**，复用同一个 Row，不再另起一套布局。 */
+/**
+ * 展开行：一份文档或一章，动作都是「放回书里」+「只取文件」。
+ * 抽出来是因为批注 1 之后这里有了两种行（整本书的文档 / 少掉的章），
+ * 两套按钮Markup 会各自漂走 - 同一个形状只留一个出处。
+ */
+function BackupRow(props: {
+  name: string;
+  path: string;
+  onBook: () => void;
+  onDir: () => void;
+}) {
+  return (
+    <div className="backup-doc">
+      <span className="backup-doc-name">{props.name}</span>
+      <span className="backup-doc-path mono" title={props.path}>
+        {props.path}
+      </span>
+      <div className="backup-actions">
+        <button type="button" onClick={props.onBook}>
+          放回书里
+        </button>
+        <button type="button" onClick={props.onDir}>
+          只取文件
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function StoragePanel() {
   const refreshNovels = useWorkbench((state) => state.refreshNovels);
   const [dir, setDir] = useState<string | null>(null);
@@ -277,6 +306,8 @@ function StoragePanel() {
   const [snapshots, setSnapshots] = useState<BackupSnapshot[]>([]);
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [docs, setDocs] = useState<BackupDocument[]>([]);
+  // 书还在书架上时展开列的是「少掉的那些章」，不是整本书的每一份文档（批注 1）
+  const [missing, setMissing] = useState<BackupChapter[]>([]);
   const [ask, setAsk] = useState<
     { file: string; novel_id: number; path: string; title: string } | null
   >(null);
@@ -337,12 +368,22 @@ function StoragePanel() {
   }
 
   /** 恢复动作全部走后端；回执由后端返回值拼出来（路径不许我再写死一次）。 */
-  function run(row: string, action: Promise<{ result: Record<string, string | number> }>, noteOf: (r: Record<string, string | number>) => string, invalidates: "book" | "files" | null) {
+  function run(
+    row: string,
+    action: Promise<{ result: Record<string, unknown> }>,
+    noteOf: (r: Record<string, unknown>) => string,
+    invalidates: "book" | "files" | null,
+  ) {
     action
       .then((data) => {
         report(row, "ok", noteOf(data.result));
         if (invalidates === "book") void refreshNovels();
         if (invalidates) useFiles.getState().reset();
+        // 恢复完就收起：展开着的那份清单已经过期了（刚恢复的那一章还留在上面，
+        // 看着像没成功）。下次展开重新读，清单里就不会再有它。
+        setOpenFile(null);
+        setDocs([]);
+        setMissing([]);
         reload();
       })
       .catch((cause: unknown) =>
@@ -350,20 +391,27 @@ function StoragePanel() {
       );
   }
 
-  function toggleDocs(item: BackupSnapshot) {
+  /**
+   * 展开一份快照。书已经不在了列文档（他要从整本里只挑一份出来），书还在列**少掉的章**
+   * - 这是批注 1 那两句话的分界：他没删整本书时，界面上既不该有「恢复整本书」，
+   * 也不该让他挑那些根本没删过的章。
+   */
+  function toggleList(item: BackupSnapshot, wholeBook: boolean) {
     if (openFile === item.file) {
       setOpenFile(null);
       setDocs([]);
+      setMissing([]);
       return;
     }
     setOpenFile(item.file);
     setDocs([]);
-    api
-      .backupDocuments(item.file)
-      .then(setDocs)
-      .catch((cause: unknown) =>
-        report(item.file, "err", cause instanceof Error ? cause.message : "读不到快照内容"),
-      );
+    setMissing([]);
+    const load = wholeBook
+      ? api.backupDocuments(item.file).then(setDocs)
+      : api.backupChapters(item.file, item.novel_id).then(setMissing);
+    load.catch((cause: unknown) =>
+      report(item.file, "err", cause instanceof Error ? cause.message : "读不到快照内容"),
+    );
   }
 
   return (
@@ -394,85 +442,139 @@ function StoragePanel() {
       ) : null}
 
       <p className="prefs-group-title">删除记录</p>
-      {snapshots.map((item) => (
-        <div className="storage-group" key={item.file}>
-          <Row
-            label={`《${item.title}》`}
-            note={item.taken_at.slice(5, 16)}
-          >
-            <div className="backup-actions">
-              <button
-                type="button"
-                onClick={() =>
-                  run(
-                    item.file,
-                    api.restoreNovel(item.file),
-                    () => "已回到书架",
-                    "book",
-                  )
-                }
-              >
-                恢复整本书
-              </button>
-              <button type="button" onClick={() => toggleDocs(item)}>
-                {openFile === item.file ? "收起" : "取一个文件"}
-              </button>
-            </div>
-          </Row>
-          {openFile === item.file
-            ? docs
-                .filter((doc) => doc.novel_id === item.novel_id)
-                .map((doc) => (
-                  <div className="backup-doc" key={`${doc.novel_id}-${doc.path}`}>
-                    <span className="backup-doc-name">{doc.label}</span>
-                    <span className="backup-doc-path mono" title={doc.path}>
-                      {doc.path}
-                    </span>
-                    <div className="backup-actions">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          run(
-                            item.file,
-                            api.restoreDocument({
-                              file: item.file,
-                              novel_id: doc.novel_id,
-                              path: doc.path,
-                              into: "book",
-                            }),
-                            (result) =>
-                              `已放回 ${doc.path}` +
-                              (Number(result.made_room ?? 0) > 0
-                                ? `，后面 ${(result.made_room ?? 0) as number} 处章号让位`
-                                : ""),
-                            "files",
-                          )
-                        }
-                      >
-                        放回书里
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAsk({
+      {snapshots.map((item) => {
+        /* 一行只给做得到的事（批注 1）：书还在书架上时「恢复整本书」是假控件 -
+           点下去后端第一句就 409。判据查的是活库的 novel 表（book_on_shelf），
+           不是文件名前缀：旧快照全叫 deleted-*，靠前缀判就还是同一个错。 */
+        const wholeBook = !item.book_on_shelf;
+        const expanded = openFile === item.file;
+        // 插章只挪号、什么都没删，展开必然为空 - 与其给一枚点了没反应的按钮，
+        // 不如 disabled 并写明原因（§0.7 条八：假控件比没控件更糟）。
+        const nothingGone = !wholeBook && item.scope === "room";
+        const listLabel = expanded ? "收起" : wholeBook ? "取一个文件" : "恢复某一章";
+        return (
+          <div className="storage-group" key={item.file}>
+            <Row
+              label={`《${item.title}》`}
+              note={`${item.taken_at.slice(5, 16)} · ${item.scope_label}`}
+            >
+              <div className="backup-actions">
+                {wholeBook ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      run(
+                        item.file,
+                        api.restoreNovel(item.file),
+                        () => "已回到书架",
+                        "book",
+                      )
+                    }
+                  >
+                    恢复整本书
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={nothingGone}
+                  title={
+                    nothingGone ? "插章没有删掉任何一章，这一份里没有少掉的章" : undefined
+                  }
+                  onClick={() => toggleList(item, wholeBook)}
+                >
+                  {listLabel}
+                </button>
+              </div>
+            </Row>
+            {expanded && wholeBook
+              ? docs
+                  .filter((doc) => doc.novel_id === item.novel_id)
+                  .map((doc) => (
+                    <BackupRow
+                      key={`${doc.novel_id}-${doc.path}`}
+                      name={doc.label}
+                      path={doc.path}
+                      onBook={() =>
+                        run(
+                          item.file,
+                          api.restoreDocument({
                             file: item.file,
                             novel_id: doc.novel_id,
                             path: doc.path,
-                            title: doc.novel_title,
-                          })
-                        }
-                      >
-                        只取文件
-                      </button>
-                    </div>
-                  </div>
+                            into: "book",
+                          }),
+                          (result) =>
+                            `已放回 ${doc.path}` +
+                            (Number(result.made_room ?? 0) > 0
+                              ? `，后面 ${Number(result.made_room)} 处章号让位`
+                              : ""),
+                          "files",
+                        )
+                      }
+                      onDir={() =>
+                        setAsk({
+                          file: item.file,
+                          novel_id: doc.novel_id,
+                          path: doc.path,
+                          title: doc.novel_title,
+                        })
+                      }
+                    />
+                  ))
+              : null}
+            {expanded && !wholeBook
+              ? missing.map((row) => (
+                  <BackupRow
+                    key={`${row.novel_id}-${row.chapter_id}`}
+                    name={row.label}
+                    path={row.paths.join(" · ")}
+                    onBook={() =>
+                      run(
+                        item.file,
+                        api.restoreChapter({
+                          file: item.file,
+                          novel_id: row.novel_id,
+                          chapter_id: row.chapter_id,
+                          into: "book",
+                        }),
+                        (result) =>
+                          `已放回 ${row.label}（简报与正文一起）` +
+                          (Number(result.made_room ?? 0) > 0
+                            ? `，后面 ${Number(result.made_room)} 处章号让位`
+                            : "") +
+                          // 28.7b：目录那一行就是章名，补没补上要如实说
+                          (result.toc_row ? "，目录里的章名也补回来了" : ""),
+                        "files",
+                      )
+                    }
+                    onDir={() =>
+                      run(
+                        item.file,
+                        api.restoreChapter({
+                          file: item.file,
+                          novel_id: row.novel_id,
+                          chapter_id: row.chapter_id,
+                          into: "dir",
+                        }),
+                        (result) => `已写到 ${String(result.saved_to ?? "导出目录")}`,
+                        null,
+                      )
+                    }
+                  />
                 ))
-            : null}
-          {status?.row === item.file ? (
-            <p className={`storage-status ${status.kind}`}>{status.text}</p>
-          ) : null}
-        </div>
-      ))}
+              : null}
+            // 展开过以后确实没东西可恢复时给一句实话：他点了按钮却什么都没变，
+            // 只会以为又坏了。（28.3 那条是「列表空着别填字」，这里是点了按钮以后的
+            // 结果态，不是同一种空。）
+            {expanded && !wholeBook && !missing.length ? (
+              <p className="storage-status">这一份里没有少掉的章</p>
+            ) : null}
+            {status?.row === item.file ? (
+              <p className={`storage-status ${status.kind}`}>{status.text}</p>
+            ) : null}
+          </div>
+        );
+      })}
 
       {receipt ? (
         <div className="wizard-backdrop" role="presentation" onClick={() => setReceipt(null)}>
@@ -516,7 +618,7 @@ function StoragePanel() {
                   run(
                     target.file,
                     api.restoreDocument({ ...target, into: "dir" }),
-                    (result) => `已写到 ${result.saved_to ?? "导出目录"}`,
+                    (result) => `已写到 ${String(result.saved_to ?? "导出目录")}`,
                     null,
                   );
                 }}

@@ -825,4 +825,27 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(plain![1]).toMatch(/align-items:\s*center;/);
   });
 
+  // 第二十九批批注 1（2026-09-07，P0）。主人只删过某一章，那一行却给他「恢复整本书」，
+  // 展开还能挑那些根本没删过的章；恢复一章又被拆成 draft 与 brief 两次点。
+  // 三条都是设计错了，不是渲染错了，所以断言钉的是**分支依据与调用次数**。
+  it("a restore row only offers what it can actually do, and a chapter comes back in one call", () => {
+    // 判据是活库的 novel 表（book_on_shelf），不是文件名前缀 - 旧快照全叫 deleted-*，
+    // 靠前缀判就还是同一个错。这条写死，防止下次有人拿 scope 当依据。
+    expect(chatTypes).toContain("book_on_shelf: boolean;");
+    expect(preferences).toContain("const wholeBook = !item.book_on_shelf;");
+    expect(preferences).toMatch(/\{wholeBook \? \(/);
+    // 「恢复整本书」这枚按钮全页只能有一处，且只能在 wholeBook 那一支里。
+    // 数的是按钮本体而不是这个词 - 注释里也写着它，数词会把好代码判成红。
+    expect(preferences.match(/>\s*恢复整本书\s*<\/button>/g)).toHaveLength(1);
+    // 旧的「展开就列整本书的文档」那条通路不许回来（它正是他点名的那一栏）
+    expect(preferences).not.toContain("toggleDocs");
+    expect(preferences).toContain("api.backupChapters");
+    // 一章 = 一次 restore/chapter 调用，简报与正文一起回；不许再退化成两个 restoreDocument
+    expect(preferences).toContain("api.restoreChapter");
+    expect(preferences).toContain("简报与正文一起");
+    // 28.7b 跟着这条一起做完：恢复一章要连目录那一行（= 章名）一起补回
+    expect(preferences).toContain("目录里的章名也补回来了");
+    expect(preferences).not.toMatch(/restoreDocument\(\{[^}]*brief\.md/s);
+  });
+
 });

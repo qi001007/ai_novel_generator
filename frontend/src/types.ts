@@ -151,10 +151,25 @@ export type ChatContextItem = ChatReference & { mention: string };
 export type BackupSnapshot = {
   file: string;
   reason: string;
+  /** 这份快照是为什么拍的：book / chapter / room / renumber / deleted / manual。 */
+  scope: string;
+  scope_label: string;
+  /** 那本书现在还在不在书架上 - 决定这一行能做什么（批注 1）。 */
+  book_on_shelf: boolean;
   taken_at: string;
   novel_id: number;
   title: string;
   bytes: number;
+};
+
+/** 快照里少掉的那一章：一行 = 一章，简报与正文成对，不再拆成两个文件。 */
+export type BackupChapter = {
+  novel_id: number;
+  chapter_id: number;
+  number: number;
+  title: string;
+  label: string;
+  paths: string[];
 };
 
 /** 快照里的一份文档 - 恢复时按「哪本书的哪个路径」定位。 */

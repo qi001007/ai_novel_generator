@@ -188,7 +188,7 @@ def delete_novel(novel_id: int, session: Session = Depends(get_session)) -> None
         raise HTTPException(status_code=404, detail="Novel not found")
     # 删之前先复制一份现场（第二十五批批注 5）。SQLite 是单文件，复制就是备份；
     # 内存库（测试）没有文件可复制，snapshot 直接返回 None，不影响这条路径本身。
-    storage.snapshot(session, novel_id, novel.title)
+    storage.snapshot(session, novel_id, novel.title, reason="book")
 
     for model in NOVEL_SCOPED_MODELS:
         for row in session.exec(

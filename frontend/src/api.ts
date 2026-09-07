@@ -1,4 +1,5 @@
 import type {
+  BackupChapter,
   BackupDocument,
   BackupSnapshot,
   ChatContextItem,
@@ -257,6 +258,28 @@ export const api = {
       "/api/backups/restore/document",
       body,
     ),
+  /** 快照里**少掉**的那些章（书还在书架上时，界面只该列这些 - 批注 1）。 */
+  backupChapters: (file: string, novelId: number) =>
+    api.get<BackupChapter[]>(
+      `/api/backups/chapters?file=${encodeURIComponent(file)}&novel_id=${novelId}`,
+    ),
+  /** 恢复一章：简报与正文一次一起回，不再让主人点两次（批注 1 后半）。 */
+  restoreChapter: (body: {
+    file: string;
+    novel_id: number;
+    chapter_id: number;
+    into: "book" | "dir";
+  }) =>
+    api.post<{
+      result: {
+        restored: string;
+        saved_to?: string;
+        chapter_number?: number;
+        made_room?: number;
+        /** 目录里那一行（= 章名）有没有跟着补回来，28.7b。 */
+        toc_row?: boolean;
+      };
+    }>("/api/backups/restore/chapter", body),
 
   /** 删一章。章号不顺延（第二十六批批注 6 定下的语义）。 */
   deleteChapter: (novelId: number, chapterNumber: number) =>

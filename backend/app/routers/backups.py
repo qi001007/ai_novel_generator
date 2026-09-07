@@ -19,10 +19,24 @@ router = APIRouter(prefix="/backups", tags=["backups"])
 class SnapshotOut(SQLModel):
     file: str
     reason: str
+    scope: str
+    scope_label: str
+    book_on_shelf: bool
     taken_at: str
     novel_id: int
     title: str
     bytes: int
+
+
+class SnapshotChapterOut(SQLModel):
+    """展开一份章级快照时列的东西：一行 = 一章，不是两个文件。"""
+
+    novel_id: int
+    chapter_id: int
+    number: int
+    title: str
+    label: str
+    paths: list[str]
 
 
 class BackupListOut(SQLModel):
@@ -48,6 +62,13 @@ class RestoreDocumentIn(SQLModel):
     into: str = "book"
 
 
+class RestoreChapterIn(SQLModel):
+    file: str
+    novel_id: int
+    chapter_id: int
+    into: str = "book"
+
+
 class ResultOut(SQLModel):
     result: dict
 
@@ -68,6 +89,33 @@ def list_backups(session: Session = Depends(get_session)) -> BackupListOut:
 def backup_documents(file: str, session: Session = Depends(get_session)) -> list[DocumentOut]:
     try:
         return [DocumentOut(**item) for item in storage.snapshot_documents(session, file)]
+    except storage.StorageError as cause:
+        raise _raise(cause) from cause
+
+
+@router.get("/chapters", response_model=list[SnapshotChapterOut])
+def snapshot_chapters(
+    file: str, novel_id: int, session: Session = Depends(get_session)
+) -> list[SnapshotChapterOut]:
+    """这份快照里**有、当前库里没有**的那些章 - 界面上只该列这些（批注 1）。"""
+    try:
+        return [
+            SnapshotChapterOut(**item)
+            for item in storage.snapshot_chapters(session, file, novel_id)
+        ]
+    except storage.StorageError as cause:
+        raise _raise(cause) from cause
+
+
+@router.post("/restore/chapter", response_model=ResultOut)
+def restore_chapter(
+    payload: RestoreChapterIn, session: Session = Depends(get_session)
+) -> ResultOut:
+    """恢复一章 = 简报与正文一起回，不再让主人分两次点（批注 1 后半）。"""
+    try:
+        return ResultOut(result=storage.restore_chapter(
+            session, payload.file, payload.novel_id, payload.chapter_id, payload.into
+        ))
     except storage.StorageError as cause:
         raise _raise(cause) from cause
 
