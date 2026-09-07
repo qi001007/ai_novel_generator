@@ -9,15 +9,13 @@
 **写文侧**（按注入上下文生成正文）与**对话侧**（讨论剧情、查资料、管规划）。
 全产品的业务核心是写文侧**注入什么上下文**，不是模型本身。
 
+**目录内部的事不写在这里**：从 `backend/description.md`、`frontend/description.md` 顺着
+各层 `description.md` 往下读（每层 ≤20 行，`backend/tests/test_folder_docs.py` 钉着）。
+本文只留**跨模块**的事实：真源与写通路、上下文链路、完成度、缺口、验证命令。
+
 ## 1. 真源与写通路
 
 现状（B 路，D-01 已收口）：一条入口，四层规划的任何修改都走它。
-
-```text
-人改文档 ─┐
-AI 提案 ─┼─► PUT /api/novels/{id}/files/{path} ─► Markdown 解析 ─► DB 列
-新建章节 ─┘   （键锁 / actor 白名单 / base_revision 409）
-```
 
 ```text
 人改文档 ─┐

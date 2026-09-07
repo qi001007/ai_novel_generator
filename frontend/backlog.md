@@ -16,3 +16,4 @@
 - 2026-09-07 · 29.1 · 设置页按 `book_on_shelf` 分支；新增 `BackupRow` 与
   `restoreChapter` 通路。`448bc67`
 
+- 2026-09-07 · 新建 `src/` `src/components/` `src/pages/` `src/store/` `src/utils/` 五份 `description.md`（9-12 行）与对应 `backlog.md`；本目录 `description.md` 23 → 18 行（细节下沉到子层）。**无代码改动**。

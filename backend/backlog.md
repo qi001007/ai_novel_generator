@@ -13,3 +13,4 @@
 - 2026-09-06 · 28.6 / 28.7 / 28.8 · 章号=位置、恢复弹回原位、conversation_id。
   逐条见 `git log --oneline -- backend/`。
 
+- 2026-09-07 · 贯彻「每层一份 description.md」：新建 `app/` `app/routers/` `app/services/` `tests/` `scripts/` `alembic/` `alembic/versions/` 七份说明（各 5-13 行）与对应 `backlog.md`；本目录 `description.md` 24 → 17 行（细节下沉，不再重复子目录内容）。新增机械检查 `tests/test_folder_docs.py`（4 条，实扫 11 个目录）。**本目录代码未改**，只加了一份测试。
