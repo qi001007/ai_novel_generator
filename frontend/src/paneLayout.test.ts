@@ -5,7 +5,16 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { CHAT_MIN, SIDEBAR_MAX, SIDEBAR_MIN, chatMaxAt, clampPaneAt, defaultPanesAt } from "./paneLayout";
+import {
+  CHAT_MIN,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+  chatMaxAt,
+  clampPaneAt,
+  defaultPanesAt,
+  dragValueAt,
+  editorWidthAt,
+} from "./paneLayout";
 
 describe("paneLayout", () => {
   it("设计稿宽度下：正文列还剩 934px，聊天列默认 471px（帧 27 的 470）", () => {
@@ -30,4 +39,21 @@ describe("paneLayout", () => {
     expect(clampPaneAt("sidebar", 10, { viewport: 1440 })).toBe(SIDEBAR_MIN);
     expect(clampPaneAt("sidebar", 300.6, { viewport: 1440 })).toBe(301);
   });
+
+  it("拖动中的地板是 CLOSE_AT，不是静止下限（第十五批批注 2.2）", () => {
+    // 树列静止下限 260，但拖动时要能一路收到 90 才看得见「收进边里」这个过程
+    expect(dragValueAt("sidebar", 120, { sidebar: 300, viewport: 1440 })).toBe(120);
+    expect(dragValueAt("sidebar", 40, { sidebar: 300, viewport: 1440 })).toBe(90);
+    expect(clampPaneAt("sidebar", 40, { viewport: 1440 })).toBe(SIDEBAR_MIN);
+    // 上限照样生效：拖过头不许把列拖出窗口
+    expect(dragValueAt("sidebar", 9999, { sidebar: 300, viewport: 1440 })).toBe(SIDEBAR_MAX);
+  });
+
+  it("正文列的宽度由可见的那几列算出来，隐藏的不占位", () => {
+    const base = { viewport: 1440, sidebar: 300, chat: 471 };
+    expect(editorWidthAt({ ...base, sidebarHidden: false, chatHidden: false })).toBe(623);
+    expect(editorWidthAt({ ...base, sidebarHidden: true, chatHidden: false })).toBe(924);
+    expect(editorWidthAt({ ...base, sidebarHidden: false, chatHidden: true })).toBe(1095);
+  });
+
 });

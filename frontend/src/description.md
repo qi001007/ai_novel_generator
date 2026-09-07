@@ -6,7 +6,7 @@
 - `styles.css` 全仓样式都在这一个文件里（组件里不写内联样式）。
 - `contextLayers.ts` 把注入清单解析成 A/B/C/D 四层；`menuPlacement.ts` 算右键菜单落点。
 - `uiInvariants.test.ts` 是 `docs/UI-DESIGN.md §0.9` 不可回退清单的**机器版**。
-- `paneLayout.ts` 拥有三栏的宽度常量与算术，**视口宽度作入参**（纯函数、可直测）；
+- `paneLayout.ts` 拥有三栏的宽度常量与算术（含 `editorWidthAt` / `dragValueAt`），**视口宽度作入参**（纯函数、可直测）；
   `WorkbenchPage` 里的 `chatMax`/`clampPane` 只是各读一次 `window.innerWidth` 的薄包装。
 - `labels.ts` 是 `kind`/`task` 界面词的**唯一**主人（A 层叫「全书蓝图」，D-34）；`utils/time.ts` 拥有 `formatTime`。
 - `test/setup.ts` 是 vitest 脚手架（一个文件，不单列目录说明）。

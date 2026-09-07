@@ -26,6 +26,9 @@ import {
   SIDEBAR_MAX,
   SIDEBAR_MIN,
   chatMaxAt,
+  dragValueAt,
+  editorWidthAt,
+  RAIL_WIDTH,
   clampPaneAt,
 } from "../paneLayout";
 import { toCssPx } from "../store/appearance";
@@ -461,7 +464,7 @@ export default function WorkbenchPage() {
   // Tracks are built to match what is actually rendered: hidden panels become
   // display:none, and a track left over with no item in it is a dead gap.
   const columns = (() => {
-    const tracks: string[] = ["44px"];
+    const tracks: string[] = [`${RAIL_WIDTH}px`];
     // The rail never collapses: it is how you get a page back.
     if (!hidden.sidebar) tracks.push(`${sidebarWidth}px`, "1px");
     if (charactersOpen) {
@@ -494,14 +497,13 @@ export default function WorkbenchPage() {
      judging the clamped value would leave one pixel that never closes. */
   function editorWidthIf(pane: PaneKey, raw: number) {
     const current = hiddenRef.current;
-    const sidebar = pane === "sidebar" ? raw : panes.sidebar;
-    const chat = pane === "chat" ? raw : panes.chat;
-    return (
-      window.innerWidth -
-      44 -
-      (current.sidebar ? 0 : sidebar + 1) -
-      (current.chat ? 0 : chat + 1)
-    );
+    return editorWidthAt({
+      viewport: window.innerWidth,
+      sidebar: pane === "sidebar" ? raw : panes.sidebar,
+      chat: pane === "chat" ? raw : panes.chat,
+      sidebarHidden: current.sidebar,
+      chatHidden: current.chat,
+    });
   }
 
   /* While a boundary is being dragged the floor is CLOSE_AT, not the resting min:
@@ -509,8 +511,7 @@ export default function WorkbenchPage() {
      hundred pixels with nothing moving and then the pane vanishes for no reason.
      The resting min still guards a width that comes back from storage. */
   function dragPane(pane: PaneKey, raw: number) {
-    const max = pane === "sidebar" ? SIDEBAR_MAX : chatMax(panes.sidebar);
-    return Math.min(max, Math.max(CLOSE_AT, Math.round(raw)));
+    return dragValueAt(pane, raw, { sidebar: panes.sidebar, viewport: window.innerWidth });
   }
 
   /* One reversible rule for the pointer and the keyboard: under the floor a column goes

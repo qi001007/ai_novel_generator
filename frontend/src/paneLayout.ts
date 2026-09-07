@@ -28,9 +28,10 @@ export const CLOSE_AT = 90;
 export const EDITOR_MIN = 160;
 export const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 
-/** 左边的图标导轨宽 44；两条可拖分隔条各 1px，合计 2。以前是算式里的裸数字。 */
+/** 左边的图标导轨宽 44；每条可拖分隔条 1px（两缝合计 2）。以前是算式里的裸数字。 */
 export const RAIL_WIDTH = 44;
-export const SEAM_WIDTH = 2;
+export const SEAM = 1;
+export const SEAM_WIDTH = SEAM * 2;
 
 /**
  * 正文列可以一路被挤到关闭阈值（第十五批批注 2.2），所以聊天列的上限只是窗口减去导轨、
@@ -66,4 +67,40 @@ export function defaultPanesAt(viewport: number) {
       viewport,
     }),
   };
+}
+
+/**
+ * 正文列此刻会有多宽。轨道是「导轨 + 树 + 缝 + 聊天 + 缝 + 其余」，所以最后一列就是
+ * 窗口减掉前面那些；往右拖挤的正是它。
+ *
+ * `sidebar` / `chat` 必须传**未夹取的原值**：静止上限会把聊天列正好夹到 CLOSE_AT 给
+ * 正文留着，拿夹过的值再判就会永远差那一像素、怎么拖都合不上（第十六批批注 9）。
+ */
+export function editorWidthAt(input: {
+  viewport: number;
+  sidebar: number;
+  chat: number;
+  sidebarHidden: boolean;
+  chatHidden: boolean;
+}): number {
+  return (
+    input.viewport -
+    RAIL_WIDTH -
+    (input.sidebarHidden ? 0 : input.sidebar + SEAM) -
+    (input.chatHidden ? 0 : input.chat + SEAM)
+  );
+}
+
+/**
+ * 拖动过程中的夹取：地板是 CLOSE_AT，不是静止下限。
+ * 列要看得见地收进边里，否则指针走了三百像素而屏幕上什么都不动，然后列莫名其妙消失。
+ * 从存储里回来的宽度仍然由静止下限守着（clampPaneAt）。
+ */
+export function dragValueAt(
+  pane: PaneKey,
+  raw: number,
+  { sidebar, viewport }: { sidebar: number; viewport: number },
+): number {
+  const max = pane === "sidebar" ? SIDEBAR_MAX : chatMaxAt(viewport, sidebar);
+  return Math.min(max, Math.max(CLOSE_AT, Math.round(raw)));
 }
