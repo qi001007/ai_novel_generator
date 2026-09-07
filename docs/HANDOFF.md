@@ -78,14 +78,14 @@
 ## 验证命令（改动后必须全绿）
 
 ```powershell
-cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 223 passed
-cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 212 passed / 22 files
+cd E:\novel-generator\backend;  .venv\Scripts\python.exe -m pytest -q    # 期望 256 passed
+cd E:\novel-generator\frontend; npm run test -- --run                      # 期望 226 passed / 22 files
 cd E:\novel-generator\frontend; npx tsc -b --force --pretty false           # 必须 clean（--force，别信增量）
 cd E:\novel-generator\frontend; npm run build                              # 期望干净
 cd E:\novel-generator\.scratch; node hit-area-audit.mjs                     # 期望 0 small / 0 clipped / 0 unreachable
 
 # 界面不可回退闸门（改界面必须同批改这里的断言，见 UI-DESIGN §0.9）
-#   frontend/src/uiInvariants.test.ts —— 现 38 块（数它：git show HEAD:frontend/src/uiInvariants.test.ts | 数 it(" 的行）
+#   frontend/src/uiInvariants.test.ts —— 现 47 块（数它：git show HEAD:frontend/src/uiInvariants.test.ts | 数 it(" 的行）
 ```
 
 要看注入上下文清单：后端起时带 `$env:NOVEL_CONTEXT_DEBUG = '1'`，跑在**可见终端**里
@@ -103,13 +103,19 @@ S1 隔离冒烟：`cd E:\novel-generator\backend; .venv\Scripts\python.exe scrip
 `git log --oneline -- docs/`；要看某一份的旧版，
 `git show <提交>:docs/<文件>`。
 
+2026-09-07 起多一条工作方式（主人定的）：**每个代码目录有一份 `description.md`
+（这个目录是干什么的、红线在哪）和一份 `backlog.md`（这个目录的更改账，最新在上）。
+认识一个目录先读它的 `description.md`，别再全仓扫一遍烧上下文。落点：
+`backend/`、`frontend/`、`.scratch/`。`docs/` 不加这两份——它的「description」
+本来就是下面这张职责表 + `DECISIONS §6`，再加一份就是第三处重复（同一件事只留一个出处）。
+
 ## 读哪份文件
 
 | 你要干什么 | 读哪里 |
 |---|---|
 | 知道系统实际长什么样、还缺什么 | `docs/ARCHITECTURE.md` |
 | 知道某设计为什么这么定 / 哪个旧口径已废 | `docs/DECISIONS.md`（按 D-xx / X-xx / R-xx / T-xx 编号） |
-| 改需求、加功能 | `docs/PRD.md` → 同步 `docs/REQUIREMENTS.md` |
+| 改需求、加功能 | `docs/PRD.md`（文末附录就是原来那份功能拆解勾选，2026-09-07 并进来） |
 | 改界面 | `docs/UI-DESIGN.md`（§0 令牌、§0.7-§0.9 纪律与不可回退清单、§1-§7 页面规格） |
 | 界面还有什么没做 | `docs/UI-BACKLOG.md`（只记未完成，勾完即删） |
 | **看进度、还差什么、下一步** | `docs/WORKSTREAM-PLAN.md`（**只看这一份**，已改成说人话，不再用 S/U 编号组织） |

@@ -600,7 +600,7 @@ D-12 的前置条件仍然是一个可复现的「该给的章节没给」，而
 | T-09 | 模型会顺手重排整份文档（只要求改 `## 约束` 第二条，回了整体重排 + 重新折行，diff 47 行）。键锁挡得住改标题，挡不住重排；prompt 里加「其余逐字节保持原样」不足治 → 解法见 D-11 | C6 风险 1 |
 | T-10 | MiniMax-M2.5 是推理模型，四字请求也烧掉 324 个 `completion_tokens`（reasoning 计入输出）。`token_output` 记成 324 是真实账单口径，不是 bug | C5d |
 | T-11 | 从 `backend/.env` 取值禁用 `Split` 按等号切，改用 `Substring('NOVEL_LLM_API_KEY='.Length)`（见 R-01） | C5d |
-| T-12 | Figma 帧 05（框选双栏）**不是过时稿**：它是 REQUIREMENTS 里未做的 v1 选区修改，属 backlog，保留 | C5b |
+| T-12 | Figma 帧 05（框选双栏）**不是过时稿**：它是 PRD 文末附录里未做的 v1 选区修改，属 backlog，保留 | C5b |
 | T-13 | 围栏兼容垫片：`PROPOSAL_BLOCK` 同时收 `yaml / yml / md / markdown @路径`，旧格式提案不因迁移而丢 | C6 收口 |
 | T-14 | **注入清单会把空内容显示成「必注入 · 0 字」，让一部没有规划的书看起来完全正常**。根因：`build_writing_context` 的预算循环是 `if tier == TIER_CORE or used + chars <= budget`，必注入档无条件入选、不看内容是否为空；collector 侧只有 blueprint 段做了 `if value.strip()`。修法：装配层统一过滤空文本块、移入未注入区并写明原因。**这条同时是「测试全绿 ≠ 功能正确」的实证**：`test_writing_context.py:223` 早就断言 `all(chars > 0)`，但 fixture 字段全非空，从未覆盖空值情形。 | 2026-09-03 S0 |
 | T-15 | **该网关没有 OpenAI 工具通道**：带 `tools` 的请求回 200，但 `finish_reason: stop`、message **没有 `tool_calls` 字段**，MiniMax-M2.5 把调用写成私有 XML 混在 `content` 里。照原生 function-calling 写循环**永不触发**，还会把 XML 泄漏进正文。对策：自己定义文本协议（与提案围栏同族），同时兼容 `tool_calls` 存在的情形。实测证据，非推测 | 2026-09-04 S2 |
@@ -650,7 +650,7 @@ D-12 的前置条件仍然是一个可复现的「该给的章节没给」，而
 
 为什么不顺手补：删一部小说要先定 15 张表的级联策略（`chapter`／`chapter_brief`／`chat_message`／`generation_run`／
 `foreshadow`／`review` 是物理删还是随 novel 软删），还要设计二次确认交互与帧。这是业务逻辑，不是清理。
-已登记进 REQUIREMENTS §1 与 WORKSTREAM U7，排在 S3 之后。
+已登记进 PRD 文末附录 §1 与 WORKSTREAM U7，排在 S3 之后。
 
 ### 5.3 仍待主人
 
@@ -669,8 +669,7 @@ D-12 的前置条件仍然是一个可复现的「该给的章节没给」，而
 |---|---|---|
 | `AGENTS.md` | 工具纪律、回答习惯、**项目架构红线**（一句话级别、违反即错） | 架构解释、进度、历史 |
 | `docs/ARCHITECTURE.md` | 真源与写通路、模块**实际**完成度、S0–S3 主干 | 需求条目、视觉规格、为什么这样定的理由 |
-| `docs/PRD.md` | 需求与验收标准 | 文件路径实现细节、进度、理由历史 |
-| `docs/REQUIREMENTS.md` | PRD 的功能拆解勾选 | 设计令牌、架构决策 |
+| `docs/PRD.md` | 需求与验收标准，**外加功能拆解勾选**（原 REQUIREMENTS.md，2026-09-07 并入文末附录） | 文件路径实现细节、进度、理由历史 |
 | `docs/UI-DESIGN.md` | 视觉与交互规格 | 后端契约、进度 |
 | `docs/WORKSTREAM-PLAN.md` | **唯一的进度入口**，说人话：已经能用的 / 还差什么 / 下一步顺序 / 需要主人点头的事 | S・U 编号组织法（第二十三批删）、已完成流水表（结论在提交信息与本文件）、后端契约（去 ARCHITECTURE） |
 | `docs/UI-BACKLOG.md` | **未完成条目的可勾选清单**，做完一条勾掉并把结论写进 WORKSTREAM-PLAN | 已完成的历史、理由、视觉规格 |

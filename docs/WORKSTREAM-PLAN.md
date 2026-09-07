@@ -137,7 +137,7 @@
 | 界面长什么样、哪些不许改回去 | `UI-DESIGN.md`（§0 令牌、§0.9 不可回退清单） |
 | 界面还有哪几条没做 | `UI-BACKLOG.md` |
 | 系统实际有什么、没有什么 | `ARCHITECTURE.md` |
-| 需求原文 | `PRD.md`、`REQUIREMENTS.md` |
+| 需求原文 | `PRD.md`（含文末的功能拆解勾选附录） |
 | 环境怎么起、命令怎么跑 | `HANDOFF.md` |
 
 ---
