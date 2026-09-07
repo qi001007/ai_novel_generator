@@ -112,6 +112,16 @@ A 层 ~1000 + 世界观 ~250 + B 层 40 条简述 ~3000-6000 + C 层前后弧 ~6
 `.scratch/run-backend.cmd` 本来就用 venv，手工起才容易走错解释器——下一轮要么给它加 `--reload`，
 要么在 HANDOFF 门禁段写死「起后端必须走 run-backend.cmd」。
 
+### 0a.3 命中区审计出现 1 条中心不可达（登记，本轮未做）
+
+2026-09-08 后端 Agent 换底盘提交（`b0745f2`）后的门禁跑法：
+`node .scratch/hit-area-audit.mjs http://127.0.0.1:5173/novels/5 open-file`。
+结果：`small 0 / clipped 0 / unreachable 1 / edge 1 / srOnly 1`。
+不可达项是 `button.chat-meta [思考过程]`，判据是 **elementFromPoint(centre) 不属于该元素**；
+`edge` 是 `brief.md` 文件按钮被窗口下边裁到 `y1010`，`srOnly` 是附件隐藏输入，属设计形态。
+本轮**没有改前端文件**，所以不顺手修；修复判据：同 URL 同参数复跑必须回到
+`0 small / 0 clipped / 0 unreachable`，且同批更新 `uiInvariants.test.ts`。
+
 ## 〇b、2026-09-06 第二十七轮（对话 Agent 换框架：**先出计划，不动代码**）
 
 主人原话：「你做这个对话 Agent 的思路不太对。网上明明有开源好的轻量级框架，或者其他很成熟的
