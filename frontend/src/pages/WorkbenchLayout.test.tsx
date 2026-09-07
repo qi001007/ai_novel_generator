@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../App";
 import { useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
+import { SIDEBAR_DEFAULT } from "../paneLayout";
 
 const BLUEPRINT = "# A 层 · 全书蓝图（长期）\nmain_line: ''\n";
 
@@ -114,7 +115,6 @@ function workspace() {
   return document.querySelector(".workspace") as HTMLElement;
 }
 
-const SIDEBAR_DEFAULT = 300;
 
 function columns() {
   return workspace().style.gridTemplateColumns;

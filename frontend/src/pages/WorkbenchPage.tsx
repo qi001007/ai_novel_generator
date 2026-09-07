@@ -17,31 +17,23 @@ import WorldMapPanel from "../components/WorldMapPanel";
 import { briefChapter, briefPath, draftChapter, draftPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 import type { RenumberPlan } from "../types";
+import {
+  CHAT_DEFAULT_RATIO,
+  CHAT_MIN,
+  CLOSE_AT,
+  EDITOR_MIN,
+  SIDEBAR_DEFAULT,
+  SIDEBAR_MAX,
+  SIDEBAR_MIN,
+  chatMaxAt,
+  clampPaneAt,
+} from "../paneLayout";
 import { toCssPx } from "../store/appearance";
 
 type RightView = "editor" | "files" | "feedback" | "worldmap" | "foreshadow" | "characters";
 
 type Panes = { sidebar: number; chat: number };
 
-// Defaults follow UI-DESIGN.md and the approved frames: 280 / 470 / rest.
-// 帧 27: the tree lost its right of way to the rail, and the rows need the width
-// they had. 260 is the narrowest a row like "0001  草稿" still fits.
-const SIDEBAR_MIN = 260;
-const SIDEBAR_MAX = 520;
-const SIDEBAR_DEFAULT = 300;
-const CHAT_MIN = 400;
-/* Dragging a boundary past its pane puts that pane away - 第十五批批注 2.2, an ask
-   that has sat on the list for several rounds. 90px is where a column stops being a
-   column: the tree row, the chat composer and the editor toolbar all stop fitting,
-   so continuing to drag is fighting a strip that cannot hold anything. */
-const CLOSE_AT = 90;
-/* The prose column's own floor, and it is higher than CLOSE_AT on purpose: below
-   this the toolbar stops fitting and the actions (机械校验 / AI 自检 / 通过终审 / 打回 /
-   事实落库) get pushed past the right edge and eaten by overflow:hidden - measured at
-   a 24px toolbar with every action reporting hit:false (第十五批批注 2.1). So the
-   column is either at least this wide or it is away, never a clipped sliver. */
-const EDITOR_MIN = 160;
-const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 const PANE_STORAGE_KEY = "workbench.panes";
 const HIDDEN_STORAGE_KEY = "workbench.hidden";
 const STAGE_STORAGE_KEY = "workbench.stage";
@@ -111,23 +103,16 @@ function readHidden(): Hidden {
    window has left after the rail, the tree, the two seams and CLOSE_AT. It used to
    reserve a flat 560px, which meant the editor could never be dragged shut. */
 function chatMax(sidebar: number) {
-  // 0, not CHAT_MIN: a ceiling must not carry a floor of its own, or on a narrow
-  // window the chat pane's minimum wins and the prose column is the one that pays.
-  return Math.max(0, window.innerWidth - 44 - sidebar - 2 - EDITOR_MIN);
+  return chatMaxAt(window.innerWidth, sidebar);
 }
 
 function chatDefault(sidebar: number) {
   return clampPane("chat", Math.round(window.innerWidth * CHAT_DEFAULT_RATIO), sidebar);
 }
 
+// 视口宽度只在这里读一次：算术本身在 paneLayout.ts，是能拿数据直接测的纯函数。
 function clampPane(pane: PaneKey, value: number, sidebar = SIDEBAR_DEFAULT) {
-  const max = pane === "sidebar" ? SIDEBAR_MAX : chatMax(sidebar);
-  /* A floor may never sit above its own ceiling. The chat pane's minimum used to
-     win over the maximum, which is how a 860px window ended up with a 114px prose
-     column: 400 for the chat, whatever is left for the editor. On a narrow window
-     the chat pane now gives room back instead of the editor being crushed. */
-  const min = Math.min(pane === "sidebar" ? SIDEBAR_MIN : CHAT_MIN, max);
-  return Math.min(max, Math.max(min, Math.round(value)));
+  return clampPaneAt(pane, value, { sidebar, viewport: window.innerWidth });
 }
 
 function defaultPanes(): Panes {

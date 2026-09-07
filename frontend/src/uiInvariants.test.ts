@@ -46,6 +46,7 @@ import bookshelf from "./pages/BookshelfPage.tsx?raw";
 import apiSource from "./api.ts?raw";
 import chatRowsSource from "./components/chatRows.ts?raw";
 import labelsSource from "./labels.ts?raw";
+import paneLayoutSource from "./paneLayout.ts?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -131,8 +132,12 @@ describe("settled UI decisions must not regress", () => {
     }
     // The prose column's own floor lives in the layout, not in a hopeful CSS value:
     // below it the column is closed rather than clipped.
-    expect(layout).toContain("const EDITOR_MIN = 160");
-    expect(layout).toContain("min(pane === \"sidebar\" ? SIDEBAR_MIN : CHAT_MIN, max)");
+    // 规则搬到 paneLayout.ts 了（候选 7）：断言跟着搬，**条数不减**，
+    // 并且不再钉组件里的语句 —— 钉的是「地板值与不让位规则在唯一主人那儿」。
+    expect(paneLayoutSource).toContain("const EDITOR_MIN = 160");
+    expect(paneLayoutSource).toContain("min(pane === \"sidebar\" ? SIDEBAR_MIN : CHAT_MIN, max)");
+    expect(paneLayoutSource).toContain("viewport - RAIL_WIDTH - sidebar - SEAM_WIDTH - EDITOR_MIN");
+    expect(layout).not.toContain("const EDITOR_MIN");
     // and the actions stay reachable by wrapping instead of being pushed out
     expect(rule(".editor-toolbar")).toContain("flex-wrap: wrap");
     expect(rule(".editor-actions")).toContain("flex-wrap: wrap");
