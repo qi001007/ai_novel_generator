@@ -7,7 +7,7 @@ The owner: 「我现在可能会同时保存不同的供应商…正文生成、
 from fastapi.testclient import TestClient
 
 from app.models import AppConfig
-from app.services.llm import RoutedLLMClient, resolve_routing, resolve_settings
+from app.services.llm import RoutedLLMClient, resolve_routing
 from sqlmodel import Session, select
 
 
@@ -58,11 +58,11 @@ def test_two_providers_route_different_tasks(client: TestClient, db_engine) -> N
 
     with Session(db_engine) as session:
         # draft stays on the default gateway, review and summary move to B
-        assert resolve_settings(session, "draft").api_base_url == "https://a.example/v1"
-        assert resolve_settings(session, "review").api_base_url == "https://b.example/v1"
-        assert resolve_settings(session, "summary").api_base_url == "https://b.example/v1"
+        assert resolve_routing(session).settings_for("draft").api_base_url == "https://a.example/v1"
+        assert resolve_routing(session).settings_for("review").api_base_url == "https://b.example/v1"
+        assert resolve_routing(session).settings_for("summary").api_base_url == "https://b.example/v1"
         # and the no-task view keeps meaning the default provider, as it always did
-        assert resolve_settings(session).api_base_url == "https://a.example/v1"
+        assert resolve_routing(session).global_settings().api_base_url == "https://a.example/v1"
 
         client_obj = RoutedLLMClient(resolve_routing(session))
         assert client_obj._for("draft").settings.api_base_url == "https://a.example/v1"
@@ -153,6 +153,6 @@ def test_removing_every_extra_provider_leaves_the_default_working(client: TestCl
     )
     _put(client, {"providers": [], "routes": {"draft": "default"}})
     with Session(db_engine) as session:
-        assert resolve_settings(session, "draft").api_base_url == "https://a.example/v1"
+        assert resolve_routing(session).settings_for("draft").api_base_url == "https://a.example/v1"
         rows = session.exec(select(AppConfig).where(AppConfig.key == "llm.route.draft")).all()
         assert rows[0].value == "default"

@@ -431,16 +431,6 @@ def stored_overrides(session: Session) -> dict[str, str]:
     return {row.key: row.value for row in session.exec(select(AppConfig)).all()}
 
 
-def resolve_settings(session: Session, task: str | None = None) -> LLMSettings:
-    """backend/.env seeds the first run; saved rows win from then on.
-
-    With a `task`, the answer is that task's provider (第十九批批注 2). Without one it is
-    the default provider - which is exactly what it meant before providers became a list,
-    so every existing caller keeps its behaviour.
-    """
-    routing = resolve_routing(session)
-    return routing.settings_for(task) if task else routing.global_settings()
-
 
 class RoutedLLMClient:
     """One dependency, one gateway per provider, and the task decides who answers.
