@@ -112,7 +112,9 @@
    后端 273 → 278 全绿，`pydantic 2.13.5` / `sqlmodel 0.0.22` 版本未动）；
    §六 第 1 步验收⑤ 那句「两条通道都要认」**已在真网关上观测并修好**（`UI-BACKLOG 27.1` 已打勾，
    前提更正写进 **D-28**）—— 现在流式那一路 Agent 真能自己调 `read_file`。
-   剩下的第 1 步：`GatewayChatModel` 适配器 + `agent.engine` 开关 + 两引擎跑同一套契约测试。
+   **第 1 步已落地（2026-09-08）**：`GatewayChatModel` / `agent_pydantic.py` / 三个只读框架工具 / `NOVEL_AGENT_ENGINE` 开关完成；
+   后端 278 → 290 passed，双引擎同一契约（流式、推理、预算）12 条新增测试全绿。隔离库真机：`tool read_file ok`，
+   SSE `reasoning 153 / delta 89 / tool 1`，最后消息 `token_input=1512 / token_output=282`。第 5 步之前保留 `legacy` 回退。
 
 2. **注入清单口径（`UI-BACKLOG.md` 第三十批 30.1/30.2/30.4）** —— 主人已定：B 层与 C 层同宽
    （第 $N$ 章 → $[N-20,\,N+20]$）、目录只给题目＋简述、**正文只包含上一章**。
@@ -244,6 +246,8 @@
 | 接我们这种 OpenAI 兼容网关 | `OpenAIChatModel(..., provider=OpenAIProvider(base_url=...))`；整个 model 也可换实现 | 官方有「其他供应商」一节；已知毛病：`agents-as-tools` 时自定义 provider 被忽略（issue #2320） | 走 `OpenAIServerModel` / LiteLLM（多一层依赖） | 无关 |
 | 依赖体量 | `pydantic-ai-slim[openai]` 只装 openai 那份额外件；要求 Python ≥ 3.10（本机 3.11.4 ✓） | 中等，自带 tracing 面板（我们不要，得显式关） | 最轻（核心约 1000 行），但 `CodeAgent` 要能写 Python 的强模型 | 最重 |
 | 对我们项目的硬伤 | `tool_calls_limit` **只数成功的调用**（issue #3171）→ 要和 `total_tokens_limit` 并用作闸 | 见上 issue；tracing 默认往外部发细节 | `ToolCallingAgent` 强依赖原生 `tool_calls`，**正踩在 §6.2 那条约束上**；`CodeAgent` 等于在自己机器上跑模型写的代码 | 单用户本地应用用不上这层编排 |
+| 并发执行 | **本机实测（2026-09-08）**：两个工具用 2 方 barrier 相互等待，`pydantic` 引擎双调用能过 barrier；这不再是“文档说支持”。OpenAI Agents SDK 有内置并发；smolagents 未实测；LangGraph 未实测。 | 同左，本轮未实测 | 同左，本轮未实测 | 同左，本轮未实测 |
+| usage 口径 | **本机实测（2026-09-08）**：`RequestUsage.input_tokens/output_tokens` 接 `prompt_tokens/completion_tokens`；TestModel 回放口径 `12 input / 5 output`，隔离库真机 `1512 input / 282 output`。`total_tokens_limit` 用同一加法，不换单位。 | 未实测 | 未实测 | 未实测 |
 
 不选 LangGraph（用不上那层编排、依赖最重）。smolagents 代码量最小但主路走不通，
 理由就是 §6.2。OpenAI Agents SDK 是次选，落选的真实理由只有一条：
@@ -299,7 +303,7 @@
 | 上下文构造 | 仍然只有 `collect_items()` 一个入口，**框架自带的 history / sessions 一概不用**（D-04） |
 | 思考过程单独存列 | D-18 不变，适配器照旧把 `reasoning_content` 交出来 |
 
-**可逆**：加一个配置项 `agent.engine`（`legacy` / `pydantic`），两条通路跑同一套契约测试；
+**可逆**：加一个配置项 `agent.engine`（`legacy` / `pydantic`），读 `.env` 的 `NOVEL_AGENT_ENGINE`，默认 `legacy`；两条通路跑同一套契约测试；
 `legacy` 保留到第 5 步才删。任何一步坏了，改一个值退回旧循环 —— 界面和数据都不动。
 
 ### 6.5 五步（每步一条验收口径 + 预计代价）
@@ -317,8 +321,11 @@
    调用按 `index` 分 4 片、`arguments` 逐片拼；结论与更正记在 **D-28**，缺陷已修（见 `UI-BACKLOG 27.1`）。
 
    —— 「网关不给原生 tool_calls」这句话目前只在非流式那一路被观测过。
-   *代价*：一次会话，真机验证 2–3 次调用。顺带把 §6.3 表里「并发执行」「usage 口径」
-   两格从「文档说法」变成「本机实测」，并把 `pip show` 的依赖清单原样贴回本节。
+   *完成（2026-09-08）*：①后端 290 passed，其中本文件新增 12 条；②`ThreeStepTestModel` 三步剧本跑通且不花真 token；
+   ③隔离库真机 `read_file ok`，SSE `reasoning 153 / delta 89 / tool 1`，最后 `input=1512 / output=282`；④默认 `legacy` 未改行为；
+   ⑤原生流式分片与非流式方言块都进 `GatewayChatModel`；遥测显式 `agent.instrument=False`，§6.8 从「待验」改「已关」。
+   *代价*：一次会话，真机验证 2–3 次调用。§6.3 表里「并发执行」「usage 口径」两格已改为本机实测；
+   `pip show` 的依赖清单已在 §6.8。
 2. **预算与用量交给框架** —— 删掉手写双闸，改 `UsageLimits`（`request_limit` +
    `total_tokens_limit` 并用，因为 `tool_calls_limit` 只数成功的）；每步耗时与取回字数进工具轨迹。
    *验收*：故意问一个要翻很多页的问题，它在闸口停住并说清停在哪一步、已经花了多少；
@@ -386,5 +393,5 @@ regex-2026.9.3            truststore-0.10.4
 3. **`openai` SDK 是这次新引入的**（此前 `llm.py` 只用 `httpx` 直发，仓库里没有 `openai` 依赖）。
    装完立刻全量回归：后端 273 → 278 passed（新增的是我自己的 5 条），
    `pydantic 2.13.5` / `sqlmodel 0.0.22` / `fastapi 0.115.14` / `httpx 0.27.2` 版本都没被改动。
-   **遥测**：`logfire-api` 与 `opentelemetry-api` 是被拖进来的，按 §6.6 那条边界，
-   第 1 步落地时必须显式确认没有任何外部上报（现在还没有代码跑起来，所以这句还是「待验」，不是「已关」）。
+   **遥测（2026-09-08 已关）**：`logfire-api` 与 `opentelemetry-api` 是被拖进来的，但 Agent 构造显式
+   `agent.instrument=False`；Pydantic AI 自身 `Agent._instrument_default=False`。本机进程无 `OTEL_*` / `LOGFIRE_*` 环境变量，项目代码不配置 provider。按 §6.6 边界，零外部上报。

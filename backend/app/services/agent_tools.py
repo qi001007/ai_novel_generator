@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from typing import Any
 
 import httpx
+from pydantic_ai import Tool as PydanticTool
+from pydantic_ai.exceptions import ToolFailed
 from sqlmodel import Session
 
 from app.services.agent import Tool, ToolError, ToolRegistry
@@ -114,6 +117,113 @@ def _registry_tools(
             handler=search,
         ),
     ]
+
+
+def build_framework_tools(
+    session_factory: Callable[[], Session],
+    novel_id: int,
+    *,
+    search_transport: httpx.BaseTransport | None = None,
+) -> list[PydanticTool]:
+    """The same three read-only tools, in the framework's declaration format."""
+
+    def read(path: str) -> str:
+        """One document, exactly as the editor shows it."""
+        cleaned = path.strip().lstrip("/")
+        if not cleaned:
+            raise ToolError("read_file 需要 path")
+        try:
+            with session_factory() as session:
+                doc = read_file(session, novel_id, cleaned)
+        except DocumentError as cause:
+            raise ToolFailed(f"读不到 {cleaned}：{cause.detail}") from cause
+        return f"{doc.path}（{doc.layer} 层 · {doc.label}）\n\n{doc.text}"
+
+    def files() -> str:
+        """Every planning and setting document this novel has."""
+        with session_factory() as session:
+            metas = list_files(session, novel_id)
+        if not metas:
+            return "这个作品还没有任何规划文件。"
+        return "\n".join(f"{meta.path}  ({meta.layer} 层 · {meta.label})" for meta in metas)
+
+    def search(query: str) -> str:
+        """Public reference lookup. Answers what the workspace does not hold."""
+        needle = query.strip()
+        if not needle:
+            raise ToolFailed("web_search 需要 query")
+        try:
+            with httpx.Client(
+                timeout=SEARCH_TIMEOUT, headers=WIKI_HEADERS, transport=search_transport
+            ) as client:
+                response = client.get(
+                    WIKI_ENDPOINT,
+                    params={
+                        "action": "query",
+                        "list": "search",
+                        "srsearch": needle,
+                        "srlimit": SEARCH_RESULTS,
+                        "srprop": "snippet",
+                        "format": "json",
+                    },
+                )
+        except httpx.HTTPError as cause:
+            raise ToolFailed(f"联网查证失败，网络不可用：{type(cause).__name__}") from cause
+        if response.status_code >= 400:
+            raise ToolFailed(f"联网查证失败，上游返回 {response.status_code}")
+        hits = response.json().get("query", {}).get("search", []) or []
+        if not hits:
+            return f"没有查到与「{needle}」相关的公开条目。需要主人补充资料。"
+        lines = [f"「{needle}」的公开资料（中文维基百科，取前 {len(hits)} 条）："]
+        for hit in hits:
+            snippet = _TAG.sub("", hit.get("snippet", "")).replace("&quot;", chr(34)).strip()
+            title = hit.get("title", "")
+            lines.append(f"- {title}：{snippet}\n  https://zh.wikipedia.org?curid={hit.get('pageid', '')}")
+        return "\n\n".join(lines)
+
+    return [
+        PydanticTool(
+            files,
+            name="list_files",
+            description="列出这本书所有规划与设定文件的路径，read_file 的 path 从这里取",
+        ),
+        PydanticTool(
+            read,
+            name="read_file",
+            description="按路径读一份文件的当前全文（A 蓝图 / B 目录 / C 弧 / D 简报 / 设定库）",
+        ),
+        PydanticTool(
+            search,
+            name="web_search",
+            description="查本书以外的公开资料（当前来源：中文维基百科）。制度、地名、典故、科学事实用它，不要用记忆冒充查证",
+        ),
+    ]
+
+
+def framework_tools_from_registry(registry: ToolRegistry) -> list[PydanticTool]:
+    """Convert the existing negative-boundary registry into framework declarations."""
+    converted: list[PydanticTool] = []
+    for tool in registry.tools():
+        properties = tool.parameters.get("properties", {})
+        type_names: dict[str, str] = {}
+        for name, spec in properties.items():
+            kind = spec.get("type", "string")
+            type_names[name] = {"string": "str", "integer": "int", "number": "float", "boolean": "bool"}.get(
+                kind, "Any"
+            )
+        source = f"def _dynamic_tool({', '.join(f'{name}: {type_names[name]}' for name in properties)}):\n"
+        source += f"    return str(_handler({', '.join(f'{name}={name}' for name in properties)}))\n"
+        namespace: dict[str, Any] = {
+            "_handler": getattr(tool.handler, "__func__", tool.handler)
+        }
+        exec(compile(source, f"<agent-tool:{tool.name}>", "exec"), namespace)  # noqa: S102
+        handler = namespace["_dynamic_tool"]
+        handler.__name__ = tool.name
+        handler.__qualname__ = f"agent_tool.{tool.name}"
+        converted.append(
+            PydanticTool(handler, name=tool.name, description=tool.description)
+        )
+    return converted
 
 
 def build_registry(

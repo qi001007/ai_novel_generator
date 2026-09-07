@@ -24,6 +24,13 @@ class AgentBudgetError(RuntimeError):
     """The turn hit its step or token ceiling. Raised, never silently truncated."""
 
 
+def agent_engine() -> str:
+    """Migration switch: read once per call from process settings, never from the DB."""
+    import os
+
+    return "pydantic" if os.getenv("NOVEL_AGENT_ENGINE", "").strip().lower() == "pydantic" else "legacy"
+
+
 @dataclass(frozen=True)
 class Tool:
     name: str
@@ -66,6 +73,9 @@ class ToolRegistry:
 
     def get(self, name: str) -> Tool | None:
         return self._tools.get(name)
+
+    def tools(self) -> list[Tool]:
+        return [self._tools[name] for name in self.names()]
 
     def specs(self) -> list[dict[str, Any]]:
         """OpenAI-shaped declarations, for gateways that accept `tools`."""
@@ -364,6 +374,22 @@ def stream_agent_turn(
     `messages` is the turn the caller already assembled, because prepare_turn owns
     that shape - the loop appends, it does not rebuild context.
     """
+    if agent_engine() == "pydantic":
+        from app.services.agent_pydantic import stream_pydantic_agent_turn
+
+        yield from stream_pydantic_agent_turn(
+            llm,
+            messages,
+            registry,
+            task_type=task_type,
+            model=model,
+            temperature=temperature,
+            config=config,
+            reasoning_out=reasoning_out,
+        )
+
+        return
+
     limits = config or AgentConfig()
     if limits.max_steps < 1:
         raise AgentBudgetError("max_steps 至少为 1")
@@ -506,6 +532,10 @@ def run_agent_turn(
     **kwargs: Any,
 ) -> AgentOutcome:
     """The same loop with the deltas discarded, for the non-streaming route."""
+    if agent_engine() == "pydantic":
+        from app.services.agent_pydantic import run_pydantic_agent_turn
+
+        return run_pydantic_agent_turn(llm, messages, registry, **kwargs)
     kwargs["streaming"] = False
     outcome: AgentOutcome | None = None
     for name, payload in stream_agent_turn(llm, messages, registry, **kwargs):

@@ -30,3 +30,7 @@
   两次真调用：`tool read_file ok:true`、答出「地点。」。**另记一条不属于本轮的抖动**：子进程里连跑全量偶发 1 条红、
   每次不是同一条（见过 `test_a_refusal_names_the_chapter_that_is_missing` 与 `test_create_and_list_generation_run`），
   单跑与直接连跑 4 次全绿 —— 没查，只登记。
+
+- 2026-09-08 · §六 第 1 步后半：Pydantic AI 循环、`GatewayChatModel`、`NOVEL_AGENT_ENGINE` 开关与
+  只读框架工具落地；新增 12 条双引擎契约/离线剧本测试，278 → 290 passed。隔离库真机
+  `read_file ok`，SSE `reasoning 153 / delta 89 / tool 1`，usage `input=1512 / output=282`。
