@@ -123,6 +123,13 @@
 
 ---
 
+**4c · 让投影语法只剩一把表**（架构走查候选 4 的最后一片，工单在 `frontend/src/components/description.md`）
+后端已随投影发出 `grammar`（`markdown_doc.grammar_for_kind`，见 D-34 之后的 4b）；前端 `cmDoc.ts` 仍自带
+`FIELD_LABEL` / `HEADING_FIELDS` / `BULLET_FIELDS` 三张本地表。要做完的是：改成消费服务器给的表并按 kind
+查表（由此修掉三处标签撞车：`目标`=goal|goals、`起始章`=start_chapter|expected_start_chapter、
+`结束章`=end_chapter|expected_end_chapter），删掉本地表，并真机点验 `focusField` 能跳到世界观/伏笔/
+人物档案的字段。基线：前端 249、后端 273、tsc/build clean。
+
 ## 四、需要你点头的（三件，都是一句话）
 
 1. **清单上该删哪块、该加哪块**：任何一次正文生成页面都能看到「注入上下文」那张表，
