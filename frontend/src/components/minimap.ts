@@ -51,7 +51,7 @@ export function progressFromPointer(
 
 /** Row pitch of the picture when the document is short enough to show every line
     at full size; longer documents compress below it. */
-export const MM_PITCH = 5;
+const MM_PITCH = 5;
 
 /**
  * One row per source line, drawn as miniature text - the picture the owner can

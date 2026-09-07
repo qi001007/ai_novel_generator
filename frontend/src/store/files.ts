@@ -115,12 +115,6 @@ export const draftChapter = (path: string) => {
   return m ? Number(m[1] ?? m[2]) : null;
 };
 
-export const TREE_LABEL: Record<string, string> = {
-  blueprint: "全本蓝图",
-  toc: "目录",
-  arcs: "卷 / 剧情弧",
-};
-
 // B describes a chapter, D builds it. The jump lands on the D field carrying the
 // same intent, so both layers keep their current wording. Field names are the
 // backend ones; the Markdown labels a reader sees live in cmDoc.ts.

@@ -51,7 +51,7 @@ const CODE_FONT_KEYS = CODE_FONTS.map((font) => font.key) as readonly CodeFontCh
 
 /* 界面字号不是一条 font-size，而是 #root 的 zoom 因子：全站几百条字号是写死的，
    逐条改 em 不现实。默认 14 就是它自己 - 滑杆上写 px，落到 CSS 是倍数。 */
-export const UI_SIZE_DEFAULT = 14;
+const UI_SIZE_DEFAULT = 14;
 /* 下限不是凑的：缩到 12 时命中区审计量出三处 23px（章标签的关闭钮、两处「详情」），
    低于 §0.4 的 24px 地板线；13 那一档只剩一条本来就靠拖拽线豁免的细线。 */
 export const UI_SIZE = { min: 13, max: 17, step: 1 };
@@ -145,7 +145,7 @@ export function readAppearance(): Appearance {
   };
 }
 
-export function writeAppearance(next: Appearance): void {
+function writeAppearance(next: Appearance): void {
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {

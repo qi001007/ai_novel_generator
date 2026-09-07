@@ -7,7 +7,7 @@
 
 /** 作者按四层规划想问题：A 全书蓝图 → B 目录 → C 剧情弧 → D 简报，
  *  然后是本章正文、设定类资料、附件。 */
-export const LAYER_ORDER = ["A", "B", "C", "D", "正文", "设定", "附件"] as const;
+const LAYER_ORDER = ["A", "B", "C", "D", "正文", "设定", "附件"] as const;
 
 export function layerRank(layer: string): number {
   const index = (LAYER_ORDER as readonly string[]).indexOf(layer);

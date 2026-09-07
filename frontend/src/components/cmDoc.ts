@@ -97,7 +97,7 @@ export type DocDecorConfig = {
   jumpFrom: boolean;
 };
 
-export const emptyConfig: DocDecorConfig = { lockedFields: [], pendingLines: [], jumpFrom: false };
+const emptyConfig: DocDecorConfig = { lockedFields: [], pendingLines: [], jumpFrom: false };
 
 const configEffect = StateEffect.define<DocDecorConfig>();
 
@@ -143,7 +143,7 @@ type DocEntry = {
  * Walk the document once, tracking which chapter record each line belongs to,
  * so a description in toc.md knows which brief file it describes.
  */
-export function scanDoc(view: EditorView): DocEntry[] {
+function scanDoc(view: EditorView): DocEntry[] {
   const doc = view.state.doc;
   const found: DocEntry[] = [];
   let chapter: number | null = null;
@@ -268,7 +268,7 @@ const railPlugin = ViewPlugin.fromClass(
   },
 );
 
-export const railGutter = gutter({
+const railGutter = gutter({
   class: "cm-rail",
   markers: (view) => view.plugin(railPlugin)?.decorations ?? [],
 });
@@ -323,7 +323,7 @@ function bodyDecorations(view: EditorView) {
   return builder.finish();
 }
 
-export const bodyPlugin = ViewPlugin.fromClass(
+const bodyPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
 
@@ -349,7 +349,7 @@ export const bodyPlugin = ViewPlugin.fromClass(
 /** Emitted when the reader clicks a description in toc.md. */
 export const jumpHandlers = new Map<EditorView, (chapter: number, from: string, to: string) => void>();
 
-export const clickHandlers = () =>
+const clickHandlers = () =>
   EditorView.domEventHandlers({
     mousedown(event, view) {
       const target = event.target as HTMLElement | null;
@@ -456,7 +456,7 @@ export function focusField(view: EditorView, field: string): boolean {
 // CodeMirror ships one highlight style and its own source comment says it
 // "works well with light themes". Own style, every colour a theme token, so
 // light keeps 帧 17's cinnabar structure and dark gets the VSCode Dark+ palette.
-export const docHighlight = HighlightStyle.define([
+const docHighlight = HighlightStyle.define([
   { tag: [t.heading, t.strong], color: "var(--tok-key)", fontWeight: "bold" },
   { tag: t.contentSeparator, color: "var(--tok-key)" },
   { tag: [t.list, t.separator], color: "var(--tok-literal)" },
