@@ -193,6 +193,8 @@
 | 导出与恢复**只有一个目录设置项**（导出、以及从快照里只取一个文件，共用它）；删除记录一行一条、动作贴着它自己那一条 | `prefs-tab-storage` 那一栏里只有一枚 `input[aria-label="导出目录"]`；出现第二枚目录框即红；恢复动作全部走后端，放回书里必须经 `PUT /api/novels/{id}/files/{path}` 那一条口（D-01） | 第二十五批批注 3、5 |
 | **一行只给做得到的事**：那本书还在书架上 → 只有「恢复某一章」，展开列的是**真少掉的那些章**（一行 = 一章，简报与正文成对写在同一行）；书不在了 → 才有「恢复整本书」+「取一个文件」。判据是活库的 novel 表，不是快照文件名前缀 | `uiInvariants` 钉 `const wholeBook = !item.book_on_shelf;`、`{wholeBook ? (`、按钮文本「恢复整本书」全页只出现一次、旧函数名 `toggleDocs` 不许回来、`api.restoreChapter` 与「简报与正文一起」必须在。恢复一章走 `POST /api/backups/restore/chapter` **一次调用**带回简报 + 正文 + 目录那一行，两步写文件仍只有 `documents.write_file` 那一条口（D-01） | 第二十五批批注 5 的**范围部分被第二十九批批注 1 收窄**（D-30） |
 | 树里章节菜单三项：`重命名`（**只改名字**，序号不可改）、`在其后插入一章`（`后面 +1`）、`删除章节`（`后面 -1`）；确认口径与删书一致（不打字、焦点在取消）。**序号是位置、章名是主人给的**：树上那一行显示 `0007 · 雪夜碑鸣`，标签条仍只显示四个数字（名字进 title 与无障碍名）；章名只有一个出处 = B 目录那一行，`Chapter.title` 读时 join、不回写 | `uiInvariants` 钉 `<span>重命名</span>\n\s+<kbd>只改名字</kbd>`、`在其后插入一章`、`<kbd>后面 -1</kbd>`、`chapterListLabel(chapter)` 与 `export const chapterListLabel`，并反向钉旧串「章号不补」与旧 disabled 文案不许回来 | 第二十六批批注 6 定的「不顺延 + 重命名不开」**被第二十八批批注 6 推翻** |
+| 删除记录里**展开行那两枚按钮**要和页头那两枚**逐位对齐**（同一圈栅格，不各自算 margin） | `uiInvariants` 钉两枚按钮的 left／right 取整相等；判据写的是「量两行同名按钮之差 = 0px，不许用眼睛看」 | 第二十九批批注 2（提交 be91ac8；该条在 UI-BACKLOG 里漏打了勾，数字只在该次提交信息里） |
+| 恢复弹窗**不留解释条款**：标题加三枚按钮已经把选择说完了，那句「只取文件就不动书架」是文档不是界面 | `uiInvariants` 反向钉 `preferences` 源码里不许出现那句原话（写进注释也算违规）；真机 DOM 里 `.backup-ask .book-delete-note` 数量 0 | 第二十九批批注 3（§0.7 条四与条九早就写着「解释性小字不上屏」，是我自己违反自家守则） |
 
 | **聚焦不画一圈**：无 outline、无 `0 0 0` 光晕、无主色；只许光标 + 边框提亮一档 | 任何含 `focus` 的规则不得出现 `outline: <非 none/0>`、`box-shadow: 0 0 0`、`--accent`（caret 是唯一例外），`border-color` 提亮只许 `--border-strong`；`.editor-body:focus-within .editor-scroll` 这条规则不许存在；压过 CodeMirror 自带 `.cm-focused` 描边的规则不许被删 | 第十五批批注 4.1、4.2 |
 
