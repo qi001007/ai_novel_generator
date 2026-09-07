@@ -296,6 +296,15 @@ export type PlotFeedback = {
 
 export type FileMeta = { path: string; kind: string; layer: string; label: string };
 
+/**
+ * 投影随文档一起发出的语法表：field 对应读者看到的中文 label。
+ * sections 是 `## 标签` 行，bullets 是 `- **标签**：值` 行。表只有一个主人——
+ * 后端 markdown_doc._GRAMMAR 按 kind 查出来随投影 GET 发出；前端只许消费，
+ * 不许再抄第二份（候选 4c，2026-09-07）。
+ */
+export type GrammarRow = { field: string; label: string };
+export type ServedGrammar = Partial<Record<"sections" | "bullets", GrammarRow[]>>;
+
 export type FileDoc = {
   path: string;
   kind: string;
@@ -304,8 +313,8 @@ export type FileDoc = {
   text: string;
   ai_fields: string[];
   revision: string;
-  /** 后端投影随文档一起发的语法表（4c 之前前端仍用自己那份）。 */
-  grammar?: Record<string, Array<{ field: string; label: string }>>;
+  /** 这张 kind 的语法表；正文（draft/chapter）没有键行，后端发空对象。 */
+  grammar?: ServedGrammar;
 };
 
 export type FileWriteResult = { path: string; changed: string[]; revision: string };

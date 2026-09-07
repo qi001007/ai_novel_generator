@@ -27,3 +27,12 @@
 - 2026-09-07 · 候选 4a（投影语法两把表）：`cmDoc.ts` 补上后端会打而前端不认的 12 枚标签——伏笔的埋设章/预计收章/已收章/内容、世界观的类别/已确认/来源章/现况/内容、人物的姓名/分级，以及 field->label 方向的expected_start_chapter/expected_end_chapter。**效果**：世界观、伏笔墙、人物档案在编辑器里重新被认成结构行（导轨锁定 + focusField 可跳 + 面包屑不再显示英文字段名）。新增 `src/grammarParity.test.ts` 4 条对照测试：逐对读后端 `markdown_doc.py` 的 8 张表 39 对，钉「后端打得出的标签前端必须认得」，并把三处 label→field 撞车（目标/起始章/结束章）列成 KNOWN_AMBIGUOUS 清单，再多一处就红。为测试导出 HEADING_FIELDS/BULLET_FIELDS（只读用途）。两个本机坑记在测试注释里：core.autocrlf 让 node 读到的 .py 是 CRLF（必须归一，否则正则空跑）；我那条防空跑的守卫真的拦下了一次 0 表绿灯。变异自检：抽掉一枚标签 → 立刻红。248 passed（244 → 248）/ tsc clean / build ok。**未做**：让后端随投影把表发下来、前端不再自带一份（候选 4b）。
 - 2026-09-07 · 候选 4b（后端侧，前端未消费）：`markdown_doc.grammar_for_kind()` 从既有元组派生每个 kind 的字段↔标签表（**不另抄标签**）；`FileDoc` 加 `grammar` + `with_grammar()`，`routers/documents.py` 单点填表、`FileDocOut` 声明该字段；前端 `types.ts` 的 FileDoc 镜像加可选 `grammar`。新增 `backend/tests/test_projection_grammar.py` 3 条：7 个 kind 都发得出表、标签不得来自第二份抄写、响应模型少声明字段就红（内存变异验证：删掉 grammar 声明立刻红）。273 passed（270 → 273）/ 前端 248 不变 / tsc clean。**cmDoc 那份本地表仍在**，删它是 4c，工单已写进 `src/components/description.md`。（补记：上一条幂等守卫写成了「候选 4b」，而 4a 那条账里已经出现过这个词，所以第一次追加被自己的守卫挡掉了——守卫要用本条独有的串。）
 - 2026-09-07 · 候选 7c：① `toggleHidden` 里那段手算 room 收成纯函数 `paneLayout.chatRoomAt`（`window.innerWidth` 与裸 44/1/1 全部退出，隐藏列不占位的规则只有一处）；② **撤掉 `styles.css` 里那条永远生效不到的 `max-height: 220px`**——输入框自增高由 `ChatPane` 的 `INPUT_MAX_HEIGHT = 180` 夹，CSS 再写一个数就是第二个答案，而且是个死的。uiInvariants +3 条：CSS 不许再声明这条上限、`INPUT_MAX_HEIGHT` 全仓只许一处、值钉 180；paneLayout.test +1 组（三种隐藏组合下聊天列该让出多少）。249 passed（248 → 249）/ tsc clean / build ok。另：我上一条转述子代理时把行号写成了 `ChatPane.tsx:106-107（44/180）`，那里其实是附件后缀表——真实位置是 61-62 与 456 行，CSS 侧是 1795-1796。已按实测改写。
+
+- 2026-09-07 · 候选 4c（架构走查候选 4 的收尾，前端侧）：`cmDoc.ts` 的三张本地语法表删除，改按 kind 消费投影发来的
+  `grammar`（主人＝后端 `_GRAMMAR`，D-35 记理由）；`focusField` 只按字段精确匹配，三处标签撞车（目标／起始章／结束章）
+  由「运行期兜底」变成「查表就分得开」。`types.ts` 加 `GrammarRow`/`ServedGrammar` 并把 `FileDoc.grammar` 收窄成后者；
+  `store/files.ts` 那句「标签住在 cmDoc.ts」的注释跟着改。新增 `src/test/servedGrammar.ts`（解析后端源码出投影会给的 JSON，
+  fixture 因此不抄标签），该目录自此有 description.md + backlog.md。`grammarParity.test.ts` 从「两把表互相对照」升级为
+  「前端不许再有第二把表 + 按 kind 解析键行」，4 条 → 10 条，KNOWN_AMBIGUOUS 随歧义一起下线；同批改 6 处 fixture。
+  另立候选 4d（**只登记未动**）：`CharacterFormCard` 与 `TocListView` 里还有硬编码中文标签。
+  255 passed（249 → 255）/ 后端 273 不变 / tsc clean / build ok / 命中区审计 0 小目标·0 裁切·0 不可达。

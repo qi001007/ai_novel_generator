@@ -117,7 +117,8 @@ export const draftChapter = (path: string) => {
 
 // B describes a chapter, D builds it. The jump lands on the D field carrying the
 // same intent, so both layers keep their current wording. Field names are the
-// backend ones; the Markdown labels a reader sees live in cmDoc.ts.
+// backend ones; the Markdown labels a reader sees come from the served table,
+// which cmDoc.ts compiles per kind.
 export const BRIEF_FIELD_OF: Record<string, string> = {
   plot_function: "goal",
   notes: "events",

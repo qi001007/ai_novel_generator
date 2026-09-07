@@ -7,9 +7,9 @@ import { AlertTriangle, ChevronRight, FileCode2, RefreshCw, X } from "lucide-rea
 
 import {
   cursorReport,
-  FIELD_LABEL,
   editorExtensions,
   focusField,
+  grammarOf,
   jumpHandlers,
   scrollReport,
   setDocConfig,
@@ -227,16 +227,22 @@ export default function FileEditorPane() {
     return changed;
   }, [proposal, entry?.doc]);
 
+  /* The key-line table is not ours to keep: the projection carries it, and the
+     rows differ per kind, which is what makes 目标 resolve to `goal` in a brief
+     and `goals` in a character sheet (候选 4c). */
+  const grammar = useMemo(() => grammarOf(entry?.doc?.grammar), [entry?.doc?.grammar]);
+
   useEffect(() => {
     if (!view) return;
     view.dispatch({
       effects: setDocConfig({
+        grammar,
         lockedFields: LOCKED_FIELDS[kind] ?? [],
         pendingLines,
         jumpFrom: kind === "toc",
       }),
     });
-  }, [view, kind, pendingLines, active]);
+  }, [view, kind, grammar, pendingLines, active]);
 
   // --- the B→D jump parks the caret on the mapped field -------------------
   useEffect(() => {
@@ -244,6 +250,13 @@ export default function FileEditorPane() {
     const timer = window.setTimeout(() => focusField(view, focus.field), 0);
     return () => window.clearTimeout(timer);
   }, [view, focus, active, entry?.doc]);
+
+  /* 批注 4c: the breadcrumb names the field the reader came from in that reader's
+     own words, and the only table that knows the word is the one the *source*
+     document arrived with - so it is looked up there, not in a local copy. */
+  const jumpLabel = jump
+    ? grammarOf(entries[jump.fromPath]?.doc?.grammar).fieldLabels[jump.field] ?? jump.field
+    : "";
 
   // --- minimap geometry ---------------------------------------------------
   const lines = useMemo(() => draft.split("\n"), [draft]);
@@ -447,7 +460,7 @@ export default function FileEditorPane() {
       {jump ? (
         <div className="jump-bar">
           <span className="jump-from">
-            ↩ 来自 {jump.fromPath} · 第 {jump.chapter} 章 · {FIELD_LABEL[jump.field] ?? jump.field}
+            ↩ 来自 {jump.fromPath} · 第 {jump.chapter} 章 · {jumpLabel}
           </span>
           <span className="jump-hint">点击目录里的描述 → 打开该章简报，光标落在同一字段</span>
           <button

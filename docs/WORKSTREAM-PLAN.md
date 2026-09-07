@@ -129,6 +129,13 @@
 查表（由此修掉三处标签撞车：`目标`=goal|goals、`起始章`=start_chapter|expected_start_chapter、
 `结束章`=end_chapter|expected_end_chapter），删掉本地表，并真机点验 `focusField` 能跳到世界观/伏笔/
 人物档案的字段。基线：前端 249、后端 273、tsc/build clean。
+   - **做完（2026-09-07，待主人审批后删条）**：前端消费投影表并按 kind 查，`FIELD_LABEL`/
+     `HEADING_FIELDS`/`BULLET_FIELDS` 三张本地表已删（`cmDoc.ts` grep 零命中，全仓剩下的命中只有禁令名单与账），`focusField` 去掉了
+     「同名标签兜底」那段歧义补丁。**实测**：前端 255 passed（249 → 255，全部增量来自
+     `grammarParity.test.ts` 4 条 → 10 条）、后端 273 passed、tsc clean、build ok、
+     命中区审计 0 小目标/0 裁切/0 不可达。**顺带查出一处旧测试缺陷**：上一版对照测试的正则
+     不认单行元组，`_TOC_BULLETS` 整张被跳过，「8 张表 39 对」其实是 9 张 41 对，
+     剧情功能/备注（就是 B→D 跳转那两个字段）从没被核对过——现已按 9/41 钉。
 
 ## 四、需要你点头的（三件，都是一句话）
 

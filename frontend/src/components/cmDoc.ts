@@ -23,96 +23,54 @@ import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { tags as t } from "@lezer/highlight";
 
 import { BRIEF_FIELD_OF } from "../store/files";
+import type { ServedGrammar } from "../types";
 
-// --- vocabulary -----------------------------------------------------------
+// --- grammar served by the projection -------------------------------------
 
-// Backend field name -> the Markdown label a reader sees. The codec in
-// backend/app/services/markdown_doc.py is the other half of this table.
-export const FIELD_LABEL: Record<string, string> = {
-  main_line: "主线",
-  ending: "终局",
-  core_conflicts: "核心冲突",
-  themes: "主题",
-  constraints: "约束",
-  goal: "目标",
-  events: "事件",
-  conflict: "冲突",
-  hook: "钩子",
-  required_facts: "既定事实",
-  plot_function: "剧情功能",
-  notes: "备注",
-  objective: "目标",
-  start_chapter: "起始章",
-  end_chapter: "结束章",
-  resolution: "收束",
-  status: "状态",
-  pov: "视角",
-  characters: "出场人物",
-  chapter: "章节号",
-  arc: "所属弧",
-  identity: "身份",
-  goals: "目标",
-  behavior_constraints: "行为约束",
-  current_status: "当前状态",
-  // 伏笔墙与世界观记录本（后端 markdown_doc.py 会打这些标签，前端不认就得不到导轨）
-  planted_chapter: "埋设章",
-  expected_payoff_chapter: "预计收章",
-  payoff_chapter: "已收章",
-  content: "内容",
-  category: "类别",
-  is_confirmed: "已确认",
-  source_chapter: "来源章",
-  current_state: "现况",
-  name: "姓名",
-  level: "分级",
-  // 人物档案复用了弧的两个标签，但字段是 expected_*：方向 field->label 不冲突
-  expected_start_chapter: "起始章",
-  expected_end_chapter: "结束章",
+/**
+ * One document kind, indexed three ways. The rows come from the backend with
+ * the projection (`markdown_doc.grammar_for_kind`); this file used to keep a
+ * second, flat copy of them, and a flat copy cannot tell 目标 in a brief
+ * (`goal`) from 目标 in a character sheet (`goals`). Looking the table up per
+ * kind is what removes those three collisions instead of working around them.
+ */
+export type DocGrammar = {
+  /** heading label -> field: `## 主线` is main_line */
+  fieldOfHeading: Record<string, string>;
+  /** bullet label -> field: `- **内容**：…` is content */
+  fieldOfBullet: Record<string, string>;
+  /** field -> label, for the breadcrumb that names where a jump came from */
+  fieldLabels: Record<string, string>;
 };
 
-// Which field a heading or a bullet carries. 目标 is 目标 in both blueprint and
-// brief even though the columns differ, so the two maps stay separate.
-export const HEADING_FIELDS: Record<string, string> = {
-  主线: "main_line",
-  终局: "ending",
-  核心冲突: "core_conflicts",
-  主题: "themes",
-  约束: "constraints",
-  目标: "goal",
-  事件: "events",
-  冲突: "conflict",
-  钩子: "hook",
-  既定事实: "required_facts",
-  身份: "identity",
-  行为约束: "behavior_constraints",
-  当前状态: "current_status",
+const NO_GRAMMAR: DocGrammar = {
+  fieldOfHeading: {},
+  fieldOfBullet: {},
+  fieldLabels: {},
 };
-export const BULLET_FIELDS: Record<string, string> = {
-  章节号: "chapter",
-  所属弧: "arc",
-  剧情功能: "plot_function",
-  备注: "notes",
-  起始章: "start_chapter",
-  结束章: "end_chapter",
-  目标: "objective",
-  冲突: "conflict",
-  收束: "resolution",
-  状态: "status",
-  视角: "pov",
-  出场人物: "characters",
-  埋设章: "planted_chapter",
-  预计收章: "expected_payoff_chapter",
-  已收章: "payoff_chapter",
-  内容: "content",
-  类别: "category",
-  已确认: "is_confirmed",
-  来源章: "source_chapter",
-  现况: "current_state",
-  姓名: "name",
-  分级: "level",
-};
+
+/** Drafts and chapters have no key lines, so the projection sends no rows. */
+export function grammarOf(served: ServedGrammar | undefined): DocGrammar {
+  const sections = served?.sections ?? [];
+  const bullets = served?.bullets ?? [];
+  if (!sections.length && !bullets.length) return NO_GRAMMAR;
+  return {
+    fieldOfHeading: Object.fromEntries(sections.map(({ field, label }) => [label, field])),
+    fieldOfBullet: Object.fromEntries(bullets.map(({ field, label }) => [label, field])),
+    fieldLabels: Object.fromEntries(
+      [...bullets, ...sections].map(({ field, label }) => [field, label]),
+    ),
+  };
+}
+
+/** A key line is whatever the writer typed there, so only own properties count. */
+function fieldOf(table: Record<string, string>, key: string): string {
+  return Object.hasOwn(table, key) ? table[key] : "";
+}
 
 export type DocDecorConfig = {
+  /** The served table for the document on screen; nothing is recognised without it. */
+  grammar: DocGrammar;
   /** Fields whose line gets the rail segment: structure, not content. */
   lockedFields: string[];
   /** 1-based lines an unapplied proposal would change. */
@@ -121,7 +79,12 @@ export type DocDecorConfig = {
   jumpFrom: boolean;
 };
 
-const emptyConfig: DocDecorConfig = { lockedFields: [], pendingLines: [], jumpFrom: false };
+const emptyConfig: DocDecorConfig = {
+  grammar: NO_GRAMMAR,
+  lockedFields: [],
+  pendingLines: [],
+  jumpFrom: false,
+};
 
 const configEffect = StateEffect.define<DocDecorConfig>();
 
@@ -149,7 +112,7 @@ const RECORD_ANCHOR_RES: [RegExp, string][] = [
   [/^设定\s*(\d+|\?)\s*(.*)$/, "setting"],
 ];
 
-type DocEntry = {
+export type DocEntry = {
   line: number;
   /** Backend field name, or "" when the line is prose. */
   field: string;
@@ -165,10 +128,13 @@ type DocEntry = {
 
 /**
  * Walk the document once, tracking which chapter record each line belongs to,
- * so a description in toc.md knows which brief file it describes.
+ * so a description in toc.md knows which brief file it describes. Exported for
+ * `grammarParity.test.ts`, which checks key lines resolve through the served
+ * table; nothing else should read a raw scan.
  */
-function scanDoc(view: EditorView): DocEntry[] {
+export function scanDoc(view: EditorView): DocEntry[] {
   const doc = view.state.doc;
+  const { grammar } = view.state.field(configField);
   const found: DocEntry[] = [];
   let chapter: number | null = null;
 
@@ -195,7 +161,7 @@ function scanDoc(view: EditorView): DocEntry[] {
         });
         continue;
       }
-      const field = HEADING_FIELDS[text.trim()] ?? "";
+      const field = fieldOf(grammar.fieldOfHeading, text.trim());
       chapter = null;
       found.push({
         line: i,
@@ -212,7 +178,7 @@ function scanDoc(view: EditorView): DocEntry[] {
     const bullet = BULLET_RE.exec(line.text);
     if (!bullet) continue;
     const label = bullet[1].trim();
-    const field = BULLET_FIELDS[label] ?? "";
+    const field = fieldOf(grammar.fieldOfBullet, label);
     if (field === "chapter" && line.text.includes("：")) {
       const digits = /(\d+)/.exec(line.text.slice(line.text.indexOf("：")));
       if (digits) chapter = Number(digits[1]);
@@ -439,13 +405,10 @@ export const cursorReport = (onCursor: (line: number) => void) =>
  * own line; a section drops it onto the first body line under the heading.
  */
 export function focusField(view: EditorView, field: string): boolean {
-  const label = FIELD_LABEL[field];
-  if (!label) return false;
   for (const entry of scanDoc(view)) {
-    // One label, two columns: `目标` is `goal` in a brief and `goals` in a
-    // character sheet. A document never carries both, so the label a reader sees
-    // is the unambiguous key; every other field still matches on its own name.
-    if (entry.field !== field && FIELD_LABEL[entry.field] !== label) continue;
+    // Exact match, no label fallback: scanDoc resolved this line through the
+    // table of *this* kind, so `goal` cannot be found in a character sheet.
+    if (entry.field !== field) continue;
     const line = view.state.doc.line(entry.line);
     if (line.text.startsWith("## ")) {
       let head = line.to;

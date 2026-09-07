@@ -6,8 +6,11 @@
 `CharacterFormCard` 与 `CharacterDocForm` 是**同一张人物卡**的两个面，不是两张卡。
 共用件：`ProposalCard` `FeedbackPanel` `MarkdownText` `TocListView` `Splitter`
 `HScrollThumb` `StatusBadge` `ViewToggle` `ActivityRail`。
-`cmDoc.ts` 的语法表与后端 `markdown_doc.py` 是**一对**，由 `src/grammarParity.test.ts` 钉着：后端会打的每枚标签前端必须认得；三处「一个标签指两个字段」的欠账列在测试里的 KNOWN_AMBIGUOUS，多一处就红（那三处要按 kind 查表才算真修完，见候选 4 的下一片）。
-**4c 工单**：后端已随投影发 `grammar`（`markdown_doc.grammar_for_kind`），前端消费它并删掉 `FIELD_LABEL`/`HEADING_FIELDS`/`BULLET_FIELDS` 三张本地表——那三处标签撞车（目标／起始章／结束章）只有按 kind 查表才算真修完。
+`cmDoc.ts` **不再自带语法表**（候选 4c）：认什么键行全看投影随文档发来的 `grammar`，按 kind 查表，
+  所以「目标／起始章／结束章」在简报、弧、人物档案里各自指回自己的字段；表的主人只有一个——
+  后端 `markdown_doc._GRAMMAR`。`src/grammarParity.test.ts` 钉住两件事：前端不许再长出第二把表、
+  每枚键行按 kind 解析得对。**登记未做**：`CharacterFormCard`/`TocListView` 里还有硬编码中文标签
+  （表单字段、剧情功能/备注），同一族欠账的下一片（候选 4d），本轮未动。
 **已知未接线的壳**：`ForeshadowWall` / `WorldMapPanel` / `PaintingDetailPanel` 面板内零请求，
 那是没接线不是没数据（`docs/WORKSTREAM-PLAN.md §二`），别再重复排查。
 

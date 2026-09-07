@@ -9,7 +9,7 @@
 - `paneLayout.ts` 拥有三栏的宽度常量与算术（含 `editorWidthAt` / `dragValueAt`），**视口宽度作入参**（纯函数、可直测）；
   `WorkbenchPage` 里的 `chatMax`/`clampPane` 只是各读一次 `window.innerWidth` 的薄包装。
 - `labels.ts` 是 `kind`/`task` 界面词的**唯一**主人（A 层叫「全书蓝图」，D-34）；`utils/time.ts` 拥有 `formatTime`。
-- `test/setup.ts` 是 vitest 脚手架（一个文件，不单列目录说明）。
+- `test/` 是测试地基：`setup.ts` 与 `servedGrammar.ts`（后端语法表的测试读法），自列目录说明。
 
 **往下读**：`components/`（一块一面）、`pages/`（路由级页面）、`store/`（三个持有者）、
 `utils/`（纯函数），各有一份 description.md。

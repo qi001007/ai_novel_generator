@@ -8,6 +8,7 @@ import FileEditorPane from "./FileEditorPane";
 import { useFiles, type FileEntry } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 import type { FileDoc } from "../types";
+import { servedGrammar } from "../test/servedGrammar";
 
 vi.mock("../api", () => ({
   api: {
@@ -24,6 +25,7 @@ const BLUEPRINT: FileDoc = {
   text: "# 全书蓝图（A 层 · 长期）\n\n> 小节标题是结构标识。\n\n## 主线\n\n## 终局\n",
   ai_fields: ["main_line", "ending"],
   revision: "fc7a685c0455",
+  grammar: servedGrammar("blueprint"),
 };
 
 const entry = (over: Partial<FileEntry> = {}): FileEntry => ({
@@ -152,6 +154,27 @@ describe("FileEditorPane", () => {
     seed();
     useFiles.setState({
       active: "briefs/0043.md",
+      entries: {
+        ...useFiles.getState().entries,
+        "toc.md": {
+          doc: {
+            path: "toc.md",
+            kind: "toc",
+            layer: "B",
+            label: "目录",
+            text: "## 第 43 章 星渊碑影\n- **剧情功能**：沈砚初探碑文\n",
+            ai_fields: [],
+            revision: "9b5597e18057",
+            grammar: servedGrammar("toc"),
+          },
+          draft: "",
+          loading: false,
+          saving: false,
+          error: null,
+          conflict: false,
+          savedAt: null,
+        },
+      },
       jump: { fromPath: "toc.md", chapter: 43, field: "plot_function" },
     });
     render(<FileEditorPane />);
@@ -171,6 +194,7 @@ describe("FileEditorPane", () => {
       text: "# 目录（B 层 · 中期）\n\n> 一条一章。\n\n## 第 43 章 星渊碑影\n- **剧情功能**：沈砚初探碑文\n- **备注**：埋石门\n",
       ai_fields: ["title", "plot_function", "notes"],
       revision: "9b5597e18057",
+      grammar: servedGrammar("toc"),
     };
     useFiles.setState({
       novelId: 1,
@@ -220,6 +244,7 @@ describe("FileEditorPane", () => {
         "# 目录（B 层 · 中期）\n\n> 一条一章。\n\n## 第 42 章 星渊碑影\n- **剧情功能**：初探\n- **备注**：埋石门\n\n## 第 43 章 重读\n- **剧情功能**：违背阁律\n- **备注**：\n",
       ai_fields: ["title", "plot_function", "notes"],
       revision: "9b5597e18057",
+      grammar: servedGrammar("toc"),
     };
     useFiles.setState({
       novelId: 1,
@@ -245,6 +270,7 @@ describe("FileEditorPane", () => {
         "# 伏笔（设定库 · 分册）\n\n> `伏笔 N` 是主键。\n\n## 伏笔 1 碑上缺名\n- **埋设章**：1\n- **内容**：磨痕是新的\n\n## 伏笔 2 守碑人的脚印\n- **埋设章**：2\n- **内容**：\n",
       ai_fields: ["title", "status", "content"],
       revision: "9b5597e18057",
+      grammar: servedGrammar("foreshadow"),
     };
     useFiles.setState({
       novelId: 1,
@@ -272,6 +298,7 @@ describe("FileEditorPane", () => {
         "# 沈曜（设定库 · 人物）\n\n> 文件名人物号即主键。\n\n- **姓名**：沈曜\n\n## 身份\n\n观星少年\n\n## 目标\n\n找回父亲消失的真相\n\n## 行为约束\n\n不赌命\n\n## 当前状态\n\n碑前\n",
       ai_fields: [],
       revision: "9b5597e18057",
+      grammar: servedGrammar("character"),
     };
     const entryOf = (over: Partial<FileEntry>) => ({
       doc: character,
