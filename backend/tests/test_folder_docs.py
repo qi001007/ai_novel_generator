@@ -79,10 +79,22 @@ def test_decisions_index_matches_body():
 
 
 def test_governance_roles_stay_wired():
-    """四角色必须各自有主人，且主人文件里真的写着这个角色（防止接线被悄悄拆掉）。"""
+    """四角色接线必须还在：宪章指路、地图持有分工表、状态指向删除区。"""
     agents = (REPO / "AGENTS.md").read_text(encoding="utf-8")
-    assert "文档治理四角色" in agents, "AGENTS.md 里的四角色接线被删了"
+    assert "文档治理" in agents and "§0.6" in agents, "AGENTS.md 不再指向文档职责表"
+    assert "地图定位" in agents, "AGENTS.md 丢了进任务的读序（地图→状态→相关 D-xx）"
     arch = (DOCS / "ARCHITECTURE.md").read_text(encoding="utf-8")
-    assert "Map 跳转表" in arch, "ARCHITECTURE.md 丢了 Map 跳转表"
+    assert "Map 跳转表" in arch, "ARCHITECTURE.md 丢了 §0.5 代码地图"
+    assert "### 0.6 文档职责" in arch, "ARCHITECTURE.md 丢了 §0.6 文档职责表（它才是这张表的主人）"
     status = (DOCS / "WORKSTREAM-PLAN.md").read_text(encoding="utf-8")
     assert "删除区" in status, "WORKSTREAM-PLAN.md 不再指向删除区（DECISIONS §2/§3）"
+
+
+def test_doc_roles_have_exactly_one_owner():
+    """「哪份文档装什么」这张表只许存在一份 —— 抄三处必有一处错（本项目犯过）。"""
+    dec = (DOCS / "DECISIONS.md").read_text(encoding="utf-8")
+    assert "只装什么" not in dec.split("## 6. 文档职责")[1], (
+        "DECISIONS §6 又抄了一份职责表；主人是 ARCHITECTURE §0.6，这里只许留链接")
+    agents = (REPO / "AGENTS.md").read_text(encoding="utf-8")
+    assert "唯一主人 |" not in agents and "| 宪章 Constitution |" not in agents, (
+        "AGENTS.md 里又长出一份角色表；去 ARCHITECTURE §0.6 改那一份")

@@ -15,3 +15,4 @@
 
 - 2026-09-07 · 贯彻「每层一份 description.md」：新建 `app/` `app/routers/` `app/services/` `tests/` `scripts/` `alembic/` `alembic/versions/` 七份说明（各 5-13 行）与对应 `backlog.md`；本目录 `description.md` 24 → 17 行（细节下沉，不再重复子目录内容）。新增机械检查 `tests/test_folder_docs.py`（4 条，实扫 11 个目录）。**本目录代码未改**，只加了一份测试。
 - 2026-09-07 · 接 living-docs-governance：`tests/test_folder_docs.py` 再加两条防漂移断言（DECISIONS §0 索引与正文编号必须一一对应；四角色接线不许被拆），做过变异验证（抽掉一行索引立刻红）。本目录代码仍未改，测试数 260 → 262。
+- 2026-09-07 · 文档去重那一刀落在这里：`test_folder_docs.py` 拆成 7 条（新增 `test_doc_roles_have_one_owner` 反向钉「哪份文档装什么」这张表只许有一份，主人是 `docs/ARCHITECTURE.md` §0.6）。做过变异验证：往 `DECISIONS §6` 再抄一份立刻红。测试数 260 → 263。本目录代码未改。
