@@ -17,3 +17,4 @@
   `restoreChapter` 通路。`448bc67`
 
 - 2026-09-07 · 新建 `src/` `src/components/` `src/pages/` `src/store/` `src/utils/` 五份 `description.md`（9-12 行）与对应 `backlog.md`；本目录 `description.md` 23 → 18 行（细节下沉到子层）。**无代码改动**。
+- 2026-09-07 · 死代码清理第一刀（knip）：删 4 个**零 import** 的依赖——`codemirror` 元包、`@codemirror/gutter`（`gutter()` 实际来自 `@codemirror/view`）、`@codemirror/lang-yaml`、`@codemirror/lint`；`npm install` 随之剪掉 10 个包。删 `store/files.ts` 的 `TREE_LABEL`（全仓零引用，顺带少一处「全本蓝图」命名出处）。把 10 个「只在本文件内被用」的导出降级为模块私有：`cmDoc.ts` 6 个、`minimap.ts` `MM_PITCH`、`contextLayers.ts` `LAYER_ORDER`、`appearance.ts` `UI_SIZE_DEFAULT`/`writeAppearance`——**是收回公开面，不是删代码**。`types.ts` 顶部写明「后端 schema 的镜像、允许零引用」，11 个类型全部保留。验证：226 passed / `tsc -b --force` clean / build 成功（改前改后测试数一字不差）。

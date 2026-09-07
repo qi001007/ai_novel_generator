@@ -14,4 +14,5 @@
 不许把「测试全绿」说成「功能已实现」。
 **怎么跑** `.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000`；
 **怎么测** `.venv\Scripts\python.exe -m pytest -q`（期望条数只写在 `docs/HANDOFF.md`）。
+**死代码扫描只跑 >=90 这一档**（未用 import／变量，几乎零误报）；60-89 档必须逐条取证再动——实测 132 条候选里只有 1 条真死，其余是 SQLModel 列声明、Pydantic 响应字段与 410 退役桩参数。
 **改完这里的东西**：在 `backend/backlog.md` 追加一行。

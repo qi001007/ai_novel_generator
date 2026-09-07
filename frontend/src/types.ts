@@ -1,3 +1,8 @@
+/*
+ * 本文件是后端 schema 的镜像：字段与 "backend/app/models.py"、各 router 的响应模型一一对齐。
+ * 因此允许零引用 —— 它记录的是契约，不是调用点。knip 报 unused exported type 是预期的，
+ * 不要为了绿灯删它们；改之前先看对应的 D-xx 与 backend/ 那一层。
+*/
 export type Novel = {
   id: number;
   title: string;

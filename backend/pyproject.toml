@@ -13,7 +13,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==8.3.4"]
+dev = ["pytest==8.3.4", "vulture==2.16"]
 
 [build-system]
 requires = ["setuptools>=68"]
