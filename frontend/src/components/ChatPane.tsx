@@ -376,6 +376,10 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       return;
     }
     if (event.event === "context") {
+      // context 是这一轮被后端收下之后到的第一个事件 - 主人的那句话
+      // 已经落库了，左栏「对话」此刻就该长出这一条，不用等整段答完
+      // （第二十九批批注 6：「已经跟他开始交流之后，对话栏还是没有显示」）。
+      void refreshConversations();
       setRows((prev) =>
         prev.map((row) =>
           row.kind === "agent" && row.id === id
@@ -405,6 +409,20 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                   reads: [...(row.meta.reads ?? []), event.data.ok ? line : `${line} 未成功`],
                 },
               }
+            : row,
+        ),
+      );
+      return;
+    }
+    if (event.event === "reasoning") {
+      // 累加进这一行自己的 meta：正文一个字还没到，思考过程就已经在屏上了。
+      // 顺手把这枚折叠打开 - 他要的是「看着它想」，默认收起的折叠等于没流出来；
+      // 打开之后他仍然可以自己关掉（§0.7 条八：隐藏不等于消失）。
+      setThinkingOpen(id);
+      setRows((prev) =>
+        prev.map((row) =>
+          row.kind === "agent" && row.id === id
+            ? { ...row, meta: { ...row.meta, reasoning: (row.meta.reasoning ?? "") + event.data.text } }
             : row,
         ),
       );

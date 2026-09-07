@@ -104,7 +104,8 @@ class LLMClient(Protocol):
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         reasoning_out: list[str] | None = None,
-    ) -> Iterator[str]:
+        channels: bool = False,
+    ) -> Iterator[Any]:
         ...
 
 
@@ -188,7 +189,16 @@ class OpenAICompatibleClient:
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         reasoning_out: list[str] | None = None,
-    ) -> Iterator[str]:
+        channels: bool = False,
+    ) -> Iterator[Any]:
+        """流式回答。
+
+        channels=False（默认，正文生成那条路用）：只吐正文片段。
+        channels=True（对话用）：吐 ("content"|"reasoning", 片段) 两段式 -
+        推理是**先于**正文到的，主人 2026-09-07 批注 6 要的就是「先看到它在想」。
+        以前推理只默默收进 reasoning_out，等整条答完才一次性给前端，于是「思考
+        过程」永远比正文晚出现 - 这正是他指出的那个顺序错。
+        """
         resolved = self._resolve_model(task_type, model)
         payload: dict[str, Any] = {
             "model": resolved,
@@ -223,15 +233,18 @@ class OpenAICompatibleClient:
                 delta = choices[0].get("delta") or {}
                 content = delta.get("content")
                 if isinstance(content, str) and content:
-                    yield content
+                    yield ("content", content) if channels else content
                 # A reasoning stream is a second channel of the same response, not an
-                # answer: it is collected for the record and never yielded as prose.
-                # Both spellings exist across OpenAI-compatible gateways, and the one
-                # this deployment runs (MiniMax) uses the first.
-                if reasoning_out is not None:
-                    thought = delta.get("reasoning_content") or delta.get("reasoning")
-                    if isinstance(thought, str) and thought:
+                # answer: it never goes out as prose. Both spellings exist across
+                # OpenAI-compatible gateways, and the one this deployment runs
+                # (MiniMax) uses the first. With channels=True it goes out as its own
+                # event so the reader watches it arrive instead of getting it at the end.
+                thought = delta.get("reasoning_content") or delta.get("reasoning")
+                if isinstance(thought, str) and thought:
+                    if reasoning_out is not None:
                         reasoning_out.append(thought)
+                    if channels:
+                        yield ("reasoning", thought)
 
     def _resolve_model(self, task_type: str, model: str | None = None) -> str:
         if not self.settings.is_configured:
@@ -475,6 +488,7 @@ class RoutedLLMClient:
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         reasoning_out: list[str] | None = None,
+        channels: bool = False,
     ):
         return self._for(task_type).stream_messages(
             task_type,
@@ -484,6 +498,7 @@ class RoutedLLMClient:
             model=model,
             tools=tools,
             reasoning_out=reasoning_out,
+            channels=channels,
         )
 
 

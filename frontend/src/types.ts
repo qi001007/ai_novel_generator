@@ -245,6 +245,9 @@ export type ChatContextPayload = {
 export type ChatStreamEvent =
   | { event: "context"; data: ChatContextPayload }
   | { event: "delta"; data: { text: string } }
+  // 模型的推理，边到边给。它在网关里就是先于 content 的一路，界面上也必须先出现
+  // （第二十九批批注 6：以前只有 done 才带 reasoning，于是思考过程永远比正文晚）。
+  | { event: "reasoning"; data: { text: string } }
   | { event: "done"; data: { message: StoredChatMessage } }
   | { event: "error"; data: { message: string; partial: string } }
   | { event: "proposal"; data: { path: string; text: string; valid: boolean; error: string } }

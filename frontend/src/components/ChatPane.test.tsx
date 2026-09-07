@@ -236,6 +236,53 @@ describe("ChatPane", () => {
     expect(entry.getAttribute("aria-expanded")).toBe("true");
   });
 
+  /* 第二十九批批注 6（2026-09-07）：思考过程要**先于**正文流出来。以前 SSE 里根本没有
+     这一路，推理只在 done 里出现一次，所以它永远比正文晚 - 他看到的就是那个顺序。
+     上面那条测的是「答完之后默认收起」，这一条测的是「正在想的时候它就得在屏上」。 */
+  it("streams the reasoning onto the screen before the prose starts", async () => {
+    const user = userEvent.setup();
+    const thought = "先看第 4 章的简报，再决定从哪儿接。";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/stream")) {
+          return Promise.resolve(
+            sse([
+              ["reasoning", { text: "先看第 4 章的简报，" }],
+              ["reasoning", { text: "再决定从哪儿接。" }],
+              ["delta", { text: "正文第一段" }],
+              [
+                "done",
+                { message: { ...stored("正文第一段"), reasoning: thought } },
+              ],
+              ["end", {}],
+            ]),
+          );
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "续写第四章");
+    await user.keyboard("{Enter}");
+
+    const line = await screen.findByText(thought);
+    // 它站在思考过程那一块里，不是正文（两块的字必须能分开，见 §0.9）
+    expect(line.closest(".chat-thinking-body")).toBeTruthy();
+    // 流式期间就展开着：默认收起等于把「看着它想」又变回答完才给
+    expect(
+      screen.getByRole("button", { name: /思考过程/ }).getAttribute("aria-expanded"),
+    ).toBe("true");
+    // 顺序：思考过程那块排在正文之前，不是答完补在最后
+    const card = line.closest(".chat-card") as HTMLElement;
+    const prose = card.querySelector(".chat-md") as HTMLElement;
+    expect(
+      Boolean(line.compareDocumentPosition(prose) & Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+  });
+
   it("shows no thinking entry when the model gave no reasoning", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(
@@ -532,4 +579,3 @@ describe("ChatPane", () => {
     });
   });
 });
-

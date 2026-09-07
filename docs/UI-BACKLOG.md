@@ -153,6 +153,27 @@
 **共用同一个声明块**，不复制第二套字号；④ 后端一条通路测试（经过 `stream_turn`，不许只测
 纯函数——27.1 那条老病）；⑤ 真机两帧截图：第一帧只有思考过程、没有正文，第二帧正文才开始长。
 
+- [x] **已做（2026-09-07，真机抓到过那一帧、图自己看过）**。
+  · 一路打通：`llm.stream_messages(channels=True)` 吐 `("content"|"reasoning", 片段)` →
+    `agent.stream_agent_turn` 把它转成 `("reasoning", text)` 事件 → `chat.stream_turn` 发
+    SSE `reasoning` → 前端 `applyEvent` 累加进 `row.meta.reasoning`。默认 `channels=False`，
+    正文生成那条路一个字没动。
+  · 真机（临时书《验证293》，测完已删）第一帧实测：`{think:10, prose:0, italic:"italic",
+    size:"12px"}` —— **正文一个字第还没到，思考过程已经在屏上**，字是斜体 12px 那张脸；
+    第二帧 `{think:27, prose:13}` 正文才开始长。图 `shots/293-{A,B}-*.png`（A 我看过：
+    「思考过程 ⌄」展开着斜体小字，下面还是「正在思考…」）。
+  · 流式期间自动把这枚折叠打开（默认收起等于把「看着它想」又变回答完才给）；**答完之后
+    仍然默认收起**那条老行为没动 - 第十六批那条测试原样绿。
+  · 判据 ③ 不复制第二套字号：推理渲染进**同一个** `.chat-thinking-body`，`uiInvariants`
+    现在数这个声明块的出现次数，**必须恰好 1**。
+  · 判据 ④ 走的是通路：`test_the_reasoning_arrives_before_the_first_content_delta` 打
+    `POST /chat/stream`，断言事件序列里 `reasoning` 的下标 **小于** `delta` 的下标，
+    并断言 done 里那段推理仍按 D-18 落在 reasoning 那一列。
+  · 顺手补的一处（同一条批注的前半）：`context` 事件一到就重读会话列表 - 主人的那句话
+    在后端收下这一轮时就已落库，左栏不该等整段答完才长出这一条。
+  · 门禁：backend `251 passed`（+1）、frontend `223 passed / 22 files`（+2）、
+    `tsc -b --force` clean、`npm run build` clean、`hit-area-audit /novels/5` → 0/0/0。
+
 ### 29.4 章号出现空洞时，要有一个「重新编号」的刷新功能（批注 5）
 
 主人：「原本的序号已经是 1、2、4、5、6 这种顺序了，那你再去怎么加，始终都会差一个顺序。

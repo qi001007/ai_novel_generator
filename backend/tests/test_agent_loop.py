@@ -60,18 +60,23 @@ class ScriptedLLM:
             raw_message=reply.get("raw_message", {}),
         )
 
-    def stream_messages(self, task_type, messages, temperature=0.2, usage_out=None, model=None, tools=None, reasoning_out=None):
+    def stream_messages(self, task_type, messages, temperature=0.2, usage_out=None, model=None, tools=None, reasoning_out=None, channels=False):
         reply = self.replies[len(self.seen)]
         self.seen.append([dict(item) for item in messages])
         self.tools_seen.append(tools)
         if usage_out is not None:
             usage = reply.get("usage", (10, 5))
             usage_out.update({"model": "scripted", "token_input": usage[0], "token_output": usage[1]})
-        if reasoning_out is not None:
-            for piece in reply.get("reasoning", []):
+        # 顺序照真网关：推理先到、正文后到，两条都从同一个生成器出去
+        pieces: list[tuple[str, str]] = []
+        for piece in reply.get("reasoning", []):
+            if reasoning_out is not None:
                 reasoning_out.append(piece)
+            pieces.append(("reasoning", piece))
         for piece in reply.get("chunks", [reply.get("content", "")]):
-            yield piece
+            pieces.append(("content", piece))
+        for kind, piece in pieces:
+            yield (kind, piece) if channels else piece
 
 
 def call_block(name: str, **arguments: Any) -> str:

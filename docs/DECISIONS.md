@@ -149,8 +149,19 @@ PRD Phase 1 第 11 条。三通道（树底按钮 / 右键菜单 / `Ctrl+Alt+N`�
   再讲一遍，甚至据它作答——那是最难查的一种自我污染。
 - **取法**：`stream_messages` 用 `reasoning_out` **出参累加器**收集 `delta.reasoning_content`
   （兼容 `delta.reasoning` 这一写法），与既有 `usage_out` 同一形状。
-  没有改 `Iterator[str]` 的 yield 契约——那会波及 draft / reviews / planning 等全部调用方，
-  而它们中的绝大多数根本不需要推理。
+    默认不改 `Iterator[str]` 的 yield 契约——那会波及 draft / reviews / planning 等全部
+    调用方，而它们中的绝大多数根本不需要推理。
+- **2026-09-07 补：推理要能流式，就得开第二条通道，但不能动第一条**。主人批注 6 指出
+  「正文都生成完了才跳出一个思考过程」- 根因就在这条出参上：`reasoning_out` 只在
+  收尾时被读一次，SSE 里根本没有 reasoning 这一路，所以**默认收起的折叠再快也救不了顺序**。
+  改法是加一个 `channels=False` 开关：只有对话那一路传 True，此时吐
+  `("content" | "reasoning", 片段)` 两段式；draft / reviews / planning 一个字没动。
+  顺序由**事件流**保证，不再由前端猜：`test_the_reasoning_arrives_before_the_first_content_delta`
+  打的是 `POST /chat/stream`，断言 `reasoning` 的下标小于 `delta` 的下标（27.1 那条
+  「只测纯函数」的老病，这次走通路）。
+- **界面上分两件事**：正在生的那一条自动展开（他要「看着它想」），答完之后仍然默认
+  收起（第十六批定的）。字还是 §0.9 那张思考脸，而且**只允许有一个声明块** -
+  `uiInvariants` 数 `.chat-card .chat-thinking-body p` 出现次数，第二次复制就红。
 - **拼接口径**：累加器收到的是**增量块**，相接不加任何分隔；段落分隔只发生在
   **agent 跨步骤**之间。第一版把每块都用 `\n\n` 拼，真机上推理碎成了
   「用户\n\n想\n\n让我」——这条由 `test_agent_loop.py` 钉住。

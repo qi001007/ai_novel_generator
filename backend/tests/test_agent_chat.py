@@ -36,12 +36,12 @@ class SteppedClient:
         self.rounds = rounds
         self.seen = []
 
-    def stream_messages(self, task_type, messages, temperature=0.6, usage_out=None, model=None, tools=None, reasoning_out=None):
+    def stream_messages(self, task_type, messages, temperature=0.6, usage_out=None, model=None, tools=None, reasoning_out=None, channels=False):
         self.seen.append([dict(item) for item in messages])
         if usage_out is not None:
             usage_out.update({"model": "fake-c", "token_input": 100, "token_output": 20})
         for chunk in self.rounds[len(self.seen) - 1]:
-            yield chunk
+            yield ("content", chunk) if channels else chunk
 
     def complete_messages(self, task_type, messages, model=None, tools=None, temperature=None):
         self.seen.append([dict(item) for item in messages])

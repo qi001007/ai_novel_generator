@@ -399,8 +399,13 @@ def stream_agent_turn(
                 # one accumulator for the whole turn: a turn that used tools has one
                 # reasoning stretch per step, and the reader wants them in order
                 reasoning_out=reasoning_out,
+                # 推理单独一路发出去（主人 2026-09-07 批注 6：思考过程要先于正文）
+                channels=True,
             )
-            for chunk in chunks:
+            for kind, chunk in chunks:
+                if kind == "reasoning":
+                    yield ("reasoning", chunk)
+                    continue
                 parts.append(chunk)
                 visible, found = parse_call_blocks("".join(parts))
                 if found:

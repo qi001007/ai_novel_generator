@@ -873,4 +873,22 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(conv![1]).toMatch(/min-width:\s*0;/);
   });
 
+  // 第二十九批批注 6 后半（2026-09-07）：思考过程要**先于**正文流出来，而且用思考那张脸。
+  // 以前 SSE 里没有 reasoning 这一路，前端只在 done 里读一次，所以它必然比正文晚。
+  it("reasoning streams as its own channel and is set with the thinking face", () => {
+    // 一路事件：类型里有，组件里接
+    expect(chatTypes).toContain(String.raw`{ event: "reasoning"; data: { text: string } }`);
+    expect(chatPane).toContain(String.raw`event.event === "reasoning"`);
+    // 流式期间就摊开给他看（默认收起等于把「看着它想」又变回答完才给）
+    expect(chatPane).toMatch(/if \(event\.event === "reasoning"\)[\s\S]{0,200}setThinkingOpen\(id\);/);
+    // 字必须还是那张脸，而且**只有一个声明块** - 复制第二套字号就是下一次「你改回去了」
+    expect(css.match(/\.chat-card \.chat-thinking-body p\s*\{/g)).toHaveLength(1);
+    const face = css.match(/\.chat-card \.chat-thinking-body p\s*\{([^}]*)\}/)![1];
+    expect(face).toMatch(/font-style:\s*italic;/);
+    expect(face).toMatch(/font-size:\s*12px;/);
+    expect(face).toMatch(/color:\s*var\(--text-2\);/);
+    // 渲染仍然走同一个容器，不新造一个流式专用的块
+    expect(chatPane).toContain(String.raw`className="chat-thinking-body"`);
+  });
+
 });

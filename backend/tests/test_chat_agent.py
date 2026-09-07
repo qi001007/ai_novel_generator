@@ -1,5 +1,6 @@
 import json
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,7 +34,11 @@ class FakeChatClient:
         reply: str = "第一段回复",
         chunks: list[str] | None = None,
         error: Exception | None = None,
+        # 推理片段单独一路：真网关（MiniMax）是先吐 reasoning 再吐 content，
+        # 假客户端也得是这个顺序，否则测不出主人批注 6 说的那个先后。
+        reasoning: list[str] | None = None,
     ) -> None:
+        self.reasoning = reasoning
         self.settings = LLMSettings(
             provider="fake",
             api_base_url="https://llm.fake/v1",
@@ -87,7 +92,8 @@ class FakeChatClient:
         model: str | None = None,
         tools: list[dict] | None = None,
         reasoning_out: list[str] | None = None,
-    ) -> Iterator[str]:
+        channels: bool = False,
+    ) -> Iterator[Any]:
         self.calls.append(
             {
                 "kind": "stream",
@@ -98,8 +104,13 @@ class FakeChatClient:
         )
         if self.error is not None:
             raise self.error
+        for piece in self.reasoning or []:
+            if reasoning_out is not None:
+                reasoning_out.append(piece)
+            if channels:
+                yield ("reasoning", piece)
         for chunk in self.chunks or [self.reply]:
-            yield chunk
+            yield ("content", chunk) if channels else chunk
         if usage_out is not None:
             resolved = model or self.settings.models[task_type]
             usage_out["model"] = resolved
@@ -195,6 +206,34 @@ def test_write_mode_prompt_allows_prose(client: TestClient) -> None:
     system = fake.calls[0]["messages"][0]["content"]
     assert "## 本轮模式：写作（write）" in system
     assert "不加解释、不加标题、不加大纲" in system
+
+
+def test_the_reasoning_arrives_before_the_first_content_delta(client: TestClient) -> None:
+    """主人 2026-09-07 批注 6：思考过程要**先于**正文流出来，不是答完才补一个折叠。
+
+    这条走的是整条通路（SSE 路由 → stream_turn → agent → 假客户端），不是把某个
+    解析函数单独测一遍 - 27.1 刚为「测试绿但通路不存在」记过账。
+    """
+    use_fake(
+        client,
+        FakeChatClient(chunks=["正", "文"], reasoning=["先想一想", "再决定"]),
+    )
+    novel_id = make_novel(client)
+
+    events = parse_sse(
+        client.post(
+            f"/api/novels/{novel_id}/chat/stream",
+            json={"content": "写吧", "mode": "write"},
+        ).text
+    )
+    names = [name for name, _ in events]
+    assert "reasoning" in names, names
+    assert names.index("reasoning") < names.index("delta"), names
+    assert [
+        payload["text"] for name, payload in events if name == "reasoning"
+    ] == ["先想一想", "再决定"]
+    # 同一段推理仍然照 D-18 落进 reasoning 那一列，刷新后读得到同一份
+    assert payload_of(events, "done")["message"]["reasoning"] == "先想一想再决定"
 
 
 def test_stream_emits_context_delta_and_done(client: TestClient) -> None:
@@ -666,4 +705,3 @@ def test_proposal_for_an_unknown_file_is_flagged(client: TestClient) -> None:
     proposal = payload_of(parse_sse(response.text), "proposal")
     assert proposal["valid"] is False
     assert "没有这个文件" in proposal["error"]
-

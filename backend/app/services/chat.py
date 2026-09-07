@@ -593,7 +593,11 @@ def stream_turn(
     registry: ToolRegistry | None = None,
     config: AgentConfig | None = None,
 ) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Yield (event, payload) for the SSE route: context / delta / tool / proposal / done."""
+    """Yield (event, payload) for the SSE route:
+
+    context / reasoning / delta / tool / proposal / done。reasoning 是 2026-09-07
+    批注 6 加的那一路：推理先到、正文后到，事件顺序就得是这个顺序。
+    """
     factory = session_factory or (lambda: Session(engine))
 
     yield (
@@ -627,6 +631,9 @@ def stream_turn(
         ):
             if name == "delta":
                 yield ("delta", {"text": payload})
+            elif name == "reasoning":
+                # 边到边给，不等收尾：前端据此在正文第一个字出现之前就把「思考过程」摊开
+                yield ("reasoning", {"text": payload})
             elif name == "tool":
                 yield (
                     "tool",
