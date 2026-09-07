@@ -44,6 +44,7 @@ import hScrollThumb from "./components/HScrollThumb.tsx?raw";
 import workPage from "./pages/WorkbenchPage.tsx?raw";
 import bookshelf from "./pages/BookshelfPage.tsx?raw";
 import apiSource from "./api.ts?raw";
+import chatRowsSource from "./components/chatRows.ts?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -954,6 +955,17 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect((apiSource.match(/new TextDecoder\(\)/g) ?? []).length).toBe(1);
     expect(apiSource).toContain("async function pumpSse<E>");
     expect((apiSource.match(/await pumpSse</g) ?? []).length).toBe(2);
+  });
+
+
+  // 候选 6（2026-09-07）：流事件的行规则住在 chatRows.ts，组件只留订阅与副作用。
+  it("keeps the row rules out of the component", () => {
+    expect(chatPane).toContain("setRows((prev) => applyStreamEvent(prev, id, event));");
+    expect(chatPane).not.toContain('if (event.event === "delta")');
+    expect(chatPane).not.toContain("row.meta.reads ?? []");
+    expect(chatRowsSource).toContain("无参数");
+    // 三个副作用必须留在 setRows 外面（放进去会被 StrictMode 跑两遍）
+    expect((chatPane.match(/void offerFromStream\(/g) ?? []).length).toBe(1);
   });
 
 });

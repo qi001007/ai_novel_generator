@@ -2,6 +2,7 @@
 
 三栏各一：`TreePane`（左栏树）/ `ChatPane` + `chatTrace.ts`（中栏对话与思考流）/
 `EditorPane` + `FileEditorPane` + `cmDoc.ts`（右栏文件两面，CodeMirror 挂载在这）。
+`ChatPane` 只管订阅/滚动/输入/JSX；**流事件 → 行序列的规则在 `chatRows.ts`**（纯函数，`chatRows.test.ts` 直接喂事件数组来验，不 render、不碰 fetch）。
 `CharacterFormCard` 与 `CharacterDocForm` 是**同一张人物卡**的两个面，不是两张卡。
 共用件：`ProposalCard` `FeedbackPanel` `MarkdownText` `TocListView` `Splitter`
 `HScrollThumb` `StatusBadge` `ViewToggle` `ActivityRail`。

@@ -25,60 +25,15 @@ import { compressRefs } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
-import type {
-  ChatContextItem,
-  ChatMode,
-  ChatReference,
-  ChatStreamEvent,
-  FileProposal,
-  ChatAttachment,
-  StoredChatMessage,
-} from "../types";
+import type { ChatContextItem, ChatMode, ChatStreamEvent, FileProposal, ChatAttachment, StoredChatMessage } from "../types";
 import { useWorkbench } from "../store/workbench";
-
-type CommandStatus = "running" | "done" | "failed";
-
-type AgentMeta = {
-  model?: string;
-  tokenInput?: number;
-  tokenOutput?: number;
-  refs?: ChatReference[];
-  unknown?: string[];
-  /** Tool calls this turn executed, in order. */
-  reads?: string[];
-  /** What the turn was allowed to reach for, so an empty round reads as
-      "did not need it" rather than "cannot". */
-  allowed?: string[];
-  /** The model's own reasoning, when the model gave any. */
-  reasoning?: string;
-};
-
-type AgentRow = {
-  kind: "agent";
-  id: number;
-  text: string;
-  status: "streaming" | "done" | "error";
-  question: string;
-  meta: AgentMeta;
-  error?: string;
-  proposals?: FileProposal[];
-  /** 开场白那一条不是 Agent 答的话，是一句界面提示 - 它用思考那张脸（批注 4）。 */
-  greeting?: boolean;
-};
-
-type Row =
-  | { kind: "user"; id: number; text: string }
-  | AgentRow
-  | {
-      kind: "command";
-      id: number;
-      command: string;
-      status: CommandStatus;
-      detail: string;
-      startedAt: number;
-      runId?: number;
-      chapterId?: number;
-    };
+import {
+  applyStreamEvent,
+  patchAgent as patchRows,
+  patchCommand as patchCommandRows,
+  type AgentRow,
+  type Row,
+} from "./chatRows";
 
 const commands = [
   { name: "/generate", args: "", desc: "按当前 D 简报生成正文" },
@@ -315,17 +270,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   }
 
   function patchAgent(id: number, patch: Partial<AgentRow>) {
-    setRows((prev) =>
-      prev.map((row) => (row.kind === "agent" && row.id === id ? { ...row, ...patch } : row)),
-    );
+    setRows((prev) => patchRows(prev, id, patch));
   }
 
   function patchCommand(id: number, patch: Partial<Extract<Row, { kind: "command" }>>) {
-    setRows((prev) =>
-      prev.map((row) =>
-        row.kind === "command" && row.id === id ? { ...row, ...patch } : row,
-      ),
-    );
+    setRows((prev) => patchCommandRows(prev, id, patch));
   }
 
   // The stream carries the whole proposed file, so the diff the reader sees is
@@ -373,113 +322,12 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   }
 
   function applyEvent(id: number, event: ChatStreamEvent) {
-    if (event.event === "proposal") {
-      void offerFromStream(id, event.data);
-      return;
-    }
-    if (event.event === "context") {
-      // context 是这一轮被后端收下之后到的第一个事件 - 主人的那句话
-      // 已经落库了，左栏「对话」此刻就该长出这一条，不用等整段答完
-      // （第二十九批批注 6：「已经跟他开始交流之后，对话栏还是没有显示」）。
-      void refreshConversations();
-      setRows((prev) =>
-        prev.map((row) =>
-          row.kind === "agent" && row.id === id
-            ? {
-                ...row,
-                meta: {
-                  ...row.meta,
-                  refs: event.data.items.map(({ kind, label, ref }) => ({ kind, label, ref })),
-                  unknown: event.data.unknown_mentions,
-                  allowed: event.data.tools ?? [],
-                },
-              }
-            : row,
-        ),
-      );
-      return;
-    }
-    if (event.event === "tool") {
-      const line = `${event.data.name}(${Object.values(event.data.arguments).join(", ") || "无参数"})`;
-      setRows((prev) =>
-        prev.map((row) =>
-          row.kind === "agent" && row.id === id
-            ? {
-                ...row,
-                meta: {
-                  ...row.meta,
-                  reads: [...(row.meta.reads ?? []), event.data.ok ? line : `${line} 未成功`],
-                },
-              }
-            : row,
-        ),
-      );
-      return;
-    }
-    if (event.event === "reasoning") {
-      // 累加进这一行自己的 meta：正文一个字还没到，思考过程就已经在屏上了。
-      // 顺手把这枚折叠打开 - 他要的是「看着它想」，默认收起的折叠等于没流出来；
-      // 打开之后他仍然可以自己关掉（§0.7 条八：隐藏不等于消失）。
-      setThinkingOpen(id);
-      setRows((prev) =>
-        prev.map((row) =>
-          row.kind === "agent" && row.id === id
-            ? { ...row, meta: { ...row.meta, reasoning: (row.meta.reasoning ?? "") + event.data.text } }
-            : row,
-        ),
-      );
-      return;
-    }
-    if (event.event === "delta") {
-      setRows((prev) =>
-        prev.map((row) =>
-          row.kind === "agent" && row.id === id ? { ...row, text: row.text + event.data.text } : row,
-        ),
-      );
-      return;
-    }
-    if (event.event === "done") {
-      const message = event.data.message;
-      setRows((prev) =>
-        prev.map((row) =>
-          row.kind === "agent" && row.id === id
-            ? {
-                ...row,
-                text: message.content,
-                status: "done",
-                meta: {
-                  // Keep what the stream reported earlier: the tool trail and the
-                  // allowed set arrive before `done`, and `done` must not erase them.
-                  ...row.meta,
-                  model: message.model,
-                  tokenInput: message.token_input,
-                  tokenOutput: message.token_output,
-                  refs: row.meta.refs?.length ? row.meta.refs : message.context_refs,
-                  unknown: row.meta.unknown,
-                  reasoning: message.reasoning || row.meta.reasoning,
-                },
-              }
-            : row,
-        ),
-      );
-      return;
-    }
-    if (event.event === "error") {
-      patchAgent(id, {
-        status: "error",
-        error: event.data.message || "模型没有返回内容",
-        text: event.data.partial || "",
-      });
-      return;
-    }
-    // "end" arrives even when the model finished cleanly.
-    setRows((prev) =>
-      prev.map((row) =>
-        row.kind === "agent" && row.id === id && row.status === "streaming"
-          ? { ...row, status: "done" }
-          : row,
-      ),
-    );
+    // 规则在 chatRows.ts（纯函数）。三个副作用留在外面：放进 setRows 的更新函数里，
+    // StrictMode 会把它们跑两遍（本项目 2026-09-03 记过的同一形状）。
+    setRows((prev) => applyStreamEvent(prev, id, event));
+    if (event.event === "proposal") void offerFromStream(id, event.data);
+    if (event.event === "context") void refreshConversations();
+    if (event.event === "reasoning") setThinkingOpen(id);
   }
 
   async function ask(question: string, replaceId?: number, suppressUser = false) {
