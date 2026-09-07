@@ -54,11 +54,25 @@ export const FIELD_LABEL: Record<string, string> = {
   goals: "目标",
   behavior_constraints: "行为约束",
   current_status: "当前状态",
+  // 伏笔墙与世界观记录本（后端 markdown_doc.py 会打这些标签，前端不认就得不到导轨）
+  planted_chapter: "埋设章",
+  expected_payoff_chapter: "预计收章",
+  payoff_chapter: "已收章",
+  content: "内容",
+  category: "类别",
+  is_confirmed: "已确认",
+  source_chapter: "来源章",
+  current_state: "现况",
+  name: "姓名",
+  level: "分级",
+  // 人物档案复用了弧的两个标签，但字段是 expected_*：方向 field->label 不冲突
+  expected_start_chapter: "起始章",
+  expected_end_chapter: "结束章",
 };
 
 // Which field a heading or a bullet carries. 目标 is 目标 in both blueprint and
 // brief even though the columns differ, so the two maps stay separate.
-const HEADING_FIELDS: Record<string, string> = {
+export const HEADING_FIELDS: Record<string, string> = {
   主线: "main_line",
   终局: "ending",
   核心冲突: "core_conflicts",
@@ -73,7 +87,7 @@ const HEADING_FIELDS: Record<string, string> = {
   行为约束: "behavior_constraints",
   当前状态: "current_status",
 };
-const BULLET_FIELDS: Record<string, string> = {
+export const BULLET_FIELDS: Record<string, string> = {
   章节号: "chapter",
   所属弧: "arc",
   剧情功能: "plot_function",
@@ -86,6 +100,16 @@ const BULLET_FIELDS: Record<string, string> = {
   状态: "status",
   视角: "pov",
   出场人物: "characters",
+  埋设章: "planted_chapter",
+  预计收章: "expected_payoff_chapter",
+  已收章: "payoff_chapter",
+  内容: "content",
+  类别: "category",
+  已确认: "is_confirmed",
+  来源章: "source_chapter",
+  现况: "current_state",
+  姓名: "name",
+  分级: "level",
 };
 
 export type DocDecorConfig = {

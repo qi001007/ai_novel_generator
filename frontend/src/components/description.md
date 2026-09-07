@@ -6,6 +6,7 @@
 `CharacterFormCard` 与 `CharacterDocForm` 是**同一张人物卡**的两个面，不是两张卡。
 共用件：`ProposalCard` `FeedbackPanel` `MarkdownText` `TocListView` `Splitter`
 `HScrollThumb` `StatusBadge` `ViewToggle` `ActivityRail`。
+`cmDoc.ts` 的语法表与后端 `markdown_doc.py` 是**一对**，由 `src/grammarParity.test.ts` 钉着：后端会打的每枚标签前端必须认得；三处「一个标签指两个字段」的欠账列在测试里的 KNOWN_AMBIGUOUS，多一处就红（那三处要按 kind 查表才算真修完，见候选 4 的下一片）。
 **已知未接线的壳**：`ForeshadowWall` / `WorldMapPanel` / `PaintingDetailPanel` 面板内零请求，
 那是没接线不是没数据（`docs/WORKSTREAM-PLAN.md §二`），别再重复排查。
 
