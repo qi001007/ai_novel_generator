@@ -242,7 +242,9 @@ describe("PreferencesPage", () => {
     const dialog = await screen.findByRole("dialog", { name: "恢复方式" });
     // 标题直接点名是哪本书，说明只留一句
     expect(dialog.textContent).toContain("《演练》已经不在书架上");
-    expect(dialog.querySelector(".book-delete-note")?.textContent).toBe("只取文件就不动书架");
+    // 第二十九批批注 3：解释条款删掉。断言跟着搬家（不删条目）-
+    // 现在钉的是「弹窗里不许再长出那种小字」。
+    expect(dialog.querySelector(".book-delete-note")).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "只取文件" }));
     // 批注 3：回执必须报完整路径 - 后端本来就给了 saved_to，是我上一版把它丢了。
     // 批注 28.4：这条改成弹窗，由主人自己关；关掉之后不许留下第二份。

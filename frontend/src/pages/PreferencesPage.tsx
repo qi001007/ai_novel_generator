@@ -607,7 +607,10 @@ function StoragePanel() {
             aria-label="恢复方式"
           >
             <h2>《{ask.title}》已经不在书架上</h2>
-            <p className="book-delete-note">只取文件就不动书架</p>
+            {/* 这里原来还有一句解释「只取文件会怎样」的小字。主人 2026-09-07
+               批注 3：「很喜欢加这种解释条款，不要这种东西」- 三个按钮已经把选择
+               说完了，再补一句就是把文档写在界面上（§0.7 条四、条九）。
+               注释里不复述那句原话：uiInvariants 钉的是源码文本，复述一次就红。 */}
             <footer className="cover-modal-footer">
               <button type="button" onClick={() => setAsk(null)}>
                 取消

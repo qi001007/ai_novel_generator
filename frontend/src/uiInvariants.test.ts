@@ -855,6 +855,9 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 28.7b 跟着这条一起做完：恢复一章要连目录那一行（= 章名）一起补回
     expect(preferences).toContain("目录里的章名也补回来了");
     expect(preferences).not.toMatch(/restoreDocument\(\{[^}]*brief\.md/s);
+    // 第二十九批批注 3：「很喜欢加这种解释条款，不要这种东西」-
+    // 三个按钮已经说完了选择，那句「只取文件就不动书架」是文档不是界面。
+    expect(preferences).not.toContain("只取文件就不动书架");
   });
 
   // 第二十九批批注 6（2026-09-07）。28.8 之后线程号是真的了，可左栏「对话」那一页
