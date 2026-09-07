@@ -26,7 +26,7 @@ from app.services.chapters import (
     persist_draft,
     prepare_draft,
 )
-from app.services import documents
+from app.services import errors, documents
 from app.services.context import build_writing_context, log_injection
 from app.services.renumber import densify, renumber_plan, shift_after, vacate
 from app.services.draft import build_template_draft
@@ -383,7 +383,7 @@ def rename_chapter(
             base_revision=doc.revision,
         )
     except documents.DocumentError as cause:
-        raise HTTPException(status_code=cause.status_code, detail=cause.detail) from cause
+        raise HTTPException(**errors.http_kwargs(cause)) from cause
     # write_file 里 commit 过，对象已经过期；不先 refresh 就只赋一个 title，
     # 序列化出来会只剩 title 这一个键（我第一次就这么栽的）。
     session.refresh(chapter)

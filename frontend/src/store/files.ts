@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-import { api } from "../api";
+import { api, errorCode } from "../api";
 import type { FileDoc, FileMeta, FileProposal, JumpSource } from "../types";
 
 export const BLUEPRINT_PATH = "blueprint.md";
@@ -371,7 +371,8 @@ export const useFiles = create<FilesState>((set, get) => ({
     } catch (cause) {
       const message = detail(cause, "保存失败");
       set((state) =>
-        patch(state, path, { saving: false, error: message, conflict: /已被|409/.test(message) }),
+        // 是不是写冲突走后端给的机器码；从前匹配服务器中文措辞，改一个字就静默失灵
+        patch(state, path, { saving: false, error: message, conflict: errorCode(cause) === "write_conflict" }),
       );
       return false;
     }

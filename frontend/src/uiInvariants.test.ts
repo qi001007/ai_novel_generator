@@ -43,6 +43,7 @@ import appSource from "./App.tsx?raw";
 import hScrollThumb from "./components/HScrollThumb.tsx?raw";
 import workPage from "./pages/WorkbenchPage.tsx?raw";
 import bookshelf from "./pages/BookshelfPage.tsx?raw";
+import apiSource from "./api.ts?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -930,6 +931,20 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(layout).toContain(".densifyChapters(novelId)");
     expect(layout).toContain(String.raw`aria-label="重新编号"`);
     expect(layout).toContain("只改前面的序号");
+  });
+
+
+  // 候选 3（2026-09-07）：跨线的事实走机器码，不许再用中文散文当判据。
+  // 病根：api.ts 曾拿 includes("还没有设置导出目录") 决定要不要静默降级成浏览器下载，
+  // files.ts 曾拿 /已被|409/ 决定要不要弹冲突面板 —— 后端改一个字，前端行为就静默变。
+  it("branches on machine codes, never on server prose", () => {
+    expect(apiSource).not.toContain(String.raw`includes("还没有设置导出目录")`);
+    expect(apiSource).toContain("errorCode(cause) !== " + String.raw`"export_dir_not_set"`);
+    expect(filesStore).not.toMatch(/已被\|409/);
+    expect(filesStore).toContain('errorCode(cause) === "write_conflict"');
+    // 错误规范化在 api.ts 里只有一个主人（曾经四处各写一遍 detail?.detail）
+    expect(apiSource).not.toContain("throw new Error(detail?.detail");
+    expect((apiSource.match(/function apiFailure/g) ?? []).length).toBe(1);
   });
 
 });

@@ -36,7 +36,9 @@ def test_saving_an_export_refuses_without_a_directory(client: TestClient) -> Non
 
     refused = client.post(f"/api/novels/{novel_id}/export/save", json={"format": "txt"})
     assert refused.status_code == 409
-    assert "还没有设置导出目录" in refused.json()["detail"]
+    detail = refused.json()["detail"]
+    assert detail["code"] == "export_dir_not_set"  # 前端要分支的事实走码，不走文案
+    assert "还没有设置导出目录" in detail["message"]
 
 
 def test_saving_an_export_writes_the_file_it_names(client: TestClient, tmp_path) -> None:

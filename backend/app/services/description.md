@@ -5,6 +5,8 @@
 `chat.py` + `agent.py` + `agent_tools.py` 是对话与 Agent；`renumber.py` 是唯一允许搬章号的地方；
 `documents.py` 写投影 `.md`；`storage.py` 管本机偏好与文件；`export.py` / `markdown_doc.py` /
 `planning.py` / `reviews.py` / `chapters.py` 各管一件事。
+`errors.py` 只管一件事：域错误怎么变成 HTTP。需要调用方分支的错误带 `code`（detail 升成 `{code, message}`），不带的仍是纯字符串——加机器码因此不会冲掉既有断言文案的测试。
+
 
 **加资料只有一条路**：新上下文进 `collect_items()` 的一个分支，带来源标签和预算，
 **不许**在调用方另拼一段 prompt、也不许改前端来迁就注入顺序（D-06）。

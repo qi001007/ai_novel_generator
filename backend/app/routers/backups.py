@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, SQLModel
 
 from app.db import get_session
-from app.services import storage
+from app.services import errors, storage
 
 router = APIRouter(prefix="/backups", tags=["backups"])
 
@@ -74,7 +74,7 @@ class ResultOut(SQLModel):
 
 
 def _raise(cause: storage.StorageError) -> HTTPException:
-    return HTTPException(status_code=cause.status_code, detail=cause.detail)
+    return HTTPException(**errors.http_kwargs(cause))
 
 
 @router.get("", response_model=BackupListOut)

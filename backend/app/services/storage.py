@@ -24,10 +24,11 @@ SAFE_NAME = re.compile(r'[\\/:*?"<>|]')
 class StorageError(Exception):
     """A reason the author can act on, carried to the router as an HTTP status."""
 
-    def __init__(self, status_code: int, detail: str) -> None:
+    def __init__(self, status_code: int, detail: str, code: str | None = None) -> None:
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
+        self.code = code
 
 
 def database_file(session: Session) -> Path | None:
@@ -573,7 +574,7 @@ def write_export(session: Session, file_name: str, text: str) -> Path:
     """
     directory = get_export_dir(session)
     if not directory:
-        raise StorageError(409, "还没有设置导出目录")
+        raise StorageError(409, "还没有设置导出目录", code="export_dir_not_set")
     safe = SAFE_NAME.sub("_", file_name) or "export.txt"
     target = Path(directory) / safe
     target.write_text(text, encoding="utf-8")

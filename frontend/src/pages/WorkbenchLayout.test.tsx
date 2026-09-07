@@ -265,7 +265,9 @@ describe("workbench layout", () => {
         if (url.endsWith("/export/save")) {
           // 没设导出目录 -> 后端 409 -> 走浏览器下载（这一条测的就是下载那条路）
           return Promise.resolve(
-            new Response(JSON.stringify({ detail: "还没有设置导出目录" }), {
+            new Response(
+              JSON.stringify({ detail: { code: "export_dir_not_set", message: "还没有设置导出目录" } }),
+              {
               status: 409,
               headers: { "Content-Type": "application/json" },
             }),
@@ -355,7 +357,9 @@ describe("workbench layout", () => {
         // 后端回 409，前端才退回浏览器下载。
         if (url.endsWith("/export/save")) {
           return Promise.resolve(
-            new Response(JSON.stringify({ detail: "还没有设置导出目录" }), {
+            new Response(
+              JSON.stringify({ detail: { code: "export_dir_not_set", message: "还没有设置导出目录" } }),
+              {
               status: 409,
               headers: { "Content-Type": "application/json" },
             }),

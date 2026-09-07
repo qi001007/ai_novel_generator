@@ -127,10 +127,11 @@ _CHARACTER_NAME = re.compile(r"^settings/characters/([0-9]{1,9})\.md$")
 
 
 class DocumentError(Exception):
-    def __init__(self, detail: str, status_code: int = 422) -> None:
+    def __init__(self, detail: str, status_code: int = 422, code: str | None = None) -> None:
         super().__init__(detail)
         self.detail = detail
         self.status_code = status_code
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -712,6 +713,7 @@ def write_file(
         raise DocumentError(
             f"{path} 已被其它写入改过（{base_revision} → {current.revision}），请重载后再写",
             status_code=409,
+            code="write_conflict",
         )
 
     parsed = load_document(kind, text, chapter=number)

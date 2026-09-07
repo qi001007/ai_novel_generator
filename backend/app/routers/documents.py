@@ -3,7 +3,7 @@ from sqlmodel import Session, SQLModel
 
 from app.db import get_session
 from app.routers.planning import get_novel_or_404
-from app.services import documents
+from app.services import errors, documents
 from app.services.documents import DocumentError
 
 
@@ -40,7 +40,7 @@ class FileWriteResult(SQLModel):
 
 
 def _to_http(cause: DocumentError) -> HTTPException:
-    return HTTPException(status_code=cause.status_code, detail=cause.detail)
+    return HTTPException(**errors.http_kwargs(cause))
 
 
 @router.get("/{novel_id}/files", response_model=list[FileMetaOut])

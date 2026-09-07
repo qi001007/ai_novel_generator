@@ -9,7 +9,7 @@ from sqlmodel import Session, SQLModel
 
 from app.db import get_session
 from app.routers.planning import get_novel_or_404
-from app.services import documents, export, storage
+from app.services import errors, documents, export, storage
 from app.services.documents import DocumentError
 
 router = APIRouter(prefix="/novels", tags=["export"])
@@ -58,7 +58,7 @@ def write_export_settings(
     try:
         value = storage.set_export_dir(session, payload.dir)
     except storage.StorageError as cause:
-        raise HTTPException(status_code=cause.status_code, detail=cause.detail) from cause
+        raise HTTPException(**errors.http_kwargs(cause)) from cause
     return ExportSettings(export_dir=value)
 
 
@@ -86,9 +86,9 @@ def save_export(
             text, name = export.book_document(session, novel, payload.format)
         saved = storage.write_export(session, name, text)
     except (export.ExportError, storage.StorageError) as cause:
-        raise HTTPException(status_code=cause.status_code, detail=cause.detail) from cause
+        raise HTTPException(**errors.http_kwargs(cause)) from cause
     except DocumentError as cause:
-        raise HTTPException(status_code=cause.status_code, detail=cause.detail) from cause
+        raise HTTPException(**errors.http_kwargs(cause)) from cause
     return SavedOut(saved_to=str(saved))
 
 

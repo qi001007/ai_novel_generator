@@ -319,7 +319,9 @@ describe("BookshelfPage", () => {
         if (url.endsWith("/export/save")) {
           // 两条落点的第一条（第二十五批批注 3）：没设目录时后端回 409，前端才降级成浏览器下载
           return Promise.resolve(
-            new Response(JSON.stringify({ detail: "还没有设置导出目录" }), {
+            new Response(
+          JSON.stringify({ detail: { code: "export_dir_not_set", message: "还没有设置导出目录" } }),
+          {
               status: 409,
               headers: { "Content-Type": "application/json" },
             }),

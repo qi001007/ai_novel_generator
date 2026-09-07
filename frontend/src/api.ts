@@ -15,6 +15,27 @@ import type {
   GenerationStreamEvent,
 } from "./types";
 
+/** 后端带 code 的失败会长这样：`{"detail": {"code": "...", "message": "..."}}`。 */
+export type ApiFailure = Error & { status?: number; code?: string };
+
+/** 四处「拿 detail、抛 Error」收成一个主人：状态码与机器码都不许在路上丢掉。 */
+function apiFailure(body: unknown, status: number, fallback: string): ApiFailure {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  const structured = typeof detail === "object" && detail !== null;
+  const message = structured
+    ? String((detail as { message?: unknown }).message ?? fallback)
+    : String(detail ?? fallback);
+  const code = structured
+    ? String((detail as { code?: unknown }).code ?? "") || undefined
+    : undefined;
+  return Object.assign(new Error(message), { status, code });
+}
+
+/** 调用方要分支的判断走这里，**不许**再去匹配中文文案。 */
+export function errorCode(cause: unknown): string | undefined {
+  return cause instanceof Error ? (cause as ApiFailure).code : undefined;
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -22,8 +43,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   });
 
   if (!response.ok) {
-    const detail = await response.json().catch(() => null);
-    throw new Error(detail?.detail ?? response.statusText);
+    throw apiFailure(await response.json().catch(() => null), response.status, response.statusText);
   }
 
   // 204 没有 body。删除端点返回它是标准做法；让 request 去 json() 只会抛一个
@@ -102,8 +122,7 @@ export const api = {
     });
 
     if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      throw new Error(detail?.detail ?? `对话请求失败（${response.status}）`);
+      throw apiFailure(await response.json().catch(() => null), response.status, `对话请求失败（${response.status}）`);
     }
     if (!response.body) {
       throw new Error("当前浏览器不支持流式响应");
@@ -146,8 +165,7 @@ export const api = {
       },
     );
     if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      throw new Error(detail?.detail ?? `生成请求失败（${response.status}）`);
+      throw apiFailure(await response.json().catch(() => null), response.status, `生成请求失败（${response.status}）`);
     }
     if (!response.body) throw new Error("当前浏览器不支持流式响应");
 
@@ -195,8 +213,7 @@ export const api = {
     }
     const response = await fetch(`/api/novels/${novelId}/export?${query.toString()}`);
     if (!response.ok) {
-      const detail = await response.json().catch(() => null);
-      throw new Error(detail?.detail ?? `导出失败（${response.status}）`);
+      throw apiFailure(await response.json().catch(() => null), response.status, `导出失败（${response.status}）`);
     }
     const fileName = fileNameFromDisposition(response.headers.get("Content-Disposition"));
     saveTextFile(await response.text(), fileName);
@@ -236,8 +253,8 @@ export const api = {
       );
       return `已保存到 ${saved.saved_to}`;
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "";
-      if (!message.includes("还没有设置导出目录")) throw cause;
+      // 只有后端明说「没设导出目录」这一条才允许静默降级成浏览器下载
+      if (errorCode(cause) !== "export_dir_not_set") throw cause;
       const name = await download();
       return `浏览器已下载 ${name}`;
     }

@@ -3,9 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../api";
 import { BLUEPRINT_PATH, chapterMatches, chapterNumberLabel, isDirty, useFiles } from "./files";
 
-vi.mock("../api", () => ({
-  api: { listFiles: vi.fn(), readFile: vi.fn(), writeFile: vi.fn() },
-}));
+vi.mock("../api", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../api")>();
+  return {
+    // errorCode 用**真的那个**：判冲突现在靠机器码，把它 mock 掉就等于没测到这条分支
+    ...real,
+    api: { listFiles: vi.fn(), readFile: vi.fn(), writeFile: vi.fn() },
+  };
+});
 
 const mocked = vi.mocked(api);
 
@@ -55,7 +60,12 @@ describe("files store", () => {
   });
 
   it("flags a lost-update rejection as a conflict", async () => {
-    mocked.writeFile.mockRejectedValueOnce(new Error("文件已被别处改动，请重新读取"));
+    mocked.writeFile.mockRejectedValueOnce(
+      Object.assign(new Error("chapters/0001/draft.md 已被其它写入改过（a → b），请重载后再写"), {
+        status: 409,
+        code: "write_conflict",
+      }),
+    );
     await useFiles.getState().attach(1);
     await useFiles.getState().open(BLUEPRINT_PATH);
     useFiles.getState().setDraft(BLUEPRINT_PATH, "## 主线\n新\n");
