@@ -16,18 +16,23 @@ from app.models import (
 )
 from app.routers.planning import get_novel_or_404
 from app.services.chapters import (
+    OFFLINE_CHUNK,
+    OFFLINE_DRAFT_MODEL,
     ChapterDomainError,
+    draft_user_prompt,
     generate_from_brief,
     get_chapter_or_error,
     machine_check,
+    persist_draft,
+    prepare_draft,
 )
 from app.services import documents
 from app.services.context import build_writing_context, log_injection
 from app.services.renumber import densify, renumber_plan, shift_after, vacate
 from app.services.draft import build_template_draft
-from app.services.llm import LLMClient, get_llm_client
+from app.services.llm import DRAFT_TEMPERATURE, LLMClient, get_llm_client
 from app.services import storage
-from app.services.prompts import build_draft_user_prompt
+from app.services.prompts import DRAFT_SYSTEM_PROMPT
 
 
 router = APIRouter(prefix="/novels", tags=["chapters"])
@@ -140,27 +145,16 @@ def stream_generate_chapter_from_brief(
     if brief is None or brief.novel_id != novel_id:
         raise HTTPException(status_code=404, detail="Chapter brief not found")
 
-    existing = session.exec(
-        select(Chapter).where(
-            Chapter.novel_id == novel.id,
-            Chapter.chapter_number == brief.chapter_number,
-        )
-    ).first()
-    if existing is not None and existing.content.strip():
-        raise HTTPException(status_code=409, detail="该章已有正文；请先打回或清空后再生成")
+    try:
+        writing_context = prepare_draft(session, novel, brief)
+    except ChapterDomainError as cause:
+        raise _to_http(cause) from cause
 
-    writing_context = build_writing_context(
-        session, novel.id, brief.chapter_number, brief_id=brief.id
-    )
-    log_injection(writing_context, novel_id=novel.id, chapter_number=brief.chapter_number)
-    system = (
-        "你是中文网文长篇连载作者。严格遵守 A 层约束、C 层剧情弧和 D 层简报，"
-        "写出完整章节正文，只输出正文。"
-    )
-    user = build_draft_user_prompt(novel, [block.item for block in writing_context.selected])
+    system = DRAFT_SYSTEM_PROMPT
+    user = draft_user_prompt(novel, writing_context)
     live_model = llm.settings.is_configured
     fallback_model = (
-        "offline-template"
+        OFFLINE_DRAFT_MODEL
         if not live_model
         else (llm.settings.models.get("draft") or llm.settings.provider)
     )
@@ -181,15 +175,15 @@ def stream_generate_chapter_from_brief(
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    temperature=0.8,
+                    temperature=DRAFT_TEMPERATURE,
                     usage_out=usage,
                 ):
                     chunks.append(chunk)
                     yield sse("delta", {"text": chunk})
             else:
                 full = build_template_draft(brief)
-                for start in range(0, len(full), 8):
-                    chunk = full[start:start + 8]
+                for start in range(0, len(full), OFFLINE_CHUNK):
+                    chunk = full[start:start + OFFLINE_CHUNK]
                     chunks.append(chunk)
                     yield sse("delta", {"text": chunk})
         except Exception as cause:
@@ -204,49 +198,25 @@ def stream_generate_chapter_from_brief(
                 yield sse("error", {"message": "章节写入时找不到作品或简报", "partial": content})
                 return
 
-            chapter = persist.exec(
-                select(Chapter).where(
-                    Chapter.novel_id == persist_novel.id,
-                    Chapter.chapter_number == persist_brief.chapter_number,
+            try:
+                outcome = persist_draft(
+                    persist,
+                    persist_novel.id,
+                    persist_brief,
+                    writing_context,
+                    content,
+                    str(usage.get("model") or fallback_model),
+                    int(usage.get("token_input", 0)),
+                    int(usage.get("token_output", 0)),
                 )
-            ).first()
-            if chapter is None:
-                chapter = Chapter(
-                    novel_id=persist_novel.id,
-                    brief_id=persist_brief.id,
-                    chapter_number=persist_brief.chapter_number,
-                    status="draft",
-                )
-            elif chapter.content.strip():
-                yield sse("error", {"message": "该章已有正文；请先打回或清空后再生成", "partial": content})
+            except ChapterDomainError as cause:
+                # 事件流不能抛：抛了前端只会看到一条断掉的流，拿不到 partial
+                yield sse("error", {"message": cause.detail, "partial": content})
                 return
-
-            chapter.content = content
-            chapter.word_count = len(content)
-            chapter.brief_id = persist_brief.id
-            persist.add(chapter)
-            persist.commit()
-            persist.refresh(chapter)
-
-            run = GenerationRun(
-                novel_id=persist_novel.id,
-                chapter_id=chapter.id,
-                task_type="draft",
-                model=str(usage.get("model") or fallback_model),
-                input_summary=writing_context.manifest_json(),
-                output=content,
-                token_input=int(usage.get("token_input", 0)),
-                token_output=int(usage.get("token_output", 0)),
-                cost_estimate=0.0,
-            )
-            persist.add(run)
-            persist.commit()
-            persist.refresh(run)
-            check = machine_check(chapter, {"required_facts": persist_brief.required_facts})
             yield sse("done", {
-                "chapter": chapter.model_dump(mode="json"),
-                "generation_run": run.model_dump(mode="json"),
-                "machine_check": check,
+                "chapter": outcome["chapter"].model_dump(mode="json"),
+                "generation_run": outcome["generation_run"].model_dump(mode="json"),
+                "machine_check": outcome["machine_check"],
             })
 
     return StreamingResponse(

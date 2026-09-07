@@ -79,6 +79,11 @@ class LLMResult:
     raw_message: dict[str, Any] = field(default_factory=dict)
 
 
+# 生成整章的温度。全仓只许出现这一次：流式调用方与非流式回退都读它，
+# 别在调用点再写一个字面量——两处各写一次，改一处就静默分叉。
+DRAFT_TEMPERATURE = 0.8
+
+
 class LLMClient(Protocol):
     settings: LLMSettings
 
@@ -152,7 +157,7 @@ class OpenAICompatibleClient:
             "messages": messages,
             "temperature": temperature
             if temperature is not None
-            else (0.8 if task_type == "draft" else 0.2),
+            else (DRAFT_TEMPERATURE if task_type == "draft" else 0.2),
         }
         # Sent when a gateway has the channel; the agent loop does not rely on the
         # answer arriving this way, because this deployment does not use it.

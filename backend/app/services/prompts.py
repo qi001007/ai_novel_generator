@@ -2,6 +2,13 @@ from app.models import Chapter, Novel
 from app.services.context import ContextItem, render_context
 
 
+# 写整章时唯一的那句系统提示。两条生成路（流式 / 非流式）共用，别在别处再抄一遍。
+DRAFT_SYSTEM_PROMPT = (
+    "你是中文网文长篇连载作者。严格遵守 A 层约束、C 层剧情弧和 D 层简报，"
+    "写出完整章节正文，只输出正文。"
+)
+
+
 def build_draft_user_prompt(novel: Novel, items: list[ContextItem]) -> str:
     """Render the writing window. Selecting what goes in is build_writing_context's job.
 
