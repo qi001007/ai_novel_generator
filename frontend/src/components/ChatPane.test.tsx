@@ -283,6 +283,24 @@ describe("ChatPane", () => {
     ).toBe(true);
   });
 
+  /* 第二十九批批注 4（2026-09-07）：开场白那句「不要用正文字体，用那种思考状态的字体」。
+     它不是 Agent 答的话，是一句界面提示，所以套思考那张脸；而**真答的正文不许跟着变**。 */
+  it("sets the greeting with the thinking face and leaves real answers in prose", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    const line = await screen.findByText(/我是这本书的写作 Agent/);
+    expect(line.closest(".chat-greeting")).toBeTruthy();
+    // 它仍然是从 .chat-md 渲染出来的，只是多挂了一个类 - 不改排版结构
+    expect(line.closest(".chat-md")).toBeTruthy();
+  });
+
   it("shows no thinking entry when the model gave no reasoning", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

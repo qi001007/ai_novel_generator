@@ -99,7 +99,21 @@ function CodeBlock({ text, info }: { text: string; info: string }) {
   );
 }
 
-export default function MarkdownText({ text, tail }: { text: string; tail?: ReactNode }) {
+/**
+ * 回答是散文，所以它得按散文排版。
+ *
+ * className 是给「同一段 Markdown、但不是 Agent 答的话」准备的 -
+ * 开场白那一句就靠它套上思考那张脸（第二十九批批注 4），不另起一套字号。
+ */
+export default function MarkdownText({
+  text,
+  tail,
+  className,
+}: {
+  text: string;
+  tail?: ReactNode;
+  className?: string;
+}) {
   const lines = text.split("\n");
   // the caret belongs at the end of the last thing with words in it
   let lastContent = -1;
@@ -197,5 +211,5 @@ export default function MarkdownText({ text, tail }: { text: string; tail?: Reac
     );
   }
   flushList();
-  return <div className="chat-md">{nodes}</div>;
+  return <div className={className ? `chat-md ${className}` : "chat-md"}>{nodes}</div>;
 }

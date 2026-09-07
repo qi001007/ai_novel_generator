@@ -1280,7 +1280,11 @@ select:focus-visible {
    The owner's reference image is slanted, so the slant is wanted; on Chinese glyphs the
    browser synthesises the oblique, and if that reads badly to him it is one line to drop
    - the size and tone alone already separate the two. */
-.chat-card .chat-thinking-body p {
+/* 第二十九批批注 4：开场白那句也不是「回答」，是一句界面提示，所以它套同一张脸。
+   写进同一个声明块而不是复制一份 - 两处字号迟早会飘（§0.9 那条老账）。
+   只有这一条合成消息用它，Agent 真答的正文照旧 13px 正体。 */
+.chat-card .chat-thinking-body p,
+.chat-card .chat-greeting p {
   margin: 0 0 8px;
   color: var(--text-2);
   font-size: 12px;

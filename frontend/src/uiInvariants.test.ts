@@ -50,12 +50,21 @@ import bookshelf from "./pages/BookshelfPage.tsx?raw";
  * behaviour - and a guard that only reads the first of them passes by accident.
  */
 function rule(sel: string): string {
-  const needle = "\n" + sel + " {";
+  // 原来只认「sel 后面紧跟 {」。第二十九批批注 4 把思考那张脸并给了开场白 -
+  // 两个选择器**共用一个声明块**，于是 `.chat-thinking-body p` 后面是逗号而不是花括号，
+  // 这条辅助函数会把一整条规则读成空字符串（改完当场把第十六批那条判红）。
+  // 现在允许「逗号 + 若干选择器 + {」这种列表写法，声明块仍然取第一个 } 之前的部分。
+  const needle = "\n" + sel;
   let from = 0;
   let out = "";
   for (;;) {
     const at = css.indexOf(needle, from);
     if (at < 0) return out;
+    const tail = css.slice(at + needle.length, at + needle.length + 240);
+    if (!/^\s*(?:,\s*[^{}]*?)?\{/.test(tail)) {
+      from = at + needle.length;
+      continue;
+    }
     out += css.slice(at, css.indexOf("}", at) + 1) + "\n";
     from = at + needle.length;
   }
@@ -893,8 +902,12 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 流式期间就摊开给他看（默认收起等于把「看着它想」又变回答完才给）
     expect(chatPane).toMatch(/if \(event\.event === "reasoning"\)[\s\S]{0,200}setThinkingOpen\(id\);/);
     // 字必须还是那张脸，而且**只有一个声明块** - 复制第二套字号就是下一次「你改回去了」
-    expect(css.match(/\.chat-card \.chat-thinking-body p\s*\{/g)).toHaveLength(1);
-    const face = css.match(/\.chat-card \.chat-thinking-body p\s*\{([^}]*)\}/)![1];
+    // 那张脸只许有**一个声明块**，两个选择器共用它（第二十九批批注 4 把开场白也接了进来）
+    const faceSelectors = String.raw`\.chat-card \.chat-thinking-body p,\s*\.chat-card \.chat-greeting p`;
+    expect(css.match(new RegExp(faceSelectors + "\\s*\\{", "g"))).toHaveLength(1);
+    // 谁另抄一份字号，这里就会数到 2 - 那正是下一次「你怎么又改回去了」的形状
+    expect(css.match(/\.chat-(thinking-body|greeting) p\s*\{[^}]*font-size/g)).toHaveLength(1);
+    const face = css.match(new RegExp(faceSelectors + "\\s*\\{([^}]*)\\}"))![1];
     expect(face).toMatch(/font-style:\s*italic;/);
     expect(face).toMatch(/font-size:\s*12px;/);
     expect(face).toMatch(/color:\s*var\(--text-2\);/);

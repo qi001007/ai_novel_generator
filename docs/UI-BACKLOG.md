@@ -249,6 +249,19 @@
 三项全等；**只有开场白这一条**变（Agent 真正答的正文照旧 13px 正体，否则整站对话都变斜体）；
 测试钉住这条、并反向钉「正文不许跟着变」。
 
+- [x] **已做（2026-09-07，真机量过 computed 并看过图）**。
+  · 做法：开场白那条合成消息挂 `chat-greeting` 类，CSS 把它**并进思考那张脸同一个声明块**
+    （`.chat-card .chat-thinking-body p, .chat-card .chat-greeting p { … }`），不复制第二套字号。
+    `MarkdownText` 因此多了一个 `className` 透传，排版结构没变（还是 `.chat-md` 里一个 `<p>`）。
+  · 真机（《日向家的叛忍》空线程那页）：开场白那段 computed =
+    `italic / 12px / rgb(157,155,150)`（= `--text-2`）；对照：第 5 号书里 Agent 真答的段落
+    仍是 `normal / 13px / rgb(236,235,233)` —— **只有开场白变了**。图 `shots/297-greeting.png`。
+  · 改这条时把 `uiInvariants` 的 `rule()` 辅助函数一起修了：它原来只认「选择器后面紧跟 `{」，
+    共用声明块以后 `.chat-thinking-body p` 后面是逗号，第十六批那条断言当场被判成空字符串。
+    现在它认选择器列表，并且新增一条「`font-size` 在这个形状里只许出现 1 次」反向钉复制。
+  · 门禁：frontend `226 passed / 22 files`（+1 功能 +1 断言）、`tsc -b --force` clean、
+    `npm run build` clean。
+
 ### 29.8 对话 Agent 没有「一直输出」的能力（批注 7，**本轮只登记**）
 
 主人：「我让它续写第 4 章，它只会输出一小段，接着就去查看第 4 章的简报和目录，一段对话就断了。

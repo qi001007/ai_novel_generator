@@ -62,6 +62,8 @@ type AgentRow = {
   meta: AgentMeta;
   error?: string;
   proposals?: FileProposal[];
+  /** 开场白那一条不是 Agent 答的话，是一句界面提示 - 它用思考那张脸（批注 4）。 */
+  greeting?: boolean;
 };
 
 type Row =
@@ -839,6 +841,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         {(rows.length ? rows : [{
           kind: "agent" as const,
           id: 0,
+          greeting: true,
           text: GREETING,
           status: "done" as const,
           question: "",
@@ -989,6 +992,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                   {prose || row.status !== "streaming" ? (
                     <MarkdownText
                       text={prose}
+                      className={row.greeting ? "chat-greeting" : undefined}
                       tail={
                         row.status === "streaming" ? (
                           <span className="chat-caret" aria-hidden="true" />
