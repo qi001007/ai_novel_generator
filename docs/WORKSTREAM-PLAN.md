@@ -115,6 +115,12 @@
    **第 1 步已落地（2026-09-08）**：`GatewayChatModel` / `agent_pydantic.py` / 三个只读框架工具 / `NOVEL_AGENT_ENGINE` 开关完成；
    后端 278 → 290 passed，双引擎同一契约（流式、推理、预算）12 条新增测试全绿。隔离库真机：`tool read_file ok`，
    SSE `reasoning 153 / delta 89 / tool 1`，最后消息 `token_input=1512 / token_output=282`。第 5 步之前保留 `legacy` 回退。
+   **第 2 步已落地（2026-09-08）**：预算只剩框架那一道 `UsageLimits`（`request_limit` + `total_tokens_limit`，
+   不用 `tool_calls_limit`），每步耗时与取回字数进轨迹，「第 N 步」全仓只剩一个意思（= 第 N 次工具调用）；
+   后端 290 → 298 passed、前端 255 → 256 passed，`tsc -b --force` 与 `npm run build` clean，命中区审计 0/0/0。
+   真机（隔离副本库 + 真网关）：问「把 A/B/C 与前六章简报都读一遍」→ 第 3 轮前停住并自报
+   「已花 1931 token（输入 1416 / 输出 515）、跑了 10 步工具调用」；界面上那一行
+   「第 1 步 · read_file settings/worldview.md · 1ms · 280 字」。理由与口径见 **D-28** 第 2 步段。
 
 2. **注入清单口径（`UI-BACKLOG.md` 第三十批 30.1/30.2/30.4）** —— 主人已定：B 层与 C 层同宽
    （第 $N$ 章 → $[N-20,\,N+20]$）、目录只给题目＋简述、**正文只包含上一章**。
@@ -331,6 +337,13 @@
    *验收*：故意问一个要翻很多页的问题，它在闸口停住并说清停在哪一步、已经花了多少；
    界面能看到「第 2 步 · read_file arcs.md · 1.4s · 1.2k 字」；`generation_run` 里的
    token 数与今天同量纲（不许换个单位骗人）。
+   *完成（2026-09-08）*：① 那条验收在真网关上跑到：pydantic 一轮里模型并行要了 **10 步工具**，
+   闸在第 3 轮前落下，消息带「到了 2 轮上限…已花 1931 token（输入 1416 / 输出 515）、跑了 10 步工具调用」
+   + 逐步轨迹（每步都带 `ms` 与字数）；② 界面那一行 = 「第 1 步 · read_file settings/worldview.md ·
+   1ms · 280 字」，两张截图记在 `UI-BACKLOG 31.1`；③ 量纲由
+   `test_both_engines_bill_the_same_token_dimension` 钉住（两条引擎落库都是 210/56）。
+   顺带清掉第 1 步留下的重复与一处真缺陷：框架工具声明只留 `framework_tools_from_registry` 一份，
+   工具失败改走框架的 `ToolFailed`（此前框架路径会把注册表的 `ToolError` 直接抛穿整轮）。
 3. **联网补齐第二段 —— 抓正文是确定的，换搜索源要先重测**
    - 先做确定的那半：新增 `fetch_page(url)`，用 `trafilatura` 抽正文
      （剥标签、限 8000 字、只 http/https、超时与重定向上限）。维基那 5 条摘要终于能点进去了。
