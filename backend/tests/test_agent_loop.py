@@ -340,7 +340,7 @@ def test_the_step_cap_raises_instead_of_running_on():
             ToolRegistry([make_tool()]),
             config=AgentConfig(max_steps=2, max_tokens=10_000),
         )
-    assert "2 步" in str(caught.value)
+    assert "2 轮" in str(caught.value)  # 轮=模型请求，步=工具调用
     assert len(llm.seen) == 2
 
 

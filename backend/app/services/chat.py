@@ -642,6 +642,10 @@ def stream_turn(
                         "name": payload.call.name,
                         "arguments": payload.call.arguments,
                         "ok": payload.result.ok,
+                        # 6.5 step 2: what this step cost. The owner reads the trace and
+                        # sees which file took how long and how much of it came back.
+                        "ms": payload.ms,
+                        "chars": payload.chars,
                     },
                 )
             else:

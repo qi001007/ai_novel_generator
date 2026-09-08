@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Iterator
 
@@ -324,11 +325,20 @@ class AgentStep:
     index: int
     call: ToolCall
     result: ToolResult
+    # How long the tool itself took, in whole milliseconds. Both engines fill it in:
+    # the legacy loop measures the call in place, the framework side is told by the tool
+    # wrapper in agent_tools. 0 means "not measured", never "it was instant".
+    ms: int = 0
+
+    @property
+    def chars(self) -> int:
+        """How much came back. Counted here once so no engine carries a second number."""
+        return len(self.result.content)
 
     def as_line(self) -> str:
         args = ", ".join(f"{k}={v}" for k, v in self.call.arguments.items())
         state = "ok" if self.result.ok else "failed"
-        return f"step {self.index}: {self.call.name}({args}) -> {state}"
+        return f"step {self.index}: {self.call.name}({args}) -> {state} {self.ms}ms {self.chars}"
 
 
 @dataclass
@@ -472,7 +482,7 @@ def stream_agent_turn(
         over = spent_in + spent_out
         if over > limits.max_tokens:
             raise AgentBudgetError(
-                f"本轮已用 {over} token，超过上限 {limits.max_tokens}（第 {index} 步）。"
+                f"本轮已用 {over} token，超过上限 {limits.max_tokens}（第 {index} 轮）。"
                 "已停止，没有把截断后的内容当成回答交给你。"
             )
 
@@ -505,7 +515,7 @@ def stream_agent_turn(
                 # Re-running it costs the same answer; saying so lets the round end.
                 step = AgentStep(
                     call=call,
-                    index=index,
+                    index=len(steps) + 1,
                     result=ToolResult(
                         call=call,
                         content="这份内容本轮已经给过你了，不必再查。请基于已有资料直接回答。",
@@ -514,14 +524,22 @@ def stream_agent_turn(
                 )
             else:
                 done.add(signature)
-                step = AgentStep(index=index, call=call, result=registry.run(call))
+                started = time.perf_counter()
+                result = registry.run(call)
+                step = AgentStep(
+                    index=len(steps) + 1,
+                    call=call,
+                    result=result,
+                    ms=round((time.perf_counter() - started) * 1000),
+                )
             steps.append(step)
             history.append(_result_message(step))
             yield ("tool", step)
 
     trail = "; ".join(step.as_line() for step in steps)
     raise AgentBudgetError(
-        f"本轮到了 {limits.max_steps} 步上限仍在要求调用工具，已停止而不是继续烧钱。已执行：{trail or '（无）'}"
+        f"本轮到了 {limits.max_steps} 轮上限仍在要求调用工具，已停止而不是继续烧钱。"
+        f"跑了 {len(steps)} 步工具调用。已执行：{trail or '（无）'}"
     )
 
 

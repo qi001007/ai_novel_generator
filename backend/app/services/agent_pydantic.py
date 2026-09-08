@@ -21,7 +21,7 @@ from pydantic_ai import (
     UserPromptPart,
     TextPart,
 )
-from pydantic_ai.usage import UsageLimits
+from pydantic_ai.usage import RunUsage, UsageLimits
 
 from app.services.agent import (
     AgentBudgetError,
@@ -64,7 +64,10 @@ def to_framework_messages(messages: list[dict[str, str]]) -> list[ModelRequest |
 
 
 def _step_from_event(
-    event: FunctionToolResultEvent, pending: dict[str, FunctionToolCallEvent], index: int
+    event: FunctionToolResultEvent,
+    pending: dict[str, FunctionToolCallEvent],
+    timings: dict[str, int],
+    index: int,
 ) -> AgentStep | None:
     part = event.part
     call_event = pending.pop(part.tool_call_id, None)
@@ -73,30 +76,86 @@ def _step_from_event(
     call = ToolCall(name=call_event.part.tool_name, arguments=call_event.part.args or {})
     content = _message_content(part.content)
     ok = getattr(part, "outcome", "success") == "success"
-    return AgentStep(index=index, call=call, result=ToolResult(call=call, content=content, ok=ok))
+    return AgentStep(
+        index=index,
+        call=call,
+        result=ToolResult(call=call, content=content, ok=ok),
+        ms=timings.pop(part.tool_call_id, 0),
+    )
 
 
-def _event_consumer(
-    sink: list[AgentStep],
-) -> Any:
+def _event_consumer(sink: list[AgentStep], timings: dict[str, int]) -> Any:
     async def handler(_context: Any, stream: Any) -> None:
+        # The handler runs once per model request, so the step number is read off the
+        # turn's own list - a counter kept in here would restart at 1 on every round.
         pending: dict[str, FunctionToolCallEvent] = {}
-        index = 0
         async for event in stream:
             if isinstance(event, FunctionToolCallEvent):
                 pending[event.part.tool_call_id] = event
             elif isinstance(event, FunctionToolResultEvent):
-                step = _step_from_event(event, pending, index + 1)
+                step = _step_from_event(event, pending, timings, len(sink) + 1)
                 if step is not None:
-                    index += 1
                     sink.append(step)
 
     return handler
 
 
-def _limits(config: AgentConfig | None) -> UsageLimits:
+class BudgetGate(UsageLimits):
+    """The framework's own limits, with a memory.
+
+    It decides nothing: every check still runs the framework's method and raises there.
+    It only keeps the usage the framework showed it and which gate fired, so the sentence
+    the owner reads can name the step it stopped at and what it cost (6.5 step 2) without a
+    second hand-written gate standing beside the framework's.
+    """
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.usage = RunUsage()
+        self.gate = ""
+
+    def check_before_request(self, usage: RunUsage) -> None:
+        self.usage = usage
+        try:
+            super().check_before_request(usage)
+        except UsageLimitExceeded:
+            self.gate = "request"
+            raise
+
+    def check_tokens(self, usage: RunUsage) -> None:
+        self.usage = usage
+        try:
+            super().check_tokens(usage)
+        except UsageLimitExceeded:
+            self.gate = "token"
+            raise
+
+
+def _limits(config: AgentConfig | None) -> BudgetGate:
+    """Two gates, both the framework's.
+
+    Deliberately not `tool_calls_limit`: it counts only calls that came back successful, so
+    a model that keeps failing at the same call never runs into it and keeps burning requests.
+    """
     limits = config or AgentConfig()
-    return UsageLimits(request_limit=limits.max_steps, total_tokens_limit=limits.max_tokens)
+    return BudgetGate(request_limit=limits.max_steps, total_tokens_limit=limits.max_tokens)
+
+
+def _budget_error(gate: BudgetGate, steps: list[AgentStep]) -> AgentBudgetError:
+    """Where it stopped, what it cost, and what it did on the way there."""
+    usage = gate.usage
+    spent = usage.input_tokens + usage.output_tokens
+    # 一个词一个意思（真机量出来的：模型一轮里可以并行要 10 步工具）：
+    # 「轮」= 一次模型请求，「步」= 一次工具调用，和界面轨迹里的「第 N 步」同一个意思。
+    if gate.gate == "request":
+        reason = f"到了 {gate.request_limit} 轮上限，第 {usage.requests + 1} 轮仍在要求调用工具"
+    else:
+        reason = f"第 {usage.requests} 轮回来时已用 {spent} token，过了 {gate.total_tokens_limit} 的上限"
+    trail = "; ".join(step.as_line() for step in steps)
+    return AgentBudgetError(
+        f"本轮已停止：{reason}。已花 {spent} token（输入 {usage.input_tokens} / 输出 {usage.output_tokens}）、"
+        f"跑了 {len(steps)} 步工具调用。已执行：{trail or '（无）'}"
+    )
 
 
 def _agent(
@@ -146,9 +205,11 @@ def run_pydantic_agent_turn(
     **_: Any,
 ) -> AgentOutcome:
     """Run the framework loop without streaming, with the same event contract."""
-    framework_tools = framework_tools or framework_tools_from_registry(registry)
+    timings: dict[str, int] = {}
+    framework_tools = framework_tools or framework_tools_from_registry(registry, timings)
     steps: list[AgentStep] = []
-    handler = _event_consumer(steps)
+    handler = _event_consumer(steps, timings)
+    gate = _limits(config)
     agent = _agent(
         llm,
         task_type=task_type,
@@ -160,14 +221,11 @@ def run_pydantic_agent_turn(
         result = agent.run_sync(
             None,
             message_history=to_framework_messages(messages),
-            usage_limits=_limits(config),
+            usage_limits=gate,
             event_stream_handler=handler,
         )
     except UsageLimitExceeded as cause:
-        trail = "; ".join(step.as_line() for step in steps)
-        raise AgentBudgetError(
-            f"本轮预算已用完：{cause}. 已执行：{trail or '（无）'}"
-        ) from cause
+        raise _budget_error(gate, steps) from cause
     return _result_outcome(result, steps, model if isinstance(model, str) else None)
 
 
@@ -184,16 +242,17 @@ def stream_pydantic_agent_turn(
     framework_tools: list[Any] | None = None,
 ) -> Iterator[tuple[str, Any]]:
     """Yield the legacy event tuple from a background framework event loop."""
-    framework_tools = framework_tools or framework_tools_from_registry(registry)
+    timings: dict[str, int] = {}
+    framework_tools = framework_tools or framework_tools_from_registry(registry, timings)
     events: queue.Queue[tuple[str, Any] | tuple[str, None] | tuple[str, BaseException]] = queue.Queue()
     steps: list[AgentStep] = []
+    gate = _limits(config)
 
     async def drive() -> None:
         pending: dict[str, FunctionToolCallEvent] = {}
-        step_index = 0
 
         async def handler(_context: Any, stream: Any) -> None:
-            nonlocal step_index
+            # Same reason as _event_consumer: 第 N 步 is the Nth tool call of the turn.
             async for event in stream:
                 if isinstance(event, PartStartEvent):
                     part = event.part
@@ -212,9 +271,8 @@ def stream_pydantic_agent_turn(
                 elif isinstance(event, FunctionToolCallEvent):
                     pending[event.part.tool_call_id] = event
                 elif isinstance(event, FunctionToolResultEvent):
-                    step = _step_from_event(event, pending, step_index + 1)
+                    step = _step_from_event(event, pending, timings, len(steps) + 1)
                     if step is not None:
-                        step_index += 1
                         steps.append(step)
                         events.put(("tool", step))
 
@@ -229,7 +287,7 @@ def stream_pydantic_agent_turn(
             result = await agent.run(
                 None,
                 message_history=to_framework_messages(messages),
-                usage_limits=_limits(config),
+                usage_limits=gate,
                 event_stream_handler=handler,
             )
         except BaseException as cause:
@@ -269,8 +327,7 @@ def stream_pydantic_agent_turn(
     thread.join()
     if error is not None:
         if isinstance(error, UsageLimitExceeded):
-            trail = "; ".join(step.as_line() for step in steps)
-            raise AgentBudgetError(f"本轮预算已用完：{error}. 已执行：{trail or '（无）'}") from error
+            raise _budget_error(gate, steps) from error
         if isinstance(error, Exception):
             raise error
         raise error

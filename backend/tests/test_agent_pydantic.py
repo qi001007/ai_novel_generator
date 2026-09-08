@@ -21,13 +21,15 @@ from app.models import Novel
 from app.services.agent import (
     AgentBudgetError,
     AgentConfig,
+    Tool,
     ToolCall,
+    ToolError,
     ToolRegistry,
     run_agent_turn,
     stream_agent_turn,
 )
 from app.services.agent_model import GatewayChatModel
-from app.services.agent_tools import build_framework_tools, build_registry
+from app.services.agent_tools import build_registry
 
 
 class ScriptedGateway:
@@ -99,17 +101,22 @@ def call_block(name: str, **arguments: Any) -> str:
 
 
 def make_tool() -> ToolRegistry:
-    tool = type(
-        "Tool",
-        (),
-        {
-            "name": "read_file",
-            "description": "read one document",
-            "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
-            "handler": lambda path: f"[{path} contents]",
-        },
-    )()
-    return ToolRegistry([tool])
+    """A registry built the way the product builds one.
+
+    A duck-typed stand-in puts the handler in a class body, where the instance binds it as
+    a method and `registry.run` calls it with the wrong first argument - the turn then
+    "works" by failing every step, which is not the shape under test.
+    """
+    return ToolRegistry(
+        [
+            Tool(
+                name="read_file",
+                description="read one document",
+                parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+                handler=lambda path: f"[{path} contents]",
+            )
+        ]
+    )
 
 
 def test_engine_switch_defaults_to_legacy_and_only_accepts_pydantic(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -250,7 +257,6 @@ def test_pydantic_engine_runs_read_search_then_proposal_with_test_model(
             json={"query": {"search": [{"pageid": 11, "title": "司天监", "snippet": "<em>司天监</em>，官署名。"}]}},
         )
     )
-    tools = build_framework_tools(session_factory, session_factory.novel_id, search_transport=wiki_transport)
     messages = [
         {"role": "system", "content": "规则"},
         {"role": "user", "content": "官署怎么写？"},
@@ -260,7 +266,6 @@ def test_pydantic_engine_runs_read_search_then_proposal_with_test_model(
         messages,
         build_registry(session_factory, session_factory.novel_id, search_transport=wiki_transport),
         model=ThreeStepTestModel(),
-        framework_tools=tools,
     )
     assert [step.call.name for step in outcome.steps] == ["read_file", "web_search"]
     assert outcome.steps[0].result.ok is True
@@ -402,3 +407,147 @@ def test_framework_runs_two_tool_calls_concurrently(monkeypatch: pytest.MonkeyPa
     elapsed = time.perf_counter() - started
     assert outcome.content == "done"
     assert elapsed < 1.8
+
+
+def slow_registry(delay: float = 0.05) -> ToolRegistry:
+    """A registry whose one tool takes measurable time, so 「这步多久」 has a number to check."""
+
+    def snooze(path: str) -> str:
+        time.sleep(delay)
+        return f"[{path} contents]"
+
+    return ToolRegistry(
+        [
+            Tool(
+                name="read_file",
+                description="read one document",
+                parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+                handler=snooze,
+            )
+        ]
+    )
+
+
+def failing_registry(message: str = "读不到 nope.md：文件不存在") -> ToolRegistry:
+    """The registry's own failure path: a ToolError, exactly as a missing document raises."""
+
+    def broken(path: str) -> str:
+        raise ToolError(message)
+
+    return ToolRegistry(
+        [
+            Tool(
+                name="read_file",
+                description="read one document",
+                parameters={"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+                handler=broken,
+            )
+        ]
+    )
+
+
+@pytest.mark.parametrize("engine", ["legacy", "pydantic"])
+def test_every_step_says_how_long_it_ran_and_how_much_it_brought_back(
+    engine: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """6.5 第 2 步 · 判据 31.1 - both engines, because the default one is still legacy."""
+    monkeypatch.setenv("NOVEL_AGENT_ENGINE", engine)
+    block = call_block("read_file", path="arcs.md")
+    llm = ScriptedGateway(
+        [
+            {"content": "先看目录。\n\n" + block, "usage": (7, 3)},
+            {"content": "弧二结束在 30 章。", "usage": (5, 2)},
+        ]
+    )
+    events = list(stream_agent_turn(llm, [{"role": "user", "content": "q"}], slow_registry()))
+    steps = [payload for name, payload in events if name == "tool"]
+    assert len(steps) == 1, engine
+    step = steps[0]
+    assert step.ms >= 30, f"{engine} 没量到这一步的耗时（ms={step.ms}）"
+    assert step.chars == len(step.result.content) == len("[arcs.md contents]")
+    assert f"{step.ms}ms" in step.as_line() and str(step.chars) in step.as_line()
+
+
+def test_a_failing_tool_goes_back_to_the_model_instead_of_aborting_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The framework path must hand the model the same sentence the registry hands the loop."""
+    monkeypatch.setenv("NOVEL_AGENT_ENGINE", "pydantic")
+    from pydantic_ai import ModelRequest, ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.models.test import TestModel
+
+    handed_back: list[list[Any]] = []
+
+    class OnceThenAnswer(TestModel):
+        def __init__(self) -> None:
+            super().__init__(model_name="failure-aware")
+
+        def _request(self, messages, model_settings, model_request_parameters):
+            if sum(isinstance(m, ModelResponse) for m in messages) == 0:
+                return ModelResponse(
+                    [ToolCallPart("read_file", {"path": "nope.md"}, tool_call_id="f1")],
+                    model_name=self.model_name,
+                )
+            handed_back.append([part.content for m in messages if isinstance(m, ModelRequest) for part in m.parts])
+            return ModelResponse([TextPart("那我按已有资料回答。")], model_name=self.model_name)
+
+    outcome = run_agent_turn(None, [{"role": "user", "content": "q"}], failing_registry(), model=OnceThenAnswer())
+    assert outcome.steps[0].result.ok is False
+    assert "读不到 nope.md" in outcome.steps[0].result.content
+    assert any("读不到 nope.md" in str(item) for item in handed_back[-1]), "失败没有回给模型"
+    assert outcome.content == "那我按已有资料回答。"
+    assert "failed" in outcome.steps[0].as_line()
+
+
+def test_the_step_gate_names_the_step_and_the_spend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """6.5 第 2 步 · 判据 31.2 - the numbers come from the framework, so nothing runs a second gate."""
+    monkeypatch.setenv("NOVEL_AGENT_ENGINE", "pydantic")
+    hungry = {"content": call_block("read_file", path="a.md")}
+    llm = ScriptedGateway([hungry] * 3)
+    with pytest.raises(AgentBudgetError) as caught:
+        run_agent_turn(
+            llm,
+            [{"role": "user", "content": "q"}],
+            make_tool(),
+            config=AgentConfig(max_steps=2, max_tokens=10_000),
+        )
+    message = str(caught.value)
+    assert "到了 2 轮上限，第 3 轮仍在要求调用工具" in message
+    assert "已花 30 token（输入 20 / 输出 10）" in message
+    assert "跑了 2 步工具调用" in message
+    assert "step 1:" in message and "step 2:" in message  # 一轮里两次调用不许都叫第 1 步
+    assert "read_file(path=a.md)" in message
+    assert len(llm.seen) == 2
+
+
+def test_the_token_gate_reports_what_it_refused_to_spend(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_AGENT_ENGINE", "pydantic")
+    llm = ScriptedGateway([{"content": call_block("read_file", path="a.md"), "usage": (900, 900)}])
+    with pytest.raises(AgentBudgetError) as caught:
+        run_agent_turn(
+            llm,
+            [{"role": "user", "content": "q"}],
+            make_tool(),
+            config=AgentConfig(max_steps=5, max_tokens=1_000),
+        )
+    message = str(caught.value)
+    assert "第 1 轮回来时已用 1800 token，过了 1000 的上限" in message
+    assert "已花 1800 token（输入 900 / 输出 900）" in message
+
+
+@pytest.mark.parametrize("engine", ["legacy", "pydantic"])
+def test_a_model_that_only_fails_at_tools_still_stops_at_the_step_gate(
+    engine: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why `tool_calls_limit` is not the gate: it counts successes only, so failures never add up."""
+    monkeypatch.setenv("NOVEL_AGENT_ENGINE", engine)
+    hungry = {"content": call_block("read_file", path="nope.md")}
+    llm = ScriptedGateway([hungry] * 3)
+    with pytest.raises(AgentBudgetError):
+        run_agent_turn(
+            llm,
+            [{"role": "user", "content": "q"}],
+            failing_registry(),
+            config=AgentConfig(max_steps=2, max_tokens=10_000),
+        )
+    assert len(llm.seen) == 2

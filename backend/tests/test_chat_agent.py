@@ -147,6 +147,28 @@ def payload_of(events: list[tuple[str, dict]], name: str) -> dict:
     return next(payload for event, payload in events if event == name)
 
 
+def test_both_engines_bill_the_same_token_dimension(client: TestClient, monkeypatch) -> None:
+    """§六 第 2 步 · 判据 31.2：换引擎不许换单位。
+
+    generation_run 里那对数字仍是网关自己报的 prompt/completion 原值，两条通路一模一样。
+    """
+
+    def bill(engine: str) -> tuple[int, int]:
+        monkeypatch.setenv("NOVEL_AGENT_ENGINE", engine)
+        use_fake(client, FakeChatClient())
+        novel_id = make_novel(client, f"九霄对话测试-{engine}")
+        # 界面走的那一条：流式。两条引擎必须报同一对数字。
+        body = client.post(
+            f"/api/novels/{novel_id}/chat/stream",
+            json={"content": "主角的目标是什么", "mode": "plan"},
+        ).text
+        assert "done" in body, body[:200]
+        run = client.get(f"/api/novels/{novel_id}/generation-runs").json()[0]
+        return (run["token_input"], run["token_output"])
+
+    assert bill("legacy") == bill("pydantic") == (210, 56)
+
+
 def test_chat_reply_persists_message_pair_and_run(client: TestClient) -> None:
     fake = use_fake(client, FakeChatClient())
     novel_id = make_novel(client)

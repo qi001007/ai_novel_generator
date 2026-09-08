@@ -79,6 +79,9 @@ def test_a_turn_reads_then_proposes_without_leaking_the_protocol(client: TestCli
     assert "tool" in names
     tool = payload_of(events, "tool")
     assert tool["name"] == "read_file" and tool["ok"] is True and tool["step"] == 1
+    # 6.5 第 2 步：轨迹要说得出这一步跑了多久、取回多少字
+    assert isinstance(tool["ms"], int) and tool["ms"] >= 0
+    assert isinstance(tool["chars"], int) and tool["chars"] > 0
     # the document it read reached the model on the second round
     assert any("揭开星渊碑" in item["content"] for item in fake.seen[1])
     # the control block never went on screen
@@ -121,7 +124,9 @@ def test_over_budget_is_an_error_and_persists_no_reply(client: TestClient) -> No
     events = parse_sse(response.text)
     names = [name for name, _ in events]
     assert "error" in names
-    assert "步" in payload_of(events, "error")["message"]
+    message = payload_of(events, "error")["message"]
+    # 轮=模型请求，步=工具调用，两个都要说清（判据 31.2）
+    assert "6 轮上限" in message and "步工具调用" in message and "已执行" in message
     assert "done" not in names
     assert len(fake.seen) == 6  # the default ceiling, not eight
     stored = client.get(f"/api/novels/{novel_id}/chat/messages").json()
