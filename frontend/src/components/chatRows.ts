@@ -66,10 +66,26 @@ export function patchCommand(rows: Row[], id: number, patch: Partial<Extract<Row
   return rows.map((row) => (row.kind === "command" && row.id === id ? { ...row, ...patch } : row));
 }
 
+/**
+ * One executed step, as the trace should read it: which step, what it ran, how long it
+ * took and how much came back (§六 第 2 步判据 31.1 - 预算交给框架之后，代价要摊到每一步，
+ * 不能只在「本轮共花多少」里出现一次).
+ *
+ * The numbers arrive from the backend, which measured them around the call. Nothing here
+ * is invented or padded: a step that returned nothing reads 「0 字」, and that is the point.
+ */
 export function toolLine(event: Extract<ChatStreamEvent, { event: "tool" }>["data"]): string {
-  const line = `${event.name}(${Object.values(event.arguments).join(", ") || "无参数"})`;
+  const subject = Object.values(event.arguments).join(", ");
+  const head = `第 ${event.step} 步 · ${event.name}${subject ? ` ${subject}` : ""}`;
+  const line = `${head} · ${duration(event.ms)} · ${count(event.chars)} 字`;
   return event.ok ? line : `${line} 未成功`;
 }
+
+/** 1400ms 说成「1.4s」，不到一秒照实说毫秒 - 不把 0.02s 骗成 0s。 */
+const duration = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`);
+
+/** 1234 字说成「1.2k」；三位数以内直接写整数。 */
+const count = (chars: number) => (chars >= 1000 ? `${(chars / 1000).toFixed(1)}k` : `${chars}`);
 
 /**
  * 一条流事件如何改写行序列。`proposal` 不改行（它由 ChatPane 交给 offerFromStream），

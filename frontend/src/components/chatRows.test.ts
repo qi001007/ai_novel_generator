@@ -56,12 +56,17 @@ describe("chatRows.applyStreamEvent", () => {
   it("工具轨迹按到达顺序累加，失败的那次写明未成功", () => {
     let list = rows(agent());
     list = applyStreamEvent(list, 1, {
-      event: "tool", data: { step: 1, name: "read_file", arguments: { path: "a.md" }, ok: true },
+      event: "tool",
+      data: { step: 1, name: "read_file", arguments: { path: "a.md" }, ok: true, ms: 1400, chars: 1234 },
     } as ChatStreamEvent);
     list = applyStreamEvent(list, 1, {
-      event: "tool", data: { step: 2, name: "web_search", arguments: {}, ok: false },
+      event: "tool",
+      data: { step: 2, name: "web_search", arguments: {}, ok: false, ms: 900, chars: 0 },
     } as ChatStreamEvent);
-    expect(only(list).meta.reads).toEqual(["read_file(a.md)", "web_search(无参数) 未成功"]);
+    expect(only(list).meta.reads).toEqual([
+      "第 1 步 · read_file a.md · 1.4s · 1.2k 字",
+      "第 2 步 · web_search · 900ms · 0 字 未成功",
+    ]);
   });
 
   it("done 不许抹掉早到的工具轨迹、refs 与 allowed", () => {
@@ -72,11 +77,12 @@ describe("chatRows.applyStreamEvent", () => {
       tools: ["read_file"],
     }));
     list = applyStreamEvent(list, 1, {
-      event: "tool", data: { step: 1, name: "read_file", arguments: { p: "x" }, ok: true },
+      event: "tool",
+      data: { step: 1, name: "read_file", arguments: { p: "x" }, ok: true, ms: 12, chars: 8 },
     } as ChatStreamEvent);
     list = applyStreamEvent(list, 1, msg({ content: "正文", reasoning: "整段的思考" }));
     const meta = only(list).meta;
-    expect(meta.reads).toEqual(["read_file(x)"]);
+    expect(meta.reads).toEqual(["第 1 步 · read_file x · 12ms · 8 字"]);
     expect(meta.allowed).toEqual(["read_file"]);
     expect(meta.unknown).toEqual(["@鬼"]);
     expect(meta.refs?.map((r) => r.ref)).toEqual(["blueprint"]);  // 先到的赢，不被 done 覆盖

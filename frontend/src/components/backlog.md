@@ -13,3 +13,5 @@
   fixture 一律从 `src/test/servedGrammar.ts` 取表，不抄标签。255 passed（249 → 255）/ tsc clean / build ok。
 
 - 2026-09-07 · 新建本目录 description.md（主人要求原则贯彻到文件树各层）。本目录代码未改。
+
+- 2026-09-08 · §六 第 2 步：`chatRows.ts` 的 `toolLine()` 从「read_file(a.md)」改成「第 1 步 · read_file a.md · 1.4s · 1.2k 字」（一秒以内说毫秒，不把 0.02s 骗成 0s）；`ChatPane.tsx` 里「本轮读取」从每行前缀改成这列说一次「本轮读取 · N 步」，行改用 `.chat-trace-list`/`.chat-trace-row`（无框无底），不再借用引用的胶囊样式。真机截图：`.scratch/shots/step2-trace-crop.png`（真网关那一轮）、`step2-trace-plain.png`（换类后的排版，流是录好的）。

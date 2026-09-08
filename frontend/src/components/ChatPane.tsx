@@ -940,11 +940,18 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         {row.meta.model ? ` · ${row.meta.model}` : ""}
                       </p>
                       {row.meta.reads?.length ? (
-                        <ul className="chat-refs">
-                          {row.meta.reads.map((line, index) => (
-                            <li key={`${index}:${line}`}>本轮读取 · {line}</li>
-                          ))}
-                        </ul>
+                        <>
+                          {/* 「本轮读取」是这列的标题，说一次就够 - 每一行自己带着
+                              第几步、跑了什么、多久、多少字（§六 第 2 步）。 */}
+                          <p className="chat-detail-line">本轮读取 · {row.meta.reads.length} 步</p>
+                          {/* 用轨迹那一套列表，不用引用的胶囊：一行是一句「第几步跑了什么」，
+                              不是一颗标签。`.chat-trace-list` 早被 uiInvariants 钉成不许有边框底色。 */}
+                          <ul className="chat-trace-list">
+                            {row.meta.reads.map((line, index) => (
+                              <li className="chat-trace-row" key={`${index}:${line}`}>{line}</li>
+                            ))}
+                          </ul>
+                        </>
                       ) : null}
                       {refs.length ? (
                         <ul className="chat-refs">

@@ -216,6 +216,24 @@ describe("settled UI decisions must not regress", () => {
     expect(chatPane).toContain("chat-actions");
   });
 
+  it("every trace row carries its own cost, and says it once (§六第 2 步判据 31.1)", () => {
+    // 「本轮读取」从每行的前缀变成这列说一次的数量，行内剩下：第几步 · 跑了什么 · 多久 · 多少字
+    expect(chatPane).toContain("本轮读取 · {row.meta.reads.length} 步");
+    expect(chatPane).not.toContain("本轮读取 · {line}");
+    const line = chatRowsSource.slice(chatRowsSource.indexOf("export function toolLine"));
+    expect(line.slice(0, 900)).toContain("`第 ${event.step} 步 · ${event.name}");
+    expect(line.slice(0, 900)).toContain(" 字`");
+    expect(line.slice(0, 900)).toContain("未成功");
+    // 一秒以内不许被四舍五入成 0s
+    expect(line.slice(0, 1400)).toContain("ms >= 1000");
+    expect(line.slice(0, 1400)).toContain("chars >= 1000");
+    // and the two numbers are part of the wire contract, not optional extras
+    expect(chatTypes).toMatch(/event: "tool";[\s\S]{0,220}ms: number;[\s\S]{0,24}chars: number;/);
+    // 轨迹行用轨迹那套列表（不许有边框底色，下面那条断言早就钉着了），不借用引用的胶囊
+    expect(chatPane).toMatch(/chat-trace-list[\s\S]{0,220}row\.meta\.reads/);
+    expect(chatPane).not.toMatch(/chat-refs[\s\S]{0,200}row\.meta\.reads/);
+  });
+
   it("actions are marks, not sentences (第十一轮批注4、5、6)", () => {
     expect(proposalCard).not.toContain("proposal-note");
     for (const name of ["在编辑器中打开", "丢弃提案", "应用提案"]) {
@@ -980,7 +998,8 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(chatPane).toContain("setRows((prev) => applyStreamEvent(prev, id, event));");
     expect(chatPane).not.toContain('if (event.event === "delta")');
     expect(chatPane).not.toContain("row.meta.reads ?? []");
-    expect(chatRowsSource).toContain("无参数");
+    // 行的措辞规则住在 chatRows.ts：这一行改成了「第几步 · 跑了什么 · 多久 · 多少字」
+    expect(chatRowsSource).toContain("`第 ${event.step} 步 · ${event.name}");
     // 三个副作用必须留在 setRows 外面（放进去会被 StrictMode 跑两遍）
     expect((chatPane.match(/void offerFromStream\(/g) ?? []).length).toBe(1);
   });

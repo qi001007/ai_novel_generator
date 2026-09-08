@@ -266,8 +266,19 @@ export type ChatStreamEvent =
   | { event: "done"; data: { message: StoredChatMessage } }
   | { event: "error"; data: { message: string; partial: string } }
   | { event: "proposal"; data: { path: string; text: string; valid: boolean; error: string } }
-  // One executed tool call: what the agent read this round, and whether it worked.
-  | { event: "tool"; data: { step: number; name: string; arguments: Record<string, unknown>; ok: boolean } }
+  // One executed tool call: what the agent read this round, whether it worked, and what
+  // it cost. Both numbers are measured in the backend step, never estimated here.
+  | {
+      event: "tool";
+      data: {
+        step: number;
+        name: string;
+        arguments: Record<string, unknown>;
+        ok: boolean;
+        ms: number;
+        chars: number;
+      };
+    }
   | { event: "end"; data: unknown };
 
 export type GenerationStreamEvent =

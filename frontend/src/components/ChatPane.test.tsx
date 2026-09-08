@@ -515,7 +515,7 @@ describe("ChatPane", () => {
                   tools: ["list_files", "read_file", "web_search"],
                 },
               ],
-              ["tool", { step: 1, name: "web_search", arguments: { query: "司天监" }, ok: true }],
+              ["tool", { step: 1, name: "web_search", arguments: { query: "司天监" }, ok: true, ms: 1400, chars: 1234 }],
               ["delta", { text: "司天监，官署名。" }],
               ["done", { message: stored("司天监，官署名。来源：中文维基百科") }],
               ["end", {}],
@@ -539,7 +539,9 @@ describe("ChatPane", () => {
 
     await user.click(screen.getByText(/1\.2k in/));
     await waitFor(() => {
-      expect(screen.getByText("本轮读取 · web_search(司天监)")).toBeTruthy();
+      // 标题说一次共几步，每一行自己带着代价（§六 第 2 步判据 31.1）
+      expect(screen.getByText("本轮读取 · 1 步")).toBeTruthy();
+      expect(screen.getByText("第 1 步 · web_search 司天监 · 1.4s · 1.2k 字")).toBeTruthy();
     });
   });
 
