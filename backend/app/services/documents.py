@@ -314,7 +314,10 @@ def validate_structure(path: str, text: str, *, current_text: str | None = None)
     try:
         parsed = load_document(kind, text)
     except DocumentError as cause:
-        return cause.detail
+        # Missing bullets are the lesser half of a fence that also dropped a record:
+        # only its headings carry that, and it is the thing the owner has to fix first
+        # (批注 35.16). Ask the pairing question, then fall back to this sentence.
+        return _pairing(kind, current_text, markdown_doc.record_keys(kind, text)) or cause.detail
 
     if kind in _LIST_KINDS:
         if not isinstance(parsed, list):
@@ -334,28 +337,46 @@ def validate_structure(path: str, text: str, *, current_text: str | None = None)
         except DocumentError as cause:
             return cause.detail
 
-    if current_text and kind in _KEY_BY_KIND:
+    if isinstance(parsed, list) and kind in _KEY_BY_KIND:
         identity = _KEY_BY_KIND[kind]
-        try:
-            current = load_document(kind, current_text)
-        except DocumentError:
-            # The file itself is unreadable; the write will report that precisely.
-            return ""
-        if isinstance(current, list):
-            # An empty B/C projection has no identities to protect. The owner
-            # may apply the first complete proposal; non-empty books are paired
-            # by the same `_resolve_ids` verdict the writers run.
-            if not current and kind in {"toc", "arcs"}:
-                return ""
-            _, reason = _resolve_ids(
-                identity,
-                [row.get(identity) for row in current],
-                [row.get(identity) for row in parsed],
-                surrogate=kind in _SURROGATE_KEY_KINDS,
-            )
-            if reason:
-                return reason
+        reason = _pairing(kind, current_text, [row.get(identity) for row in parsed])
+        if reason:
+            return reason
     return ""
+
+
+def _pairing(kind: str, current_text: str | None, offered: list[Any] | None) -> str:
+    """The D-39 pairing question, asked once: which record lands on which key.
+
+    `offered` is the list of keys a proposal puts on the table. The caller that never got
+    a full parse hands over keys read straight from the headings (`record_keys`), so a
+    fence that dropped a record *and* left bullets out still gets the truer sentence
+    first (批注 35.16). "" means the question cannot be asked here: nothing to pair
+    against, a layer with no identity of its own, an unreadable file, or a heading that
+    is not a record -- each of those belongs to whoever can answer it precisely.
+    """
+    if offered is None or not current_text or kind not in _KEY_BY_KIND:
+        return ""
+    identity = _KEY_BY_KIND[kind]
+    try:
+        current = load_document(kind, current_text)
+    except DocumentError:
+        # The file itself is unreadable; the write will report that precisely.
+        return ""
+    if not isinstance(current, list):
+        return ""
+    # An empty B/C projection has no identities to protect. The owner
+    # may apply the first complete proposal; non-empty books are paired
+    # by the same `_resolve_ids` verdict the writers run.
+    if not current and kind in {"toc", "arcs"}:
+        return ""
+    _, reason = _resolve_ids(
+        identity,
+        [row.get(identity) for row in current],
+        offered,
+        surrogate=kind in _SURROGATE_KEY_KINDS,
+    )
+    return reason
 
 
 # --- active records -------------------------------------------------------

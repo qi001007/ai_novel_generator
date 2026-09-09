@@ -563,6 +563,57 @@ def test_dropping_an_arc_is_still_refused_after_the_inheritance_fix(client: Test
     assert "## 弧 2 卷二" in saved
 
 
+def test_a_short_arc_book_says_deletion_before_it_says_missing_fields(client: TestClient) -> None:
+    """35.16：少列条目＝删除，红字必须先说这件事。
+
+    作品 6 实测：C 层涨到 9 条弧之后，上一轮那条只列 3 条的围栏重读回来的是
+    `「弧 1 觉醒·逃亡」 … 不可增删改名：缺少 起始章、结束章、冲突、收束、状态`。
+    拒绝对，说的是另一件事——省略的 bullet 由 `_align_arc_history` 继承回来（D-43），
+    少列那一条它绑不上就整段放弃，于是原始文本先撞结构校验，更准的那句永远读不到。
+    """
+    from app.services.documents import validate_structure
+
+    novel_id = client.post("/api/novels", json={"title": "少列两条"}).json()["id"]
+    for start, end, title in ((10, 60, "卷一"), (61, 100, "卷二"), (101, 140, "卷三")):
+        create_arc(
+            client, novel_id, title=title, start_chapter=start, end_chapter=end,
+            objective="立起目标", conflict="追捕", resolution="逃亡",
+        )
+    live = read(client, novel_id, "arcs.md")["text"]
+    header = live.split("## ")[0]
+    two_of_three = (
+        header
+        + "## 弧 1 卷一\n- **目标**：立起目标·改\n\n"
+        + "## 弧 2 卷二\n- **目标**：追寻玄赿之门·改\n"
+    )
+
+    dropped = validate_structure("arcs.md", two_of_three, current_text=live)
+    assert dropped.startswith("不能删除条目或改动 arc 主键"), dropped
+
+    all_three = two_of_three + "\n## 弧 3 卷三\n- **目标**：门后\n"
+    short_on_fields = validate_structure("arcs.md", all_three, current_text=live)
+    assert short_on_fields.startswith("「弧 1 卷一」 的小节标题与字段名是结构标识"), short_on_fields
+    assert "缺少 起始章、结束章、冲突、收束、状态" in short_on_fields
+
+    # 主人那条围栏的实际形状：号与档上完全不搭（书里是 7..13，它写 1、2），bullet 也省了。
+    # 同一道闸门（D-39）的另一句——仍是结构判定，不是那张字段清单。
+    renumbered = (
+        header
+        + "## 弧 7 卷一\n- **目标**：立起目标·改\n\n"
+        + "## 弧 8 卷二\n- **目标**：追寻玄赿之门·改\n"
+    )
+    disjoint = validate_structure("arcs.md", renumbered, current_text=live)
+    assert "不能自己点号" in disjoint, disjoint
+    assert "缺少 起始章" not in disjoint, disjoint
+
+    # 主人看到的是卡上那行字，不是函数返回值：同一份围栏走抽提案那条路。
+    from app.services.chat import extract_proposals
+
+    card = extract_proposals(f"```markdown @arcs.md\n{two_of_three}\n```", lambda p: live)[0]
+    assert card["valid"] is False, card
+    assert card["error"].startswith("不能删除条目或改动 arc 主键"), card["error"]
+
+
 def test_an_applied_arc_fence_does_not_come_back_red_on_reload(client: TestClient) -> None:
     """35.1 判据末条「刷新后红字 0」：这张卡已经落库，重读就不该再挂一张红卡。
 

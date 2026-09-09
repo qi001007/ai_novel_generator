@@ -508,6 +508,27 @@ def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
     raise MarkdownError(f"未知的文档层：{kind}")
 
 
+def record_keys(kind: str, text: str) -> list[int | None] | None:
+    """The keys a record list offers, read from its headings alone.
+
+    `parse` insists on every bullet, so a fence that both dropped a record and left
+    bullets out reports the bullets first -- and only the headings carry the deletion
+    (批注 35.16). None means there is nothing to pair: not a record layer, or a heading
+    that is not a record at all, which is the parser's own to answer.
+    """
+    record = _RECORD_SPECS.get(kind)
+    if record is None:
+        return None
+    keys: list[int | None] = []
+    for heading, _body in _blocks(text)[1:]:
+        match = record["anchor"].match(heading or "")
+        if not match:
+            return None
+        head = match.group(1)
+        keys.append(None if head == "?" else int(head))
+    return keys
+
+
 # --- proposal stabilisation -------------------------------------------------
 
 def _fold(value: Any) -> Any:
