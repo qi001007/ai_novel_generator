@@ -244,6 +244,16 @@ describe("settled UI decisions must not regress", () => {
     expect(rule(".proposal-btn.apply")).not.toContain("border: 1px solid var(--accent)");
   });
 
+  it("the fold control sits above the rows it folds (批次 35.3)", () => {
+    // 真机量的：主人点完「展开全部 50 行改动」，卡片 1403px 高，那颗钮落在 top=1429，
+    // 而聊天可视区底边在 756——控件在视口外 673px，界面上就只剩一片摊开的 +/- 行。
+    // 控件摆在这个位置是决定，不是样式偏好：搬回列表末尾就等于把这条批注重新犯一遍。
+    expect(proposalCard).toMatch(/const fold =[\s\S]{0,320}className="proposal-more"/);
+    expect(proposalCard).toMatch(/proposal-meta[\s\S]{0,240}<\/span>\s*\{fold\}\s*<\/div>/);
+    expect(proposalCard).not.toMatch(/proposal-diff[\s\S]{0,400}proposal-more/);
+    expect(rule(".proposal-more")).not.toContain("align-self: flex-start");
+  });
+
   it("the chapter tab carries one dot, not two (第十二批批注1)", () => {
     expect(editorPane).not.toContain("StatusBadge");
   });

@@ -44,7 +44,23 @@ export default function ProposalCard({
 
   /* One list, drawn by both branches. 批注 1: the more-button used to call
      setShowAll(true) and then hide itself, so a long diff could be opened but never
-     closed again; this node now carries both directions and says which it offers. */
+     closed again; this node now carries both directions and says which it offers.
+     批注 35.3: it sits in the head, not under the rows. Opening a 50-row diff grew the
+     card to 1403px and left the control 673px below the bottom of the chat viewport —
+     the owner could read the whole diff and had nothing in sight to close it with.
+     Above the rows is the one place that cannot move when the rows grow. */
+  const fold =
+    hidden > 0 ? (
+      <button
+        type="button"
+        className="proposal-more"
+        aria-expanded={showAll}
+        onClick={() => setShowAll((value) => !value)}
+      >
+        {showAll ? "收起" : `展开全部 ${rows.length} 行改动`}
+      </button>
+    ) : null;
+
   const changeRows = (
     <>
       {visible.map((row, index) => (
@@ -53,16 +69,6 @@ export default function ProposalCard({
           {row.text.trim() || " "}
         </p>
       ))}
-      {hidden > 0 ? (
-        <button
-          type="button"
-          className="proposal-more"
-          aria-expanded={showAll}
-          onClick={() => setShowAll((value) => !value)}
-        >
-          {showAll ? "收起" : `展开全部 ${rows.length} 行改动`}
-        </button>
-      ) : null}
     </>
   );
 
@@ -74,6 +80,7 @@ export default function ProposalCard({
           AI 提案 · +{diff.added} −{diff.removed}
           {diff.firstChange ? ` · 第 ${diff.firstChange} 行` : ""}
         </span>
+        {fold}
       </div>
 
       {proposal.valid ? (

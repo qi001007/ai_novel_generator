@@ -74,6 +74,26 @@ describe("ProposalCard", () => {
     expect(document.querySelectorAll(".proposal-line")).toHaveLength(8);
   });
 
+  it("pins the fold control above the rows it folds (35.3)", () => {
+    // 真机量的：主人点完「展开全部 50 行改动」，卡片 1403px 高，那颗钮落在
+    // top=1429，而聊天可视区底边在 756——控件在视口外 673px。他能看见的只有
+    // 一片摊开的 +/- 行，这就是「展开后没法再收起」。控件必须待在它要折叠的
+    // 内容之上：那里展开时一寸不动。
+    renderCard();
+
+    const head = document.querySelector(".proposal-head");
+    const diff = document.querySelector(".proposal-diff");
+    expect(head?.querySelector(".proposal-more")).toBeTruthy();
+    expect(diff?.querySelector(".proposal-more")).toBeNull();
+    expect(
+      head!.compareDocumentPosition(diff!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.click(head!.querySelector(".proposal-more") as Element);
+    expect(document.querySelectorAll(".proposal-line")).toHaveLength(TOTAL_ROWS);
+    expect(head!.querySelector(".proposal-more")?.textContent).toBe("收起");
+  });
+
   it("disables 应用 for an invalid proposal and says why", () => {
     const { onApply } = renderCard({ valid: false, error: "第 4 行缺少「章节号」" });
 
