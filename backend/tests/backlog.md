@@ -1,5 +1,7 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.10（D-41）：`test_chat_agent` 新增 `INTENT_CASES` 11 句（简报 / 目录 / 剧情弧 / 人物卡 / 蓝图 / 文件路径名各一，正文三类，两边都不点的两句）配 `@pytest.mark.parametrize` 双层，开关拨 `write` 与 `plan` 两个方向都必须判到同一个对象，共 22 例；另加两条端到端——写作开关下「给第 1 章写一份简报」的系统提示含 `## 本轮模式：计划` 与 `propose_chapter_brief`，计划开关下「把第 1 章的正文写出来」拿到写作提示且不含「禁止输出章节正文」。
+
 - 2026-09-10 · 批次 35.13：`test_documents` 新增 `test_the_first_chapter_added_to_an_empty_toc_also_creates_the_chapter`——空 toc 用 `actor=ai` 应用「## 第 1 章 开门」，断言 `changed` 含 `1.created`、`/chapters` 由 `[]` 变 `[1]`、文件表出现 `chapters/0001/draft.md`。它补上既有那条「已有条目再追加」测试没覆盖的另一半分支，先红后绿。
 
 - 2026-09-10 · 批次 35.8（D-40）：`test_agent_tools` 补三条——`grammar_text` 与 `grammar_for_kind` 逐标签同源（标签一律从表反查，测试里不硬编码）、`read_file` 给每份文件带上它 kind 的表（按 `FileDoc.kind` 反查）、没有表的正文文档原样返回。`test_chat_agent` 的「提示词教文件提案格式」不删断言、跟着新决定搬家：示例不再落在 `toc.md`、「只改值」改成 D-39 的「只允许追加」、五个 `propose_` 工具名必须在场；新增一条盯住提示词里不许再出现「都可以」这类等价表述（含 legacy 引擎的 `TOOL_RULES`）。

@@ -121,6 +121,27 @@ HISTORY_WINDOW = 8
 MODES = ("plan", "write")
 MODE_LABEL = {"plan": "计划模式", "write": "写作模式"}
 
+# 35.10：模式原先只有 composer 上那个手动开关，`mode` 默认 write，于是「给第 3 章写一份简报」
+# 拿到的是写作提示词——它照 WRITE_BODY 第一句把正文吐在对话里。判定改成先读这句话指向哪个对象。
+# 成稿一类优先：一句话里既点了简报又点了正文时，主人要的是能用的字。
+PROSE_CUES = ("正文", "成稿", "续写", "扩写", "接着写", "往下写", "写出来", "直接写")
+PLANNING_CUES = (
+    "简报", "简章", "brief", "大纲", "目录", "toc", "剧情弧", "故事弧", "弧段", "蓝图",
+    "人物卡", "人物", "设定", "伏笔", "世界观", "题旨", "规划",
+    "a 层", "b 层", "c 层", "d 层", "blueprint.md", "toc.md", "arcs.md", "characters.md",
+)
+
+
+def effective_mode(text: str, requested: str) -> str:
+    """这句话要的是规划对象还是成稿；两边都没点中才照主人拨的开关。"""
+    lowered = text.lower()
+    if any(cue in lowered for cue in PROSE_CUES):
+        return "write"
+    if any(cue in lowered for cue in PLANNING_CUES):
+        return "plan"
+    return requested
+
+
 # A reply may propose a whole file; the human decides whether it gets written.
 # Both fences are accepted on purpose: the file surface moved from YAML to Markdown,
 # and a model still mid-sentence in the old format must not lose its proposal.
@@ -547,6 +568,10 @@ def prepare_turn(
     text = content.strip()
     if not text:
         raise ChatDomainError("Message content is empty")
+
+    # 判一次，下游共用：提示词体、温度、注入日志的 note、落库的 mode 都是这个值，
+    # 记录里不会留下一个其实没发生过的模式（35.10）。
+    mode = effective_mode(text, mode)
 
     if model and allowed_models is not None and model not in allowed_models:
         raise ChatDomainError(f"Model {model} is not configured on this server")

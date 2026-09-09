@@ -551,6 +551,60 @@ def test_no_prompt_lets_a_hand_written_fence_stand_in_for_an_action_tool() -> No
     assert "propose_" in TOOL_RULES
 
 
+# --- 35.10：意图判定，规划对象不许落进正文生成 ---
+
+INTENT_CASES = [
+    ("给第 3 章写一份简报", "plan"),
+    ("把 B 层目录里第 11 到 30 章补齐", "plan"),
+    ("新增一条剧情弧，讲真相与背叛", "plan"),
+    ("建一个人物卡，叫沈砚", "plan"),
+    ("更新 A 层蓝图里的主题", "plan"),
+    ("settings/characters.md 里给沈砚加一条约束", "plan"),
+    ("按简报把第 3 章的正文写出来", "write"),
+    ("给第 3 章写正文，简报里那条伏笔要收", "write"),
+    ("接着往下写，别停", "write"),
+    # 既没点规划对象也没点成稿：这句话判不出来，照主人拨的开关走。
+    ("这段节奏我觉得不对，你怎么看", None),
+    ("你好", None),
+]
+
+
+@pytest.mark.parametrize("requested", ["write", "plan"])
+@pytest.mark.parametrize("text,expected", INTENT_CASES)
+def test_intent_table_decides_the_mode_symmetrically(requested, text, expected):
+    """判出来的模式只跟这句话指向哪个对象有关：开关拨到 plan 说「要正文」同样得走写作。
+
+    35.10 的复现是反方向的（write 开关 + 简报请求 → 吐正文），只修一半等于没修。
+    """
+    from app.services.chat import effective_mode
+
+    assert effective_mode(text, requested) == (expected or requested)
+
+
+def test_a_brief_request_under_the_write_toggle_gets_the_plan_prompt(client: TestClient) -> None:
+    fake = use_fake(client, FakeChatClient())
+    novel_id = make_novel(client)
+
+    client.post(f"/api/novels/{novel_id}/chat", json={"content": "给第 1 章写一份简报", "mode": "write"})
+
+    system = fake.calls[0]["messages"][0]["content"]
+    assert "## 本轮模式：计划" in system, system
+    assert "## 本轮模式：写作" not in system, system
+    # 简报是 D 层，走的是提案工具这一路，不是把正文吐在对话里
+    assert "propose_chapter_brief" in system
+
+
+def test_a_prose_request_under_the_plan_toggle_gets_the_write_prompt(client: TestClient) -> None:
+    fake = use_fake(client, FakeChatClient())
+    novel_id = make_novel(client)
+
+    client.post(f"/api/novels/{novel_id}/chat", json={"content": "把第 1 章的正文写出来", "mode": "plan"})
+
+    system = fake.calls[0]["messages"][0]["content"]
+    assert "## 本轮模式：写作" in system, system
+    assert "禁止输出章节正文" not in system, system
+
+
 def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
     # The fenced block deliberately arrives split across deltas.
     chunks = [
