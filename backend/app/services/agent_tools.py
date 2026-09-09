@@ -68,7 +68,12 @@ def _compile(
     current: CurrentText | None = None,
 ) -> str:
     ok, text = run_action(action, payload, current)
-    return text if ok else f"{DIAG_PREFIX}{text}"
+    if ok:
+        return text
+    # A refused action is not a step that worked. ToolError keeps the diagnosis as the
+    # content the model reads back (the registry turns it into ok=False + this same text),
+    # so the repair round costs what it costs and the owner's trace says 未成功.
+    raise ToolError(f"{DIAG_PREFIX}{text}")
 
 
 def _proposal_tools(current: CurrentText | None = None) -> list[Tool]:

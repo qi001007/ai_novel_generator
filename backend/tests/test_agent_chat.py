@@ -5,6 +5,8 @@ for a document, the server reads it through the file layer, the model proposes a
 change, and the only write is still the human pressing 应用 as actor=ai.
 """
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -155,3 +157,141 @@ def test_the_ceiling_the_owner_saved_is_the_one_this_turn_runs_on(client: TestCl
     assert "超过上限 1000（第 2 轮）" in message
     assert "当前上限 1000 token / 2 轮" in message
     assert len(fake.seen) == 2
+
+
+def tool_block(name: str, payload: dict) -> str:
+    return (
+        "```tool\n"
+        + json.dumps(
+            {"name": name, "arguments": {"payload": json.dumps(payload, ensure_ascii=False)}},
+            ensure_ascii=False,
+        )
+        + "\n```"
+    )
+
+
+def test_a_refused_action_returns_a_diagnostic_and_one_more_ask_lands_a_card(
+    client: TestClient,
+) -> None:
+    """批注 35.6 判据 2 的那半句：模型输出不许直接成为可应用卡，中间必须过一次有界修复。
+
+    校验本身由 `test_agent_tools.py` 钉；这条量的是**回路**——诊断真的回到了模型那一侧、
+    并且整轮只多花一次请求（第三次是收尾那句话），不是无限重试。
+    """
+    # 模型真实发过的形状（35.2）：一条 `11-30` 的 B 层条目，想占住目录里一章。
+    refused_ask = tool_block(
+        "propose_toc", {"chapters": [{"number": "11-30", "title": "弧 3：门钥之谜"}]}
+    )
+    reask = tool_block(
+        "propose_arcs",
+        {"arcs": [{"title": "门钥之谜", "start_chapter": 11, "end_chapter": 30}]},
+    )
+    fake = use_fake(
+        client,
+        SteppedClient([[refused_ask], [reask], ["这条弧挂在第 11 到 30 章，已改到 C 层。"]]),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "新增一条弧，11 到 30 章", "mode": "plan"},
+    )
+    events = parse_sse(response.text)
+    steps = [payload for name, payload in events if name == "tool"]
+
+    assert [(step["name"], step["ok"]) for step in steps[:2]] == [
+        ("propose_toc", False),
+        ("propose_arcs", True),
+    ]
+    carried = [
+        item["content"] for round_two_onwards in fake.seen[1:] for item in round_two_onwards
+    ]
+    assert any(
+        "动作未通过校验" in text and "update_arcs" in text for text in carried
+    ), "诊断没回到模型那一侧"
+    assert len(fake.seen) == 3, [len(rounds) for rounds in fake.seen]
+
+    card = payload_of(events, "proposal")
+    assert card["path"] == "arcs.md"
+    assert card["valid"] is True, card["error"]
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/arcs.md",
+        json={"text": card["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+    assert len(client.get(f"/api/novels/{novel_id}/planning/arcs").json()) == 1
+
+
+def test_a_propose_toc_ask_lands_the_b_layer_on_the_chapter_rows(client: TestClient) -> None:
+    """批注 35.6 第 2 类：B 层要从「一次工具调用」量到「Chapter 行真的存在」。
+
+    走 tool 块而不是手写围栏，量的才是 Agent 唯一那张写表面：动作编译出的路径、
+    schema 与卡上的文本，和主人点应用后文件层认的，必须是同一份。
+    """
+    use_fake(
+        client,
+        SteppedClient(
+            [
+                [tool_block("propose_toc", {
+                    "chapters": [
+                        {"number": 1, "title": "开门", "plot_function": "立谜", "notes": "第一把钥"},
+                        {"number": 2, "title": "验钥", "plot_function": "抬价", "notes": ""},
+                    ]
+                })],
+                ["目录排了两章。"],
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "先把前两章的目录排出来", "mode": "plan"},
+    )
+    events = parse_sse(response.text)
+    card = payload_of(events, "proposal")
+    assert card["path"] == "toc.md"
+    assert card["valid"] is True, card["error"]
+    assert client.get(f"/api/novels/{novel_id}/chapters").json() == []
+
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/toc.md",
+        json={"text": card["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+    assert [row["chapter_number"] for row in client.get(
+        f"/api/novels/{novel_id}/chapters").json()] == [1, 2]
+
+
+def test_a_propose_character_ask_lands_a_real_archive(client: TestClient) -> None:
+    """批注 35.6 第 5 类：建人物也要从工具量到人，且确认前不落库（D-37）。"""
+    use_fake(
+        client,
+        SteppedClient(
+            [
+                [tool_block("propose_character", {"name": "沈砚", "identity": "守钥人末代"})],
+                ["沈砚建档了，等他登场。"],
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "新增一个角色沈砚，守钥人末代", "mode": "plan"},
+    )
+    events = parse_sse(response.text)
+    card = payload_of(events, "proposal")
+    assert card["path"] == "settings/characters/new.md"
+    assert card["valid"] is True, card["error"]
+    assert client.get(f"/api/novels/{novel_id}/characters").json() == []
+
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/settings/characters/new.md",
+        json={"text": card["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+    # 写入回报的是它真正落的那格（D-47），不是卡片标题上那个 new.md
+    assert applied.json()["path"] != "settings/characters/new.md"
+    rows = client.get(f"/api/novels/{novel_id}/characters").json()
+    assert [(row["name"], row["identity"]) for row in rows] == [("沈砚", "守钥人末代")]

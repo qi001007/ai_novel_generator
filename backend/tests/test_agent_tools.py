@@ -250,8 +250,17 @@ def proposal_text(session_factory, name: str, value) -> str:
     result = registry_for(session_factory).run(
         ToolCall(name=name, arguments={"payload": json.dumps(value, ensure_ascii=False)})
     )
-    # a refused payload is text the model can act on, never a crash it cannot see
     assert result.ok is True
+    return result.content
+
+
+def refusal_text(session_factory, name: str, value) -> str:
+    """A refused action is a step that did not work: `ok` is False, and the diagnosis is
+    the content the model reads back and acts on (批注 35.6 判据 2「不提供成功假象」)."""
+    result = registry_for(session_factory).run(
+        ToolCall(name=name, arguments={"payload": json.dumps(value, ensure_ascii=False)})
+    )
+    assert result.ok is False, result.content
     return result.content
 
 
@@ -307,20 +316,20 @@ def test_propose_toc_refuses_a_range_entry_and_names_the_fix(session_factory) ->
     ok, diagnosis = run_action("update_toc", json.dumps(TOC_RANGE_ENTRY, ensure_ascii=False))
     assert ok is False
     assert "范围" in diagnosis and "update_arcs" in diagnosis
-    fence = proposal_text(session_factory, "propose_toc", TOC_RANGE_ENTRY)
+    fence = refusal_text(session_factory, "propose_toc", TOC_RANGE_ENTRY)
     assert fence.startswith("动作未通过校验：")
     assert "```markdown" not in fence
 
 
 def test_propose_toc_refuses_an_entry_missing_a_field(session_factory) -> None:
-    fence = proposal_text(session_factory, "propose_toc",
-                          {"chapters": [{"number": 1, "title": "开门"}]})
+    fence = refusal_text(session_factory, "propose_toc",
+                         {"chapters": [{"number": 1, "title": "开门"}]})
     assert "plot_function" in fence and "notes" in fence
 
 
 def test_a_proposal_can_never_choose_its_own_path(session_factory) -> None:
     smuggled = dict(TOC_TWO_CHAPTERS, path="arcs.md")
-    fence = proposal_text(session_factory, "propose_toc", smuggled)
+    fence = refusal_text(session_factory, "propose_toc", smuggled)
     assert fence.startswith("动作未通过校验：")
     assert "path" in fence
 
@@ -366,7 +375,7 @@ def test_propose_arcs_judges_keys_against_the_live_file(session_factory) -> None
         )
         session.commit()
 
-    dropped = proposal_text(session_factory, "propose_arcs", {
+    dropped = refusal_text(session_factory, "propose_arcs", {
         "arcs": [{"title": "觉醒", "start_chapter": 1, "end_chapter": 5}],
         "existing": [{"arc": 1, "start_chapter": 1, "end_chapter": 5}],
     })

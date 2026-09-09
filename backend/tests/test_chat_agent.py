@@ -694,6 +694,94 @@ def test_streamed_initial_arc_alias_proposal_with_two_records_is_reviewable_and_
     assert restored["text"] == current
 
 
+def test_a_streamed_blueprint_fence_applies_to_the_a_layer(client: TestClient) -> None:
+    """批注 35.6 第 1 类：A 层也要从「模型输出」量到「库里那行变了」。"""
+    use_fake(
+        client,
+        FakeChatClient(
+            chunks=[
+                "```markdown @blueprint.md\n"
+                "## 主线\n沈曜要关上玄赿之门\n\n"
+                "## 终局\n门开了，代价是他自己的名字\n\n"
+                "## 核心冲突\n救人与救世不可兼得\n\n"
+                "## 主题\n选择即身份\n\n"
+                "## 约束\n不写复活\n"
+                "```"
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "A 层蓝图改成这一版", "mode": "plan"},
+    )
+
+    proposal = payload_of(parse_sse(response.text), "proposal")
+    assert proposal["path"] == "blueprint.md"
+    assert proposal["valid"] is True, proposal["error"]
+    # 卡画出来了，库里还什么都没有：Agent 只提案，主人点应用之前不落库。
+    assert client.get(f"/api/novels/{novel_id}/planning/blueprints").json() == []
+
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/blueprint.md",
+        json={"text": proposal["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+    assert sorted(applied.json()["changed"]) == [
+        "constraints",
+        "core_conflicts",
+        "ending",
+        "main_line",
+        "themes",
+    ]
+    rows = client.get(f"/api/novels/{novel_id}/planning/blueprints").json()
+    assert [row["main_line"] for row in rows] == ["沈曜要关上玄赿之门"]
+    projection = client.get(f"/api/novels/{novel_id}/files/blueprint.md").json()["text"]
+    assert "门开了，代价是他自己的名字" in projection
+
+
+def test_a_streamed_prose_fence_lands_on_the_chapter_it_names(client: TestClient) -> None:
+    """批注 35.6 第 4 类的正文那一半：`chapters/NNNN/draft.md` 也得从围栏量到 Chapter 行。"""
+    prose = "碑上的名字是他自己的。\n\n他伸手去碰，指尖穿过了光。"
+    use_fake(
+        client,
+        FakeChatClient(
+            chunks=[f"```markdown @chapters/0001/draft.md\n# 第 0001 章正文\n\n{prose}\n```"]
+        ),
+    )
+    novel_id = make_novel(client)
+    create_chapter(client, novel_id, chapter_number=1)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "把第 1 章的正文写出来", "mode": "write"},
+    )
+
+    proposal = payload_of(parse_sse(response.text), "proposal")
+    assert proposal["path"] == "chapters/0001/draft.md"
+    assert proposal["valid"] is True, proposal["error"]
+    assert "指尖穿过了光" in proposal["text"]
+
+    def chapter() -> dict:
+        return next(
+            item for item in client.get(f"/api/novels/{novel_id}/chapters").json()
+            if item["chapter_number"] == 1
+        )
+
+    assert chapter()["content"] == ""
+
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/chapters/0001/draft.md",
+        json={"text": proposal["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["changed"] == ["content"]
+    saved = chapter()
+    assert saved["content"] == prose
+    assert saved["word_count"] == len(prose)
+
+
 def test_history_carries_the_proposal_back_for_a_reload(client: TestClient) -> None:
     """A refresh must not swallow a review card the owner never applied."""
     use_fake(
