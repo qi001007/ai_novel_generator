@@ -764,7 +764,9 @@ def canonicalize_proposal(path: str, text: str, *, current_text: str | None = No
     if path != ARCS_PATH:
         return text
 
-    text = re.sub(r"^##\s*弧(?!\s*\d)\s*.*$", "", text, flags=re.M)
+    # `弧 ?` is the codec's own "assign this key" form (see _ARC_ANCHOR), so only a
+    # heading with neither a number nor `?` is junk worth dropping.
+    text = re.sub(r"^##\s*弧(?!\s*(?:\d|\?))\s*.*$", "", text, flags=re.M)
     text = re.sub(r"(\*\*)(?:核心事件|核心目标)(\*\*\s*[：:])", r"\1目标\2", text)
     text = re.sub(r"(\*\*)弧内悬念(\*\*\s*[：:])", r"\1冲突\2", text)
 

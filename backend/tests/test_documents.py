@@ -209,6 +209,34 @@ def test_initial_arc_proposal_repairs_common_aliases_and_missing_defaults(client
     assert "人物弧光：从普通人走向觉醒者" in saved
 
 
+def test_canonicalization_keeps_the_unassigned_arc_heading(client: TestClient) -> None:
+    # 批次 35.12：`弧 ?` 是 `_ARC_ANCHOR` 与编译器都认可的「主键请系统分配」写法，
+    # 规范化曾把它的标题整行删空，字段并进上一条弧，卡片必判「多出 起始章」且永远按不了。
+    from app.services.documents import canonicalize_proposal, load_document
+
+    novel_id = seed_novel(client)
+    current = read(client, novel_id, "arcs.md")["text"]
+    proposal = (
+        current.rstrip("\n") + "\n\n"
+        "## 弧 ? 门钥之谜\n"
+        "- **起始章**：61\n"
+        "- **结束章**：100\n"
+        "- **目标**：追寻玄赿之门\n"
+        "- **冲突**：门后是什么\n"
+        "- **收束**：\n"
+        "- **状态**：planned\n"
+    )
+
+    repaired = canonicalize_proposal("arcs.md", proposal, current_text=current)
+
+    headings = [line for line in repaired.splitlines() if line.startswith("## 弧 ")]
+    assert len(headings) == 2, repaired
+    assert headings[-1].endswith("门钥之谜"), repaired
+    # 标题还在，字段才不会并进上一条弧：这就是主人看到的「多出 起始章」的来源。
+    rows = load_document("arcs", repaired)
+    assert [row.get("arc") for row in rows] == [1, None], rows
+
+
 def test_ai_may_not_move_arc_bounds_but_may_rewrite_prose(client: TestClient) -> None:
     novel_id = seed_novel(client)
     doc = read(client, novel_id, "arcs.md")
