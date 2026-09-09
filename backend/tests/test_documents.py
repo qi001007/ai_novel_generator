@@ -155,18 +155,94 @@ def test_ai_may_change_values_but_never_structure(client: TestClient) -> None:
     assert read(client, novel_id, path)["text"] == allowed_text
 
 
-def test_ai_cannot_add_or_remove_rows(client: TestClient) -> None:
+def test_ai_may_append_rows_but_never_delete_or_renumber_them(client: TestClient) -> None:
+    # 批次 35.7 / D-39 把原断言的「AI 不能增」一半推翻；「不能删、不能改号」仍在。
     novel_id = seed_novel(client)
     doc = read(client, novel_id, "toc.md")
-    appended = doc["text"] + "## 第 43 章 新章\n- **剧情功能**：\n- **备注**：\n"
+    appended = doc["text"] + "\n## 第 43 章 新章\n- **剧情功能**：\n- **备注**：\n"
 
-    assert write(client, novel_id, "toc.md", appended, actor="ai").status_code == 422
+    added = write(client, novel_id, "toc.md", appended, actor="ai")
+    assert added.status_code == 200, added.text
+    assert "43.created" in added.json()["changed"]
+    # D-39：目录新增一章，左侧树就要立刻出现这一章。
+    numbers = [
+        row["chapter_number"] for row in client.get(f"/api/novels/{novel_id}/chapters").json()
+    ]
+    assert numbers == [42, 43], numbers
+
+    dropped = write(client, novel_id, "toc.md", doc["text"], actor="ai")
+    assert dropped.status_code == 422
+    assert "不能删除条目" in dropped.text
+
+    renumbered = write(
+        client, novel_id, "toc.md", doc["text"].replace("## 第 42 章", "## 第 99 章"), actor="ai"
+    )
+    assert renumbered.status_code == 422
+    assert "不能删除条目" in renumbered.text
 
     human = write(client, novel_id, "toc.md", appended, actor="human")
     assert human.status_code == 200
-    assert human.json()["changed"] == ["43.created", "43.title"]
     rows = client.get(f"/api/novels/{novel_id}/planning/toc").json()
     assert [row["chapter_number"] for row in rows] == [42, 43]
+
+
+def test_the_preview_card_and_the_write_gate_are_one_judgment(client: TestClient) -> None:
+    """35.7：预览给出可点的卡，PUT 必须接受同一张卡；分歧本身就是缺陷。
+
+    变体全部从「这本书自己的当前文本」做字符串手术得到：`弧 N` 的主键由数据库按行分配，
+    拿另一本书渲染出的正文来比，比的是两回事。
+    """
+    from app.services.chat import extract_proposals
+
+    def verdicts(path: str, body: str, case: int) -> tuple[bool, bool]:
+        novel_id = seed_novel(client, f"同源判定{case}")
+        live = read(client, novel_id, path)["text"]
+        cards = extract_proposals(f"```markdown @{path}\n{body}\n```", lambda p: live)
+        card = next((item for item in cards if item["path"] == path), None)
+        preview_ok = card is not None and card["valid"] is True
+        card_text = card["text"] if card is not None else body
+        put_ok = write(client, novel_id, path, card_text, actor="ai").status_code == 200
+        return preview_ok, put_ok
+
+    novel_id = seed_novel(client)
+    toc_live = read(client, novel_id, "toc.md")["text"]
+    arcs_live = read(client, novel_id, "arcs.md")["text"]
+    toc_head, arcs_head = toc_live.split("\n## ", 1)[0], arcs_live.split("\n## ", 1)[0]
+
+    for index, (path, body) in enumerate([
+        ("toc.md", toc_live),
+        ("toc.md", toc_live + "\n## 第 43 章 新章\n- **剧情功能**：\n- **备注**：\n"),
+        ("toc.md", toc_live.replace("## 第 42 章", "## 第 99 章")),
+        ("toc.md", toc_head),
+        ("arcs.md", arcs_live),
+        (
+            "arcs.md",
+            arcs_live + "\n## 弧 ? 卷二\n- **起始章**：61\n- **结束章**：70\n- **目标**：\n"
+            "- **冲突**：\n- **收束**：\n- **状态**：planned\n",
+        ),
+        ("arcs.md", arcs_live.replace("## 弧 1", "## 弧 9")),
+        ("arcs.md", arcs_head),
+    ]):
+        preview_ok, put_ok = verdicts(path, body, index)
+        assert preview_ok == put_ok, (path, body)
+
+
+def test_a_renumbered_proposal_is_repaired_before_it_becomes_a_card(client: TestClient) -> None:
+    """改主键的提案不会变成一张改主键的卡：抽提案时按当前文件把键还原（D-39）。"""
+    from app.services.chat import extract_proposals
+
+    novel_id = seed_novel(client, "改号还原")
+    live = read(client, novel_id, "toc.md")["text"]
+    renumbered = live.replace("## 第 42 章", "## 第 99 章")
+
+    card = extract_proposals(f"```markdown @toc.md\n{renumbered}\n```", lambda p: live)[0]
+    assert card["valid"] is True, card
+    assert "## 第 42 章 星渊碑影" in card["text"] and "第 99 章" not in card["text"], card["text"]
+    applied = write(client, novel_id, "toc.md", card["text"], actor="ai")
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["changed"] == []
+    # 原始文本仍然被写入层拒绝：还原发生在提案侧，不是给文件侧开后门。
+    assert write(client, novel_id, "toc.md", renumbered, actor="ai").status_code == 422
 
 
 def test_owner_applied_ai_proposal_can_initialize_toc_and_arcs(client: TestClient) -> None:
@@ -235,6 +311,37 @@ def test_canonicalization_keeps_the_unassigned_arc_heading(client: TestClient) -
     # 标题还在，字段才不会并进上一条弧：这就是主人看到的「多出 起始章」的来源。
     rows = load_document("arcs", repaired)
     assert [row.get("arc") for row in rows] == [1, None], rows
+
+
+def test_ai_may_append_an_arc_with_the_unassigned_key(client: TestClient) -> None:
+    # D-39：「写成 ? 由系统分配」这句承诺过去写在四处文案里、实现在零处。
+    novel_id = seed_novel(client)
+    current = read(client, novel_id, "arcs.md")["text"]
+    appended = current.rstrip("\n") + (
+        "\n\n## 弧 ? 门钥之谜\n- **起始章**：61\n- **结束章**：100\n"
+        "- **目标**：追寻玄赿之门\n- **冲突**：门后是什么\n- **收束**：\n- **状态**：planned\n"
+    )
+
+    added = write(client, novel_id, "arcs.md", appended, actor="ai")
+
+    assert added.status_code == 200, added.text
+    saved = read(client, novel_id, "arcs.md")["text"]
+    headings = [line for line in saved.splitlines() if line.startswith("## 弧 ")]
+    assert len(headings) == 2, saved
+    assert headings[0].startswith("## 弧 1 "), saved
+    assert not any(" ? " in line for line in headings), saved
+    assert headings[1].endswith("门钥之谜"), saved
+
+    self_numbered = write(
+        client,
+        novel_id,
+        "arcs.md",
+        current.rstrip("\n") + "\n\n## 弧 9 门钥之谜\n- **起始章**：61\n- **结束章**：100\n"
+        "- **目标**：x\n- **冲突**：y\n- **收束**：\n- **状态**：planned\n",
+        actor="ai",
+    )
+    assert self_numbered.status_code == 422
+    assert "由系统分配" in self_numbered.text
 
 
 def test_ai_may_not_move_arc_bounds_but_may_rewrite_prose(client: TestClient) -> None:

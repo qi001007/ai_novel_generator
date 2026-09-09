@@ -23,7 +23,7 @@ from pydantic_ai.exceptions import ToolFailed
 from sqlmodel import Session
 
 from app.services.agent import Tool, ToolCall, ToolError, ToolRegistry
-from app.services.documents import DocumentError, list_files, read_file
+from app.services.documents import DocumentError, current_text_reader, list_files, read_file
 from app.services.proposal_actions import ACTIONS, DIAG_PREFIX, run_action
 
 WIKI_ENDPOINT = "https://zh.wikipedia.org/w/api.php"
@@ -32,6 +32,9 @@ WIKI_HEADERS = {"User-Agent": "novel-generator/0.1 (writing research lookup)"}
 SEARCH_RESULTS = 5
 SEARCH_TIMEOUT = 15.0
 SEARCH_ATTEMPTS = 2
+
+# Reads a file as it stands right now, or None when this novel does not have it yet.
+CurrentText = Callable[[str], str | None]
 
 _TAG = re.compile(r"<[^>]+>")
 
@@ -58,73 +61,28 @@ def _payload_schema() -> dict[str, Any]:
     }
 
 
-def _compile(action: str, payload: str) -> str:
-    ok, text = run_action(action, payload)
+def _compile(
+    action: str,
+    payload: str,
+    current: CurrentText | None = None,
+) -> str:
+    ok, text = run_action(action, payload, current)
     return text if ok else f"{DIAG_PREFIX}{text}"
 
 
-def propose_blueprint(payload: str) -> str:
-    """Compile the A-layer blueprint proposal. It writes nothing: the fence waits for 主人.
+def _proposal_tools(current: CurrentText | None = None) -> list[Tool]:
+    """The action table is the only source: no action without a tool, no tool without one.
 
-    五个小节字段必须一次给全（这是一份整文件提案，漏一个等于把那一节清空），
-    路径固定是 blueprint.md，由编译器决定，不接受模型指定路径。
+    `current` is the same live document the owner is looking at, so the gate here renders
+    the same verdict the preview will: a proposal whose keys do not pair with that file
+    (D-39) never becomes a card with a dead 应用 button.
     """
-    return _compile("update_blueprint", payload)
-
-
-def propose_toc(payload: str) -> str:
-    """Compile the B-layer chapter list. It writes nothing; the owner confirms the fence.
-
-    B 层必须逐章：chapters 里每一条只有 number（正整数）加 title/plot_function/notes 四个
-    字段，「第 11-30 章」这类范围条目会被拒绝——跨章的东西属于 C 层剧情弧。
-    """
-    return _compile("update_toc", payload)
-
-
-def propose_arcs(payload: str) -> str:
-    """Compile the C-layer arc book. It writes nothing; the owner confirms the fence.
-
-    C 层不得猜弧号：arcs.md 里已有弧时，要把每弧的 arc 与起止章照抄进 existing，编译器按它
-    定位主键，起止章与文件不一致会被拒绝；整本书还没有弧时才省略 existing，按输入顺序从 1 编号。
-    """
-    return _compile("update_arcs", payload)
-
-
-def propose_chapter_brief(payload: str) -> str:
-    """Compile one D-layer brief. It writes nothing; the owner confirms the fence.
-
-    简报章号四位：chapter_number 渲染成 chapters/0007/brief.md 这样的路径，路径不是模型能
-    写的自由文本；goal 必填，其余字段省略即按现有模板留空。
-    """
-    return _compile("upsert_chapter_brief", payload)
-
-
-def propose_character(payload: str) -> str:
-    """Compile a new character card. It writes nothing; the owner confirms the fence.
-
-    人物只能写 settings/characters/new.md：人物号由文件层在主人点应用时分配，
-    settings/characters.md 不是一个文件，往那儿提的东西从来落不了地。
-    """
-    return _compile("create_character", payload)
-
-
-_PROPOSAL_HANDLERS: dict[str, Callable[[str], str]] = {
-    "update_blueprint": propose_blueprint,
-    "update_toc": propose_toc,
-    "update_arcs": propose_arcs,
-    "upsert_chapter_brief": propose_chapter_brief,
-    "create_character": propose_character,
-}
-
-
-def _proposal_tools() -> list[Tool]:
-    """The action table is the only source: no action without a tool, no tool without one."""
     return [
         Tool(
             name=spec.tool,
             description=spec.description,
             parameters=_payload_schema(),
-            handler=_PROPOSAL_HANDLERS[spec.action],
+            handler=partial(_compile, spec.action, current=current),
         )
         for spec in ACTIONS.values()
     ]
@@ -155,6 +113,11 @@ def _registry_tools(
             except DocumentError as cause:
                 raise ToolError(f"读不到 {cleaned}：{cause.detail}") from cause
         return f"{doc.path}（{doc.layer} 层 · {doc.label}）\n\n{doc.text}"
+
+    def current_text(path: str) -> str | None:
+        """What the file holds right now; None when this novel does not have it yet."""
+        with session_factory() as session:
+            return current_text_reader(session, novel_id)(path)
 
     def search(query: str) -> str:
         """Public reference lookup over Wikipedia and Wikidata, without write access."""
@@ -221,7 +184,7 @@ def _registry_tools(
             lines.append(f"\n部分来源不可用：{'；'.join(failures)}。以上结果仍可供参考。")
         return "\n\n".join(lines)
 
-    return _proposal_tools() + [
+    return _proposal_tools(current_text) + [
         Tool(
             name="list_files",
             description="列出这本书所有规划与设定文件的路径，read_file 的 path 从这里取",

@@ -348,6 +348,47 @@ def test_propose_arcs_refuses_a_moved_chapter_range(session_factory) -> None:
     assert "- **状态**：writing" in kept[1]  # 省略不等于改写
 
 
+def test_propose_arcs_judges_keys_against_the_live_file(session_factory) -> None:
+    """A fence the preview would refuse must never be handed out (D-39, 35.7)."""
+    from app.services import markdown_doc
+    from app.services.documents import ACTOR_HUMAN, write_file
+
+    with session_factory() as session:
+        write_file(
+            session, session_factory.novel_id, "arcs.md",
+            markdown_doc.render("arcs", [
+                {"arc": 1, "title": "觉醒", "start_chapter": 1, "end_chapter": 5,
+                 "objective": "获得能力", "conflict": "追捕", "resolution": "逃亡", "status": "planned"},
+                {"arc": 2, "title": "门钥之谜", "start_chapter": 11, "end_chapter": 30,
+                 "objective": "集齐九钥", "conflict": "守钥人反扑", "resolution": "", "status": "planned"},
+            ]),
+            actor=ACTOR_HUMAN,
+        )
+        session.commit()
+
+    dropped = proposal_text(session_factory, "propose_arcs", {
+        "arcs": [{"title": "觉醒", "start_chapter": 1, "end_chapter": 5}],
+        "existing": [{"arc": 1, "start_chapter": 1, "end_chapter": 5}],
+    })
+    assert dropped.startswith("动作未通过校验："), dropped
+    assert "```markdown" not in dropped
+    assert "不能删除条目" in dropped
+
+    third = proposal_text(session_factory, "propose_arcs", {
+        "arcs": [
+            {"title": "觉醒", "start_chapter": 1, "end_chapter": 5},
+            {"title": "门钥之谜", "start_chapter": 11, "end_chapter": 30},
+            {"title": "第九把钥", "start_chapter": 31, "end_chapter": 40},
+        ],
+        "existing": [
+            {"arc": 1, "start_chapter": 1, "end_chapter": 5},
+            {"arc": 2, "start_chapter": 11, "end_chapter": 30},
+        ],
+    })
+    assert third.startswith("```markdown @arcs.md"), third
+    assert "## 弧 ? 第九把钥" in third
+
+
 def test_propose_chapter_brief_pads_the_chapter_number(session_factory) -> None:
     fence = proposal_text(session_factory, "propose_chapter_brief",
                           {"chapter_number": 1, "goal": "让主角第一次见碑"})

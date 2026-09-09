@@ -292,6 +292,10 @@ _KEY_BY_KIND = {
     "worldview": "setting",
 }
 
+# These books are keyed by a row id the file layer assigns, so a new record has to
+# arrive as `?`. toc is different: the chapter number *is* content there.
+_SURROGATE_KEY_KINDS = {"arcs", "foreshadow", "worldview"}
+
 
 def validate_structure(path: str, text: str, *, current_text: str | None = None) -> str:
     """Return "" when a writer could take `text`, else why it cannot.
@@ -333,17 +337,18 @@ def validate_structure(path: str, text: str, *, current_text: str | None = None)
             return ""
         if isinstance(current, list):
             # An empty B/C projection has no identities to protect. The owner
-            # may apply the first complete proposal; non-empty books remain
-            # locked to their existing primary-key sequence below.
+            # may apply the first complete proposal; non-empty books are paired
+            # by the same `_resolve_ids` verdict the writers run.
             if not current and kind in {"toc", "arcs"}:
                 return ""
-            wanted = [row.get(identity) for row in current]
-            got = [row.get(identity) for row in parsed]
-            if wanted != got:
-                return (
-                    f"不能增删条目或改动 {identity} 主键：文件里是 {wanted}，"
-                    f"提案给了 {got}。新建记录请把主键写成 ?，由系统分配。"
-                )
+            _, reason = _resolve_ids(
+                identity,
+                [row.get(identity) for row in current],
+                [row.get(identity) for row in parsed],
+                surrogate=kind in _SURROGATE_KEY_KINDS,
+            )
+            if reason:
+                return reason
     return ""
 
 
@@ -399,6 +404,25 @@ def _chapter(session: Session, novel_id: int, chapter_number: int) -> Chapter | 
             Chapter.chapter_number == chapter_number,
         )
     ).first()
+
+
+def _ensure_chapter(
+    session: Session, novel_id: int, chapter_number: int, brief_id: int | None = None
+) -> Chapter:
+    """Create the prose row if it is missing, and claim `brief_id` when given.
+
+    D-39: a new B-layer entry and a new brief both land the chapter in the left tree,
+    so the construction lives here rather than being copied into a second writer.
+    """
+    chapter = _chapter(session, novel_id, chapter_number)
+    if chapter is None:
+        chapter = Chapter(
+            novel_id=novel_id, brief_id=brief_id, chapter_number=chapter_number, status="draft"
+        )
+    elif brief_id is not None and chapter.brief_id != brief_id:
+        chapter.brief_id = brief_id
+    session.add(chapter)
+    return chapter
 
 
 # --- rendering ------------------------------------------------------------
@@ -646,12 +670,52 @@ def _require_keys(mapping: Any, expected: tuple[str, ...], label: str) -> dict[s
     return mapping
 
 
-def _require_same_ids(rows: list[dict[str, Any]], before: list[int], identity: str, label: str) -> None:
-    after = [_as_int(row.get(identity), f"{label}.{identity}") for row in rows]
-    if after != before:
-        raise DocumentError(
-            f"AI 不能增删条目或改动 {identity} 主键（{label}）：期望 {before}，收到 {after}"
+def _resolve_ids(
+    identity: str, wanted: list[int], got: list[Any], *, surrogate: bool
+) -> tuple[list[int], str]:
+    """Pair a proposal with the file it overwrites: which record lands on which key.
+
+    D-39 lets a confirmed proposal append records but never delete or renumber one.
+    A surrogate key (`弧`、`伏笔`、`设定`) has to arrive as `?` so this layer assigns it;
+    the B layer's chapter number is content, so a number the file lacks *is* the new
+    record. "" means the pairing is legal -- the same verdict preview and writers use.
+    """
+    existing = set(wanted)
+    seen: set[int] = set()
+    landed: list[int | None] = []
+    for value in got:
+        if value is None:
+            if not surrogate:
+                return [], f"{identity} 主键不能留空：新建记录要写出编号"
+            landed.append(None)
+            continue
+        number = int(value)
+        if number in seen:
+            return [], f"{identity} 主键 {number} 出现了两次"
+        seen.add(number)
+        if surrogate and number not in existing:
+            return [], (
+                f"新建 {identity} 记录请把主键写成 ?，由系统分配；提案不能自己点号（收到 {number}）"
+            )
+        landed.append(number)
+    stale = [key for key in wanted if key not in seen]
+    if stale:
+        return [], (
+            f"不能删除条目或改动 {identity} 主键：文件里的 {stale} 在提案中不见了。"
+            "要下线一章请主人手工处理，AI 只能追加"
         )
+    out: list[int] = []
+    free = max(wanted, default=0) + 1
+    for value in landed:
+        if value is None:
+            while free in seen:
+                free += 1
+            seen.add(free)
+            out.append(free)
+            free += 1
+        else:
+            out.append(value)
+    return out, ""
 
 
 def _require_ai_values(
@@ -1058,15 +1122,35 @@ def _write_toc(
     before_model = _toc_model(existing)
 
     if actor == ACTOR_AI and existing:
-        _require_same_ids(rows, [row["chapter"] for row in before_model], "chapter", TOC_PATH)
+        resolved, reason = _resolve_ids(
+            "chapter",
+            [row["chapter"] for row in before_model],
+            [row.get("chapter") for row in rows],
+            surrogate=False,
+        )
+        if reason:
+            raise DocumentError(reason)
+        by_number = {row.chapter_number: row for row in existing}
         changed: list[str] = []
-        # Identities are verified equal and in order, so rows pair up by index.
-        for row, before, raw in zip(existing, before_model, rows):
-            after = _coerce(raw, TOC_FIELDS, TOC_PATH)
-            touched = _require_ai_values(TOC_AI_FIELDS, before, after, f"第 {row.chapter_number} 章")
-            for name in touched:
-                setattr(row, name, after[name])
-                changed.append(f"{row.chapter_number}.{name}")
+        for raw, number in zip(rows, resolved):
+            after = _coerce({**raw, "chapter": number}, TOC_FIELDS, TOC_PATH)
+            row = by_number.get(number)
+            if row is None:
+                row = TocEntry(novel_id=novel_id, chapter_number=number, is_active=True)
+                session.add(row)
+                session.flush()
+                # D-39：目录里新增一章，左侧树就要立刻出现这一章。
+                _ensure_chapter(session, novel_id, number)
+                changed.append(f"{number}.created")
+                targets = [name for name in after if name != "chapter"]
+            else:
+                targets = _require_ai_values(
+                    TOC_AI_FIELDS, _toc_model([row])[0], after, f"第 {number} 章"
+                )
+            for name in targets:
+                if getattr(row, name) != after[name]:
+                    setattr(row, name, after[name])
+                    changed.append(f"{number}.{name}")
             _touch(row)
             session.add(row)
         return changed
@@ -1114,17 +1198,38 @@ def _write_arcs(
     before_model = _arcs_model(existing)
 
     if actor == ACTOR_AI and existing:
-        _require_same_ids(rows, [row["arc"] for row in before_model], "arc", ARCS_PATH)
+        resolved, reason = _resolve_ids(
+            "arc",
+            [row["arc"] for row in before_model],
+            [row.get("arc") for row in rows],
+            surrogate=True,
+        )
+        if reason:
+            raise DocumentError(reason)
         changed: list[str] = []
-        for raw in rows:
-            after = _coerce(raw, ARC_FIELDS, ARCS_PATH)
-            row = by_id[after["arc"]]
-            touched = _require_ai_values(
-                ARC_AI_FIELDS, _arcs_model([row])[0], after, f"arc {after['arc']}"
-            )
-            for name in touched:
-                setattr(row, name, after[name])
-                changed.append(f"{row.id}.{name}")
+        for raw, arc_id in zip(rows, resolved):
+            after = _coerce({**raw, "arc": arc_id}, ARC_FIELDS, ARCS_PATH)
+            row = by_id.get(arc_id)
+            if row is None:
+                row = ArcPlan(
+                    novel_id=novel_id,
+                    start_chapter=after["start_chapter"],
+                    end_chapter=after["end_chapter"],
+                    status=after["status"],
+                )
+                session.add(row)
+                session.flush()
+                by_id[row.id] = row
+                changed.append(f"{row.id}.created")
+                targets = [name for name in after if name != "arc"]
+            else:
+                targets = _require_ai_values(
+                    ARC_AI_FIELDS, _arcs_model([row])[0], after, f"arc {arc_id}"
+                )
+            for name in targets:
+                if getattr(row, name) != after[name]:
+                    setattr(row, name, after[name])
+                    changed.append(f"{row.id}.{name}")
             _touch(row)
             session.add(row)
         return changed
@@ -1190,20 +1295,7 @@ def _write_brief(
     # The first durable write of a brief is the append action. Making the prose
     # row here keeps both records atomic and leaves PUT /files as the only
     # writer for new planning entries.
-    chapter = _chapter(session, novel_id, number)
-    if chapter is None:
-        chapter = Chapter(
-            novel_id=novel_id,
-            brief_id=brief.id,
-            chapter_number=number,
-            title="",
-            content="",
-            status="draft",
-        )
-        session.add(chapter)
-    elif chapter.brief_id != brief.id:
-        chapter.brief_id = brief.id
-        session.add(chapter)
+    _ensure_chapter(session, novel_id, number, brief_id=brief.id)
 
     before = _brief_model(brief, number)
     if actor == ACTOR_AI:
@@ -1281,18 +1373,32 @@ def _write_book(
     ]
 
     if actor == ACTOR_AI:
-        _require_same_ids(incoming, [row[fields[0]] for row in model], fields[0], path)
+        resolved, reason = _resolve_ids(
+            fields[0],
+            [row[fields[0]] for row in model],
+            [row.get(fields[0]) for row in incoming],
+            surrogate=True,
+        )
+        if reason:
+            raise DocumentError(reason)
+        by_key = {row[fields[0]]: row for row in model}
         changed: list[str] = []
-        for raw in incoming:
-            after = _coerce(raw, fields, path)
-            row = by_id[after[fields[0]]]
-            touched = _require_ai_values(
-                ai_fields, model[[m[fields[0]] for m in model].index(after[fields[0]])], after,
-                f"{label} {after[fields[0]]}",
-            )
-            for name in touched:
-                setattr(row, name, after[name])
-                changed.append(f"{row.id}.{name}")
+        for raw, key in zip(incoming, resolved):
+            after = _coerce({**raw, fields[0]: key}, fields, path)
+            row = by_id.get(key)
+            if row is None:
+                row = make(novel_id, after)
+                session.add(row)
+                session.flush()
+                by_id[row.id] = row
+                changed.append(f"{row.id}.created")
+                targets = [name for name in after if name != fields[0]]
+            else:
+                targets = _require_ai_values(ai_fields, by_key[key], after, f"{label} {key}")
+            for name in targets:
+                if getattr(row, name) != after[name]:
+                    setattr(row, name, after[name])
+                    changed.append(f"{row.id}.{name}")
             _touch(row)
             session.add(row)
         return changed

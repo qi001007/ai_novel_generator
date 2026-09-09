@@ -381,24 +381,33 @@ ACTIONS: dict[str, ActionSpec] = {
 }
 
 
-def _gate(path: str, body: str) -> None:
-    """Never hand out a fence the file layer would refuse once 应用 is pressed."""
+def _gate(path: str, body: str, current_text: str | None = None) -> None:
+    """Never hand out a fence the file layer would refuse once 应用 is pressed.
+
+    ``current_text`` is what the file holds right now: without it the primary-key
+    pairing (D-39: may append, may not delete or renumber) cannot be judged here, and
+    a tool would promise a card the preview then refuses.
+    """
     try:
-        reason = validate_structure(path, body)
+        reason = validate_structure(path, body, current_text=current_text)
     except DocumentError as cause:
         reason = cause.detail
     if reason:
         raise ActionError(f"渲染出的 {path} 提案不被文件层接受：{reason}")
 
 
-def run_action(name: str, payload: str | Mapping[str, Any]) -> tuple[bool, str]:
+def run_action(
+    name: str,
+    payload: str | Mapping[str, Any],
+    current: Callable[[str], str | None] | None = None,
+) -> tuple[bool, str]:
     """Compile one typed action: True gives a proposal fence, False gives a diagnosis."""
     spec = ACTIONS.get(str(name).strip())
     if spec is None:
         return False, f"没有这个动作：{name}。可用的是 {'、'.join(sorted(ACTIONS))}"
     try:
         path, body = spec.build(_parse(payload))
-        _gate(path, body)
+        _gate(path, body, current(path) if current is not None else None)
     except ActionError as cause:
         return False, str(cause)
     return True, f"{FENCE_HEADER}{path}\n{body.rstrip()}\n```"

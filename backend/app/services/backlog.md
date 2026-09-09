@@ -1,5 +1,7 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.7（D-39）：`_require_same_ids` 由 `_resolve_ids` 取代，预览、`propose_*` 闸门与三条 writer 共用同一主键配对裁定；`? → 分配主键` 在 arcs/设定库真实落地，B 层新章号同时建 `Chapter`；`agent_tools` 经 `current_text_reader` 把当前文件交给闸门，`proposal_actions._gate` 因此能拒掉预览必拒的围栏。人类路径不变（仍可增删改号）。
+
 - 2026-09-09 · 35.12：`canonicalize_proposal` 的弧标题清洗改为只删「既无数字也非 `?`」的标题，放过 `_ARC_ANCHOR` 与编译器都认可的 `弧 ?`（主键待分配）。空编号 `## 弧` 别名的老行为不变。
 
 - 2026-09-09 · 修复双剧情弧规范化记录间缺换行；历史 B/C 提案与当前投影除系统主键外严格等价时返回当前文本，避免导入成功后刷新返红。

@@ -109,7 +109,12 @@ def test_a_turn_that_needs_nothing_costs_one_request(client: TestClient) -> None
     events = parse_sse(response.text)
     assert "tool" not in [name for name, _ in events]
     assert len(fake.seen) == 1
-    assert payload_of(events, "context")["tools"] == ["list_files", "read_file", "web_search"]
+    # 2026-09-10 (UI-BACKLOG 35.7): the five propose_* tools joined this surface when the
+    # typed-action compiler landed; the expectation never followed, so the gate ran red.
+    assert payload_of(events, "context")["tools"] == [
+        "list_files", "propose_arcs", "propose_blueprint", "propose_chapter_brief",
+        "propose_character", "propose_toc", "read_file", "web_search",
+    ]
 
 
 def test_over_budget_is_an_error_and_persists_no_reply(client: TestClient) -> None:
