@@ -1,5 +1,7 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.1（裁定进 D-43）：`documents.py._align_arc_history` 两处。① 原先「围栏块数≠档上弧数」就整段 `return text` 放弃补齐，而 D-39 之后「整本重写 + 追加一条」是合法形状——新那条一进来，连已有各条也一起报「缺少 起始章、结束章、冲突、收束、状态」，卡是红的、应用按钮 disabled。改成：`弧 ?` 是系统待分配的主键，不参与计数，只按编号记录与档上记录一对一比对，省略的 bullet 无条件回到它落到的那条记录的原值。② 判据末条「刷新后红字 0」逼出的第二半：这张卡落库后书比围栏多一条，重读又回到整段放弃的老路、红字随刷新回来；新增 `replay` 分支允许 `弧 ?` 那块按**起止章完全相同**绑到档上那条（绑不上就是真追加，走原路径），整份围栏还原成文件本身，`chat.legacy_proposal_matches` 认出「这就是档上内容」，前端 `baseText === text` 把卡收起。`renumber` 的序列上界由 `len(existing)` 改 `len(numbered)`——replay 形状下两者不等，旧上界会让主键还原停摆。结构校验一寸未让。
+
 - 2026-09-10 · 批次 35.9（裁定进 D-42）：`agent.py` 的 `DEFAULT_MAX_TOKENS` 由 `30_000` 改 `60_000`（`DEFAULT_MAX_STEPS` 仍为 `6`），值按作品 6 副本实测的一轮给：一句「新增一条剧情弧」6 个请求合计 32955 token、带真实历史第 5 个请求 35545，而每次请求都把整段上下文重新计费。新增 `resolve_config(session)` 一个读取点（读 `AppConfig` 的 `agent.max_steps` / `agent.max_tokens`，非数字回落默认值）、`MAX_STEPS_LIMITS (1,20)` / `MAX_TOKENS_LIMITS (1000,1000000)` 两道护栏、`budget_hint(max_steps, max_tokens)` 一句收尾文案（报当前上限并指向「设置 → 模型接入 → 对话 Agent 预算」）。legacy 的两处预算停止与 `agent_pydantic._budget_error` 都改拼这同一句，文案不再有三份。
 
 - 2026-09-10 · 批次 35.14（口径进 D-39）：`proposal_actions` 的 `update_arcs.rules` 开头改成「`arcs` 是**全量**：已有各弧按文件里的顺序写进来，新弧追加在末尾」并点出「只把新弧放进 `arcs`」这个错法；`_arcs` 的起止章拒绝补上唯一出路「把已有各弧一并列进 `arcs`」。`documents._resolve_ids` 的少列条目拒绝补「要新增请把已有条目一并列全」。判定仍然只有 `_resolve_ids` 一处，这次只动文案，没加第二处判定。

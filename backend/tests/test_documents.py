@@ -392,6 +392,129 @@ def test_ai_may_not_move_arc_bounds_but_may_rewrite_prose(client: TestClient) ->
     assert retitled.json()["changed"] == [f"{arc_id}.title"]
 
 
+# 批次 35.1：主人报的是「提案卡出现、点应用报错且内容不变」，报错原文
+# `「弧 1 觉醒·逃亡」 的小节标题与字段名是结构标识，不可增删改名：缺少 收束、状态`。
+# 模型整本重新生成时只写它在改的那个字段，其余字段应当从文件里那一条继承回来。
+
+
+def _two_arc_novel(client: TestClient) -> tuple[int, str]:
+    # 不用 seed_novel：它那条弧的 冲突/收束 是空串，「省略不等于清空」就没有可断言的值。
+    novel_id = client.post("/api/novels", json={"title": "C 层重新生成"}).json()["id"]
+    create_arc(
+        client,
+        novel_id,
+        title="卷一",
+        start_chapter=10,
+        end_chapter=60,
+        objective="立起目标",
+        conflict="追捕",
+        resolution="逃亡",
+    )
+    create_arc(
+        client,
+        novel_id,
+        title="卷二",
+        start_chapter=61,
+        end_chapter=100,
+        objective="追寻玄赿之门",
+        conflict="门后是什么",
+        resolution="开门",
+    )
+    doc = read(client, novel_id, "arcs.md")
+    return novel_id, doc["text"].split("## ")[0]
+
+
+def test_a_regenerated_arc_book_inherits_the_bullets_the_model_omitted(client: TestClient) -> None:
+    novel_id, header = _two_arc_novel(client)
+    proposal = (
+        header
+        + "## 弧 1 卷一\n- **目标**：立起目标·改\n\n"
+        + "## 弧 2 卷二\n- **目标**：追寻玄赿之门·改\n"
+    )
+
+    response = write(client, novel_id, "arcs.md", proposal, actor="ai")
+
+    assert response.status_code == 200, response.text
+    saved = read(client, novel_id, "arcs.md")["text"]
+    assert saved.count("## 弧 ") == 2
+    assert "## 弧 1 卷一" in saved and "## 弧 2 卷二" in saved
+    # 省略不等于清空：这六个字段必须还是文件里原来那个值
+    for label, value in (
+        ("起始章", "10"), ("结束章", "60"), ("冲突", "追捕"),
+        ("收束", "逃亡"), ("状态", "planned"),
+    ):
+        assert f"- **{label}**：{value}" in saved
+    assert "- **目标**：立起目标·改" in saved
+
+
+def test_an_appended_arc_no_longer_costs_the_existing_ones_their_inheritance(client: TestClient) -> None:
+    # `_align_arc_history` 原先在弧块数≠现有数时整段放弃补齐，而 D-39 之后「重新生成 +
+    # 追加一条」是合法形状：新那条一进来，连已有两条也一起报「缺少 起始章、结束章…」。
+    novel_id, header = _two_arc_novel(client)
+    proposal = (
+        header
+        + "## 弧 1 卷一\n- **目标**：立起目标·改\n\n"
+        + "## 弧 2 卷二\n- **目标**：追寻玄赿之门·改\n\n"
+        + "## 弧 ? 卷三\n- **起始章**：101\n- **结束章**：140\n- **目标**：门后\n"
+    )
+
+    response = write(client, novel_id, "arcs.md", proposal, actor="ai")
+
+    assert response.status_code == 200, response.text
+    saved = read(client, novel_id, "arcs.md")["text"]
+    assert saved.count("## 弧 ") == 3
+    # 已有两条：主键不动，省略掉的字段回到文件里原来的值
+    assert "## 弧 1 卷一" in saved and "## 弧 2 卷二" in saved
+    for label, value in (("起始章", "10"), ("结束章", "60"), ("冲突", "追捕"), ("收束", "逃亡")):
+        assert f"- **{label}**：{value}" in saved
+    # 新那条只有可选字段是系统给的默认值，主键由系统分配
+    assert "## 弧 3 卷三" in saved
+    assert saved.count("- **状态**：planned") == 3
+
+
+def test_dropping_an_arc_is_still_refused_after_the_inheritance_fix(client: TestClient) -> None:
+    # 35.1 的修法只放开「继承不再整段放弃」这一件事，结构校验一寸没让：少一条＝删除。
+    novel_id, header = _two_arc_novel(client)
+    proposal = header + "## 弧 1 卷一\n- **目标**：立起目标·改\n"
+
+    refused = write(client, novel_id, "arcs.md", proposal, actor="ai")
+
+    assert refused.status_code == 422
+    saved = read(client, novel_id, "arcs.md")["text"]
+    assert saved.count("## 弧 ") == 2
+    assert "## 弧 2 卷二" in saved
+
+
+def test_an_applied_arc_fence_does_not_come_back_red_on_reload(client: TestClient) -> None:
+    """35.1 判据末条「刷新后红字 0」：这张卡已经落库，重读就不该再挂一张红卡。
+
+    落库后书比围栏多一条，`_align_arc_history` 原先在块数≠现有数时整段放弃，还原不出来了；
+    前端 `baseText === text` 那条收卡规则因此永远不触发，红字随刷新回来。
+    """
+    from app.services.chat import extract_proposals
+
+    novel_id, header = _two_arc_novel(client)
+    fence = (
+        header
+        + "## 弧 1 卷一\n- **目标**：立起目标·改\n\n"
+        + "## 弧 2 卷二\n- **目标**：追寻玄赿之门·改\n\n"
+        + "## 弧 ? 卷三\n- **起始章**：101\n- **结束章**：140\n- **目标**：门后\n"
+    )
+    applied = write(client, novel_id, "arcs.md", fence, actor="ai")
+    assert applied.status_code == 200, applied.text
+    live = read(client, novel_id, "arcs.md")["text"]
+
+    card = next(
+        item
+        for item in extract_proposals(f"```markdown @arcs.md\n{fence}\n```", lambda p: live)
+        if item["path"] == "arcs.md"
+    )
+
+    assert card["valid"] is True, card
+    # 与文件一字不差，正是前端据此把卡收起的那个条件
+    assert card["text"] == live, card["text"]
+
+
 def test_broken_markdown_is_refused_before_any_write(client: TestClient) -> None:
     novel_id = seed_novel(client)
     doc = read(client, novel_id, "blueprint.md")

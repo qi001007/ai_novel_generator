@@ -947,8 +947,8 @@ def _align_arc_history(text: str, current_text: str | None) -> str:
     if not existing:
         return text
     head, *blocks = text.split("## ")
-    if not blocks or len(blocks) != len(existing):
-        return text  # 增删条目由校验器说清楚，这里不猜
+    if not blocks:
+        return text
 
     lines_by_block = [block.splitlines() for block in blocks]
     headings: list[re.Match[str]] = []
@@ -958,46 +958,84 @@ def _align_arc_history(text: str, current_text: str | None) -> str:
             return text
         headings.append(match)
 
-    slots: list[int] = []
+    # `弧 ?` is the key the system assigns (D-39), so an append is not a count mismatch
+    # to give up on: the numbered records still have to line up one-for-one with the
+    # book on file. Bailing out on the whole text used to cost those records their
+    # inheritance too, which is the 缺少 起始章、结束章… the owner could not apply.
+    fresh = {index for index, match in enumerate(headings) if match.group(1) == "?"}
+    numbered = [index for index in range(len(headings)) if index not in fresh]
+    # Second shape: this very fence was already applied, so the arc it appended is on
+    # file as well and the numbered records alone no longer add up. Let the `弧 ?`
+    # blocks bind to a record too - only by exact 起始章/结束章, so a genuine append
+    # finds nothing to bind to and stays an append. Without this the re-read card turns
+    # red on reload with 缺少 起始章、结束章…, because the document grew under the fence.
+    replay = len(numbered) < len(existing) and len(numbered) + len(fresh) == len(existing)
+    if len(numbered) != len(existing) and not replay:
+        return text  # 删条目由校验器说清楚，这里不猜
+
+    slots: dict[int, int] = {}
     taken: set[int] = set()
-    for index, match in enumerate(headings):
+
+    def by_bounds(index: int) -> int:
+        """The untaken record on file with exactly this block's bounds, or -1."""
         fields = _bullet_map(lines_by_block[index])
         start = _record_int(fields.get("起始章"))
         end = _record_int(fields.get("结束章"))
-        picked = -1
-        if start is not None and end is not None:
-            for candidate, row in enumerate(existing):
-                if candidate in taken:
-                    continue
-                if row.get("start_chapter") == start and row.get("end_chapter") == end:
-                    picked = candidate
-                    break
-        if picked < 0 and index not in taken:
-            picked = index
+        if start is None or end is None:
+            return -1
+        for candidate, row in enumerate(existing):
+            if candidate not in taken and row.get("start_chapter") == start and row.get("end_chapter") == end:
+                return candidate
+        return -1
+
+    for ordinal, index in enumerate(numbered):
+        picked = by_bounds(index)
+        if picked < 0 and ordinal not in taken:
+            picked = ordinal
         if picked < 0:
             return text
         taken.add(picked)
-        slots.append(picked)
+        slots[index] = picked
+    if replay:
+        for index in sorted(fresh):
+            picked = by_bounds(index)
+            if picked < 0:
+                return text
+            taken.add(picked)
+            slots[index] = picked
+            fresh.discard(index)
 
-    offered = [_record_int(match.group(1)) for match in headings]
+    offered = [_record_int(headings[index].group(1)) for index in numbered]
     wanted = [_record_int(row.get("arc")) for row in existing]
     # Only a restart at 弧 1 counts as the model renumbering the book for itself; an
     # off-sequence key such as 弧 99 is an arc that does not exist, and must stay red.
-    renumber = offered != wanted and offered == list(range(1, len(existing) + 1))
+    # The sequence runs over the records the fence numbers, not over the book on file -
+    # in the replay shape the appended arc is already on file, so those two differ.
+    renumber = offered != wanted and offered == list(range(1, len(numbered) + 1))
 
     rebuilt = [head]
     for index, block in enumerate(blocks):
         lines = lines_by_block[index]
-        row = existing[slots[index]]
-        if renumber:
-            title = headings[index].group(2).strip() or str(row.get("title") or "")
-            lines[0] = f"弧 {row.get('arc')} {title}".rstrip()
         fields = _bullet_map(lines)
-        for label, field in _ARC_LABELS:
-            if label in fields:
-                continue
-            value = row.get(field)
-            lines.append(f"- **{label}**：{'' if value is None else value}")
+        if index in fresh:
+            # A record being added has nothing on file to inherit from. Only the three
+            # optional fields get the empty-book default; 起始章/结束章/目标 stay with
+            # the validator, because an arc with no bounds is a real gap, not something
+            # to paper over with an empty string the integer check then refuses.
+            for label, _field in _ARC_LABELS:
+                if label in fields or label not in {"冲突", "收束", "状态"}:
+                    continue
+                lines.append(f"- **{label}**：{'planned' if label == '状态' else ''}")
+        else:
+            row = existing[slots[index]]
+            if renumber:
+                title = headings[index].group(2).strip() or str(row.get("title") or "")
+                lines[0] = f"弧 {row.get('arc')} {title}".rstrip()
+            for label, field in _ARC_LABELS:
+                if label in fields:
+                    continue
+                value = row.get(field)
+                lines.append(f"- **{label}**：{'' if value is None else value}")
         # splitlines() ate the newline that closed the block, and the next heading
         # marker sits right behind it: put both back or 弧 2 glues onto 弧 1.
         rebuilt.append("\n".join(lines) + ("\n" if block.endswith("\n") else ""))
