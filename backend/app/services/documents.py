@@ -702,7 +702,7 @@ def _resolve_ids(
     if stale:
         return [], (
             f"不能删除条目或改动 {identity} 主键：文件里的 {stale} 在提案中不见了。"
-            "要下线一章请主人手工处理，AI 只能追加"
+            "要下线一章请主人手工处理，AI 只能追加；要新增请把已有条目一并列全"
         )
     out: list[int] = []
     free = max(wanted, default=0) + 1

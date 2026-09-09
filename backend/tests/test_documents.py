@@ -173,6 +173,8 @@ def test_ai_may_append_rows_but_never_delete_or_renumber_them(client: TestClient
     dropped = write(client, novel_id, "toc.md", doc["text"], actor="ai")
     assert dropped.status_code == 422
     assert "不能删除条目" in dropped.text
+    # 35.14：光拒绝不给出路，模型就会拿同一条负载再撞几轮
+    assert "一并列全" in dropped.text
 
     renumbered = write(
         client, novel_id, "toc.md", doc["text"].replace("## 第 42 章", "## 第 99 章"), actor="ai"

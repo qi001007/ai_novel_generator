@@ -389,6 +389,32 @@ def test_propose_arcs_judges_keys_against_the_live_file(session_factory) -> None
     assert "## 弧 ? 第九把钥" in third
 
 
+def test_the_arcs_contract_says_the_list_covers_the_whole_book() -> None:
+    """35.14：契约从没说过 `arcs` 是全量，实测同一句「新增一条弧」因此撞了四轮。"""
+    from app.services.proposal_actions import ACTIONS
+
+    rules = ACTIONS["update_arcs"].rules
+    assert "全量" in rules, rules
+    assert "按文件里的顺序" in rules, rules
+    assert "新弧追加在末尾" in rules, rules
+
+
+def test_a_moved_range_diagnosis_names_the_way_out() -> None:
+    """实测负载：新弧单独放进 `arcs`、已有两弧只写进 `existing`，四次收到同一句话。
+
+    光说「起止章只由主人调整」没有出路——唯一的出路是把已有各弧一并列进 `arcs`。
+    """
+    ok, diagnosis = run_action("update_arcs", {
+        "arcs": [{"title": "第九把钥", "start_chapter": 31, "end_chapter": 40}],
+        "existing": [
+            {"arc": 1, "start_chapter": 1, "end_chapter": 5},
+            {"arc": 2, "start_chapter": 11, "end_chapter": 30},
+        ],
+    })
+    assert ok is False
+    assert "把已有各弧一并列进 `arcs`" in diagnosis, diagnosis
+
+
 def test_propose_chapter_brief_pads_the_chapter_number(session_factory) -> None:
     fence = proposal_text(session_factory, "propose_chapter_brief",
                           {"chapter_number": 1, "goal": "让主角第一次见碑"})

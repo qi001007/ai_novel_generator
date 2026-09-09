@@ -247,7 +247,9 @@ def _arcs(fields: dict[str, Any]) -> tuple[str, str]:
                     raise ActionError(
                         f"弧 {old['arc']} 的「{heading}」文件里是 {pinned}，提案给了 {value}。"
                         "起止章只由主人调整，编译器不替主人挪范围：请照抄文件里的起止章，"
-                        "要挪范围请先让主人在界面上定"
+                        "要挪范围请先让主人在界面上定。"
+                        "如果你其实是要新增一条弧，那是 `arcs` 少写了条目："
+                        "把已有各弧一并列进 `arcs`（按文件里的顺序），新弧追加在末尾"
                     )
         entries.append({
             "arc": arc,
@@ -350,8 +352,10 @@ ACTIONS: dict[str, ActionSpec] = {
             fields='{"arcs":[{"title":"弧名","start_chapter":1,"end_chapter":5,"objective":"…",'
                    '"conflict":"…","resolution":"…","status":"planned"}],'
                    '"existing":[{"arc":4,"start_chapter":1,"end_chapter":5,"resolution":"…","status":"planned"}]}',
-            rules="title 与起止章必填，目标/冲突/收束/状态可省略（省略就照 existing 回填，不会写成空）。"
-                  "不得猜弧号：arcs.md 里已有弧时，把每弧的 arc 与起止章照抄进 existing，"
+            rules="`arcs` 是**全量**：arcs.md 里已有的每一条弧都要按文件里的顺序写进来，新弧追加在末尾。"
+                  "只把新弧放进 `arcs`、已有弧只写进 `existing`，会被当成删掉了条目。"
+                  "title 与起止章必填，目标/冲突/收束/状态可省略（省略就照 existing 回填，不会写成空）。"
+                  "不得猜弧号：把每弧的 arc 与起止章照抄进 existing，"
                   "编译器按它定位主键，起止章与文件不一致会被拒绝；整本书还没有弧时省略 existing，"
                   "按输入顺序从 1 编号。",
             build=_arcs,

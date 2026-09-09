@@ -1,5 +1,7 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.14：`test_agent_tools` 新增 `test_the_arcs_contract_says_the_list_covers_the_whole_book`（`ACTIONS["update_arcs"].rules` 必须含「全量 / 按文件里的顺序 / 新弧追加在末尾」三要素）与 `test_a_moved_range_diagnosis_names_the_way_out`（照抄主人实测那条负载：`arcs` 1 条 + `existing` 2 条，拒绝文案必须出现「把已有各弧一并列进 `arcs`」）。`test_documents` 的既有 append 测试里补一句「一并列全」断言，原断言一条未删。
+
 - 2026-09-10 · 批次 35.10（D-41）：`test_chat_agent` 新增 `INTENT_CASES` 11 句（简报 / 目录 / 剧情弧 / 人物卡 / 蓝图 / 文件路径名各一，正文三类，两边都不点的两句）配 `@pytest.mark.parametrize` 双层，开关拨 `write` 与 `plan` 两个方向都必须判到同一个对象，共 22 例；另加两条端到端——写作开关下「给第 1 章写一份简报」的系统提示含 `## 本轮模式：计划` 与 `propose_chapter_brief`，计划开关下「把第 1 章的正文写出来」拿到写作提示且不含「禁止输出章节正文」。
 
 - 2026-09-10 · 批次 35.13：`test_documents` 新增 `test_the_first_chapter_added_to_an_empty_toc_also_creates_the_chapter`——空 toc 用 `actor=ai` 应用「## 第 1 章 开门」，断言 `changed` 含 `1.created`、`/chapters` 由 `[]` 变 `[1]`、文件表出现 `chapters/0001/draft.md`。它补上既有那条「已有条目再追加」测试没覆盖的另一半分支，先红后绿。
