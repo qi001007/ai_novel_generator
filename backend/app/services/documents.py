@@ -898,7 +898,7 @@ _ARC_HEADING = re.compile(r"^弧\s*(\d+|\?)\s*(.*)$")
 # A range heading is a C-layer summary the model wrote into the B layer.
 _TOC_RANGE_HEADING = re.compile(r"^##\s*第\s*(\d+)\s*[-—–~至]\s*(\d+)\s*章\s*(.*)$")
 _TOC_RECORD_HEADING = re.compile(r"^##\s*第\s*\d+\s*章")
-_ARC_TITLE_PREFIX = re.compile(r"^弧\s*\d+\s*[：:、.]?\s*")
+_ARC_TITLE_PREFIX = re.compile(r"^弧\s*\d+(?:\s*[-—–~至]\s*\d+)?\s*[：:、.]?\s*")
 
 
 def _bullet_map(lines: list[str]) -> dict[str, str]:
@@ -964,14 +964,6 @@ def _align_arc_history(text: str, current_text: str | None) -> str:
     # inheritance too, which is the 缺少 起始章、结束章… the owner could not apply.
     fresh = {index for index, match in enumerate(headings) if match.group(1) == "?"}
     numbered = [index for index in range(len(headings)) if index not in fresh]
-    # Second shape: this very fence was already applied, so the arc it appended is on
-    # file as well and the numbered records alone no longer add up. Let the `弧 ?`
-    # blocks bind to a record too - only by exact 起始章/结束章, so a genuine append
-    # finds nothing to bind to and stays an append. Without this the re-read card turns
-    # red on reload with 缺少 起始章、结束章…, because the document grew under the fence.
-    replay = len(numbered) < len(existing) and len(numbered) + len(fresh) == len(existing)
-    if len(numbered) != len(existing) and not replay:
-        return text  # 删条目由校验器说清楚，这里不猜
 
     slots: dict[int, int] = {}
     taken: set[int] = set()
@@ -988,29 +980,39 @@ def _align_arc_history(text: str, current_text: str | None) -> str:
                 return candidate
         return -1
 
-    for ordinal, index in enumerate(numbered):
+    # A create carries no key to check against the book, so exact 起始章/结束章 is the
+    # only thing that can say "this one is already on file". Measured on the owner's
+    # B-layer fence: once its 7 arcs were written, the re-read card listed them again as
+    # `弧 ?` - a pure append never lists the arcs it does not add, so no count arithmetic
+    # can see that - and 应用 a second time turned 9 arcs into 16.
+    bound_fresh: set[int] = set()
+    for index in sorted(fresh):
         picked = by_bounds(index)
-        if picked < 0 and ordinal not in taken:
-            picked = ordinal
         if picked < 0:
-            return text
+            continue
         taken.add(picked)
         slots[index] = picked
-    if replay:
-        for index in sorted(fresh):
-            picked = by_bounds(index)
-            if picked < 0:
-                return text
-            taken.add(picked)
-            slots[index] = picked
-            fresh.discard(index)
+        bound_fresh.add(index)
+        fresh.discard(index)
+
+    # Position only means something while the numbered records still cover what is left
+    # of the book one for one; after that a guess would land on the wrong arc.
+    one_for_one = len(numbered) == len(existing) - len(taken)
+    for ordinal, index in enumerate(numbered):
+        picked = by_bounds(index)
+        if picked < 0 and one_for_one and ordinal not in taken:
+            picked = ordinal
+        if picked < 0:
+            return text  # 删条目由校验器说清楚，这里不猜
+        taken.add(picked)
+        slots[index] = picked
 
     offered = [_record_int(headings[index].group(1)) for index in numbered]
     wanted = [_record_int(row.get("arc")) for row in existing]
     # Only a restart at 弧 1 counts as the model renumbering the book for itself; an
     # off-sequence key such as 弧 99 is an arc that does not exist, and must stay red.
     # The sequence runs over the records the fence numbers, not over the book on file -
-    # in the replay shape the appended arc is already on file, so those two differ.
+    # an append fence leaves part of the book unlisted, so those two differ.
     renumber = offered != wanted and offered == list(range(1, len(numbered) + 1))
 
     rebuilt = [head]
@@ -1028,7 +1030,9 @@ def _align_arc_history(text: str, current_text: str | None) -> str:
                 lines.append(f"- **{label}**：{'planned' if label == '状态' else ''}")
         else:
             row = existing[slots[index]]
-            if renumber:
+            # A bound create has to come back with the key it landed on: `?` reads as a
+            # create all the way down to `_resolve_ids`, which would append it again.
+            if renumber or index in bound_fresh:
                 title = headings[index].group(2).strip() or str(row.get("title") or "")
                 lines[0] = f"弧 {row.get('arc')} {title}".rstrip()
             for label, field in _ARC_LABELS:
@@ -1077,8 +1081,9 @@ def arc_proposal_from_toc_ranges(toc_text: str, current_arcs_text: str | None) -
     model wrote into the wrong book. What comes back is only what the model already
     typed: 起始章/结束章 from the heading, 目标 from that entry's 剧情功能/备注, and the
     title with the `弧 3：` prefix stripped. The arcs already on file are re-emitted in
-    front of the new record so the card still shows a whole file. The second value is
-    "" when there was nothing to move.
+    front of the new record so the card still shows a whole file, and a range whose
+    起始章/结束章 already match one of them edits that arc instead of adding a record.
+    The second value is "" when there was nothing to move.
     """
     lines = toc_text.splitlines()
     kept: list[str] = []
@@ -1120,7 +1125,19 @@ def arc_proposal_from_toc_ranges(toc_text: str, current_arcs_text: str | None) -
         )
     if not moved:
         return toc_text, ""
-    rows = _existing_arcs(current_arcs_text) + moved
+    rows = _existing_arcs(current_arcs_text)
+    on_file = {(row.get("start_chapter"), row.get("end_chapter")): row for row in rows}
+    for row in moved:
+        bound = on_file.get((row["start_chapter"], row["end_chapter"]))
+        if bound is None:
+            rows.append(row)
+            continue
+        # 起止章相同就是同一条弧（D-43）：这条围栏上一轮已经把它写进去了，再列一遍
+        # 就是又添一条。作品 6 实测：重读同一条 B 层围栏，9 条弧变 16 条。
+        # 围栏只带 标题/目标 两个可改字段，空值一律不许清掉档上的字。
+        for field in ("title", "objective"):
+            if row[field]:
+                bound[field] = row[field]
     return "\n".join(kept).rstrip("\n") + "\n", render_document("arcs", rows)
 
 
@@ -1250,7 +1267,11 @@ def _write_arcs(
         changed: list[str] = []
         for raw, arc_id in zip(rows, resolved):
             after = _coerce({**raw, "arc": arc_id}, ARC_FIELDS, ARCS_PATH)
-            row = by_id.get(arc_id)
+            # `弧 ?` never names a row that already exists, so it must never be looked
+            # up either: the number `_resolve_ids` guessed is this novel's max + 1, while
+            # ArcPlan.id counts globally, so the guess can hit a row this same proposal
+            # inserted one step earlier and turn an append into a refused bounds edit.
+            row = None if raw.get("arc") is None else by_id.get(arc_id)
             if row is None:
                 row = ArcPlan(
                     novel_id=novel_id,
@@ -1426,7 +1447,10 @@ def _write_book(
         changed: list[str] = []
         for raw, key in zip(incoming, resolved):
             after = _coerce({**raw, fields[0]: key}, fields, path)
-            row = by_id.get(key)
+            # Same reason as in `_write_arcs`: `?` is a create, never a reference to a
+            # row on file, and the guessed number can collide with one this proposal
+            # inserted a step earlier because the id column counts across all books.
+            row = None if raw.get(fields[0]) is None else by_id.get(key)
             if row is None:
                 row = make(novel_id, after)
                 session.add(row)

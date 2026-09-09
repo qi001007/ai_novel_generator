@@ -1,5 +1,7 @@
 """The four planning layers projected onto editable Markdown documents."""
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -470,6 +472,82 @@ def test_an_appended_arc_no_longer_costs_the_existing_ones_their_inheritance(cli
     # 新那条只有可选字段是系统给的默认值，主键由系统分配
     assert "## 弧 3 卷三" in saved
     assert saved.count("- **状态**：planned") == 3
+
+
+def test_two_arcs_appended_in_one_proposal_do_not_land_on_the_same_key(client: TestClient) -> None:
+    # 主人那条 B 层围栏自己改道出来的 C 层卡，实测就是死在这里：`弧 N` 是行的自增 id，
+    # 全局计数，而 `_resolve_ids` 按「本书最大 id + 1」猜号。本书的 id 落后于全局时，
+    # 猜出的号会撞上本次提案刚插入的那一行，第二条追加就被当成「改了受保护字段」拒掉。
+    novel_id, header = _two_arc_novel(client)
+    other = client.post("/api/novels", json={"title": "另一本书"}).json()["id"]
+    create_arc(client, other, title="别书的弧", start_chapter=1, end_chapter=3, objective="占位")
+
+    proposal = (
+        header
+        + "## 弧 1 卷一\n- **目标**：立起目标·改\n\n"
+        + "## 弧 2 卷二\n- **目标**：追寻玄赿之门·改\n\n"
+        + "## 弧 ? 卷三\n- **起始章**：101\n- **结束章**：140\n- **目标**：门后\n\n"
+        + "## 弧 ? 卷四\n- **起始章**：141\n- **结束章**：180\n- **目标**：门后更深处\n"
+    )
+
+    response = write(client, novel_id, "arcs.md", proposal, actor="ai")
+
+    assert response.status_code == 200, response.text
+    saved = read(client, novel_id, "arcs.md")["text"]
+    assert saved.count("## 弧 ") == 4
+    assert "- **起始章**：101" in saved and "- **起始章**：141" in saved
+
+
+def test_a_range_heading_in_the_b_layer_becomes_an_appliable_c_layer_card(client: TestClient) -> None:
+    """35.2：范围标题属于 C 层，抽提案时改道成一张可应用的弧卡，B 层章号一寸不动。"""
+    from app.services.chat import extract_proposals
+
+    novel_id = seed_novel(client, "B 层范围标题")
+    toc_live = read(client, novel_id, "toc.md")["text"]
+    arcs_live = read(client, novel_id, "arcs.md")["text"]
+    fence = (
+        "# 目录（B 层 · 全书）\n\n"
+        "## 第 42 章 星渊碑影\n- **剧情功能**：揭示碑的来历\n- **备注**：两\n行\n\n"
+        "## 第 43 章 追捕\n- **剧情功能**：第一个冲突高潮\n- **备注**：清道夫\n\n"
+        "## 第 44-60 章 弧 3：门钥之谜\n- **剧情功能**：追寻门钥\n- **备注**：结识更多觉醒者\n\n"
+        "## 第 61-120 章 弧 9-13：永恒的相对\n- **剧情功能**：扩展\n- **备注**：开放式结局\n"
+    )
+    current = lambda path: {"toc.md": toc_live, "arcs.md": arcs_live}.get(path)  # noqa: E731
+
+    cards = extract_proposals(f"```markdown @toc.md\n{fence}\n```", current)
+    toc = next(c for c in cards if c["path"] == "toc.md")
+    arcs = next((c for c in cards if c["path"] == "arcs.md"), None)
+
+    assert arcs is not None, cards
+    assert [c["valid"] for c in cards] == [True, True], cards
+    assert "第 44-60 章" not in toc["text"] and "## 第 43 章 追捕" in toc["text"]
+    assert "## 弧 ? 门钥之谜" in arcs["text"], arcs["text"]
+    # 「弧 9-13：」这种跨号前缀也要整段去掉，剩下的才是标题
+    assert "## 弧 ? 永恒的相对" in arcs["text"], arcs["text"]
+    assert "- **起始章**：44" in arcs["text"] and "- **结束章**：120" in arcs["text"]
+
+    for card in cards:
+        applied = write(client, novel_id, card["path"], card["text"], actor="ai")
+        assert applied.status_code == 200, applied.text
+    assert "第 44-60 章" not in read(client, novel_id, "toc.md")["text"]
+    assert sorted(int(n) for n in re.findall(r"^## 第 (\d+) 章", read(client, novel_id, "toc.md")["text"], re.M)) == [42, 43]
+
+    # 第二轮就是主人实测踩到的那一步：同一条围栏重读，那两条弧已经在书上了。
+    toc_after = read(client, novel_id, "toc.md")["text"]
+    arcs_after = read(client, novel_id, "arcs.md")["text"]
+    current_again = lambda path: {  # noqa: E731
+        "toc.md": toc_after,
+        "arcs.md": arcs_after,
+    }.get(path)
+
+    again = next(
+        c for c in extract_proposals(f"```markdown @toc.md\n{fence}\n```", current_again)
+        if c["path"] == "arcs.md"
+    )
+
+    assert again["text"] == arcs_after, again["text"]
+    assert write(client, novel_id, "arcs.md", again["text"], actor="ai").status_code == 200
+    assert read(client, novel_id, "arcs.md")["text"].count("## 弧 ") == arcs_after.count("## 弧 ")
 
 
 def test_dropping_an_arc_is_still_refused_after_the_inheritance_fix(client: TestClient) -> None:
