@@ -147,6 +147,30 @@ describe("settled UI decisions must not regress", () => {
     expect(rule(".editor-actions")).toContain("flex-wrap: wrap");
   });
 
+  it("the answer row says which mode it ran under, in the one vocabulary (第三十五批批注 35.15)", () => {
+    // 起于「你并没有按照我给的上下文模式来啊」：那一轮确实不是按开关上那个模式跑的，
+    // 而模式由模型从这句话自己判（D-41），界面上从头到尾没说过这一答是按什么办的。
+    // The composer's dial is where the NEXT sentence starts from; the mode that ran is
+    // decided by the model from the sentence (D-41), so the row has to report it.
+    // The word comes from labels.ts and nowhere else (D-34) - a literal typed into the
+    // component would be a second owner of the same vocabulary.
+    expect(labelsSource).toContain('plan: "计划"');
+    expect(labelsSource).toContain('write: "写作"');
+    expect(chatPane).toContain('import { modeLabel } from "../labels"');
+    expect(chatPane).not.toMatch(/>\s*计划\s*<\/button>/);
+    expect(chatPane).not.toMatch(/>\s*写作\s*<\/button>/);
+    // one chip per answer row, and it is a verb phrase so it never reads as a
+    // second, contradicting claim about the dial next to it
+    expect((chatPane.match(/className="chat-mode"/g) ?? []).length).toBe(1);
+    expect(chatPane).toContain('按「{modeLabel(row.meta.mode)}」');
+    expect(chatPane).toContain('aria-label={`这一答按「${modeLabel(row.meta.mode)}」处理`}');
+    // the mode has to survive a reload, not just a live stream
+    expect(chatRowsSource).toContain("mode?: string;");
+    expect(chatRowsSource).toContain("mode: event.data.mode,");
+    // quiet tier, like the model name it follows - never louder than the answer
+    expect(rule(".chat-card .chat-mode")).toContain("var(--text-2)");
+  });
+
   it("the two tab strips shrink and stop at the same two numbers (第十五批批注 1.1、1.2)", () => {
     // The floor and the ceiling are what decide when a strip overflows, and the
     // owner asked for the chapter strip to behave like the file strip - not for a

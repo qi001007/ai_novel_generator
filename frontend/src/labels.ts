@@ -1,5 +1,5 @@
 /**
- * `kind` / `task` 的界面词只有这一份（候选 5，2026-09-07）。
+ * `kind` / `task` / `mode` 的界面词只有这一份（候选 5，2026-09-07；`mode` 是批注 35.15 补的）。
  *
  * 搬前有三把：`EditorPane` 与 `GenerationRunDetailPage` 各存一份逐字相同的 `TASK_LABELS`，
  * `PreferencesPage` 再来一份口径不同的（同一个 review 那儿叫「审稿」），
@@ -32,6 +32,16 @@ export const KIND_LABELS: Record<string, string> = {
   feedback: "审稿意见",
 };
 
+/**
+ * 对话模式的两个词。D-41 之后这一轮的**实际**模式由那句话裁定，不再等于 composer 上
+ * 拨的那一侧，所以它现在有两个落点：开关（下一句要拨到哪）与答案行（这一答按什么办的）。
+ * 两处共用这一份，是为了让「同一屏不许出现两种互相矛盾的说法」能被一条断言钉住（35.15）。
+ */
+export const MODE_LABELS: Record<string, string> = {
+  plan: "计划",
+  write: "写作",
+};
+
 /** 供应商路由表按这个顺序列任务；`image` 是留的槽位，没接通前明写未启用。 */
 export const PROVIDER_TASKS: Array<readonly [string, string]> = [
   ["draft", TASK_LABELS.draft],
@@ -43,3 +53,4 @@ export const PROVIDER_TASKS: Array<readonly [string, string]> = [
 
 export const taskLabel = (task: string): string => TASK_LABELS[task] ?? task;
 export const kindLabel = (kind: string): string => KIND_LABELS[kind] ?? kind;
+export const modeLabel = (mode: string): string => MODE_LABELS[mode] ?? mode;

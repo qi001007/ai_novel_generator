@@ -1368,6 +1368,16 @@ select:focus-visible {
   color: var(--text-2);
 }
 
+/* 批注 35.15：这一答实际按哪个模式办的，跟在模型名后面说一次。 */
+.chat-card .chat-mode {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
 .chat-card.command {
   background: var(--chat-bubble);
 }

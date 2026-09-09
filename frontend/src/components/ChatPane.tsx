@@ -34,6 +34,7 @@ import {
   type AgentRow,
   type Row,
 } from "./chatRows";
+import { modeLabel } from "../labels";
 
 const commands = [
   { name: "/generate", args: "", desc: "按当前 D 简报生成正文" },
@@ -92,6 +93,7 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
             tokenInput: row.token_input,
             tokenOutput: row.token_output,
             refs: row.context_refs,
+            mode: row.mode,
             reasoning: row.reasoning,
           },
         },
@@ -929,11 +931,19 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                         <ChevronDown size={11} />
                       </button>
                     ) : null}
-                    {/* 批注 4: what is left of the speaker line is the model - the
-                        mode is already on the composer toggle, and "Agent" is only
-                        ever one of two voices in here. */}
+                    {/* 批注 4: what is left of the speaker line is the model - "Agent" is
+                        only ever one of two voices in here. */}
                     {row.status !== "streaming" && row.meta.model ? (
                       <span className="chat-who">{row.meta.model}</span>
+                    ) : null}
+                    {/* 批注 4 说过说话行剩下的就是模型；批注 35.15 把模式也搬回这一行——
+                        D-41 之后 composer 那个开关只是「下一句拨到哪」，这一答按什么办的，
+                        开关上看不出来。写「按「计划」」而不是光秃秃一个「计划」，是为了
+                        同一屏不许出现两处互相矛盾的模式说法。 */}
+                    {row.meta.mode ? (
+                      <span className="chat-mode" aria-label={`这一答按「${modeLabel(row.meta.mode)}」处理`}>
+                        按「{modeLabel(row.meta.mode)}」
+                      </span>
                     ) : null}
                   </div>
                   {expanded === row.id ? (
@@ -1074,7 +1084,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 className={mode === "plan" ? "selected" : ""}
                 onClick={() => setMode("plan")}
               >
-                计划
+                {modeLabel("plan")}
               </button>
               <button
                 type="button"
@@ -1083,7 +1093,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 className={mode === "write" ? "selected" : ""}
                 onClick={() => setMode("write")}
               >
-                写作
+                {modeLabel("write")}
               </button>
             </div>
             {/* 第十九批批注 1: this used to be disabled because the old picker dropped

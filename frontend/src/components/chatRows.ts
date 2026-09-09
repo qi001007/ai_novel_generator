@@ -24,6 +24,10 @@ export type AgentMeta = {
   /** What the turn was allowed to reach for, so an empty round reads as
       "did not need it" rather than "cannot". */
   allowed?: string[];
+  /** The mode this answer actually ran under (批注 35.15). The server decides it from
+      the sentence (D-41), so it is not the composer's dial: the dial only says which
+      side the next sentence starts from. */
+  mode?: string;
   /** The model's own reasoning, when the model gave any. */
   reasoning?: string;
 };
@@ -102,6 +106,7 @@ export function applyStreamEvent(rows: Row[], id: number, event: ChatStreamEvent
           refs: event.data.items.map(({ kind, label, ref }) => ({ kind, label, ref })),
           unknown: event.data.unknown_mentions,
           allowed: event.data.tools ?? [],
+          mode: event.data.mode,
         },
       });
     case "tool": {
@@ -132,6 +137,7 @@ export function applyStreamEvent(rows: Row[], id: number, event: ChatStreamEvent
           tokenOutput: message.token_output,
           refs: meta.refs?.length ? meta.refs : message.context_refs,
           unknown: meta.unknown,
+          mode: meta.mode ?? message.mode,
           reasoning: message.reasoning || meta.reasoning,
         },
       });

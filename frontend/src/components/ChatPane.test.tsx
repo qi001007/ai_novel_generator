@@ -153,6 +153,49 @@ describe("ChatPane", () => {
     expect(screen.getByText("人物 · 陈九思")).toBeTruthy();
   });
 
+  /* 批注 35.15：D-41 之后这一轮的模式由那句话裁定，composer 那个开关只是「下一句拨到哪」。
+     所以答案行必须自己说清这一答按什么办的——判据两种模式各要一行断言。 */
+  async function runTurn(effective: "plan" | "write") {
+    const user = userEvent.setup();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/stream")) {
+          return Promise.resolve(
+            sse([
+              ["context", { items: [], unknown_mentions: [], mode: effective, temperature: 0.7 }],
+              ["delta", { text: "第一章" }],
+              ["done", { message: { ...assistantMessage, mode: effective } }],
+              ["end", {}],
+            ]),
+          );
+        }
+        if (url.includes("/chat/messages")) return json([]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "给第 1 章写一份简报");
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(document.querySelector(".chat-card .chat-mode")).toBeTruthy();
+    });
+  }
+
+  it("says on the answer which mode the sentence used, while the dial stays where it was put", async () => {
+    await runTurn("plan");
+    expect(document.querySelector(".chat-card .chat-mode")?.textContent).toBe("按「计划」");
+    // 开关仍显示主人拨的那一侧：它说的是下一句的起点，不是这一答的结论，两处不互相矛盾。
+    expect(screen.getByRole("radio", { name: "写作" }).getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByRole("radio", { name: "计划" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("says 按「写作」 on the answer when the sentence really asked for prose", async () => {
+    await runTurn("write");
+    expect(document.querySelector(".chat-card .chat-mode")?.textContent).toBe("按「写作」");
+  });
+
   /* 第十六批批注 1: 「智能体回话的上面还是没有思考过程展开的入口」. The fold that was
      there only ever listed tool calls, so an ordinary answer had no entry at all. */
   /* 第十九批批注 1: the paperclip used to be disabled because the old picker threw the
