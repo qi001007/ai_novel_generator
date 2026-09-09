@@ -24,6 +24,7 @@ from sqlmodel import Session
 
 from app.services.agent import Tool, ToolCall, ToolError, ToolRegistry
 from app.services.documents import DocumentError, current_text_reader, list_files, read_file
+from app.services.markdown_doc import grammar_text
 from app.services.proposal_actions import ACTIONS, DIAG_PREFIX, run_action
 
 WIKI_ENDPOINT = "https://zh.wikipedia.org/w/api.php"
@@ -103,7 +104,7 @@ def _registry_tools(
         return "\n".join(f"{meta.path}  ({meta.layer} 层 · {meta.label})" for meta in metas)
 
     def read(path: str) -> str:
-        """One document, exactly as the editor shows it."""
+        """One document, exactly as the editor shows it, plus the field table it must keep."""
         cleaned = str(path).strip().lstrip("/")
         if not cleaned:
             raise ToolError("read_file 需要 path")
@@ -112,7 +113,9 @@ def _registry_tools(
                 doc = read_file(session, novel_id, cleaned)
             except DocumentError as cause:
                 raise ToolError(f"读不到 {cleaned}：{cause.detail}") from cause
-        return f"{doc.path}（{doc.layer} 层 · {doc.label}）\n\n{doc.text}"
+        grammar = grammar_text(doc.kind)
+        table = f"\n\n本文件写法（字段名以此为准，校验读的就是这张表）：\n{grammar}" if grammar else ""
+        return f"{doc.path}（{doc.layer} 层 · {doc.label}）\n\n{doc.text}{table}"
 
     def current_text(path: str) -> str | None:
         """What the file holds right now; None when this novel does not have it yet."""

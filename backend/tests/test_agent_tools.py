@@ -426,3 +426,57 @@ def test_run_action_reports_a_missing_or_unreadable_action() -> None:
         "payload 不是合法 JSON：Expecting value: line 1 column 1 (char 0)。"
         "只放一个 JSON 对象，不要加注释、尾逗号或多余文字",
     )
+
+
+# --- 35.8：写法表发给模型 ---------------------------------------------------
+
+
+GRAMMAR_MARKER = "本文件写法"
+
+
+def test_every_kind_with_a_table_hands_the_model_every_label() -> None:
+    """两张视图必须出自同一张表：标签由 `grammar_for_kind` 反查，这里不硬编码任何一个。"""
+    from app.services import markdown_doc
+
+    for kind in markdown_doc._GRAMMAR:
+        table = markdown_doc.grammar_text(kind)
+        rows = [row for part in markdown_doc.grammar_for_kind(kind).values() for row in part]
+        assert rows, f"{kind} 的语法表空了，这条测试就没有断言可言"
+        for row in rows:
+            assert f"**{row['label']}**" in table or f"## {row['label']}" in table, (kind, row["label"])
+    assert markdown_doc.grammar_text("draft") == "", "正文没有字段表，不该硬造一份"
+
+
+def test_read_file_appends_the_table_of_the_kind_it_read(session_factory) -> None:
+    from app.services import markdown_doc
+    from app.services.documents import read_file as docs_read
+
+    registry = registry_for(session_factory)
+    for path in ("blueprint.md", "toc.md", "arcs.md",
+                 "settings/foreshadow.md", "settings/worldview.md"):
+        with session_factory() as session:
+            kind = docs_read(session, session_factory.novel_id, path).kind
+        result = registry.run(ToolCall(name="read_file", arguments={"path": path}))
+        assert result.ok is True, path
+        assert GRAMMAR_MARKER in result.content, path
+        table = result.content.split(GRAMMAR_MARKER, 1)[1]
+        for row in [r for part in markdown_doc.grammar_for_kind(kind).values() for r in part]:
+            assert f"**{row['label']}**" in table or f"## {row['label']}" in table, (path, row["label"])
+
+
+def test_a_document_without_a_table_comes_back_as_the_editor_shows_it(session_factory) -> None:
+    """正文一类没有字段书的文档不该被塞进一段表：读到的仍然和编辑器一字不差。"""
+    from app.models import Chapter
+    from app.services.documents import list_files, read_file
+
+    with session_factory() as session:
+        # 直接建章体：空 B 层应用后不建 Chapter 是另一条缺陷（UI-BACKLOG 35.13），不掺进本条。
+        session.add(Chapter(novel_id=session_factory.novel_id, chapter_number=1, title="开门"))
+        session.commit()
+        prose = next(meta.path for meta in list_files(session, session_factory.novel_id)
+                     if meta.kind == "draft")
+        shown = read_file(session, session_factory.novel_id, prose).text
+    result = registry_for(session_factory).run(ToolCall(name="read_file", arguments={"path": prose}))
+    assert result.ok is True, result.content
+    assert GRAMMAR_MARKER not in result.content
+    assert shown in result.content

@@ -223,6 +223,30 @@ def grammar_for_kind(kind: str) -> dict:
         for role, pairs in _GRAMMAR.get(kind, {}).items()
     }
 
+
+def grammar_text(kind: str) -> str:
+    """这张写法表给**模型**读的版本（批次 35.8）。
+
+    以前只有前端拿得到 `grammar_for_kind`，模型只能按中文语感猜标签，于是写出
+    `起止章`、`背景事件`、`悬念钩子` —— 而校验读的正是这张表。标签一律从这里派生，
+    不在提示词里再抄一份：抄一份就会漏改一份。
+    """
+    grammar = _GRAMMAR.get(kind) or {}
+    spec = _RECORD_SPECS.get(kind)
+    lines: list[str] = []
+    if spec is not None:
+        lines.append(f"- 一条记录一个标题，形如 `{spec['shape']}`；标题里的编号是主键")
+    bullets = grammar.get("bullets")
+    if bullets:
+        lines.append("- 字段行写成 `- **标签**：值`，标签一字不差、一条不缺：")
+        lines.extend(f"  - **{label}**：值" for _field, label in bullets)
+    sections = grammar.get("sections")
+    if sections:
+        lines.append("- 正文小节以 `## 标签` 起头，按下列顺序，标题不增不减不改名：")
+        lines.extend(f"  - ## {label}" for _field, label in sections)
+    return "\n".join(lines)
+
+
 _EMPTY = "—"
 
 

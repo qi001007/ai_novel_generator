@@ -525,10 +525,30 @@ def test_prompt_teaches_the_file_proposal_format(client: TestClient) -> None:
     client.post(f"/api/novels/{novel_id}/chat", json={"content": "把目录第 3 章补完", "mode": "plan"})
 
     system = fake.calls[0]["messages"][0]["content"]
+    # 35.8 推翻了本条原先钉的两件事：示例曾写在 `toc.md` 上（那五层从此只能走 propose_ 工具），
+    # 以及「只改值」（D-39 改成允许追加、禁止删除与改号）。断言跟着搬到新决定上，没有删。
     assert "## 直接改文件" in system
-    assert "```markdown @toc.md" in system
+    assert "```markdown @settings/foreshadow.md" in system
+    assert "```markdown @toc.md" not in system
     assert "逐字节保持原样" in system
-    assert "只改值" in system
+    assert "只改值" not in system
+    assert "只允许**追加**" in system
+    for tool in ("propose_blueprint", "propose_toc", "propose_arcs",
+                 "propose_chapter_brief", "propose_character"):
+        assert tool in system
+
+
+def test_no_prompt_lets_a_hand_written_fence_stand_in_for_an_action_tool() -> None:
+    """35.8：等价表述就是第二条通道，实测模型一次都没调用过 `propose_` 工具。"""
+    from app.services.agent import TOOL_RULES
+    from app.services.chat import FILE_EDIT_RULES
+
+    for phrase in ("都可以", "还是直接输出", "也可以"):
+        assert phrase not in FILE_EDIT_RULES, phrase
+    # 五层各点名一次工具，且明说手写不算提出改动
+    assert "只能走对应的 `propose_` 提案工具" in FILE_EDIT_RULES
+    assert "你没有写文件的工具" in TOOL_RULES
+    assert "propose_" in TOOL_RULES
 
 
 def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
