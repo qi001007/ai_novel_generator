@@ -100,6 +100,8 @@ type WorkbenchState = {
   runAiReview: () => Promise<void>;
   extractChapterFacts: () => Promise<void>;
   loadChapterRecords: () => Promise<void>;
+  /** Re-read what the tree shows: the chapter rows and the brief rows behind them. */
+  reloadChapterList: () => Promise<void>;
   createNextChapter: () => Promise<number | null>;
   /** 改章名（序号不动）。返回错误文本，null 表示成功。 */
   renameChapter: (chapterNumber: number, title: string) => Promise<string | null>;
@@ -593,6 +595,29 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     } finally {
       set({ busy: false });
     }
+  },
+
+  // 批注 35.4: the tree reads `chapters`, and a write that creates a chapter adds a
+  // row to that list on the server. Only this action re-reads it, so the list stays
+  // the store's own fact; selection is deliberately left alone.
+  async reloadChapterList() {
+    const { selectedNovelId } = get();
+    if (!selectedNovelId) return;
+    try {
+      const [briefs, chapters] = await Promise.all([
+        api.get<ChapterBrief[]>(`/api/novels/${selectedNovelId}/planning/briefs`),
+        api.get<Chapter[]>(`/api/novels/${selectedNovelId}/chapters`),
+      ]);
+      set({ briefs, chapters });
+    } catch {
+      // A failed re-read leaves the rows already on screen. The next write,
+      // chapter switch or manual reload gets another chance; clearing them here
+      // would turn a network hiccup into a missing-chapter report.
+    }
+    // The records come last on purpose: loadChapterRecords() turns down a chapter
+    // it cannot place in the list it holds, so calling it before this re-read made
+    // a brand-new first chapter silently fetch nothing.
+    await get().loadChapterRecords();
   },
 
   async loadChapterRecords() {

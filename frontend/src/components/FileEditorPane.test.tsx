@@ -532,7 +532,13 @@ describe("FileEditorPane", () => {
     expect(document.querySelector(".toc-empty")).toBeTruthy();
   });
 
-  it("re-reads the chapter records once a proposal has landed", async () => {
+  it("re-reads the chapter list, then its records, once a proposal has landed", async () => {
+    // 批注 35.4: the tree reads `chapters`, so a write that created the first chapter
+    // used to leave 「还没有章节」 on screen until a manual reload. The list re-read is
+    // what the pane owes; the record fetch follows it because the store turns down
+    // records for a chapter it cannot place in the list it holds.
+    vi.mocked(api.get).mockImplementation(((path: string) =>
+      Promise.resolve(path === "/api/novels/1/chapters" ? [{ id: 8, chapter_number: 1 }] : [])) as never);
     useWorkbench.setState({
       chapters: [{ id: 8, chapter_number: 1 } as never],
       selectedChapterId: 8,
@@ -541,16 +547,19 @@ describe("FileEditorPane", () => {
     render(<FileEditorPane />);
     await waitFor(() => expect(document.querySelector(".cm-content")?.textContent).toContain("全书蓝图"));
 
-    const recordReads = () =>
-      vi.mocked(api.get).mock.calls.filter((call) => String(call[0]).includes("generation-runs")).length;
+    const reads = (fragment: string) =>
+      vi.mocked(api.get).mock.calls.filter((call) => String(call[0]).includes(fragment)).length;
     // StrictMode runs the mount effects twice: a boolean guard would refresh here.
-    expect(recordReads()).toBe(0);
+    expect(reads("generation-runs")).toBe(0);
 
     act(() => {
       useFiles.setState({ appliedSeq: useFiles.getState().appliedSeq + 1 });
     });
-    await waitFor(() => expect(recordReads()).toBe(1));
+    await waitFor(() => expect(reads("generation-runs")).toBe(1));
+    expect(api.get).toHaveBeenCalledWith("/api/novels/1/planning/briefs");
+    expect(api.get).toHaveBeenCalledWith("/api/novels/1/chapters");
     expect(api.get).toHaveBeenCalledWith("/api/novels/1/chapters/8/generation-runs");
+    expect(useWorkbench.getState().chapters.map((item) => item.chapter_number)).toEqual([1]);
   });
 
 });

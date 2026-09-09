@@ -63,7 +63,7 @@ export default function FileEditorPane() {
     return found?.title ?? "未选择作品";
   });
   const chapters = useWorkbench((state) => state.chapters);
-  const loadChapterRecords = useWorkbench((state) => state.loadChapterRecords);
+  const reloadChapterList = useWorkbench((state) => state.reloadChapterList);
   const tabs = useFiles((state) => state.tabs);
   const active = useFiles((state) => state.active);
   const entries = useFiles((state) => state.entries);
@@ -140,7 +140,12 @@ export default function FileEditorPane() {
   /* 批注 4 (2026-09-09): a write that lands changes more than the file - the chapter
      record behind it, and whatever the agent touched on the way. The file store
      counts those writes instead of copying another store's data, so this is the
-     re-read; loadChapterRecords() is workbench's own action and stays its owner.
+     re-read. 批注 35.4 moved it from loadChapterRecords() to reloadChapterList():
+     the old call fetched the selected chapter's runs and reviews, which is nothing
+     the tree reads - so applying a proposal that created the first chapter left
+     「还没有章节」 on screen until a manual reload. The records still come: that
+     action awaits loadChapterRecords() after the fresh list lands, and only then can
+     the new chapter be placed in it - which is the check that used to skip it.
      The ref holds the value this pane first saw, not a mounted boolean: main.tsx
      wraps the tree in StrictMode, every effect runs twice on mount, and a flag is
      already true by the second pass - the same trap 批注 28.5 fell into. */
@@ -149,8 +154,8 @@ export default function FileEditorPane() {
     const previous = lastApplied.current;
     lastApplied.current = appliedSeq;
     if (previous === appliedSeq) return;
-    void loadChapterRecords();
-  }, [appliedSeq, loadChapterRecords]);
+    void reloadChapterList();
+  }, [appliedSeq, reloadChapterList]);
 
   /* Ctrl+S lives on the window, not only on the CodeMirror keymap. The rendered
      list is an overlay, so while it is showing the editor does not have focus and

@@ -226,6 +226,38 @@ describe("workbench novel selection", () => {
     expect(useWorkbench.getState().generationRuns).toEqual([]);
   });
 
+  it("re-reads the tree's two sources without moving the selection (批注 35.4)", async () => {
+    const made: Chapter = { ...chapter, id: 12, novel_id: 5, chapter_number: 1 };
+    useWorkbench.setState({
+      selectedNovelId: 5,
+      chapters: [],
+      briefs: [],
+      selectedChapterId: null,
+      selectedBriefId: null,
+    });
+    vi.mocked(api.get).mockImplementation(((path: string) =>
+      Promise.resolve(
+        path === "/api/novels/5/chapters"
+          ? [made]
+          : path === "/api/novels/5/planning/briefs"
+            ? [{ ...brief, id: 3, novel_id: 5, chapter_number: 1 }]
+            : [])) as never);
+
+    await useWorkbench.getState().reloadChapterList();
+
+    expect(useWorkbench.getState().chapters.map((item) => item.chapter_number)).toEqual([1]);
+    expect(useWorkbench.getState().briefs.map((item) => item.chapter_number)).toEqual([1]);
+    // The reader may be looking at any file; a background re-read must not move them.
+    expect(useWorkbench.getState().selectedChapterId).toBeNull();
+    expect(useWorkbench.getState().selectedBriefId).toBeNull();
+  });
+
+  it("re-reads nothing while no novel is selected", async () => {
+    useWorkbench.setState({ selectedNovelId: null });
+    await useWorkbench.getState().reloadChapterList();
+    expect(api.get).not.toHaveBeenCalled();
+  });
+
   it("clears the previous book's slices while switching, so ids cannot disagree", async () => {
     useWorkbench.setState({
       selectedNovelId: 1,

@@ -51,6 +51,7 @@
 | D-43 | 重新生成的 C 层围栏：省略的字段从档上继承，已应用过的重读即收起 |
 | D-44 | 从 B 层改道出来的弧认档不认块数；`弧 ?` 永不回查已有行 |
 | D-45 | 折叠控件钉在它折叠的内容之上；「展开后没法收起」是几何问题 |
+| D-46 | 写入落地的反应先重读章节清单，再取所选章记录；树只读 `chapters` |
 
 ## 1. 决定
 
@@ -274,6 +275,17 @@
 - **否掉的两种修法**：给 `.proposal-diff` 加 `max-height + overflow` 变成内滚区（滚动套滚动，而且「展开全部」从此名不副实）；点完用 JS 把按钮滚回视野（跟布局对着干——上一批 StrictMode 那条教训点名的就是这类程序化补救，取证脚本里 `scrollIntoView` 恰好把它遮住了：本轮第一次量之所以看着正常，是因为我自己调了它）。
 - **断言搬家（D-33）**：`uiInvariants.test.ts` 新增「the fold control sits above the rows it folds」，钉源文件里 `fold` 节点进 `.proposal-head`、`.proposal-diff` 内不再出现 `.proposal-more`、CSS 不再 `align-self: flex-start`；`ProposalCard.test.tsx` 同题新增一例（先红后绿）。原有两向断言一条未删。
 - **命中区无回归**：审计 small 0 / clipped 0 / unreachable 0，与改前同一份 2 条 edge + 1 条 srOnly；前端 274 passed（改前 272）。
+
+### D-46 写入落地的反应先重读章节清单，再取所选章记录；树只读 `chapters`
+
+状态：生效。批次 35.4 裁定。主人报「说『创建第一章，先写简报』，应用之后左侧还是『还没有章节』，非要手动刷新」。真机量的：点「应用提案」后 `PUT /api/novels/6/files/chapters/0001/brief.md` 返回 200、`GET /chapters` 立刻是 1 条——**服务器已经改对了，界面没去再看一眼**。
+
+- **为什么原来那次刷新是空的**：编辑面板对「写入落地」这个事件的反应调的是 `loadChapterRecords()`，它取的是所选章的生成记录与评审，左树一个字段都不读；而它内部还有一条硬规矩——**清单里落不了位的章节直接不取**（防跨书串档），所以「第一章刚被创建、清单还是空的」这一种情况它连请求都不发。两件事叠起来：该重读的没重读，读了的也没读。
+- **裁定**：新增 `workbench.reloadChapterList()`，它是「树的两份来源」（`/planning/briefs` + `/chapters`）唯一的重读入口，跑完再 `await loadChapterRecords()`——**顺序是这条决定的正文**：清单先到，记录才可能落位。后台重读**不许动选择**（`selectedChapterId` / `selectedBriefId` 一律不写），主人当时可能正看任何一个文件。
+- **否掉的修法**：应用成功后在前端自己拼一行章节塞进 `chapters`（等于在客户端造一份第二真源，D-02 直接顶回来）；或给新章自动开标签、自动跳过去（那是替主人决定他在看什么，且判据只要求树里出现第一章）。
+- **断言搬家（D-33）**：`uiInvariants.test.ts` 新增「a landed write re-reads the chapter list before its records」，钉面板源文件里 `void reloadChapterList()`、不再出现 `void loadChapterRecords()`，并把 store 里这段动作切出来断言 `set({ briefs, chapters })` 在前、`await get().loadChapterRecords()` 在后、且整段不含 `selectedChapterId`。原「re-reads the chapter records once a proposal has landed」一例**未删**，改写成这条链的完整版（清单两次 GET + 记录一次 GET + StrictMode 双跑不刷新）。
+- **门禁**：前端 277 passed、`tsc -b --force` 退出 0、`npm run build` 通过、命中区审计 small 0 / clipped 0 / unreachable 0（与 D-45 同一份 2 条 edge + 1 条 srOnly）；后端 375 passed（本条未碰后端）。
+- **真机复测（8035 + `i354.db`，0 章作品）**：应用前 `{chapters:0, treeRows:9, 还没有章节:true}` → 点「应用提案」**不刷新** → `{chapters:1, treeRows:12, 还没有章节:false}`，与手动刷新后的快照逐项相同；四个标签逐个 HTTP 200，没有指向不存在文件的标签。
 
 ## 2. 已废止（删除区）
 

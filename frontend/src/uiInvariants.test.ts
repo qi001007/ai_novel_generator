@@ -610,6 +610,26 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(css).toMatch(/--surface: #1f2023;/);
   });
 
+  /* 批注 35.4：应用一条「创建第一章」的提案之后，服务器已经有了那一章，左侧树却还
+     写着「还没有章节」，非要主人手动刷新页面才看见。原因是编辑面板对「写入落地」这个
+     事件的反应只调了 loadChapterRecords()——它取的是所选章的生成记录与评审，树根本不读。
+     钉住这条：落一次写必须重读树的两份来源，并且先重读清单、再取记录。 */
+  it("a landed write re-reads the chapter list before its records (批次 35.4)", () => {
+    expect(fileEditor).toMatch(/lastApplied\.current = appliedSeq;[\s\S]{0,140}void reloadChapterList\(\);/);
+    expect(fileEditor).not.toMatch(/void loadChapterRecords\(\);/);
+    const listReload = workbenchStore.slice(
+      workbenchStore.indexOf("async reloadChapterList()"),
+      workbenchStore.indexOf("async loadChapterRecords()"),
+    );
+    expect(listReload.length).toBeGreaterThan(0);
+    // 树读的是 chapters + briefs，两者都要重读；记录放在最后取，因为 store 会拒绝
+    // 为一份它无法在清单里落位的章节取记录。
+    expect(listReload).toContain("set({ briefs, chapters });");
+    expect(listReload).toContain("await get().loadChapterRecords();");
+    // 后台重读不许把主人正在看的东西搬走。
+    expect(listReload).not.toContain("selectedChapterId");
+  });
+
   /* 第十九批批注 3：外观第一次成为「可切换的偏好」。这一类东西最容易在半年后
      被改回硬编码，所以钉的是结构，不是某个色值。 */
   it("an appearance switch repaints tokens, and no preview copies a colour", () => {

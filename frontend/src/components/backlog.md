@@ -1,5 +1,7 @@
 # frontend/src/components/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.4（裁定进 D-46）：`FileEditorPane.tsx` 对「写入落地」的反应从 `void loadChapterRecords()` 换成 `void reloadChapterList()`。量的：应用一张合法简报提案卡后 `PUT` 已 200、`GET /chapters` 已是 1 条，而左树仍报「还没有章节」、非要手动刷新——旧调用取的是所选章的生成记录与评审，树一个字段都不读。复测（8035 + `i354.db`，0 章作品）：不刷新页面即 `chapters 0→1`、树行 `9→12`、「还没有章节」消失，与刷新后的快照逐项相同，四个标签逐个 HTTP 200。`FileEditorPane.test.tsx` 原有那例「re-reads the chapter records once a proposal has landed」**未删**，改写成这条链的完整版（清单两次 GET + 记录一次 GET + StrictMode 双跑不刷新）。
+
 - 2026-09-10 · 批次 35.3（裁定进 D-45）：`ProposalCard.tsx` 把折叠那颗钮从 `.proposal-diff` 列表**末尾**搬成独立 `fold` 节点、渲染进 `.proposal-head`（与文件名、`AI 提案 · +N −M · 第 X 行` 同一行）。原因不是状态而是几何：真机 Edge+CDP 真鼠标点「展开全部 50 行改动」后卡片 1403px、`收起` 落在 `top=1429`，而 `.chat-messages` 可视底边 `756`，控件在视口外 **673px**，主人看到的就是「展开后没法再收起」；头部在它下方长多少行都不动，复测 `moreTop` 403→403（位移 **0px**）、展开前后 `moreVisible` 均 `true`、DOM 行数 8→50→8。双向逻辑（`setShowAll((value) => !value)` + `aria-expanded`，`c978ce3` 起）一寸未改，两个分支继续共用同一份 `changeRows`。同批 `ProposalCard.test.tsx` 新增 `pins the fold control above the rows it folds (35.3)`（先红后绿），原有两条双向断言一条未删。
 
 - 2026-09-09 · 历史加载遇到已等同当前文件的最新提案时，同时清除同路径旧待处理卡，避免导入成功后旧红字重新出现。
