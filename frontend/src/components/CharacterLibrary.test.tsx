@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -288,7 +289,8 @@ describe("CharacterLibrary", () => {
   it("leaves the sections the editor owns alone when the modal saves (no stale overwrite)", async () => {
     const user = userEvent.setup();
     const writes: string[] = [];
-    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+    const rosterReads: string[] = [];
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       const method = String(init?.method ?? "GET");
       const ok = (data: unknown) =>
@@ -298,8 +300,10 @@ describe("CharacterLibrary", () => {
         writes.push(String(JSON.parse(String(init?.body)).text));
         return Promise.resolve(ok({ path: "settings/characters/1.md", changed: ["name"], revision: "rev-1" }));
       }
+      if (url.includes("/characters") && method === "GET") rosterReads.push(url);
       return Promise.resolve(ok(characters));
-    }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     const { container } = render(<CharacterLibrary novelId={1} />);
     await user.click(await screen.findByRole("button", { name: /主角/ }));
@@ -312,6 +316,9 @@ describe("CharacterLibrary", () => {
     // the document's own sections survive the write; the stale snapshot never lands
     expect(writes[0]).toContain("编辑器里改过的身份");
     expect(writes[0]).not.toContain("青年修士");
+    // 批注 4: a human write re-reads the roster as well - the grid never edits its
+    // own copy of the list, so one read at mount plus one after this PUT is the rule.
+    await waitFor(() => expect(rosterReads.length).toBeGreaterThan(1));
     vi.unstubAllGlobals();
   });
 
@@ -330,6 +337,76 @@ describe("CharacterLibrary", () => {
     expect(pencils).toHaveLength(4);
     expect(pencils.every((button) => button.disabled)).toBe(true);
     expect(pencils[0].title).toContain("先保存");
+    vi.unstubAllGlobals();
+  });
+
+  /* 2026-09-09 批注 4: the AI writes a character as a *file*; the roster on screen is
+     database rows, so the library had no way to learn that a new sheet had landed.
+     Both signals are exercised under StrictMode - main.tsx wraps the tree, every
+     effect runs twice on mount, and that is exactly where a boolean guard lies. */
+  const WRITTEN_BY_AI = {
+    id: 3,
+    name: "AI 新写的守碑人",
+    level: "supporting",
+    portrait: "",
+    identity: "碑前守夜",
+    goals: "",
+    behavior_constraints: "",
+    current_status: "",
+    expected_start_chapter: 5,
+    expected_end_chapter: null,
+  };
+
+  it("follows the file layer, so a character the AI wrote shows up without a remount", async () => {
+    const characterMeta = (path: string, label: string) => ({
+      path,
+      kind: "character",
+      layer: "设定",
+      label,
+    });
+    useFiles.setState({
+      novelId: 1,
+      metas: [characterMeta("settings/characters/1.md", "沈曜 档案")],
+    });
+    // The roster answers from the file layer, the way the server does: sheet 3 exists
+    // once its document does. A counter here would have been read twice by StrictMode
+    // on mount and handed the third card out before the signal being tested ever fired.
+    vi.stubGlobal("fetch", vi.fn(() => {
+      const landed = useFiles
+        .getState()
+        .metas.some((meta) => meta.path === "settings/characters/3.md");
+      return Promise.resolve(new Response(JSON.stringify(landed ? characters.concat(WRITTEN_BY_AI) : characters), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    }));
+
+    const { container } = render(
+      <StrictMode>
+        <CharacterLibrary novelId={1} />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(container.querySelectorAll(".character-card")).toHaveLength(2));
+    const afterMount = vi.mocked(globalThis.fetch).mock.calls.length;
+
+    act(() => {
+      useFiles.setState({
+        metas: useFiles
+          .getState()
+          .metas.concat(characterMeta("settings/characters/3.md", "守碑人 档案")),
+      });
+    });
+    await screen.findByText("AI 新写的守碑人");
+    expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(afterMount + 1);
+
+    // The second signal stands on its own: a proposal that landed changes nothing in
+    // the file list when it rewrote a sheet the tree already showed.
+    act(() => {
+      useFiles.setState({ appliedSeq: useFiles.getState().appliedSeq + 1 });
+    });
+    await waitFor(() =>
+      expect(vi.mocked(globalThis.fetch).mock.calls.length).toBe(afterMount + 2),
+    );
     vi.unstubAllGlobals();
   });
 

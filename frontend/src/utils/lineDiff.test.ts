@@ -30,6 +30,18 @@ describe("diffFile", () => {
     expect(diff.removed).toBe(1);
   });
 
+  it("keeps removed and added lines paired in source order", () => {
+    const diff = diffFile("a\nb\nc\nd\n", "a\nB\nC\nD\n");
+    expect(diff.lines.slice(1, 7).map((row) => [row.type, row.text])).toEqual([
+      ["minus", "b"],
+      ["plus", "B"],
+      ["minus", "c"],
+      ["plus", "C"],
+      ["minus", "d"],
+      ["plus", "D"],
+    ]);
+  });
+
   // Head/tail trimming describes one hunk, so two separate edits read as the
   // whole span between them. The card shows the changed lines either way.
   it("collapses two edits into one hunk", () => {

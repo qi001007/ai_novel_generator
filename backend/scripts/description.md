@@ -1,9 +1,6 @@
-# backend/scripts/ —— 手动冒烟（pytest 不收集，文件名故意不带 `test_`）
+# backend/scripts/ —— 手动冒烟
 
-- `writing_ring_smoke.py` —— 可重复的 S1 冒烟：隔离库上走「文件层规划 → 上下文 → 草稿」整圈。
-  默认档**不调模型**（用确定性草稿模板），加 `--live` 才真调供应商、才花钱。
-- `smoke_chat_stream.py` —— 真跑一轮流式对话，**要先起后端**
-  （`.venv\Scripts\python.exe -m uvicorn app.main:app --port 8000`），参数就是提问文本。
+writing_ring_smoke.py 在隔离库走规划 → 上下文 → 草稿；默认不调模型，--live 才花 token。
+smoke_chat_stream.py 在已启动后端上验证对话 SSE。
 
-**规矩**：这里的脚本可以手跑，不许被 `app/` import；要沉淀成回归就搬进 `tests/` 变成用例，
-别留一份只有人记得怎么跑的脚本。
+脚本不得被 app/ 导入；可重复的缺陷验证应移入 tests/。调用 FastAPI 依赖时显式传 Session。

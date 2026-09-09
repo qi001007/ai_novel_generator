@@ -293,6 +293,9 @@ describe("settled UI decisions must not regress", () => {
     // 第十七批批注 1: thinking is prose, so it gets no box and no monospace block -
     // the bordered `.chat-trace-body` belongs to the tool trace alone
     expect(chatPane).toContain('className="chat-thinking-body"');
+    expect(css).toContain('animation: chat-row-arrive 180ms ease-out both');
+    expect(css).toContain('animation: chat-detail-open 180ms ease-out both');
+    expect(css).toContain('@media (prefers-reduced-motion: reduce)');
     expect(chatPane).not.toMatch(/chat-thinking[\s\S]{0,400}chat-trace-body/);
     expect(css).toMatch(/\.chat-thinking-body \{[^}]*color: var\(--text-2\);/);
     expect(rule(".chat-thinking-body")).not.toMatch(/border|background|font-family/);
@@ -388,7 +391,7 @@ describe("settled UI decisions must not regress", () => {
     expect(css).toMatch(/--minimap-w: 56px;/);
     expect(rule(".minimap")).toContain("width: var(--minimap-w)");
     expect(rule(".editor-empty")).toContain("padding-right: var(--minimap-w)");
-    expect(rule(".toc-list-overlay")).toContain("padding-right: var(--minimap-w)");
+    expect(rule(".toc-list-overlay")).toContain("padding-right: 0");
     expect(rule(".character-doc-overlay")).toContain("var(--minimap-w)");
     // a second literal 56px for the gutter is how this drifts back
     expect(css.split("width: 56px;").length - 1).toBe(0);

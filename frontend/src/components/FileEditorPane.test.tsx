@@ -150,6 +150,61 @@ describe("FileEditorPane", () => {
     expect(api.writeFile).not.toHaveBeenCalled();
   });
 
+  it("shows a pending B-layer proposal in the rendered list without writing it", async () => {
+    const toc: FileDoc = {
+      path: "toc.md",
+      kind: "toc",
+      layer: "B",
+      label: "目录",
+      text: "# 目录（B 层 · 中期）\n\n> 一条一章。\n",
+      ai_fields: ["title", "plot_function", "notes"],
+      revision: "toc-rev-1",
+      grammar: servedGrammar("toc"),
+    };
+    const offered = `${toc.text}\n## 第 1 章 雪夜入城\n- **剧情功能**：主角抵达边城\n- **备注**：埋下旧印线索\n`;
+    useFiles.setState({
+      novelId: 1,
+      tabs: ["toc.md"],
+      active: "toc.md",
+      entries: {
+        "toc.md": {
+          doc: toc,
+          draft: toc.text,
+          loading: false,
+          saving: false,
+          error: null,
+          conflict: false,
+          savedAt: null,
+        },
+      },
+      pending: {
+        "toc.md": {
+          id: 12,
+          path: "toc.md",
+          text: offered,
+          valid: true,
+          error: "",
+          baseText: toc.text,
+          baseRevision: toc.revision,
+        },
+      },
+      views: {},
+      stage: null,
+      jump: null,
+      focus: null,
+      revealSeq: 0,
+      metasError: null,
+    });
+    render(<FileEditorPane />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("雪夜入城")).toBeTruthy();
+    });
+    expect(screen.getByText("待确认预览")).toBeTruthy();
+    expect(useFiles.getState().entries["toc.md"]?.draft).toBe(toc.text);
+    expect(api.writeFile).not.toHaveBeenCalled();
+  });
+
   it("names the source in reader-facing words when the reader arrived through a B→D jump", () => {
     seed();
     useFiles.setState({
@@ -367,5 +422,135 @@ describe("FileEditorPane", () => {
     expect(editors[0].textContent).toContain("全书蓝图");
   });
 
-});
+  /* 2026-09-09 批注 3、4. The rail band and the rendered directory are the two places
+     where a proposal the server rejected used to keep pretending it could still land.
+     These go at the end of the block because they write workbench.chapters, and the
+     tests above must not start inheriting a chapter row that is not theirs. */
 
+  /* The band marks lines a proposal would *rewrite*, so the fixture rewrites one
+     value line: an insertion between two blank lines has nothing to mark - both the
+     head and the tail trim eat it - and that is why this file never had a picture of
+     the band before, valid or not. */
+  const FILE_WITH_VALUE = {
+    ...BLUEPRINT,
+    text: "# 全书蓝图\n\n> 小节标题是结构标识。\n\n## 主线\n旧的一条\n\n## 终局\n",
+  };
+
+  function proposalOnBlueprint(valid: boolean) {
+    seed({ doc: FILE_WITH_VALUE, draft: FILE_WITH_VALUE.text });
+    useFiles.setState({
+      pending: {
+        "blueprint.md": {
+          id: 21,
+          path: "blueprint.md",
+          text: FILE_WITH_VALUE.text.replace("旧的一条", "AI 改写的一条"),
+          valid,
+          error: valid ? "" : "第 6 行不是这份文件允许 AI 写的字段",
+          baseText: FILE_WITH_VALUE.text,
+          baseRevision: FILE_WITH_VALUE.revision,
+        },
+      },
+    });
+  }
+
+  it("marks the rail with every line a valid proposal would rewrite", async () => {
+    useWorkbench.setState({ chapters: [] });
+    proposalOnBlueprint(true);
+    render(<FileEditorPane />);
+
+    await waitFor(() => expect(document.querySelector(".cm-content")?.textContent).toContain("全书蓝图"));
+    await waitFor(() => expect(document.querySelectorAll(".cm-rail-seg.pending").length).toBeGreaterThan(0));
+    expect(document.querySelectorAll(".cm-rail-seg.lock").length).toBeGreaterThan(0);
+  });
+
+  it("leaves the rail and the buffer alone for a proposal the server rejected", async () => {
+    useWorkbench.setState({ chapters: [] });
+    proposalOnBlueprint(false);
+    render(<FileEditorPane />);
+
+    await waitFor(() => expect(document.querySelector(".cm-content")?.textContent).toContain("全书蓝图"));
+    // The rail is painted (structure locks are there), so a zero below is a fact.
+    await waitFor(() => expect(document.querySelectorAll(".cm-rail-seg.lock").length).toBeGreaterThan(0));
+    expect(document.querySelectorAll(".cm-rail-seg.pending")).toHaveLength(0);
+    expect(document.querySelectorAll(".cm-pending-line")).toHaveLength(0);
+    expect(document.querySelector(".cm-content")?.textContent).not.toContain("AI 改写的一条");
+  });
+
+  it("keeps a rejected B-layer proposal out of the rendered directory", async () => {
+    const toc: FileDoc = {
+      path: "toc.md",
+      kind: "toc",
+      layer: "B",
+      label: "目录",
+      text: "# 目录（B 层 · 中期）\n\n> 一条一章。\n",
+      ai_fields: ["title", "plot_function", "notes"],
+      revision: "toc-rev-1",
+      grammar: servedGrammar("toc"),
+    };
+    const offered = `${toc.text}\n## 第 1 章 雪夜入城\n- **剧情功能**：主角抵达边城\n- **备注**：\n`;
+    useWorkbench.setState({ chapters: [] });
+    useFiles.setState({
+      novelId: 1,
+      tabs: ["toc.md"],
+      active: "toc.md",
+      entries: {
+        "toc.md": {
+          doc: toc,
+          draft: toc.text,
+          loading: false,
+          saving: false,
+          error: null,
+          conflict: false,
+          savedAt: null,
+        },
+      },
+      pending: {
+        "toc.md": {
+          id: 22,
+          path: "toc.md",
+          text: offered,
+          valid: false,
+          error: "第 1 章缺字段：剧情功能",
+          baseText: toc.text,
+          baseRevision: toc.revision,
+        },
+      },
+      views: {},
+      stage: null,
+      jump: null,
+      focus: null,
+      revealSeq: 0,
+      metasError: null,
+    });
+    render(<FileEditorPane />);
+
+    await waitFor(() => expect(document.querySelector(".toc-list-overlay")).toBeTruthy());
+    // 批注 3: no 待应用 stage-setting on the right for something that cannot be applied.
+    expect(document.querySelector(".toc-list-overlay")?.textContent).not.toContain("待确认预览");
+    expect(screen.queryByDisplayValue("雪夜入城")).toBeNull();
+    // what is on screen is the file as it stands: no rows, because the file has none.
+    expect(document.querySelector(".toc-empty")).toBeTruthy();
+  });
+
+  it("re-reads the chapter records once a proposal has landed", async () => {
+    useWorkbench.setState({
+      chapters: [{ id: 8, chapter_number: 1 } as never],
+      selectedChapterId: 8,
+    });
+    proposalOnBlueprint(true);
+    render(<FileEditorPane />);
+    await waitFor(() => expect(document.querySelector(".cm-content")?.textContent).toContain("全书蓝图"));
+
+    const recordReads = () =>
+      vi.mocked(api.get).mock.calls.filter((call) => String(call[0]).includes("generation-runs")).length;
+    // StrictMode runs the mount effects twice: a boolean guard would refresh here.
+    expect(recordReads()).toBe(0);
+
+    act(() => {
+      useFiles.setState({ appliedSeq: useFiles.getState().appliedSeq + 1 });
+    });
+    await waitFor(() => expect(recordReads()).toBe(1));
+    expect(api.get).toHaveBeenCalledWith("/api/novels/1/chapters/8/generation-runs");
+  });
+
+});

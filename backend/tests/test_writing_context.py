@@ -147,11 +147,11 @@ def _one(ctx, needle):
     return hits[0]
 
 
-def test_window_carries_previous_ending_open_pit_and_cast(session):
+def test_window_carries_previous_brief_full_body_open_pit_and_cast(session):
     novel, brief = _book(session)
     ctx = _window(session, novel, brief)
     labels = [block.item.label for block in ctx.selected]
-    assert any("上一章结尾" in label for label in labels)
+    assert any("上一章正文" in label for label in labels)
     assert any("碑文来历" in label for label in labels)
     assert any("林渊" in label for label in labels)
 
@@ -181,7 +181,7 @@ def test_toc_neighbourhood_beats_distant_entries(session):
     novel, brief = _book(session)
     ctx = _window(session, novel, brief)
     assert _one(ctx, "B 目录 · 第 24 章").tier == TIER_NEARBY
-    assert _one(ctx, "B 目录 · 第 40 章").tier == TIER_FILL
+    assert _one(ctx, "B 目录 · 第 40 章").tier == TIER_NEARBY
 
 
 def test_prompt_reads_the_newest_active_blueprint(session):
@@ -238,15 +238,14 @@ def test_chat_budget_uses_the_same_core_invariant(session):
     assert all("预算不足" in block.reason for block in ctx.dropped)
 
 
-def test_previous_chapter_text_is_not_injected_twice(session):
+def test_previous_chapter_full_text_is_injected_once(session):
     """The ending of chapter 24 is injected; its full text must not double-pay."""
     novel, brief = _book(session)
     ctx = _window(session, novel, brief)
     injected = [block.item.ref for block in ctx.selected]
-    assert any(ref.startswith("chapter_tail:") for ref in injected)
+    previous = next(block for block in ctx.selected if block.item.ref.startswith("chapter_previous:"))
+    assert len(previous.item.text) >= 240
     assert not any(ref.startswith("chapter:") for ref in injected)
-    cut = [block for block in ctx.dropped if block.reason == "与已注入的上一章结尾重复"]
-    assert len(cut) == 1
 
 def test_manifest_records_injected_and_cut_blocks(session):
     novel, brief = _book(session)
@@ -323,7 +322,7 @@ def test_generation_run_persists_the_manifest(client: TestClient):
     assert manifest is not None, "input_summary 必须落可解析的注入清单"
     kinds = {block["kind"] for block in manifest["blocks"]}
     assert {"novel", "blueprint", "brief", "chapter"} <= kinds
-    assert any("上一章结尾" in block["label"] for block in manifest["blocks"])
+    assert any("上一章正文" in block["label"] for block in manifest["blocks"])
 
 def test_chat_write_mode_prints_the_same_manifest(session, monkeypatch, capsys):
     """主人要的回路：写作模式发续写指令，终端立刻列出注入了什么。

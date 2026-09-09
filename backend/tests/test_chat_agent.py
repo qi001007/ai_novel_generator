@@ -571,6 +571,55 @@ def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
     assert briefs[0]["hook"] == "碑上刻着他的名字"
 
 
+def test_streamed_initial_arc_alias_proposal_with_two_records_is_reviewable_and_applicable(
+    client: TestClient,
+) -> None:
+    proposal = (
+        "```markdown @arcs.md\n"
+        "# 剧情弧（C 层）\n\n"
+        "> `弧 N` 是主键。\n\n"
+        "## 弧 1 觉醒·逃亡\n"
+        "- **起止章节**：第 01 - 05 章\n"
+        "- **核心事件**：主角获得能力\n"
+        "- **弧内悬念**：谁在追捕主角\n"
+        "- **人物弧光**：从普通人走向觉醒者\n"
+        "## 弧 2 真相·反击\n"
+        "- **起止章**：第 06 - 10 章\n"
+        "- **核心事件**：主角发现追捕者的目的\n"
+        "- **弧内悬念**：能力的代价是什么\n"
+        "- **人物弧光**：从逃亡者走向反击者\n"
+        "```"
+    )
+    use_fake(client, FakeChatClient(chunks=[proposal]))
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "生成第一幕剧情弧", "mode": "plan"},
+    )
+
+    review = payload_of(parse_sse(response.text), "proposal")
+    assert review["valid"] is True, review["error"]
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/arcs.md",
+        json={"text": review["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+    arcs = client.get(f"/api/novels/{novel_id}/planning/arcs").json()
+    assert len(arcs) == 2
+    assert [arc["title"] for arc in arcs] == ["觉醒·逃亡", "真相·反击"]
+    current = client.get(f"/api/novels/{novel_id}/files/arcs.md").json()["text"]
+    history = client.get(f"/api/novels/{novel_id}/chat/messages").json()
+    restored = next(
+        row["proposals"][0]
+        for row in history
+        if row["role"] == "assistant" and row["proposals"]
+    )
+    assert restored["valid"] is True
+    assert restored["error"] == ""
+    assert restored["text"] == current
+
+
 def test_history_carries_the_proposal_back_for_a_reload(client: TestClient) -> None:
     """A refresh must not swallow a review card the owner never applied."""
     use_fake(

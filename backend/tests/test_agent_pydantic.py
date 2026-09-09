@@ -275,6 +275,56 @@ def test_pydantic_engine_runs_read_search_then_proposal_with_test_model(
     assert "arcs.md contents" not in outcome.content
 
 
+def test_pydantic_engine_deduplicates_repeated_tool_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NOVEL_AGENT_ENGINE", "pydantic")
+    from pydantic_ai import ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.models.test import TestModel
+
+    calls = 0
+
+    def read(path: str) -> str:
+        nonlocal calls
+        calls += 1
+        return f"[{path} contents]"
+
+    registry = ToolRegistry(
+        [
+            Tool(
+                name="read_file",
+                description="read one document",
+                parameters={
+                    "type": "object",
+                    "properties": {"path": {"type": "string"}},
+                    "required": ["path"],
+                },
+                handler=read,
+            )
+        ]
+    )
+
+    class RepeatsThenAnswers(TestModel):
+        def _request(self, messages, model_settings, model_request_parameters):
+            responses = sum(isinstance(message, ModelResponse) for message in messages)
+            if responses < 2:
+                return ModelResponse(
+                    [ToolCallPart("read_file", {"path": "arcs.md"})],
+                    model_name=self.model_name,
+                )
+            return ModelResponse([TextPart("按已有资料回答。")], model_name=self.model_name)
+
+    outcome = run_agent_turn(
+        None,
+        [{"role": "user", "content": "q"}],
+        registry,
+        model=RepeatsThenAnswers(),
+    )
+    assert calls == 1
+    assert len(outcome.steps) == 2
+    assert outcome.steps[1].result.content == "这份内容本轮已经给过你了，不必再查。请基于已有资料直接回答。"
+
+
 def test_the_same_stream_contract_runs_on_both_engines(monkeypatch: pytest.MonkeyPatch) -> None:
     block = call_block("read_file", path="arcs.md")
     replies = [

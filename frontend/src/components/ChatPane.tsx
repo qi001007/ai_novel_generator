@@ -295,7 +295,10 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       // Unknown path: keep the card, but it cannot be applied.
     }
     // Already applied verbatim: offering it again would be a stale card.
-    if (baseRevision && baseText === data.text) return;
+    if (baseRevision && baseText === data.text) {
+      discardFile(data.path);
+      return;
+    }
     const proposal: FileProposal = {
       id: nextProposalId++,
       path: data.path,
@@ -312,7 +315,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           : row,
       ),
     );
-    if (proposal.valid) offerFile(proposal);
+    offerFile(proposal);
   }
 
   async function applyProposal(path: string) {
@@ -1108,6 +1111,18 @@ export default function ChatPane({ className = "" }: { className?: string }) {
               }}
             />
             <span className="spacer" />
+            {selectedChapterId !== null ? (
+              <button
+                type="button"
+                className="primary chat-generate-confirm"
+                disabled={busy || running}
+                onClick={() => void runCommand("/generate")}
+                aria-label="确认并生成正文"
+                title="确认当前章节简报并生成正文"
+              >
+                确认并生成
+              </button>
+            ) : null}
             <div className="model-menu-wrap" ref={modelMenuRef}>
               <button
                 type="button"

@@ -1,5 +1,6 @@
-# frontend\src/ 更改账（最新在上）
+# frontend/src/ 更改账（最新在上）
 
-- 2026-09-07 · 新建本目录 description.md（主人要求原则贯彻到文件树各层）。本目录代码未改。
-
-- 2026-09-08 · `types.ts`：SSE `tool` 事件的 `data` 加 `ms`/`chars`（必填，不是可选附加）。`uiInvariants.test.ts` 新增一块「every trace row carries its own cost」（现 51 块）。
+- 2026-09-09 · 更新入口、网络边界、语法与大文件风险说明；未改源码。
+- 2026-09-08 · types.ts 接收工具步骤耗时/字符数；grammarParity 防止前端重建语法表。
+- 2026-09-07 · labels.ts、paneLayout.ts 等跨面单件收为各自唯一主人。
+ - 2026-09-09：补充对话 Agent 的显式生成确认入口，仍走既有章节流式生成接口。

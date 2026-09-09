@@ -9,7 +9,9 @@ a change to planning leaves this loop as a proposal, and only the human pressing
 from __future__ import annotations
 
 import re
+import json
 import time
+from threading import Lock
 from collections.abc import Callable
 from functools import partial
 from typing import Any
@@ -22,13 +24,110 @@ from sqlmodel import Session
 
 from app.services.agent import Tool, ToolCall, ToolError, ToolRegistry
 from app.services.documents import DocumentError, list_files, read_file
+from app.services.proposal_actions import ACTIONS, DIAG_PREFIX, run_action
 
 WIKI_ENDPOINT = "https://zh.wikipedia.org/w/api.php"
+WIKIDATA_ENDPOINT = "https://www.wikidata.org/w/api.php"
 WIKI_HEADERS = {"User-Agent": "novel-generator/0.1 (writing research lookup)"}
 SEARCH_RESULTS = 5
 SEARCH_TIMEOUT = 15.0
+SEARCH_ATTEMPTS = 2
 
 _TAG = re.compile(r"<[^>]+>")
+
+
+# --- the five proposal tools ------------------------------------------------
+# A typed action, not a file write: a handler compiles JSON into a markdown
+# proposal fence and returns it as the tool result, so the change still goes
+# through extract_proposals and the owner's 应用 click. A rejected payload comes back
+# as readable text instead of an exception - the model gets one retry, and it needs
+# to know which field to fix (UI-BACKLOG 35.6).
+
+
+def _payload_schema() -> dict[str, Any]:
+    """One string argument: both the legacy text protocol and the schema need it."""
+    return {
+        "type": "object",
+        "properties": {
+            "payload": {
+                "type": "string",
+                "description": "本动作的 JSON 输入，整段是一个 JSON 字符串；字段与格式见工具说明",
+            }
+        },
+        "required": ["payload"],
+    }
+
+
+def _compile(action: str, payload: str) -> str:
+    ok, text = run_action(action, payload)
+    return text if ok else f"{DIAG_PREFIX}{text}"
+
+
+def propose_blueprint(payload: str) -> str:
+    """Compile the A-layer blueprint proposal. It writes nothing: the fence waits for 主人.
+
+    五个小节字段必须一次给全（这是一份整文件提案，漏一个等于把那一节清空），
+    路径固定是 blueprint.md，由编译器决定，不接受模型指定路径。
+    """
+    return _compile("update_blueprint", payload)
+
+
+def propose_toc(payload: str) -> str:
+    """Compile the B-layer chapter list. It writes nothing; the owner confirms the fence.
+
+    B 层必须逐章：chapters 里每一条只有 number（正整数）加 title/plot_function/notes 四个
+    字段，「第 11-30 章」这类范围条目会被拒绝——跨章的东西属于 C 层剧情弧。
+    """
+    return _compile("update_toc", payload)
+
+
+def propose_arcs(payload: str) -> str:
+    """Compile the C-layer arc book. It writes nothing; the owner confirms the fence.
+
+    C 层不得猜弧号：arcs.md 里已有弧时，要把每弧的 arc 与起止章照抄进 existing，编译器按它
+    定位主键，起止章与文件不一致会被拒绝；整本书还没有弧时才省略 existing，按输入顺序从 1 编号。
+    """
+    return _compile("update_arcs", payload)
+
+
+def propose_chapter_brief(payload: str) -> str:
+    """Compile one D-layer brief. It writes nothing; the owner confirms the fence.
+
+    简报章号四位：chapter_number 渲染成 chapters/0007/brief.md 这样的路径，路径不是模型能
+    写的自由文本；goal 必填，其余字段省略即按现有模板留空。
+    """
+    return _compile("upsert_chapter_brief", payload)
+
+
+def propose_character(payload: str) -> str:
+    """Compile a new character card. It writes nothing; the owner confirms the fence.
+
+    人物只能写 settings/characters/new.md：人物号由文件层在主人点应用时分配，
+    settings/characters.md 不是一个文件，往那儿提的东西从来落不了地。
+    """
+    return _compile("create_character", payload)
+
+
+_PROPOSAL_HANDLERS: dict[str, Callable[[str], str]] = {
+    "update_blueprint": propose_blueprint,
+    "update_toc": propose_toc,
+    "update_arcs": propose_arcs,
+    "upsert_chapter_brief": propose_chapter_brief,
+    "create_character": propose_character,
+}
+
+
+def _proposal_tools() -> list[Tool]:
+    """The action table is the only source: no action without a tool, no tool without one."""
+    return [
+        Tool(
+            name=spec.tool,
+            description=spec.description,
+            parameters=_payload_schema(),
+            handler=_PROPOSAL_HANDLERS[spec.action],
+        )
+        for spec in ACTIONS.values()
+    ]
 
 
 def _registry_tools(
@@ -58,41 +157,71 @@ def _registry_tools(
         return f"{doc.path}（{doc.layer} 层 · {doc.label}）\n\n{doc.text}"
 
     def search(query: str) -> str:
-        """Public reference lookup. Answers what the workspace does not hold."""
+        """Public reference lookup over Wikipedia and Wikidata, without write access."""
         needle = str(query).strip()
         if not needle:
             raise ToolError("web_search 需要 query")
-        try:
-            with httpx.Client(
-                timeout=SEARCH_TIMEOUT, headers=WIKI_HEADERS, transport=search_transport
-            ) as client:
-                response = client.get(
-                    WIKI_ENDPOINT,
-                    params={
-                        "action": "query",
-                        "list": "search",
-                        "srsearch": needle,
-                        "srlimit": SEARCH_RESULTS,
-                        "srprop": "snippet",
-                        "format": "json",
-                    },
-                )
-        except httpx.HTTPError as cause:
-            raise ToolError(f"联网查证失败，网络不可用：{type(cause).__name__}") from cause
-        if response.status_code >= 400:
-            raise ToolError(f"联网查证失败，上游返回 {response.status_code}")
-        hits = response.json().get("query", {}).get("search", []) or []
-        if not hits:
-            # "nothing found" is a real answer; the model must not fill the hole.
-            return f"没有查到与「{needle}」相关的公开条目。需要主人补充资料。"
-        lines = [f"「{needle}」的公开资料（中文维基百科，取前 {len(hits)} 条）："]
-        for hit in hits:
-            snippet = _TAG.sub("", hit.get("snippet", "")).replace("&quot;", chr(34)).strip()
-            title = hit.get("title", "")
-            lines.append(f"- {title}：{snippet}\n  https://zh.wikipedia.org?curid={hit.get('pageid', '')}")
+        sources = (("中文维基百科", WIKI_ENDPOINT), ("Wikidata", WIKIDATA_ENDPOINT))
+        entries: list[tuple[str, str, str, str]] = []
+        failures: list[str] = []
+        with httpx.Client(timeout=SEARCH_TIMEOUT, headers=WIKI_HEADERS, transport=search_transport) as client:
+            for source, endpoint in sources:
+                response = None
+                cause: Exception | None = None
+                for attempt in range(SEARCH_ATTEMPTS):
+                    try:
+                        params = ({
+                            "action": "query", "list": "search", "srsearch": needle,
+                            "srlimit": SEARCH_RESULTS, "srprop": "snippet", "format": "json",
+                        } if source == "中文维基百科" else {
+                            "action": "wbsearchentities", "search": needle, "language": "zh",
+                            "limit": SEARCH_RESULTS, "format": "json",
+                        })
+                        response = client.get(endpoint, params=params)
+                        if response.status_code < 500:
+                            break
+                    except httpx.HTTPError as error:
+                        cause = error
+                    if attempt + 1 < SEARCH_ATTEMPTS:
+                        time.sleep(0.05)
+                if response is None or response.status_code >= 400:
+                    failures.append(f"{source}（{type(cause).__name__ if cause else response.status_code}）")
+                    continue
+                try:
+                    payload = response.json()
+                    hits = (payload.get("query", {}).get("search", [])
+                            if source == "中文维基百科" else payload.get("search", [])) or []
+                except (TypeError, ValueError):
+                    failures.append(f"{source}（响应格式错误）")
+                    continue
+                for hit in hits:
+                    title = str(hit.get("title") or hit.get("label") or "").strip()
+                    if not title:
+                        continue
+                    snippet = _TAG.sub("", str(hit.get("snippet") or hit.get("description") or ""))
+                    snippet = snippet.replace("&quot;", chr(34)).strip()
+                    pageid = hit.get("pageid")
+                    url = (f"https://zh.wikipedia.org/?curid={pageid}" if pageid else
+                           str(hit.get("concepturi") or f"https://www.wikidata.org/wiki/{hit.get('id', '')}"))
+                    entries.append((title.casefold(), source, title, f"{snippet}\n  {url}"))
+        unique: list[tuple[str, str, str, str]] = []
+        seen_titles: set[str] = set()
+        for entry in entries:
+            if entry[0] not in seen_titles:
+                seen_titles.add(entry[0])
+                unique.append(entry)
+        if not unique:
+            if failures:
+                raise ToolError(f"联网查证失败：{'；'.join(failures)}")
+            suffix = f"（{'; '.join(failures)}）" if failures else ""
+            return f"没有查到与「{needle}」相关的公开条目{suffix}。需要主人补充资料。"
+        lines = [f"「{needle}」的公开资料（已合并并去重）："]
+        lines.extend(f"- [{source}] {title}：{detail}" for _, source, title, detail in unique)
+        if failures:
+            lines.append(f"\n部分来源不可用：{'；'.join(failures)}。以上结果仍可供参考。")
         return "\n\n".join(lines)
 
-    return [
+    return _proposal_tools() + [
         Tool(
             name="list_files",
             description="列出这本书所有规划与设定文件的路径，read_file 的 path 从这里取",
@@ -111,7 +240,7 @@ def _registry_tools(
         ),
         Tool(
             name="web_search",
-            description="查本书以外的公开资料（当前来源：中文维基百科）。制度、地名、典故、科学事实用它，不要用记忆冒充查证",
+            description="查本书以外的公开资料（中文维基百科 + Wikidata），返回标题、摘要和 URL；来源失败会重试，不要用记忆冒充查证",
             parameters={
                 "type": "object",
                 "properties": {"query": {"type": "string", "description": "检索词"}},
@@ -134,6 +263,8 @@ def framework_tools_from_registry(registry: ToolRegistry, timings: dict[str, int
     result and adapts to, exactly like the legacy loop handed it `ok=False`.
     """
     converted: list[PydanticTool] = []
+    seen: set[tuple[str, str]] = set()
+    seen_lock = Lock()
     for tool in registry.tools():
         properties = tool.parameters.get("properties", {})
         type_names: dict[str, str] = {}
@@ -144,7 +275,14 @@ def framework_tools_from_registry(registry: ToolRegistry, timings: dict[str, int
             )
         declared = ", ".join(f"{name}: {type_names[name]}" for name in properties)
         forwarded = ", ".join(f"{name}={name}" for name in properties)
-        invoke = partial(_invoke_registry_tool, timings=timings, registry=registry, name=tool.name)
+        invoke = partial(
+            _invoke_registry_tool,
+            timings=timings,
+            registry=registry,
+            name=tool.name,
+            seen=seen,
+            seen_lock=seen_lock,
+        )
         parameters = "ctx: _RunContext" + ((", " + declared) if declared else "")
         arguments = "ctx" + ((", " + forwarded) if forwarded else "")
         source = f"def _dynamic_tool({parameters}):\n"
@@ -159,11 +297,23 @@ def framework_tools_from_registry(registry: ToolRegistry, timings: dict[str, int
 
 
 def _invoke_registry_tool(
-    ctx: Any, *, timings: dict[str, int], registry: ToolRegistry, name: str, **arguments: Any
+    ctx: Any,
+    *,
+    timings: dict[str, int],
+    registry: ToolRegistry,
+    name: str,
+    seen: set[tuple[str, str]],
+    seen_lock: Lock,
+    **arguments: Any,
 ) -> str:
     """One tool call, run through the registry, timed while it ran."""
     started = time.perf_counter()
     try:
+        signature = (name, json.dumps(arguments, ensure_ascii=False, sort_keys=True))
+        with seen_lock:
+            if signature in seen:
+                return "这份内容本轮已经给过你了，不必再查。请基于已有资料直接回答。"
+            seen.add(signature)
         result = registry.run(ToolCall(name=name, arguments=arguments))
     finally:
         timings[ctx.tool_call_id] = round((time.perf_counter() - started) * 1000)

@@ -30,6 +30,41 @@ export default function ProposalCard({
   const rows = diff.lines.filter((row) => row.type !== "same");
   const hidden = Math.max(0, rows.length - MAX_ROWS);
   const visible = showAll ? rows : rows.slice(0, MAX_ROWS);
+  const invalidReason = proposal.error || "提案未通过后端校验";
+  /* 批注 2 (2026-09-09): an invalid proposal has nothing to write. The PUT came back
+     red and the markdown stayed as it was, so pressing 应用 again only re-prints that
+     red line. The mark is disabled and the server's own words become its tooltip.
+     The backend stays the final structure gate - this only stops the card from asking
+     for an action that gate has already refused. */
+  const applyLabel = !proposal.valid
+    ? `不可应用：${invalidReason}`
+    : applying
+      ? "正在写入"
+      : "应用提案";
+
+  /* One list, drawn by both branches. 批注 1: the more-button used to call
+     setShowAll(true) and then hide itself, so a long diff could be opened but never
+     closed again; this node now carries both directions and says which it offers. */
+  const changeRows = (
+    <>
+      {visible.map((row, index) => (
+        <p key={`${row.type}-${row.line}-${index}`} className={`proposal-line ${row.type}`}>
+          <span aria-hidden="true">{row.type === "minus" ? "−" : "+"}</span>
+          {row.text.trim() || " "}
+        </p>
+      ))}
+      {hidden > 0 ? (
+        <button
+          type="button"
+          className="proposal-more"
+          aria-expanded={showAll}
+          onClick={() => setShowAll((value) => !value)}
+        >
+          {showAll ? "收起" : `展开全部 ${rows.length} 行改动`}
+        </button>
+      ) : null}
+    </>
+  );
 
   return (
     <div className={`proposal ${proposal.valid ? "" : "invalid"}`}>
@@ -42,21 +77,12 @@ export default function ProposalCard({
       </div>
 
       {proposal.valid ? (
-        <div className="proposal-diff">
-          {visible.map((row, index) => (
-            <p key={`${row.type}-${row.line}-${index}`} className={`proposal-line ${row.type}`}>
-              <span aria-hidden="true">{row.type === "minus" ? "−" : "+"}</span>
-              {row.text.trim() || " "}
-            </p>
-          ))}
-          {hidden > 0 && !showAll ? (
-            <button type="button" className="proposal-more" onClick={() => setShowAll(true)}>
-              展开全部 {rows.length} 行改动
-            </button>
-          ) : null}
-        </div>
+        <div className="proposal-diff">{changeRows}</div>
       ) : (
-        <p className="proposal-error">{proposal.error || "提案未通过后端校验"}</p>
+        <>
+          <p className="proposal-error">{invalidReason}</p>
+          <div className="proposal-diff proposal-invalid-preview">{changeRows}</div>
+        </>
       )}
 
       {/* 批注 3, 4, 5, 6: the three words were three sentences standing where three
@@ -86,9 +112,9 @@ export default function ProposalCard({
           <button
             type="button"
             className="proposal-btn apply"
-            aria-label={applying ? "正在写入" : "应用提案"}
-            title={applying ? "正在写入" : "应用提案"}
-            disabled={!proposal.valid || applying}
+            aria-label={applyLabel}
+            title={applyLabel}
+            disabled={applying || !proposal.valid}
             onClick={onApply}
           >
             {applying ? <i className="spinner" aria-hidden="true" /> : <Check size={15} />}

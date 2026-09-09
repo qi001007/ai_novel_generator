@@ -184,6 +184,20 @@ describe("ChatPane proposals", () => {
   it("leaves a proposal the owner already applied in the past", async () => {
     historyRows = [
       {
+        id: 3,
+        novel_id: 1,
+        role: "assistant",
+        content: "较早的待处理提案",
+        mode: "plan",
+        model: "MiniMax-M2.5",
+        mentions: [],
+        context_refs: [],
+        token_input: 1,
+        token_output: 1,
+        created_at: "",
+        proposals: [{ path: "blueprint.md", text: NEW, valid: true, error: "" }],
+      },
+      {
         id: 4,
         novel_id: 1,
         role: "assistant",

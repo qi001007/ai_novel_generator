@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Users } from "lucide-react";
 
 import { api } from "../api";
@@ -35,6 +35,13 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const openFile = useFiles((state) => state.open);
+  /* 批注 4 (2026-09-09): an AI-written character sheet is a file before it is a row.
+     The library could only learn about it from its own mount, so the left column kept
+     showing the roster as of the last click. These two are the file store's own facts -
+     the list of documents, and how many proposals have landed - read as signals; the
+     rows themselves are never copied here. */
+  const metaPaths = useFiles((state) => state.metas.map((meta) => meta.path).join("|"));
+  const appliedSeq = useFiles((state) => state.appliedSeq);
 
   // Hand the caret to FileEditorPane at the matching section. revealSeq is bumped
   // by open(), and WorkbenchPage turns that into "files" on its own.
@@ -43,21 +50,45 @@ export default function CharacterLibrary({ novelId }: { novelId: number | null }
     void openFile(characterDocPath(editing.id), { field });
   }
 
+  const loadCharacters = useCallback(
+    (cancelled: () => boolean) => {
+      if (!novelId) return;
+      api
+        .get<Character[]>(`/api/novels/${novelId}/characters`)
+        .then((data) => {
+          if (!cancelled()) setCharacters(data);
+        })
+        .catch((cause: Error) => {
+          if (!cancelled()) setError(cause.message);
+        });
+    },
+    [novelId],
+  );
+
   useEffect(() => {
     if (!novelId) {
       setCharacters([]);
-      return;
+      return undefined;
     }
-    let active = true;
-    api.get<Character[]>(`/api/novels/${novelId}/characters`).then((data) => {
-      if (active) setCharacters(data);
-    }).catch((cause: Error) => {
-      if (active) setError(cause.message);
-    });
+    let alive = true;
+    loadCharacters(() => !alive);
     return () => {
-      active = false;
+      alive = false;
     };
-  }, [novelId]);
+  }, [loadCharacters, novelId]);
+
+  /* The change, not the value: main.tsx wraps the tree in StrictMode and every effect
+     runs twice on mount, so a boolean "first render" flag is already true on the second
+     pass and the mount read gets counted as a change - or a real one gets missed.
+     Comparing against the signature captured at first render holds in both passes. */
+  const lastSync = useRef(`${novelId}|${metaPaths}|${appliedSeq}`);
+  useEffect(() => {
+    const signature = `${novelId}|${metaPaths}|${appliedSeq}`;
+    const previous = lastSync.current;
+    lastSync.current = signature;
+    if (previous === signature || !novelId) return;
+    loadCharacters(() => false);
+  }, [loadCharacters, metaPaths, novelId, appliedSeq]);
 
   useEffect(() => {
     if (!editing) return;

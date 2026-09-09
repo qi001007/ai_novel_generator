@@ -63,10 +63,12 @@ export default function FileEditorPane() {
     return found?.title ?? "未选择作品";
   });
   const chapters = useWorkbench((state) => state.chapters);
+  const loadChapterRecords = useWorkbench((state) => state.loadChapterRecords);
   const tabs = useFiles((state) => state.tabs);
   const active = useFiles((state) => state.active);
   const entries = useFiles((state) => state.entries);
   const pending = useFiles((state) => state.pending);
+  const appliedSeq = useFiles((state) => state.appliedSeq);
   const jump = useFiles((state) => state.jump);
   const focus = useFiles((state) => state.focus);
   const open = useFiles((state) => state.open);
@@ -132,7 +134,23 @@ export default function FileEditorPane() {
 
   const entry = active ? entries[active] : undefined;
   const proposal = active ? pending[active] : undefined;
+  const validProposal = proposal && proposal.valid ? proposal : undefined;
   const kind = entry?.doc?.kind ?? "";
+
+  /* 批注 4 (2026-09-09): a write that lands changes more than the file - the chapter
+     record behind it, and whatever the agent touched on the way. The file store
+     counts those writes instead of copying another store's data, so this is the
+     re-read; loadChapterRecords() is workbench's own action and stays its owner.
+     The ref holds the value this pane first saw, not a mounted boolean: main.tsx
+     wraps the tree in StrictMode, every effect runs twice on mount, and a flag is
+     already true by the second pass - the same trap 批注 28.5 fell into. */
+  const lastApplied = useRef(appliedSeq);
+  useEffect(() => {
+    const previous = lastApplied.current;
+    lastApplied.current = appliedSeq;
+    if (previous === appliedSeq) return;
+    void loadChapterRecords();
+  }, [appliedSeq, loadChapterRecords]);
 
   /* Ctrl+S lives on the window, not only on the CodeMirror keymap. The rendered
      list is an overlay, so while it is showing the editor does not have focus and
@@ -159,6 +177,7 @@ export default function FileEditorPane() {
         doc: "",
         extensions: [
           ...editorExtensions,
+          EditorView.lineWrapping,
           highlightActiveLine(),
           history(),
           keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
@@ -209,9 +228,12 @@ export default function FileEditorPane() {
 
   // --- rail + pending + jumpable depend on which file is on screen --------
   const pendingLines = useMemo(() => {
-    if (!proposal || !entry?.doc) return [];
+    // 批注 3: the rail marks "this line changes if you accept". Nothing is acceptable
+    // about a rejected proposal, so it must not mark anything - an invalid offer now
+    // leaves the file exactly as it is on disk, band and all.
+    if (!validProposal || !entry?.doc) return [];
     const before = entry.doc.text.split("\n");
-    const after = proposal.text.split("\n");
+    const after = validProposal.text.split("\n");
     let head = 0;
     while (head < before.length && head < after.length && before[head] === after[head]) head += 1;
     let tail = 0;
@@ -225,7 +247,7 @@ export default function FileEditorPane() {
     const changed: number[] = [];
     for (let i = head; i < before.length - tail; i += 1) changed.push(i + 1);
     return changed;
-  }, [proposal, entry?.doc]);
+  }, [validProposal, entry?.doc]);
 
   /* The key-line table is not ours to keep: the projection carries it, and the
      rows differ per kind, which is what makes 目标 resolve to `goal` in a brief

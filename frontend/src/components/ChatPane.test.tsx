@@ -72,6 +72,29 @@ describe("ChatPane", () => {
     vi.unstubAllGlobals();
   });
 
+  it("requires an explicit confirmation before starting chapter generation", async () => {
+    const user = userEvent.setup();
+    useWorkbench.setState({
+      selectedChapterId: 7,
+      briefs: [{ id: 8, novel_id: 1, arc_plan_id: null, chapter_number: 1, goal: "推进", events: "相遇", pov: "主角", characters: [], conflict: "", hook: "", required_facts: [], status: "ready" }],
+      chapters: [{ id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: "", word_count: 0, status: "draft", final_decision: "", final_comment: "" }],
+    });
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = input.toString();
+      urls.push(url);
+      if (url.includes("/chapters/from-brief/8/stream")) {
+        return Promise.resolve(sse([["done", { chapter: { id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: "正文", word_count: 2, status: "draft", final_decision: "", final_comment: "" }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: 2, issues: [] } }], ["end", {}]]));
+      }
+      return Promise.resolve(json([]));
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.click(await screen.findByRole("button", { name: "确认并生成正文" }));
+    await waitFor(() => expect(urls.some((url) => url.includes("/chapters/from-brief/8/stream"))).toBe(true));
+    expect(screen.getAllByText("/generate").length).toBeGreaterThan(0);
+  });
+
   it("renders the streamed reply and its token detail", async () => {
     const user = userEvent.setup();
     const contextEvent: [string, unknown] = [

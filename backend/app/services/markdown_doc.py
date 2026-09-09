@@ -369,6 +369,15 @@ def _read_bullets(lines: list[str], spec: tuple[tuple[str, str], ...], label: st
             continue
         name = by_label.get(match.group(1).strip())
         if name is None:
+            # Arc plans may carry author-facing semantic labels that are not
+            # persisted schema keys (e.g. 人物弧光). Keep them as continuation
+            # text on the preceding field instead of rejecting the whole record.
+            if label.startswith("「弧") and found:
+                previous = next(reversed(found))
+                extra = match.group(2).strip()
+                found[previous] = f"{found[previous]}\n{match.group(1).strip()}：{extra}".strip()
+                index += 1
+                continue
             _fail(label, [], [match.group(1).strip()])
         if name in found:
             _fail(label, [], [match.group(1).strip()])

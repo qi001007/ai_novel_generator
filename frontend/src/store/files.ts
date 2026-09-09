@@ -177,6 +177,15 @@ type FilesState = {
   jump: JumpSource | null;
   focus: FileFocus | null;
   revealSeq: number;
+  /**
+   * How many times a proposal has actually landed on disk. 2026-09-09 批注 4: the
+   * chapter tree and the character cards come from the database, not the file list,
+   * so reload() + syncMetas() alone left the left column holding yesterday's rows.
+   * A counter is a signal, not a second copy of any state: workbench's own reload,
+   * reloadNovel(), may not be reused here because it calls files.reset() and would
+   * blank the buffer this write just refreshed.
+   */
+  appliedSeq: number;
   metasError: string | null;
   attach: (novelId: number) => Promise<void>;
   open: (path: string, opts?: { jump?: JumpSource | null; field?: string | null }) => Promise<void>;
@@ -236,6 +245,7 @@ export const useFiles = create<FilesState>((set, get) => ({
   jump: null,
   focus: null,
   revealSeq: 0,
+  appliedSeq: 0,
   metasError: null,
 
   async attach(novelId) {
@@ -390,18 +400,42 @@ export const useFiles = create<FilesState>((set, get) => ({
   },
 
   offer(proposal) {
+    const bringTocForward = proposal.path === TOC_PATH;
     set((state) => ({
       pending: { ...state.pending, [proposal.path]: proposal },
       // The band is drawn against the buffer the diff was computed from, so the
-      // file has to be on the tab strip for the band to mean anything.
+      // file has to be on the tab strip for the band to mean anything. A B-layer
+      // proposal is also staged immediately: its rendered list is the first place
+      // the owner should see the generated directory, while pending remains a
+      // separate overlay and is never mistaken for the saved buffer.
       tabs: state.tabs.includes(proposal.path) ? state.tabs : [...state.tabs, proposal.path],
+      ...(bringTocForward
+        ? {
+            active: TOC_PATH,
+            views: { ...state.views, [TOC_PATH]: false },
+            revealSeq: state.revealSeq + 1,
+          }
+        : {}),
     }));
+    if (bringTocForward && get().novelId !== null && !get().entries[TOC_PATH]?.doc) {
+      void get().open(TOC_PATH);
+    }
   },
 
   async applyProposal(path) {
     const { novelId, pending } = get();
     const proposal = pending[path];
     if (novelId === null || !proposal) return false;
+    // 批注 2: an invalid proposal is not a write waiting for permission. The card
+    // disables the mark, and this is the same rule at the only write entry, so no
+    // caller - keyboard, stale render, tomorrow's feature - can PUT text the server
+    // already refused and leave the editor showing words that never landed.
+    if (!proposal.valid) {
+      set((state) =>
+        patch(state, path, { error: `提案未通过校验，未写入：${proposal.error || "请丢弃后让 AI 重新生成"}` }),
+      );
+      return false;
+    }
     try {
       await api.writeFile(novelId, path, proposal.text, {
         actor: "ai",
@@ -411,10 +445,14 @@ export const useFiles = create<FilesState>((set, get) => ({
       set((state) => patch(state, path, { error: detail(cause, "提案写入被拒") }));
       return false;
     }
+    await get().reload(path);
+    // Keep the proposal visible if the follow-up read failed. A successful PUT
+    // with a failed reload must not make the UI appear synchronized with stale
+    // Markdown.
+    if (get().entries[path]?.error) return false;
     const next = { ...get().pending };
     delete next[path];
-    set({ pending: next });
-    await get().reload(path);
+    set({ pending: next, appliedSeq: get().appliedSeq + 1 });
     await syncMetas(get, set);
     return true;
   },

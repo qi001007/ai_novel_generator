@@ -998,6 +998,7 @@ select:focus-visible {
 
 .chat-row {
   display: grid;
+  animation: chat-row-arrive 180ms ease-out both;
 }
 
 /* 批注 2: turns need to read as turns. Rows from the same speaker stay tight;
@@ -1116,7 +1117,10 @@ select:focus-visible {
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   /* the pane is --surface-alt now, so a block quoted from it needs the raised tone */
   background: var(--surface);
-  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
 }
 
 .chat-md pre code {
@@ -1268,6 +1272,7 @@ select:focus-visible {
   color: var(--text-2);
   font-size: 12px;
   line-height: 1.7;
+  animation: chat-detail-open 180ms ease-out both;
 }
 
 /* The distinction has to sit on the <p> itself: `.chat-card p` (0,1,1) sets 13px and
@@ -4808,7 +4813,8 @@ body.resizing {
   inset: 0;
   z-index: 8;
   background: var(--bg);
-  padding-right: var(--minimap-w);
+  /* The rendered layer owns the whole body, including the former minimap strip. */
+  padding-right: 0;
 }
 
 .toc-list {
@@ -4931,6 +4937,16 @@ body.resizing {
 .toc-title-group h2 {
   margin: 0;
   font-size: 16px;
+}
+
+.toc-preview-badge {
+  width: fit-content;
+  padding: 2px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .toc-toolbar-controls {
@@ -5069,11 +5085,12 @@ body.resizing {
 }
 
 .toc-row textarea {
-  display: -webkit-box;
-  overflow: hidden;
-  height: 32px;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
+  min-height: 46px;
+  max-height: 132px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .toc-row input:hover,
@@ -6566,4 +6583,22 @@ body.resizing {
   font-family: var(--prose);
   font-size: 15px;
   line-height: 1.5;
+}
+
+
+@keyframes chat-row-arrive {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes chat-detail-open {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-row,
+  .chat-thinking-body {
+    animation: none;
+  }
 }

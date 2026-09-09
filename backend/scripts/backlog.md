@@ -1,3 +1,4 @@
-# backend\scripts/ 更改账（最新在上）
+# backend/scripts/ 更改账（最新在上）
 
-- 2026-09-07 · 新建本目录 description.md（主人要求原则贯彻到文件树各层）。本目录代码未改。
+- 2026-09-09 · 校正冒烟脚本职责与显式 Session 规则；未改脚本。
+- 2026-09-06 · writing_ring_smoke.py 的 live 路径改为隔离库显式传 Session。

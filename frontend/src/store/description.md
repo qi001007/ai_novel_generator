@@ -1,9 +1,7 @@
-# src/store/ —— 状态只有三个持有者
+# frontend/src/store/ —— 三个状态持有者
 
-`workbench.ts` 台子上是哪本书 / 哪一章 / 哪个线程；`files.ts` 文件层缓冲
-（打开过的全文常驻，换一本书才清）；`appearance.ts` 本机偏好，存 localStorage、**不进库**（D-21）。
+workbench.ts 持有当前作品、章节、线程和业务动作；files.ts 持有打开文件、buffer、view 与 metadata；
+appearance.ts 持有 localStorage 外观偏好并写 html 属性。
 
-**为什么只有三个**：多一个持有者就多一处「谁说了算」。把 `chapter` 也塞进
-`workbench.stage` 那条已被记成未结项（21.1），因为章的恢复另有既有路径。
-**加状态的规矩**：后端算得出来的不在这里存；要读的只在 `../api.ts` 一处开口。
-存储侧的账（谁吃库、上限该设在哪）写在 `docs/WORKSTREAM-PLAN.md §二` 的「存储与内存收敛」行。
+后端可派生的数据不在 store 复制；新增第四个 store 前必须证明这三处无法承载。
+跨 await 写状态前重新读取当前 store，避免切书竞态。

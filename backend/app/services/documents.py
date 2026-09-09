@@ -332,6 +332,11 @@ def validate_structure(path: str, text: str, *, current_text: str | None = None)
             # The file itself is unreadable; the write will report that precisely.
             return ""
         if isinstance(current, list):
+            # An empty B/C projection has no identities to protect. The owner
+            # may apply the first complete proposal; non-empty books remain
+            # locked to their existing primary-key sequence below.
+            if not current and kind in {"toc", "arcs"}:
+                return ""
             wanted = [row.get(identity) for row in current]
             got = [row.get(identity) for row in parsed]
             if wanted != got:
@@ -721,6 +726,8 @@ def write_file(
             status_code=409,
             code="write_conflict",
         )
+    if actor == ACTOR_AI:
+        text = canonicalize_proposal(path, text, current_text=current.text)
 
     parsed = load_document(kind, text, chapter=number)
     writer = {
@@ -748,6 +755,269 @@ def write_file(
 
     after = read_file(session, novel_id, path)
     return WriteResult(path=after.path, changed=changed, revision=after.revision)
+
+
+def canonicalize_proposal(path: str, text: str, *, current_text: str | None = None) -> str:
+    """Repair known model aliases before the shared strict parser runs."""
+    if path == TOC_PATH:
+        return re.sub(r"(\*\*)内容(\*\*\s*[：:])", r"\1备注\2", text)
+    if path != ARCS_PATH:
+        return text
+
+    text = re.sub(r"^##\s*弧(?!\s*\d)\s*.*$", "", text, flags=re.M)
+    text = re.sub(r"(\*\*)(?:核心事件|核心目标)(\*\*\s*[：:])", r"\1目标\2", text)
+    text = re.sub(r"(\*\*)弧内悬念(\*\*\s*[：:])", r"\1冲突\2", text)
+
+    def split_range(match: re.Match[str]) -> str:
+        return f"- **起始章**：{match.group(1)}\n- **结束章**：{match.group(2)}"
+
+    text = re.sub(
+        r"-\s+(?:\*\*)?(?:起止章|起止章节|章节范围)(?:\*\*)?\s*[：:]\s*"
+        r"(?:第\s*)?(\d+)\s*[-—至]\s*(?:第\s*)?(\d+)\s*章?",
+        split_range,
+        text,
+    )
+
+    if current_text is not None:
+        try:
+            is_initial = not load_document("arcs", current_text)
+        except DocumentError:
+            is_initial = False
+        if is_initial:
+            blocks = text.split("## ")
+            rebuilt = [blocks[0]]
+            labels = ("起始章", "结束章", "目标", "冲突", "收束", "状态")
+            for block in blocks[1:]:
+                lines = block.splitlines()
+                found = {
+                    match.group(1).strip()
+                    for line in lines
+                    if (match := re.match(r"^-\s+\*\*(.+?)\*\*\s*[：:]", line))
+                }
+                lines.extend(
+                    f"- **{label}**：{'planned' if label == '状态' else ''}"
+                    for label in labels
+                    if label not in found
+                )
+                rebuilt.append("## " + "\n".join(lines))
+            text = "\n".join(rebuilt)
+
+    known = {"起始章", "结束章", "目标", "冲突", "收束", "状态"}
+    repaired: list[str] = []
+    for line in text.splitlines():
+        match = re.match(r"^-\s+\*\*(.+?)\*\*\s*[：:]\s*(.*)$", line)
+        if match and match.group(1).strip() not in known and repaired:
+            repaired.append(f"  {match.group(1).strip()}：{match.group(2)}")
+        else:
+            repaired.append(line)
+    return _align_arc_history("\n".join(repaired), current_text)
+
+
+# --- deterministic proposal rescue -----------------------------------------
+#
+# The model writes these books out of memory, so two shapes keep arriving that the
+# strict codec has to refuse although nothing is in doubt. Both repairs only copy
+# what is already on file; neither invents content.
+
+_ARC_LABELS: tuple[tuple[str, str], ...] = (
+    ("起始章", "start_chapter"),
+    ("结束章", "end_chapter"),
+    ("目标", "objective"),
+    ("冲突", "conflict"),
+    ("收束", "resolution"),
+    ("状态", "status"),
+)
+_BULLET_LINE = re.compile(r"^-\s+\*\*(.+?)\*\*\s*[：:]\s*(.*)$")
+_ARC_HEADING = re.compile(r"^弧\s*(\d+|\?)\s*(.*)$")
+# A range heading is a C-layer summary the model wrote into the B layer.
+_TOC_RANGE_HEADING = re.compile(r"^##\s*第\s*(\d+)\s*[-—–~至]\s*(\d+)\s*章\s*(.*)$")
+_TOC_RECORD_HEADING = re.compile(r"^##\s*第\s*\d+\s*章")
+_ARC_TITLE_PREFIX = re.compile(r"^弧\s*\d+\s*[：:、.]?\s*")
+
+
+def _bullet_map(lines: list[str]) -> dict[str, str]:
+    """The labels one block really carries; the first occurrence wins."""
+    found: dict[str, str] = {}
+    for line in lines:
+        match = _BULLET_LINE.match(line)
+        if match:
+            found.setdefault(match.group(1).strip(), match.group(2).strip())
+    return found
+
+
+def _record_int(value: Any) -> int | None:
+    """A heading or bullet number, tolerant of the "?" a create writes."""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    text = str(value).strip()
+    return int(text) if text.isdigit() else None
+
+
+def _existing_arcs(current_text: str | None) -> list[dict[str, Any]]:
+    """The C-layer records already on file, or [] when the book is unreadable."""
+    if current_text is None:
+        return []
+    try:
+        rows = load_document("arcs", current_text)
+    except DocumentError:
+        return []
+    return rows if isinstance(rows, list) else []
+
+
+def _align_arc_history(text: str, current_text: str | None) -> str:
+    """Keep every existing arc key and fill the bullets the model left out.
+
+    Measured on the owner's screenshot: arcs.md held 弧 4 (1-5) and 弧 5 (6-10); the
+    model rewrote both records, restarted the numbering at 弧 1 and dropped 收束 and
+    状态, so the card reported 缺少 收束、状态 on top of a moved key and could not be
+    applied. A record that lands on an arc already on file - by 起始章/结束章, or by
+    position once the counts agree - keeps that arc's key, and every bullet it omitted
+    comes back from that same record. A bullet the model did write is never overwritten:
+    moving an arc's bounds stays a deliberate human edit.
+    """
+    existing = _existing_arcs(current_text)
+    if not existing:
+        return text
+    head, *blocks = text.split("## ")
+    if not blocks or len(blocks) != len(existing):
+        return text  # 增删条目由校验器说清楚，这里不猜
+
+    lines_by_block = [block.splitlines() for block in blocks]
+    headings: list[re.Match[str]] = []
+    for lines in lines_by_block:
+        match = _ARC_HEADING.match(lines[0].strip()) if lines else None
+        if match is None:
+            return text
+        headings.append(match)
+
+    slots: list[int] = []
+    taken: set[int] = set()
+    for index, match in enumerate(headings):
+        fields = _bullet_map(lines_by_block[index])
+        start = _record_int(fields.get("起始章"))
+        end = _record_int(fields.get("结束章"))
+        picked = -1
+        if start is not None and end is not None:
+            for candidate, row in enumerate(existing):
+                if candidate in taken:
+                    continue
+                if row.get("start_chapter") == start and row.get("end_chapter") == end:
+                    picked = candidate
+                    break
+        if picked < 0 and index not in taken:
+            picked = index
+        if picked < 0:
+            return text
+        taken.add(picked)
+        slots.append(picked)
+
+    offered = [_record_int(match.group(1)) for match in headings]
+    wanted = [_record_int(row.get("arc")) for row in existing]
+    # Only a restart at 弧 1 counts as the model renumbering the book for itself; an
+    # off-sequence key such as 弧 99 is an arc that does not exist, and must stay red.
+    renumber = offered != wanted and offered == list(range(1, len(existing) + 1))
+
+    rebuilt = [head]
+    for index, block in enumerate(blocks):
+        lines = lines_by_block[index]
+        row = existing[slots[index]]
+        if renumber:
+            title = headings[index].group(2).strip() or str(row.get("title") or "")
+            lines[0] = f"弧 {row.get('arc')} {title}".rstrip()
+        fields = _bullet_map(lines)
+        for label, field in _ARC_LABELS:
+            if label in fields:
+                continue
+            value = row.get(field)
+            lines.append(f"- **{label}**：{'' if value is None else value}")
+        # splitlines() ate the newline that closed the block, and the next heading
+        # marker sits right behind it: put both back or 弧 2 glues onto 弧 1.
+        rebuilt.append("\n".join(lines) + ("\n" if block.endswith("\n") else ""))
+    # Split on the heading marker, so it goes back exactly once: re-prefixing every
+    # block here is how a heading turns into "## ## 弧 1" and the codec calls it 不是记录.
+    return "## ".join(rebuilt)
+
+
+def canonical_path(path: str) -> tuple[str, str]:
+    """Fold the aliases a model writes for a file back onto the projected path.
+
+    Returns the canonical path plus a note when the file genuinely moved, so the
+    review card can say what happened instead of quietly rewriting the target.
+    """
+    raw = (path or "").strip().lstrip("/").replace("\\", "/")
+    if raw in {"settings/characters.md", "characters.md", "settings/characters"}:
+        return CHARACTER_NEW_PATH, "人物档案只从 " + CHARACTER_NEW_PATH + " 建，提案已改道"
+    builders = (
+        (_BRIEF_NAME, lambda number: f"briefs/{number:04d}.md"),
+        (_CHAPTER_BRIEF_NAME, brief_path),
+        (_CHAPTER_DRAFT_NAME, draft_path),
+    )
+    for pattern, builder in builders:
+        match = pattern.match(raw)
+        if match:
+            return builder(int(match.group(1))), ""
+    return raw, ""
+
+
+def toc_record_count(text: str) -> int:
+    """How many per-chapter records a toc proposal still holds."""
+    return sum(1 for line in text.splitlines() if _TOC_RECORD_HEADING.match(line))
+
+
+def arc_proposal_from_toc_ranges(toc_text: str, current_arcs_text: str | None) -> tuple[str, str]:
+    """Move `## 第 11-30 章 …` out of a toc proposal into an arcs.md file.
+
+    The B layer holds one record per chapter, so a range heading is a C-layer arc the
+    model wrote into the wrong book. What comes back is only what the model already
+    typed: 起始章/结束章 from the heading, 目标 from that entry's 剧情功能/备注, and the
+    title with the `弧 3：` prefix stripped. The arcs already on file are re-emitted in
+    front of the new record so the card still shows a whole file. The second value is
+    "" when there was nothing to move.
+    """
+    lines = toc_text.splitlines()
+    kept: list[str] = []
+    moved: list[dict[str, Any]] = []
+    index = 0
+    while index < len(lines):
+        match = _TOC_RANGE_HEADING.match(lines[index])
+        if match is None:
+            kept.append(lines[index])
+            index += 1
+            continue
+        index += 1
+        bullets: dict[str, str] = {}
+        while index < len(lines) and not lines[index].startswith("## "):
+            bullet = _BULLET_LINE.match(lines[index])
+            if bullet:
+                bullets.setdefault(bullet.group(1).strip(), bullet.group(2).strip())
+            index += 1
+        # 内容 is the alias the toc layer answers to on the way in (canonicalize_proposal),
+        # so a range entry written with it still carries its own text into 目标.
+        note = bullets.get("备注") or bullets.get("内容") or ""
+        goal = "\n".join(
+            value
+            for value in (bullets.get("剧情功能", ""), note)
+            if value
+        )
+        tail = match.group(3).strip()
+        moved.append(
+            {
+                "arc": None,
+                "title": _ARC_TITLE_PREFIX.sub("", tail).strip(),
+                "start_chapter": int(match.group(1)),
+                "end_chapter": int(match.group(2)),
+                "objective": goal or tail,
+                "conflict": "",
+                "resolution": "",
+                "status": "planned",
+            }
+        )
+    if not moved:
+        return toc_text, ""
+    rows = _existing_arcs(current_arcs_text) + moved
+    return "\n".join(kept).rstrip("\n") + "\n", render_document("arcs", rows)
 
 
 def _write_blueprint(
@@ -785,7 +1055,7 @@ def _write_toc(
     existing = _toc_rows(session, novel_id)
     before_model = _toc_model(existing)
 
-    if actor == ACTOR_AI:
+    if actor == ACTOR_AI and existing:
         _require_same_ids(rows, [row["chapter"] for row in before_model], "chapter", TOC_PATH)
         changed: list[str] = []
         # Identities are verified equal and in order, so rows pair up by index.
@@ -841,7 +1111,7 @@ def _write_arcs(
     by_id = {row.id: row for row in existing}
     before_model = _arcs_model(existing)
 
-    if actor == ACTOR_AI:
+    if actor == ACTOR_AI and existing:
         _require_same_ids(rows, [row["arc"] for row in before_model], "arc", ARCS_PATH)
         changed: list[str] = []
         for raw in rows:
@@ -868,7 +1138,7 @@ def _write_arcs(
 
         row = by_id.get(arc_id)
         if row is None:
-            if actor == ACTOR_AI or arc_id is not None:
+            if actor == ACTOR_AI and existing:
                 raise DocumentError(
                     f"arc {arc_id} 不存在；新建剧情弧请留 arc: null（由系统分配主键）"
                 )
@@ -881,6 +1151,7 @@ def _write_arcs(
             session.add(row)
             session.flush()
             by_id[row.id] = row
+            arc_id = row.id
             changed.append(f"{row.id}.created")
         for name, value in after.items():
             if name == "arc":

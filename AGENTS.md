@@ -182,8 +182,8 @@ Actions 工作流、提交记录、发布 Release 等 —— **必须优先调�
   `chapters/NNNN/{draft.md,brief.md}` 是投影（D-02 / D-03）。
 - **上下文注入只有一个构造器**：`collect_items()` 是唯一资料池。改注入内容只改对应 collector，
   不改调用方、不改提示词模板、不改前端（D-04 / D-06）。
-- **不许把「测试全绿」说成「功能已实现」**。对话 Agent 至今无工具调用、无联网搜索、无多步循环；
-  谈 Agent 能力前先 grep 取证（ARCHITECTURE §4 缺口清单）。
+- **不许把「测试全绿」说成「功能已实现」**。谈 Agent 能力前先 grep 取证，
+  当前闭环缺口只看 docs/WORKSTREAM-PLAN.md §3。
 - **不摘前端做独立 demo**：网络边界已在 `api.ts` 单点，要脱离后端就在同接口下加 fixture 实现（D-07）。
 - **v1 不做向量 RAG**：唯一合法前置是一次可复现的「该给的章节没给」（D-12）。
 - **文档各管一段，别往一处堆**：理由→DECISIONS，现状→ARCHITECTURE，需求→PRD（含拆解勾选附录），

@@ -12,14 +12,23 @@ from sqlmodel import Session, select
 from app.db import engine
 from app.models import AppConfig, Chapter, ChatMessage, GenerationRun, Novel, utc_now
 from app.services.documents import (
+    ARCS_PATH,
+    arc_proposal_from_toc_ranges,
+    canonical_path,
+    canonicalize_proposal,
     DocumentError,
     current_text_reader,
+    load_document,
+    resolve_path,
     stabilize_proposal,
+    toc_record_count,
+    TOC_PATH,
     validate_structure,
 )
 from app.services.agent import (
     AgentBudgetError,
     AgentConfig,
+    AgentStep,
     ToolRegistry,
     render_tool_prompt,
     run_agent_turn,
@@ -133,7 +142,19 @@ FILE_EDIT_RULES = """
 只有主人点「应用」后系统才写入，而且以 AI 身份写入：小节标题、字段名、`第 N 章` 与 `弧 N` 主键、
 条目增删都会被挡下，所以只改值。
 除要改的那一节以外，其余每一行都必须逐字节保持原样：不要重排小节顺序、不要重新折行、
-不要统一标点或删掉空行。代码块外不要写解释，也不要把这份文件的内容复述第二遍。"""
+不要统一标点或删掉空行。代码块外不要写解释，也不要把这份文件的内容复述第二遍。
+
+## 提案工具与分层边界
+五个以 `propose_` 开头的提案工具（蓝图 / 目录 / 剧情弧 / 简报 / 人物）都不写入任何数据：
+它们只产出一张待确认的提案卡，主人在卡上点「应用」之前，数据库与文件都不会有任何变化。
+用工具还是直接输出上面的代码块都可以，但文件的写法必须守住这几条：
+- B 层 `toc.md` 只放逐章记录：一条 `## 第 N 章` 只管一章；跨章的范围摘要属于 C 层，
+  请用剧情弧工具（`propose_` 开头的那个）单独提，不要写进目录。
+- C 层 `arcs.md` 不许猜弧号：要改哪条弧，就照抄文件里那条的 `弧 N`；确实要新建才写 `弧 ?`，
+  主键由系统分配。`起始章` 与 `结束章` 是主人定的边界，不要顺手改。
+- D 层简报路径一律四位章号：`chapters/0001/brief.md`，不是 `chapters/1/brief.md`、`chapters/01/brief.md`。
+- 人物只写 `settings/characters/new.md`（新建）；改已有人物写 `settings/characters/<人物号>.md`，
+  没有 `settings/characters.md` 这个文件。"""
 
 
 class ChatDomainError(Exception):
@@ -215,23 +236,116 @@ def extract_proposals(
     ``current`` resolves a path to the text on file; when it is supplied every
     proposal is stabilised so a section the model merely re-wrapped keeps the
     original line breaks instead of showing up as churn.
+
+    Two shapes are repaired on the way in, deterministically and always from the file
+    the proposal would overwrite: a path alias such as ``chapters/1/brief.md`` lands on
+    ``chapters/0001/brief.md``, and a range heading written into the B layer
+    (``## 第 11-30 章 弧 3：门钥之谜``) is moved out of toc.md and offered as a second
+    card for arcs.md, because a multi-chapter arc belongs to the C layer.
     """
-    proposals: list[dict[str, Any]] = []
-    for raw_path, text in PROPOSAL_BLOCK.findall(content or ""):
-        path = raw_path.strip().lstrip("/")
-        entry: dict[str, Any] = {"path": path, "text": text.rstrip() + "\n", "valid": True, "error": ""}
+    fences = list(PROPOSAL_BLOCK.findall(content or ""))
+    pending_arcs = ""
+    # A fence for arcs.md in the answer already owns that file: two cards for one
+    # document would leave the owner choosing between two writes.
+    offers_arcs = any(canonical_path(raw)[0] == ARCS_PATH for raw, _ in fences)
+
+    def build(path: str, text: str, note: str = "") -> dict[str, Any]:
         # Read the file first: the shape check needs to know which keys are already
         # taken, or a card that can only fail still offers 应用.
         base = current(path) if current is not None else None
+        entry_text = canonicalize_proposal(path, text, current_text=base)
+        entry: dict[str, Any] = {
+            "path": path,
+            "text": entry_text,
+            "valid": True,
+            "error": "",
+        }
+        if note:
+            entry["note"] = note
+        if base and path in {TOC_PATH, ARCS_PATH} and legacy_proposal_matches(
+            path, base, entry_text
+        ):
+            entry["text"] = base
+            return entry
         try:
-            entry["error"] = validate_structure(path, entry["text"], current_text=base)
+            entry["error"] = validate_structure(path, entry_text, current_text=base)
         except DocumentError as cause:
             entry["error"] = cause.detail
         entry["valid"] = not entry["error"]
         if entry["valid"] and base:
             entry["text"] = stabilize_proposal(path, base, entry["text"])
-        proposals.append(entry)
+        return entry
+
+    proposals: list[dict[str, Any]] = []
+    for raw_path, text in fences:
+        path, note = canonical_path(raw_path)
+        entry_text = text.rstrip() + "\n"
+        if path == TOC_PATH:
+            arcs_current = current(ARCS_PATH) if current is not None else None
+            entry_text, moved = arc_proposal_from_toc_ranges(entry_text, arcs_current)
+            if moved and not offers_arcs:
+                offers_arcs = True
+                pending_arcs = moved
+            if not toc_record_count(entry_text):
+                continue  # 只有范围标题、没有逐章记录的 toc 提案不产出围栏
+        proposals.append(build(path, entry_text, note))
+    if pending_arcs:
+        proposals.append(build(ARCS_PATH, pending_arcs))
     return proposals
+
+
+def legacy_proposal_matches(path: str, current_text: str, proposed_text: str) -> bool:
+    """Is this proposal just the document the file already holds?
+
+    The aliases and the omitted-but-protected bullets are repaired by
+    ``canonicalize_proposal`` before the comparison, so no card offers 应用 on a file
+    that would not change.
+    """
+    try:
+        kind, chapter = resolve_path(path)
+        current = load_document(kind, current_text, chapter=chapter)
+        candidate = canonicalize_proposal(path, proposed_text, current_text=current_text)
+        proposed = load_document(kind, candidate, chapter=chapter)
+    except DocumentError:
+        return False
+    identity = {"toc": "chapter", "arcs": "arc"}.get(kind)
+    if identity and isinstance(current, list) and isinstance(proposed, list):
+        if len(current) != len(proposed):
+            return False
+        def strip_key(row: dict[str, Any]) -> dict[str, Any]:
+            return {key: value for key, value in row.items() if key != identity}
+        return [strip_key(row) for row in current] == [strip_key(row) for row in proposed]
+    return current == proposed
+
+
+PROPOSE_TOOL_PREFIX = "propose_"
+
+
+def merge_step_proposals(content: str, steps: list[AgentStep]) -> str:
+    """Fold the fences a successful propose_* step produced into the final answer.
+
+    Both engines end in one ``AgentOutcome``, so this is the single place where a tool
+    result joins what the owner reads and where ``extract_proposals`` meets the same
+    fences again after a reload - the persisted message carries them. A failed step is
+    a diagnostic and never becomes a proposal; a fence the model already pasted into
+    its own answer is not inserted a second time.
+    """
+    text = content or ""
+    seen = {(path.strip(), body.strip()) for path, body in PROPOSAL_BLOCK.findall(text)}
+    added: list[str] = []
+    for step in steps or []:
+        if not step.result.ok or not step.call.name.startswith(PROPOSE_TOOL_PREFIX):
+            continue
+        for raw_path, body in PROPOSAL_BLOCK.findall(step.result.content or ""):
+            path = raw_path.strip()
+            if (path, body.strip()) in seen:
+                continue
+            seen.add((path, body.strip()))
+            added.append("```markdown @" + path + "\n" + body.strip() + "\n```")
+    if not added:
+        return text
+    joined = text.rstrip()
+    return (joined + "\n\n" if joined else "") + "\n\n".join(added) + "\n"
 
 
 def _one_line(text: str, limit: int) -> str:
@@ -562,7 +676,9 @@ def complete_turn(
     return persist_reply(
         session,
         turn,
-        content=outcome.content,
+        # The same post-processing for both engines: a propose_* result that never
+        # reached the answer text still has to reach the owner as a review card.
+        content=merge_step_proposals(outcome.content, outcome.steps),
         model=outcome.model,
         token_input=outcome.token_input,
         token_output=outcome.token_output,
@@ -664,18 +780,21 @@ def stream_turn(
         return
 
     _log_steps(outcome.steps, turn.novel_id)
+    # Extracted from the merged text, and the merged text is what gets stored: the
+    # cards and the reload must be derived from one and the same answer.
+    final_content = merge_step_proposals(outcome.content, outcome.steps)
 
     with factory() as session:
         novel_id = _novel_id_of(session, turn.user_message_id)
         reader = current_text_reader(session, novel_id) if novel_id else None
-        for proposal in extract_proposals(outcome.content, reader):
+        for proposal in extract_proposals(final_content, reader):
             yield ("proposal", proposal)
 
     with factory() as session:
         message = persist_reply(
             session,
             turn,
-            content=outcome.content,
+            content=final_content,
             model=outcome.model,
             token_input=outcome.token_input,
             token_output=outcome.token_output,

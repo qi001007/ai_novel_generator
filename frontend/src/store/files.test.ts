@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api";
-import { BLUEPRINT_PATH, chapterMatches, chapterNumberLabel, isDirty, useFiles } from "./files";
+import { BLUEPRINT_PATH, TOC_PATH, chapterMatches, chapterNumberLabel, isDirty, useFiles } from "./files";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -102,12 +102,73 @@ describe("files store", () => {
       baseText: DOC.text,
       baseRevision: "rev-1",
     });
+    const applied = useFiles.getState().appliedSeq;
     await expect(useFiles.getState().applyProposal(BLUEPRINT_PATH)).resolves.toBe(true);
     expect(mocked.writeFile).toHaveBeenCalledWith(1, BLUEPRINT_PATH, "## 主线\nAI\n", {
       actor: "ai",
       baseRevision: "rev-1",
     });
     expect(useFiles.getState().pending[BLUEPRINT_PATH]).toBeUndefined();
+    // 批注 4 (2026-09-09): the landing write is also what tells the chapter tree and
+    // the character cards to re-read the database. Counted as a delta, because the
+    // signal is monotonic on purpose - a novel switch must not look like new work.
+    expect(useFiles.getState().appliedSeq).toBe(applied + 1);
+  });
+
+  it("keeps a rejected proposal out of the write path", async () => {
+    await useFiles.getState().attach(1);
+    await useFiles.getState().open(BLUEPRINT_PATH);
+    useFiles.getState().offer({
+      id: 5,
+      path: BLUEPRINT_PATH,
+      text: "## 主线\nAI\n",
+      valid: false,
+      error: "第 3 行缺少「章节号」",
+      baseText: DOC.text,
+      baseRevision: "rev-1",
+    });
+    const applied = useFiles.getState().appliedSeq;
+
+    // 批注 2: the card already disables the mark; this is the same rule at the only
+    // write entry, so no caller can PUT text the server refused.
+    await expect(useFiles.getState().applyProposal(BLUEPRINT_PATH)).resolves.toBe(false);
+    expect(mocked.writeFile).not.toHaveBeenCalled();
+    expect(useFiles.getState().entries[BLUEPRINT_PATH].error).toContain("未通过校验");
+    expect(useFiles.getState().entries[BLUEPRINT_PATH].error).toContain("第 3 行缺少「章节号」");
+    // The card stays on the table so the owner can discard it; nothing was applied.
+    expect(useFiles.getState().pending[BLUEPRINT_PATH]).toBeTruthy();
+    expect(useFiles.getState().appliedSeq).toBe(applied);
+  });
+
+  it("applies a B-layer proposal, then reloads the same Markdown projection", async () => {
+    const tocDoc = { ...DOC, path: TOC_PATH, kind: "toc", layer: "B", label: "目录" };
+    const updatedTocDoc = { ...tocDoc, text: "## 第 1 章 第一扇门\n", revision: "rev-2" };
+    let tocReads = 0;
+    mocked.readFile.mockImplementation(async (_novelId, path) => {
+      if (path !== TOC_PATH) return DOC;
+      tocReads += 1;
+      return tocReads === 1 ? tocDoc : updatedTocDoc;
+    });
+    await useFiles.getState().attach(1);
+    await useFiles.getState().open(TOC_PATH);
+    useFiles.getState().offer({
+      id: 4,
+      path: TOC_PATH,
+      text: "## 第 1 章 第一扇门\n- **剧情功能**：建立目标\n- **备注**：\n",
+      valid: true,
+      error: "",
+      baseText: tocDoc.text,
+      baseRevision: "rev-1",
+    });
+
+    await expect(useFiles.getState().applyProposal(TOC_PATH)).resolves.toBe(true);
+
+    expect(mocked.writeFile).toHaveBeenCalledWith(1, TOC_PATH, expect.stringContaining("第一扇门"), {
+      actor: "ai",
+      baseRevision: "rev-1",
+    });
+    expect(useFiles.getState().entries[TOC_PATH].draft).toBe(updatedTocDoc.text);
+    expect(useFiles.getState().pending[TOC_PATH]).toBeUndefined();
   });
 
   it("discards a proposal without touching the server", async () => {

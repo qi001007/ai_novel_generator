@@ -53,11 +53,20 @@ export function renderToc(preamble: string, rows: TocRow[]) {
 export default function TocListView() {
   const active = useFiles((store) => store.active);
   const entry = useFiles((store) => store.entries[active ?? ""]);
+  const proposal = useFiles((store) => store.pending[active ?? ""]);
   const setDraft = useFiles((store) => store.setDraft);
   const chapters = useWorkbench((store) => store.chapters);
   const [query, setQuery] = useState("");
 
-  const parsed = useMemo(() => parseToc(entry?.draft ?? ""), [entry?.draft]);
+  /* 批注 3 (2026-09-09): an overlay may only stand in for a file that could really
+     become this. A proposal the server rejected will never be written - its 应用 mark
+     is disabled - so putting its rows on the table fabricated a 待应用 state the owner
+     could read as progress. Only the file's own words belong here now, plus a valid
+     proposal's overlay, which is still ephemeral: entry.draft is untouched until
+     应用提案, and the card stays the only write action. */
+  const showPreview = Boolean(proposal && proposal.valid && proposal.path === active);
+  const previewText = showPreview ? proposal.text : entry?.draft ?? "";
+  const parsed = useMemo(() => parseToc(previewText), [previewText]);
   const allRows = useMemo(() => {
     const known = new Map(parsed.rows.map((row) => [row.chapter, row]));
     // A chapter can exist before its B-layer row is filled. Show it as a
@@ -98,6 +107,11 @@ export default function TocListView() {
           {/* The path was printed here as well as in the file bar above, and it
               said 规划 unconditionally - the same lie D-15 fixed elsewhere. */}
           <h2>目录</h2>
+          {showPreview ? (
+            <span className="toc-preview-badge" role="status">
+              待确认预览
+            </span>
+          ) : null}
         </div>
         <div className="toc-toolbar-controls">
           <label className="toc-search">
@@ -159,4 +173,3 @@ export default function TocListView() {
     </section>
   );
 }
-

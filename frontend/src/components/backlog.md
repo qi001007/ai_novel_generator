@@ -1,17 +1,18 @@
-# frontend\src\components/ 更改账（最新在上）
+# frontend/src/components/ 更改账（最新在上）
 
-- 2026-09-07 · 候选 4c：`cmDoc.ts` 删掉 `FIELD_LABEL`/`HEADING_FIELDS`/`BULLET_FIELDS` 三张本地表，
-  改吃投影随文档发来的 `grammar`——新增 `grammarOf()`（`{role:[{field,label}]}` → 本 kind 的
-  三向索引：标题标签→字段、项标签→字段、字段→标签）与 `fieldOf()`（键行是人在敲的文本，只认 own property）；
-  `scanDoc` 从 config 里的表查字段，**`focusField` 去掉「同名标签兜底」那段歧义补丁，只按字段精确匹配**；
-  为测试导出 `scanDoc`/`DocEntry`/`grammarOf`。`FileEditorPane.tsx`：import 换成 `grammarOf`、
-  `setDocConfig` 多传一项 `grammar`（useMemo，随投影 doc 变）、面包屑改成查**来源文档**自己那张表
-  （新常量 `jumpLabel`，避免 JSX 换行吞掉「· 」后的空格）。三处标签撞车自此按 kind 各自解开：
-  简报 `goal`／人物 `goals`，弧 `start_chapter|end_chapter`／人物 `expected_start_chapter|expected_end_chapter`。
-  同批：`grammarParity.test.ts` 4 条 → 10 条（新增「前端不许有第二把表」静态扫 + 按 kind 解析用例），
-  并修掉该测试自己的一处缺陷——旧正则不认单行元组，`_TOC_BULLETS` 整张漏检（8 张 39 对实为 9 张 41 对）。
-  fixture 一律从 `src/test/servedGrammar.ts` 取表，不抄标签。255 passed（249 → 255）/ tsc clean / build ok。
+- 2026-09-09 · 历史加载遇到已等同当前文件的最新提案时，同时清除同路径旧待处理卡，避免导入成功后旧红字重新出现。
+- 2026-09-10 · 修复提案确认过滤：所有 proposal 进入待处理状态，只有主人点击应用才写入。
+- 2026-09-10 · 对话代码块启用软换行；CodeMirror 编辑器启用 lineWrapping。
+- 2026-09-10 · 目录长文本单元格改为可增长换行；渲染目录覆盖编辑区（含缩略栏），避免源码底色泄露。
+- 2026-09-10 · 无效提案也展示完整 diff，便于主人审查并重新生成；应用按钮仍严格禁用。
+- 2026-09-10 · 对历史提案中的“内容/起止章”可纠正别名开放应用；其他结构错误继续禁用。
 
-- 2026-09-07 · 新建本目录 description.md（主人要求原则贯彻到文件树各层）。本目录代码未改。
+- 2026-09-09 · TocListView 在 B 层提案待确认期间渲染临时目录并显示状态标识；不修改文件 buffer。
 
-- 2026-09-08 · §六 第 2 步：`chatRows.ts` 的 `toolLine()` 从「read_file(a.md)」改成「第 1 步 · read_file a.md · 1.4s · 1.2k 字」（一秒以内说毫秒，不把 0.02s 骗成 0s）；`ChatPane.tsx` 里「本轮读取」从每行前缀改成这列说一次「本轮读取 · N 步」，行改用 `.chat-trace-list`/`.chat-trace-row`（无框无底），不再借用引用的胶囊样式。真机截图：`.scratch/shots/step2-trace-crop.png`（真网关那一轮）、`step2-trace-plain.png`（换类后的排版，流是录好的）。
+- 2026-09-09 · ChatPane rows and thinking details now use a 180ms ease-out entrance animation with reduced-motion override.
+
+- 2026-09-09 · 精简组件地图，标明三处仍未接真实数据的面板；未改源码。
+- 2026-09-08 · ChatPane 展示每步成本；cmDoc 改为消费服务端 grammar；测试 fixture 不再抄标签。
+- 2026-09-07 · 对话 reasoning、工具轨迹、人物文档渲染与恢复动作完成并纳入 UI 不变量。
+- 2026-09-05 · 建立提案、标签栏、三栏、焦点和控件图形语言的不可回退断言。
+ - 2026-09-09：在 ChatPane 工具栏加入“确认并生成”按钮，复用现有 `/generate` 命令与 `generateDraft` 流程；不新增 Agent 写工具。

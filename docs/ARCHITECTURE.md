@@ -1,183 +1,89 @@
-# 架构现状（ARCHITECTURE）
+# 架构现状
 
-本文件只记**系统实际长什么样**与**推进主干**。为什么这样定见 `DECISIONS.md`（下文以 D-xx／X-xx 引用编号）。
-最后更新：2026-09-03。所有数字均为本机实测，不是转述。
+最后核对：2026-09-09。本文只描述跨模块的真实结构；进度看 WORKSTREAM-PLAN.md，理由看 DECISIONS.md。
 
-## 0. 一句话形状
+## 0. 系统形状
 
-单机自用 Web 应用。前端一个 React 工作台；后端一个 FastAPI + SQLite；两块「AI」彼此分离：
-**写文侧**（按注入上下文生成正文）与**对话侧**（讨论剧情、查资料、管规划）。
-全产品的业务核心是写文侧**注入什么上下文**，不是模型本身。
+    React 单页应用
+      → frontend/src/api.ts（唯一网络边界）
+      → FastAPI routers（HTTP 解析与错误映射）
+      → services（业务、投影、AI 编排）
+      → SQLite / SQLModel（唯一持久化真源）
 
-**目录内部的事不写在这里**：从 `backend/description.md`、`frontend/description.md` 顺着
-各层 `description.md` 往下读（每层 ≤20 行，`backend/tests/test_folder_docs.py` 钉着）。
-本文只留**跨模块**的事实：真源与写通路、上下文链路、完成度、缺口、验证命令。
-### 0.5 Map 跳转表（要改什么 → 去哪个目录 → 用什么验）
+这是单机自用应用。前后端共用一套数据模型，但写文与对话是两条消费链：写文生成章节，对话负责检索、讨论和提出改动；二者都从 collect_items() 取得资料。
 
-| 要改的东西 | 去这里（先读它的 description.md） | 验它的方式 |
+### 0.5 Map 跳转表（改什么，先读哪里）
+
+| 任务 | 先读 | 验证 |
 |---|---|---|
-| 加/改一张表、一列字段 | `backend/app/models.py` ＋ `backend/alembic/versions/` | `tests/test_migrations.py`；upgrade 与 downgrade 双向都要真跑 |
-| 加一个端点 | `backend/app/routers/`（回 `app/main.py` 挂 router） | `backend/tests/` 对应用例 |
-| 改生成 / 校验 / 恢复的行为 | `backend/app/services/` | `pytest -q` ＋ `scripts/writing_ring_smoke.py`（默认档不花钱） |
-| 改「注入什么上下文」 | 只改 `services/context.py` 的 `collect_items()` 一个分支 | 起后端带 `NOVEL_CONTEXT_DEBUG=1`，看终端清单 |
-| 改对话与 Agent | `services/chat.py` `agent.py` `agent_tools.py` | `tests/test_agent_*.py`；`scripts/smoke_chat_stream.py` 要先起后端 |
-| 改一块界面 | `frontend/src/components/` | `npm run test` ＋ **同批改** `src/uiInvariants.test.ts` ＋ 真机截图 |
-| 改一个页面 / 路由 | `frontend/src/pages/` | 同上 |
-| 改状态持有者 | `frontend/src/store/`（只有三个，多一个要说明理由） | `store/*.test.ts` |
-| 改视觉令牌 / 不可回退项 | `docs/UI-DESIGN.md` §0 与 §0.9 | `uiInvariants.test.ts` 就是它的机器版 |
-| 查「这条为什么这么定」 | `docs/DECISIONS.md` §0 索引 → D-xx | 状态看正文，别处只许引编号 |
+| 表或字段 | backend/app/description.md → models.py；backend/alembic/description.md | 迁移升降级 + 后端测试 |
+| API | backend/app/routers/description.md | 对应路由测试 |
+| 生成、恢复、校验 | backend/app/services/description.md | 后端测试 + 对应 smoke |
+| 注入内容 | services/context.py 的 collect_items() 及写作排序 | 清单测试 + NOVEL_CONTEXT_DEBUG=1 |
+| 对话 Agent | services/agent*.py、agent_tools.py、chat.py | test_agent_*.py + 真网关最小冒烟 |
+| 页面 | frontend/src/pages/description.md | Vitest + 类型检查 + 真机截图 |
+| 组件 | frontend/src/components/description.md | 同名测试 + uiInvariants.test.ts |
+| 状态 | frontend/src/store/description.md | store 测试 |
+| 决策原因或已删方案 | DECISIONS.md 索引、§2、§3 | 对照当前代码后再行动 |
 
-### 0.6 文档职责（一个事实只有一个主人；改文档照这张表分工）
+进入目录后先读同层 description.md；确定要改，再读同层 backlog.md。不要从仓库根目录全量读取源码。
 
-| 角色 | 文件 | 只装什么 | 明确不装什么 |
-|---|---|---|---|
-| 宪章 | `AGENTS.md` | 工具纪律、回答习惯、项目架构红线（一句话级、违反即错）、进任务的读序 | 架构解释、实时进度、历史叙述、被复制的角色表 |
-| **地图（本文件）** | `docs/ARCHITECTURE.md` | 真源与写通路、§0.5 跳转表、本表、模块**实际**完成度与缺口 | 需求条目、视觉规格、"为什么这么定"的理由 |
-| — | `docs/PRD.md` | 需求与验收标准，外加功能拆解勾选附录 | 文件路径实现细节、进度、理由历史 |
-| — | `docs/UI-DESIGN.md` | 视觉与交互规格、§0.9 不可回退清单 | 后端契约、进度 |
-| 状态 | `docs/WORKSTREAM-PLAN.md` | **唯一进度入口**：已经能用的 / 还差什么 / 下一步 / 要主人点头的事 | 结构参考、已完成流水、后端契约 |
-| 状态 | `docs/UI-BACKLOG.md` | **未完成**界面条目，做完一条勾掉并把结论写进 WORKSTREAM-PLAN | 已完成历史、理由、视觉规格 |
-| 历史 | `docs/DECISIONS.md` | **理由与决定**（§0 索引、D-xx、§2 已废止、§3 防复活＝删除区、T-xx 踩坑台账） | 进度、结构、本表 |
-| — | `docs/HANDOFF.md` | 开新对话所需的最小信息：环境、验证命令、指向 | 上面任何一类的正文 |
-| 历史 | 各目录 `description.md` / `backlog.md` | 一层管什么 / 这一层改过什么 | 跨目录的事（那属于上面几份） |
-| 地图（术语） | `docs/CONTEXT.md` | **只给名字下定义**：是什么、代码里叫什么、归谁管 | 实现解释、理由、进度 |
+### 0.6 文档职责
 
+| 文件 | 唯一职责 |
+|---|---|
+| AGENTS.md | 工作纪律、不可违反的项目红线 |
+| ARCHITECTURE.md | 跨模块现状、代码地图、风险边界 |
+| PRD.md | 产品目标、范围、验收标准 |
+| UI-DESIGN.md | 当前视觉与交互规格、不可回退项 |
+| WORKSTREAM-PLAN.md | 唯一进度入口、下一步、收尾标准 |
+| UI-BACKLOG.md | 尚未完成的界面批注，完成即删 |
+| DECISIONS.md | 决定、理由、废止与防复活记录 |
+| HANDOFF.md | 新会话启动与验证入口 |
+| CONTEXT.md | 领域词汇表 |
+| 目录 description.md / backlog.md | 本层职责与本层变更史 |
 
+## 1. 数据与写通路
 
-## 1. 真源与写通路
+- app/models.py 定义 16 张表；其中 app_config 是全局配置，其余数据按作品归属。
+- SQLite 是唯一持久化真源。blueprint.md、toc.md、arcs.md、chapters/NNNN/{brief.md,draft.md} 与 settings/* 都是按需渲染的 Markdown 投影，不是磁盘真文件。
+- 规划与文本设定写入只走 PUT /api/novels/{id}/files/{path}，统一经过结构锁、AI 字段白名单和 base_revision 并发检查（D-01/D-02/D-10/D-15）。
+- 主人确认的首次 B/C 提案可以初始化空投影；已有记录仍禁止 AI 提案增删或改主键（D-38）。
+- /planning/* 的写路由保留为 410 退役桩，避免旧调用静默产生第二写口；读取仍可用。
+- 图片、作品删除、章节生成和快照恢复是不同资源动作，不伪装成规划文档写入。章节改名最终仍写 toc.md；章节删插由 renumber.py 集中搬移全部章号引用（D-29/D-32）。
+- 导出是单向读；恢复写回时复用文件投影写手。v1 不做磁盘双向同步。
 
-现状（B 路，D-01 已收口）：一条入口，四层规划的任何修改都走它。
+## 2. AI 与上下文
 
-```text
-人改文档 ─┐
-AI 提案 ─┼─► PUT /api/novels/{id}/files/{path} ─► Markdown 解析 ─► DB 列
-新建章节 ─┘   （键锁 / actor 白名单 / base_revision 409）
-```
+    collect_items(session, novel_id)
+      ├─ build_chat_context()      按问题相关度排序
+      └─ build_writing_context()   按写作层级与字符预算排序
+           └─ manifest → generation_run.input_summary / 调试终端
 
-已退役：
+- collect_items() 是唯一资料池；新资料只增加 collector，不在调用方拼第二份提示词（D-04/D-06）。
+- 对话历史、推理、工具轨迹和正文内容分开建模；推理不回灌为历史正文（D-18）。
+- Agent 的工具注册表当前只有 list_files、read_file、web_search，没有直接写工具。改规划只能产出提案，主人确认后再走文件写入口。
+- Agent 有 legacy 与 Pydantic AI 两个引擎；NOVEL_AGENT_ENGINE=pydantic 才启用后者，默认仍是 legacy。两者共享注册表和外部事件契约；迁移结束前不得删回退路径（D-28）。
+- 当前写作上下文仍使用 12000 字预算、目录邻域 ±3、上一章末尾 600 字；这些是待调整的实现现状，不是新需求的最终口径，工单见 UI-BACKLOG.md。
 
-```text
-/planning/* POST / PUT ─► HTTP 410（只读 GET 保留）
-```
+## 3. 前端边界
 
-- **DB 是唯一真源**（D-02）。`app/models.py` 里四层规划全是结构化列，库里不存文档文本；
-  文件内容由 `services/documents.py` 每次现渲染、解析回列。换文件格式属纯投影层改动（零迁移、零 alembic）。
-- 文件层统一携带键锁（D-10）、`actor=ai` 白名单、`base_revision` 乐观并发（409）与
-  `stabilize_proposal`。新建章节首写 `chapters/NNNN/brief.md` 时同事务创建 `ChapterBrief + Chapter`。
+- api.ts 是唯一 fetch 所在地；组件、页面和 store 不直接感知后端实现（D-07）。
+- workbench、files、appearance 是三个状态持有者；新增全局状态前先证明现有三处不能承载。
+- CodeMirror 6 承担 Markdown/正文编辑；投影语法只由后端 markdown_doc._GRAMMAR 发布，前端按 kind 消费（D-08/D-35）。
+- 视觉决定由 UI-DESIGN.md 描述、uiInvariants.test.ts 机械保护；效果类改动必须真机量测。
 
-### 路径现状（D-03）
+## 4. 结构风险
 
-```text
-blueprint.md            A 全书蓝图
-toc.md                  B 目录
-arcs.md                 C 剧情弧
-chapters/0042/brief.md  D 单章简报
-chapters/0042/draft.md  正文投影     ← 旧编辑器与终审编辑均写这条路径
-```
+| 风险 | 当前证据 | 收尾策略 |
+|---|---|---|
+| 大文件 | styles.css 6569 行；ChatPane.tsx 1174；PreferencesPage.tsx 1143；WorkbenchPage.tsx 1001 | 不做全量重构；功能触及某块时只拆该块，并保持测试不减 |
+| 后端服务过厚 | documents.py 1169；context.py 900；chat.py 686；storage.py 581 | 先完成 v1 主链；仅在修改相应职责时提取纯函数或子模块 |
+| Agent 双引擎 | 默认 legacy，Pydantic 路径已存在但尚未完成迁移 | 先补行为等价与真机稳定性，再切默认，最后删 legacy |
+| 前端主包偏大 | 当前生产构建主 JS 约 874 KB（gzip 约 296 KB），Vite 给出 500 KB 提示 | 不阻塞本地 v1；真实启动变慢时先做路由级 dynamic import |
+| 测试卫生 | 前端测试通过，但 BookshelfPage 与 FileEditorPane 各有 act(...) 警告 | 不混入文档任务；后续触及对应测试时修 |
+| 文档漂移 | 多份文档曾重复测试数字、已完成流水和旧结论 | 禁止固定测试条数；状态只写 WORKSTREAM-PLAN.md，历史交给 Git |
 
-兼容：`resolve_path` 同时认新旧两种写法，**读旧写新**，不迁数据、不断链。
+## 5. 运行时核对
 
-## 2. 上下文链路（产品核心，D-04 / D-05 / D-06）
-
-```text
-                collect_items(session, novel_id)        ← 唯一资料池
-                        │
-        ┌───────────────┴────────────────┐
-  build_chat_context()          build_writing_context()
-  排序＝问题相关度                  排序＝写作四档
-  给对话 Agent                    给正文生成
-        └───────────────┬────────────────┘
-                  WritingContext ─► manifest_json() ─► generation_run.input_summary
-                       │             └─► NOVEL_CONTEXT_DEBUG=1 时 print 到终端
-                  render_context() → 提示词
-```
-
-写作四档（预算不足自低档起裁）：
-
-1. **必注入**：作品信息与文风约束、A 蓝图、D 本章简报
-2. **连续性**：当前弧、上一章结尾、出场人物当前状态、**所有未回收伏笔**
-3. **邻域**：B 目录 N±3、近 5 章摘要、被点名设定
-4. **填充**：其余按相关度
-
-不变量（有测试钉住）：预算再紧也不得裁掉未回收伏笔与出场人物状态。
-
-空内容**不算注入**：必注入档若字段为空，出现在未注入区并写明「本章实际缺少该资料」（T-14）。
-
-一份真实清单（2026-09-02 只读跑真库 novel 1 第 43 章，944/12000 字）：
-
-```text
- 1-6.  [必注入] blueprint          A 全书蓝图 · 主线/主题/核心冲突/约束/终局
- 7.    [必注入] brief       142 字  D 简报 · 第 43 章
- 8.    [必注入] arc          67 字  C 剧情弧 · 碑与人（42-48）
- 9.    [必注入] character     35 字  人物 · 沈曜
- 10.   [连续性] chapter     123 字  上一章结尾 · 第 42 章
- 11-14.[邻域]   brief/toc/setting   第 42、43 章相邻简报与目录、星渊碑设定
- 15.   [填充]   character     14 字  人物 · 沈云
- --.   [填充]   chapter     123 字  未注入：正文 · 第 42 章（与已注入的上一章结尾重复）
-```
-
-清单里看不到伏笔档不等于机制漏了：novel 1 没有伏笔行，伏笔尚无写入端点（见 §4 缺口 4）。
-
-
-## 3. 模块完成度（不粉饰）
-
-| 模块 | 行数 | 实际能力 | 完成度 |
-|---|---|---|---|
-| `services/llm.py` | 211 | OpenAI 兼容客户端，流式带 usage，任务类型 draft/review/summary/chat 四个，未配置时明确降级 | 可用 |
-| `services/context.py` | 953 | 唯一采集池 + 两种排序 + 清单双通道 + @引用解析 + 去重 | **核心已成形** |
-| `services/documents.py` + `markdown_doc.py` | 538 + 291 | MD 投影读写、键锁、AI 白名单、乐观并发、提案稳定化、按章路径与原子建章 | 可用 |
-| `services/chat.py` | 多轮（`HISTORY_WINDOW=8`）、落库、SSE 事件、@引用、token 记账、提案抽取 | 外壳；内核在 `services/agent.py`（S2 第 1 步已落地） |
-| `services/{chapters,reviews,draft,planning,prompts}.py` | 约 550 | 机械校验、七维自检、章摘要、流水线编排 | 可用 |
-| `app/models.py` | 303 | 15 张表：novel / blueprint / toc / arc / brief / chapter / setting / character / appearance / foreshadow / summary / feedback / generation_run / review / chat_message | 可用 |
-| 前端 | 约 5.6k | 书架 / 工作台三栏 / 双根树 / MD 文件编辑器（CodeMirror 6）/ 对话坞 / 提案卡 / 人物卡库 | 设计已定，UI 迭代未完 |
-
-实测门禁：后端 **107 passed**，前端 **53 passed / 13 files**，`npm run build` 干净。
-**测试通过只代表已有代码自洽，不代表主人要的功能已实现**——两者在本文件里分开写（§3 与 §4）。
-
-## 4. 缺口清单（明确没有什么，而不是「差不多」）
-
-| # | 缺什么 | 证据 | 归属 |
-|---|---|---|---|
-| 1 | ~~Agent 没有 agentic 内核~~ **S2 第 1 步已补（2026-09-04）**：工具注册表 + 多步循环 + 联网查证 + 步数与 token 上限 | `services/agent.py`（注册表／协议／循环）+ `services/agent_tools.py`（`list_files` / `read_file` / `web_search`）；`tests/test_agent_loop.py` 19 项、`test_agent_tools.py` 9 项、`test_agent_chat.py` 3 项；真机一轮 `/search 司天监` 走通两步并回来源链接。**仍缺**：写作环触发（S4）、按规范改规划只有提案一途 | S2 已做，S4 待做 |
-| 2 | ~~`/search` 斜杠命令不存在~~ **已补**：`/search <词>` 让 Agent 调 `web_search` | 命令表在 `ChatPane.tsx` 的 `commands`；实测来源为中文维基百科（免密钥）。**免密钥通用搜索引擎不可用**：DuckDuckGo 的 lite/html 两端点本机实测 403，要通用网页结果必须配搜索 API | S2 |
-| 3 | 双栏对照生成 + 逐段合并、选区 Diff 修改 | WORKSTREAM C4 全节未勾；Figma 帧 05 已批但代码未做（T-12） | S1 之后 |
-| 4 | ~~伏笔没有写入端点~~ **已补**：`settings/foreshadow.md` 走唯一文件层写入口 | 写入后 `chat/context?kind=foreshadow` 返回真实条目；`tests/test_setting_books.py` 钉住。**仍缺删除端点**（删一行不下线，同 `弧 N`） | 已做，删除待议 |
-| 5 | 绘画 / AI 生图是**纯前端假数据** | `artwork` / `painting` 在后端零命中；`PaintingDetailPanel.tsx` 无后端来源 | P3 |
-| 6 | **删除作品功能整体缺失**（不是只缺端点） | 前端 `BookshelfPage`／`workbench` 里 `删除`／`del(` 零命中，`api.ts` 的 `del` 无人调用；后端 `routers/novels.py` 只 GET/POST/PUT；而 PRD §2 与 UI-DESIGN §1 都要它 | S3 之后（DECISIONS 5.2） |
-| 7 | 磁盘导出镜像未做 | D-02 列 P2 且只单向导出 | P2 |
-
-## 5. 推进主干：为什么是一条，不是三个项目
-
-不是三个互相隔离的最小项目最后拼接——那三块共享 `novel / chapter / brief / setting / character`，
-各自建一份数据层，合并那天要重新发明一遍 DB 模型，且**没有测试能保护那次合并**。
-所以：**一条数据主干，三次能力叠加，代码一行不删，每步先写测试再实现**。
-
-两条不可调换的顺序约束（这是本节唯一的规格，进度与勾选一律看 `WORKSTREAM-PLAN.md` §一）：
-
-- **S3 必须早于 S2**：Agent 的管理规划命令必须绑在唯一写入口上（D-01），
-  否则是把双真源问题自动化放大，而不是解决它。
-- **S2 的每圈输入只能复用 `prepare_turn()`**：它已经是「取历史 + 选上下文 + 组 messages」，
-  循环只在那份 messages 上追加，不重建上下文装配（D-04 / D-06）。
-
-## 6. 验证命令
-
-```powershell
-# 后端（必须用 .venv 里的 python，不是系统 python）
-cd E:\novel-generator\backend; .venv\Scripts\python.exe -m pytest -q         # 期望 107 passed
-
-# 带注入清单起后端（可见终端；控制台需 UTF-8 防中文乱码）
-cd E:\novel-generator\backend
-$env:NOVEL_CONTEXT_DEBUG = '1'
-.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
-
-# S1 最小写作环（隔离临时库；默认模板草稿，不耗 token）
-cd E:\novel-generator\backend
-.venv\Scripts\python.exe scripts\writing_ring_smoke.py
-
-# 前端
-cd E:\novel-generator\frontend; npm run test -- --run                        # 期望 53 passed
-cd E:\novel-generator\frontend; npm run build
-```
-
-开发时 `:5173` 由 Vite 把 `/api` 代理到 `:8000`。`backend/.env` 自动加载，密钥不入库；
-`GET /api/llm/status` 只返回供应商 / 地址 / 模型配置状态，不返回密钥。
+2026-09-09 本机导入应用得到 74 条 /api 路由、16 张表。测试总数不写入文档，以门禁当次输出与退出码为准。启动与完整验证命令只看 HANDOFF.md。

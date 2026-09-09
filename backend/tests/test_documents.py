@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tests.planning_helpers import create_arc, create_brief, create_toc
+from app.services.markdown_doc import render
 
 
 @pytest.fixture(autouse=True)
@@ -166,6 +167,46 @@ def test_ai_cannot_add_or_remove_rows(client: TestClient) -> None:
     assert human.json()["changed"] == ["43.created", "43.title"]
     rows = client.get(f"/api/novels/{novel_id}/planning/toc").json()
     assert [row["chapter_number"] for row in rows] == [42, 43]
+
+
+def test_owner_applied_ai_proposal_can_initialize_toc_and_arcs(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "首次规划"}).json()["id"]
+    toc = render("toc", [{
+        "chapter": 1, "title": "第一道门", "plot_function": "建立目标", "notes": "",
+    }])
+    arcs = render("arcs", [{
+        "arc": 1, "title": "觉醒", "start_chapter": 1, "end_chapter": 5,
+        "objective": "获得能力", "conflict": "追捕", "resolution": "逃亡", "status": "planned",
+    }])
+
+    toc_response = write(client, novel_id, "toc.md", toc, actor="ai")
+    arcs_response = write(client, novel_id, "arcs.md", arcs, actor="ai")
+
+    assert toc_response.status_code == 200, toc_response.text
+    assert arcs_response.status_code == 200, arcs_response.text
+    assert "## 第 1 章 第一道门" in read(client, novel_id, "toc.md")["text"]
+    assert "## 弧 1 觉醒" in read(client, novel_id, "arcs.md")["text"]
+
+
+def test_initial_arc_proposal_repairs_common_aliases_and_missing_defaults(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "弧别名"}).json()["id"]
+    proposal = (
+        "# 剧情弧（C 层）\n\n"
+        "> `弧 N` 是主键。\n\n"
+        "## 弧 1 觉醒·逃亡\n"
+        "- **起止章节**：第 01 - 05 章\n"
+        "- **核心事件**：主角获得能力\n"
+        "- **弧内悬念**：谁在追捕主角\n"
+        "- **人物弧光**：从普通人走向觉醒者\n"
+    )
+
+    response = write(client, novel_id, "arcs.md", proposal, actor="ai")
+
+    assert response.status_code == 200, response.text
+    saved = read(client, novel_id, "arcs.md")["text"]
+    for label in ("起始章", "结束章", "目标", "冲突", "收束", "状态"):
+        assert f"- **{label}**：" in saved
+    assert "人物弧光：从普通人走向觉醒者" in saved
 
 
 def test_ai_may_not_move_arc_bounds_but_may_rewrite_prose(client: TestClient) -> None:

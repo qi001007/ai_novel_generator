@@ -584,8 +584,8 @@ def render_context(items: list[ContextItem]) -> str:
 # rule differs: chat sorts by question relevance, writing by these fixed tiers.
 
 WRITING_CONTEXT_BUDGET = 12000
-PREVIOUS_CHAPTER_TAIL_CHARS = 600
-TOC_NEIGHBOURHOOD = 3
+TOC_NEIGHBOURHOOD = 20
+ARC_NEIGHBOURHOOD = 20
 RECENT_SUMMARY_CHAPTERS = 5
 CLOSED_FORESHADOW_STATUSES = {"resolved", "closed", "dropped", "已回收"}
 
@@ -726,7 +726,7 @@ def _arc_refs_for_chapter(
     return current, previous
 
 
-def _previous_chapter_tail(
+def _previous_chapter(
     session: Session, novel_id: int, chapter_number: int
 ) -> ContextItem | None:
     row = session.exec(
@@ -739,9 +739,9 @@ def _previous_chapter_tail(
     collapsed = " ".join(row.content.split())
     return ContextItem(
         kind="chapter",
-        label=f"上一章结尾 · 第 {row.chapter_number} 章",
-        ref=f"chapter_tail:{row.id}",
-        text=collapsed[-PREVIOUS_CHAPTER_TAIL_CHARS:],
+        label=f"上一章正文 · 第 {row.chapter_number} 章",
+        ref=f"chapter_previous:{row.id}",
+        text=collapsed,
     )
 
 
@@ -771,46 +771,51 @@ def build_writing_context(
     current_arcs, previous_arcs = _arc_refs_for_chapter(session, novel_id, chapter_number)
     open_foreshadows = _open_foreshadow_refs(session, novel_id)
     brief_ref = f"brief:{brief.id}" if brief and brief.id is not None else ""
+    previous_brief = session.exec(select(ChapterBrief).where(ChapterBrief.novel_id == novel_id, ChapterBrief.chapter_number == chapter_number - 1)).first()
+    previous_brief_ref = f"brief:{previous_brief.id}" if previous_brief is not None and previous_brief.id is not None else ""
+    brief_text = " ".join(str(value) for value in (brief.goal if brief else "", brief.events if brief else "", brief.pov if brief else "", brief.conflict if brief else "", brief.hook if brief else "", *(brief.required_facts if brief else [])) if value)
+    brief_grams = _grams(brief_text)
 
     def tier_of(item: ContextItem) -> int:
         number = _label_chapter_number(item.label)
         if item.kind in {"novel", "blueprint"}:
             return TIER_CORE
         if item.kind == "brief":
-            return TIER_CORE if item.ref == brief_ref else TIER_NEARBY
+            return TIER_CORE if item.ref in {brief_ref, previous_brief_ref} else TIER_NEARBY
         if item.ref in open_foreshadows or item.ref in cast_refs:
             return TIER_CORE
         if item.ref in current_arcs:
             return TIER_CORE
-        if item.ref in previous_arcs or item.ref.startswith("chapter_tail:"):
+        if item.ref in previous_arcs or item.ref.startswith("chapter_previous:"):
             return TIER_CONTINUITY
         if item.kind == "toc" and number is not None and abs(number - chapter_number) <= TOC_NEIGHBOURHOOD:
             return TIER_NEARBY
         if item.kind == "summary" and number is not None and 0 < chapter_number - number <= RECENT_SUMMARY_CHAPTERS:
             return TIER_NEARBY
         if item.kind == "setting":
-            return TIER_NEARBY
+            return TIER_CORE if _grams(item.label) & brief_grams else TIER_FILL
         return TIER_FILL
 
     pool = collect_items(session, novel_id)
-    tail = _previous_chapter_tail(session, novel_id, chapter_number)
-    if tail is not None:
-        pool = [*pool, tail]
-
-    # The previous chapter arrives once as its ending; letting its full text in as
-    # well would pay for the same prose twice (REQUIREMENTS 10.2, 兼顾成本).
-    tail_ref = tail.ref.split(":")[1] if tail is not None else ""
-    duplicated = [
-        block
-        for block in (
-            ContextBlock(item, tier_of(item))
-            for item in pool
-            if item.ref == f"chapter:{tail_ref}"
-        )
-    ]
-    for block in duplicated:
-        block.reason = "与已注入的上一章结尾重复"
-    pool = [item for item in pool if item.ref != f"chapter:{tail_ref}"]
+    filtered: list[ContextItem] = []
+    for item in pool:
+        number = _label_chapter_number(item.label)
+        if item.kind == "chapter":
+            continue
+        if item.kind == "toc" and (number is None or abs(number - chapter_number) > TOC_NEIGHBOURHOOD):
+            continue
+        if item.kind == "arc":
+            match = re.search(r"（(\d+)-(\d+)）", item.label)
+            if match is None:
+                continue
+            start, end = int(match.group(1)), int(match.group(2))
+            if end < chapter_number - ARC_NEIGHBOURHOOD or start > chapter_number + ARC_NEIGHBOURHOOD:
+                continue
+        filtered.append(item)
+    pool = filtered
+    previous = _previous_chapter(session, novel_id, chapter_number)
+    if previous is not None:
+        pool.append(previous)
 
     blocks = [ContextBlock(item, tier_of(item)) for item in pool]
     blocks.sort(key=lambda block: (block.tier, WRITING_KIND_ORDER.get(block.item.kind, 99), block.item.label))
@@ -831,7 +836,7 @@ def build_writing_context(
         budget=budget,
         used=trimmed.used,
         selected=trimmed.selected,
-        dropped=[*trimmed.dropped, *empties, *duplicated],
+        dropped=[*trimmed.dropped, *empties],
     )
 
 

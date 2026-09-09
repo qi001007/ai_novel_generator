@@ -31,17 +31,24 @@ export function diffFile(before: string, after: string): FileDiff {
   const lines: DiffLine[] = [];
   for (let i = 0; i < head; i += 1) lines.push({ type: "same", text: a[i], line: i + 1 });
   const changedLines: number[] = [];
-  for (let i = head; i < a.length - tail; i += 1) {
-    lines.push({ type: "minus", text: a[i], line: i + 1 });
-    changedLines.push(i + 1);
+  const removedCount = a.length - tail - head;
+  const addedCount = b.length - tail - head;
+  const hunkLength = Math.max(removedCount, addedCount);
+  for (let i = 0; i < hunkLength; i += 1) {
+    if (i < removedCount) {
+      lines.push({ type: "minus", text: a[head + i], line: head + i + 1 });
+      changedLines.push(head + i + 1);
+    }
+    if (i < addedCount) {
+      lines.push({ type: "plus", text: b[head + i], line: head + i + 1 });
+    }
   }
-  for (let i = head; i < b.length - tail; i += 1) lines.push({ type: "plus", text: b[i], line: i + 1 });
   for (let i = a.length - tail; i < a.length; i += 1) lines.push({ type: "same", text: a[i], line: i + 1 });
 
   return {
     lines,
-    added: b.length - tail - head,
-    removed: a.length - tail - head,
+    added: addedCount,
+    removed: removedCount,
     changedLines,
     firstChange: changedLines[0] ?? (head < b.length ? head + 1 : null),
   };
