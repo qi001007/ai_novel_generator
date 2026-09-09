@@ -556,6 +556,11 @@ def test_no_prompt_lets_a_hand_written_fence_stand_in_for_an_action_tool() -> No
 INTENT_CASES = [
     ("给第 3 章写一份简报", "plan"),
     ("把 B 层目录里第 11 到 30 章补齐", "plan"),
+    # 35.18：主人写层名**不带空格**。库里 msg 52/54/58 三条同形状请求当时落库的
+    # mode 全是 write——层名点不中，模式整个落回开关，正是 D-41 想反过来的一件事。
+    ("重新生成C层", "plan"),
+    ("重新生成 C 层", "plan"),
+    ("重新生成c层", "plan"),
     ("新增一条剧情弧，讲真相与背叛", "plan"),
     ("建一个人物卡，叫沈砚", "plan"),
     ("更新 A 层蓝图里的主题", "plan"),
@@ -592,6 +597,24 @@ def test_a_brief_request_under_the_write_toggle_gets_the_plan_prompt(client: Tes
     assert "## 本轮模式：写作" not in system, system
     # 简报是 D 层，走的是提案工具这一路，不是把正文吐在对话里
     assert "propose_chapter_brief" in system
+
+
+def test_the_owners_c_layer_phrasing_reaches_the_server_as_plan(client: TestClient) -> None:
+    """35.18：库里 msg 52/54/58 那三条「重新生成C层」当时落库的 mode 全是 write。
+
+    走真 ASGI 应用与假网关，量的不是纯函数返回值，而是服务端真的拼出了哪个模式体、
+    又真的存下了哪个模式——落库那份正是 35.15 那颗答案行标签读的东西。
+    """
+    fake = use_fake(client, FakeChatClient())
+    novel_id = make_novel(client)
+
+    client.post(f"/api/novels/{novel_id}/chat", json={"content": "重新生成C层", "mode": "write"})
+
+    system = fake.calls[0]["messages"][0]["content"]
+    assert "## 本轮模式：计划" in system, system
+    assert "禁止输出章节正文" in system, system
+    stored = client.get(f"/api/novels/{novel_id}/chat/messages").json()
+    assert {row["role"]: row["mode"] for row in stored} == {"user": "plan", "assistant": "plan"}, stored
 
 
 def test_a_prose_request_under_the_plan_toggle_gets_the_write_prompt(client: TestClient) -> None:

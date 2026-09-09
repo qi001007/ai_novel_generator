@@ -238,6 +238,7 @@
 - **判定只有一处、下游共用**：`prepare_turn` 判一次，`_system_prompt` 的模式体、`temperature_for`、注入日志的 note、落库的 `mode` 全读同一个值；两个引擎（D-28）走同一条装配，不存在 legacy 按计划、pydantic 按写作。用词表而不是再问一次模型：多一次请求就多烧一份 35.9 的预算，而表可以被测试逐行反查。
 - **对称**：开关拨到 `plan` 而主人说「把第 3 章正文写出来」同样改判 `write`，否则 `PLAN_BODY` 的「禁止输出章节正文」会变成另一个"要不到正文"。表驱动测试两边都跑。
 - **界面把这一答的模式说出来（35.15 结案）**：答案行的说话行显示 `按「计划」` / `按「写作」`，取的是落库那份 `mode`，也就是这里判出来的值——不是开关。开关因此退回它真正的语义：下一句从哪一侧开始。标签写成动词短语而不是光一个「计划」，是为了同一屏不许出现两处互相矛盾的模式说法。词表在 `labels.ts`（D-34），开关与标签同取一处。
+- **层名只有一种写法（35.18 结案）**：表里写 `a层` `b层` `c层` `d层`，不带空格；挨着「层」的那个空格不是这句话的一部分，所以匹配前在 `effective_mode` 顶部抹掉它一次，两把表读同一份归一化后的文本。归一化口径只有这一处主人，「三种写法在两个开关方向上都判 `plan`」逐条钉在 `INTENT_CASES`。不抹全部空白：全抹会把拉丁词焊在一起，`to cache` 就含得下 `"toc"` 而误判成规划。
 
 ### D-42 对话 Agent 单轮预算由主人设定，只有一个读取点
 
@@ -307,7 +308,7 @@
 
 - **成功假象的机理**：`agent_tools._compile` 从前写成 `return text if ok else f"{DIAG_PREFIX}{text}"`，拒绝的诊断是**返回值**，registry 于是把这一步记成 `ok=True`。前端只在 `ok` 为假时才追加那三个字（`chatRows.ts:81`），所以主人看到的是「第 N 步 · propose_toc · 40ms · 96 字」一片全绿、只有一张卡没出现——绿步骤配红缺失，比红步骤难查一个量级。**改法一行**：改成 `raise ToolError(...)`，`agent.py:117` 把它转成 `ToolResult(ok=False, content=同一句诊断)`。诊断文本一字未改，改的是这一步的记账。
 - **「一次有界自修复」按框架既有预算实现**：拒绝文案回到模型那一侧，模型改对了就是**下一轮请求**，仍受 D-42 主人存下的轮/token 上限管。实测整轮 `len(fake.seen) == 3`（拒绝 → 带着诊断再问 → 收尾那句），修复只多花一次请求。**否掉的修法**：在 `_compile` 里就地重试——那是第二条控制流，绕开预算与停止条件，也绕开 `test_over_budget_is_an_error_and_persists_no_reply` 与 `test_the_ceiling_the_owner_saved_is_the_one_this_turn_runs_on` 钉住的那对护栏。
-- **五类动作的端到端（判据第 1 句 + 验收第 1 句）**：A 层 `tests/test_chat_agent.py:697`、B 层 `tests/test_agent_chat.py:225`、C 层 `test_chat_agent.py:648`、简报 `:608`、正文 `:744`、人物 `test_agent_chat.py:266`。每条都是「模型/工具的输出 → 卡 → `PUT /files/...` → 真源那一行真的变了」，并且都断言了点应用**之前**库里还是空的。B 层与人物那两条走 `tool` 块，量的才是 Agent 唯一那张写表面：动作编译出的路径与 schema 就是文件层认的那一份。新建章与新建简报的落库本身在 `tests/test_documents.py:193 / 638 / 672`。
+- **五类动作的端到端（判据第 1 句 + 验收第 1 句）**：A 层 `tests/test_chat_agent.py:720`、B 层 `tests/test_agent_chat.py:225`、C 层 `test_chat_agent.py:671`、简报 `:631`、正文 `:767`、人物 `test_agent_chat.py:266`。每条都是「模型/工具的输出 → 卡 → `PUT /files/...` → 真源那一行真的变了」，并且都断言了点应用**之前**库里还是空的。B 层与人物那两条走 `tool` 块，量的才是 Agent 唯一那张写表面：动作编译出的路径与 schema 就是文件层认的那一份。新建章与新建简报的落库本身在 `tests/test_documents.py:193 / 638 / 672`。
 - **第二写接口与绕过确认（验收第 2 句）**：`tests/test_planning.py:14-15` 钉 `/planning/*` 的 POST 与 PUT 一律 **410**；`tests/test_agent_tools.py:290-291` 钉工具表恰好是 `list_files` / `read_file` / `web_search` + 五个 `propose_*`，`:55` 再断表里没有任何名字含 `write/put/save/delete` 的工具。Agent 落不了库，唯一的写是主人点应用那一下的 `actor=ai`（D-37）。
 - **断言搬家（D-33）**：前端代码一行未动，「未成功」那句已由 `chatRows.test.ts:56-68` 与 `uiInvariants.test.ts:226` 钉住，所以本条不新增前端断言（加了就是重复）。后端 `tests/test_agent_tools.py` 那个助手按语义拆开：`proposal_text` 继续断 `ok is True`，新增 `refusal_text` 断 `ok is False`，四处拒绝用例（范围条目、缺字段、自己挑路径、删条目）迁过去，同文件里成功新增三条弧那次仍走 `proposal_text`。原先挂在旧助手上那句注释「a refused payload is text the model can act on, never a crash it cannot see」随语义搬进 `refusal_text` 的 docstring——它说的是拒绝。一条断言都没删。
 - **门禁**：后端 **382 passed**（377 + 5：A 层与正文 2 条 e2e、拒绝→再问回路 1 条、B 层与人物走 tool 面 2 条）、前端 **279 passed / 26 files** 与 `uiInvariants` **55** 条（本条未碰前端，与 D-47 同一份）、`tsc -b --force` 退出 0、`npm run build` 通过；命中区审计（5173 `/novels/5`，与 D-45/D-46 那份同页）small 0 / clipped 0 / unreachable 0，edge 2 + srOnly 1 与那两份同一份。

@@ -131,13 +131,16 @@ PROSE_CUES = ("正文", "成稿", "续写", "扩写", "接着写", "往下写", 
 PLANNING_CUES = (
     "简报", "简章", "brief", "大纲", "目录", "toc", "剧情弧", "故事弧", "弧段", "蓝图",
     "人物卡", "人物", "设定", "伏笔", "世界观", "题旨", "规划",
-    "a 层", "b 层", "c 层", "d 层", "blueprint.md", "toc.md", "arcs.md", "characters.md",
+    "a层", "b层", "c层", "d层", "blueprint.md", "toc.md", "arcs.md", "characters.md",
 )
 
 
 def effective_mode(text: str, requested: str) -> str:
     """这句话要的是规划对象还是成稿；两边都没点中才照主人拨的开关。"""
-    lowered = text.lower()
+    # 层名挨着「层」的那个空格不是这句话的一部分：主人写「重新生成C层」不带空格，
+    # 表里带一个就把两把提示词表都点不中，模式整个落回开关（35.18）。只抹「层」
+    # 两侧的空白，不抹全部——全抹会把拉丁词焊在一起，「to cache」就含得下 "toc"。
+    lowered = re.sub(r"\s+(?=层)|(?<=层)\s+", "", text.lower())
     if any(cue in lowered for cue in PROSE_CUES):
         return "write"
     if any(cue in lowered for cue in PLANNING_CUES):
