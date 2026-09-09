@@ -779,6 +779,21 @@ def _novel_id_of(session: Session, message_id: int) -> int | None:
     return row.novel_id if row is not None else None
 
 
+def _turn_proposals(
+    factory: Callable[[], Session], message_id: int, text: str
+) -> list[dict[str, Any]]:
+    """把一段应答文本抽成提案卡，真源读手只在这里接一次。
+
+    中途那一步与收尾那一次共用它：同一道合法性闸门（D-38）、同一条提案通道（D-40），
+    不是第二条。
+    """
+    with factory() as session:
+        novel_id = _novel_id_of(session, message_id)
+        reader = current_text_reader(session, novel_id) if novel_id else None
+        person = character_path_reader(session, novel_id) if novel_id else None
+        return list(extract_proposals(text, reader, person))
+
+
 def stream_turn(
     llm: LLMClient,
     turn: ChatTurn,
@@ -812,6 +827,7 @@ def stream_turn(
 
     outcome: Any = None
     reasoning: list[str] = []
+    surfaced: set[tuple[str, str]] = set()
     try:
         for name, payload in stream_agent_turn(
             llm,
@@ -842,6 +858,14 @@ def stream_turn(
                         "chars": payload.chars,
                     },
                 )
+                # 32.4：这一步成了，提案就已经是完整合法的一份——没有道理让主人
+                # 等收尾那句客套话打完字才看到卡。收尾那一次只补这里没见过的。
+                if payload.result.ok and payload.call.name.startswith(PROPOSE_TOOL_PREFIX):
+                    for proposal in _turn_proposals(
+                        factory, turn.user_message_id, payload.result.content or ""
+                    ):
+                        surfaced.add((proposal["path"], proposal["text"]))
+                        yield ("proposal", proposal)
             else:
                 outcome = payload
     except (LLMError, LLMUnavailableError) as cause:
@@ -862,12 +886,12 @@ def stream_turn(
     # cards and the reload must be derived from one and the same answer.
     final_content = merge_step_proposals(outcome.content, outcome.steps)
 
-    with factory() as session:
-        novel_id = _novel_id_of(session, turn.user_message_id)
-        reader = current_text_reader(session, novel_id) if novel_id else None
-        person = character_path_reader(session, novel_id) if novel_id else None
-        for proposal in extract_proposals(final_content, reader, person):
-            yield ("proposal", proposal)
+    # 收尾再抽一次，补的是模型自己写进正文的那些围栏（没有提案工具的对象才走这条路）；
+    # 中途已经给过的卡不再重复发一遍（32.4）。
+    for proposal in _turn_proposals(factory, turn.user_message_id, final_content):
+        if (proposal["path"], proposal["text"]) in surfaced:
+            continue
+        yield ("proposal", proposal)
 
     with factory() as session:
         message = persist_reply(

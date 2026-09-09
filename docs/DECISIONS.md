@@ -54,6 +54,7 @@
 | D-46 | 写入落地的反应先重读章节清单，再取所选章记录；树只读 `chapters` |
 | D-47 | 路径别名只在 `resolve_path` 折叠一次；写入回报的路径就是界面跟随的路径 |
 | D-48 | 被拒绝的动作是一次「未成功」的步骤；自修复＝诊断回灌＋预算内再问，不新造重试 |
+| D-49 | 提案卡跟着那一步到，不跟着流的尾巴到；中途与收尾共用同一个抽卡真源 |
 
 ## 1. 决定
 
@@ -308,11 +309,22 @@
 
 - **成功假象的机理**：`agent_tools._compile` 从前写成 `return text if ok else f"{DIAG_PREFIX}{text}"`，拒绝的诊断是**返回值**，registry 于是把这一步记成 `ok=True`。前端只在 `ok` 为假时才追加那三个字（`chatRows.ts:81`），所以主人看到的是「第 N 步 · propose_toc · 40ms · 96 字」一片全绿、只有一张卡没出现——绿步骤配红缺失，比红步骤难查一个量级。**改法一行**：改成 `raise ToolError(...)`，`agent.py:117` 把它转成 `ToolResult(ok=False, content=同一句诊断)`。诊断文本一字未改，改的是这一步的记账。
 - **「一次有界自修复」按框架既有预算实现**：拒绝文案回到模型那一侧，模型改对了就是**下一轮请求**，仍受 D-42 主人存下的轮/token 上限管。实测整轮 `len(fake.seen) == 3`（拒绝 → 带着诊断再问 → 收尾那句），修复只多花一次请求。**否掉的修法**：在 `_compile` 里就地重试——那是第二条控制流，绕开预算与停止条件，也绕开 `test_over_budget_is_an_error_and_persists_no_reply` 与 `test_the_ceiling_the_owner_saved_is_the_one_this_turn_runs_on` 钉住的那对护栏。
-- **五类动作的端到端（判据第 1 句 + 验收第 1 句）**：A 层 `tests/test_chat_agent.py:720`、B 层 `tests/test_agent_chat.py:225`、C 层 `test_chat_agent.py:671`、简报 `:631`、正文 `:767`、人物 `test_agent_chat.py:266`。每条都是「模型/工具的输出 → 卡 → `PUT /files/...` → 真源那一行真的变了」，并且都断言了点应用**之前**库里还是空的。B 层与人物那两条走 `tool` 块，量的才是 Agent 唯一那张写表面：动作编译出的路径与 schema 就是文件层认的那一份。新建章与新建简报的落库本身在 `tests/test_documents.py:193 / 638 / 672`。
+- **五类动作的端到端（判据第 1 句 + 验收第 1 句）**：A 层 `tests/test_chat_agent.py:720`、B 层 `tests/test_agent_chat.py:225`、C 层 `test_chat_agent.py:671`、简报 `:631`、正文 `:767`、人物 `test_agent_chat.py:307`。每条都是「模型/工具的输出 → 卡 → `PUT /files/...` → 真源那一行真的变了」，并且都断言了点应用**之前**库里还是空的。B 层与人物那两条走 `tool` 块，量的才是 Agent 唯一那张写表面：动作编译出的路径与 schema 就是文件层认的那一份。新建章与新建简报的落库本身在 `tests/test_documents.py:193 / 638 / 672`。
 - **第二写接口与绕过确认（验收第 2 句）**：`tests/test_planning.py:14-15` 钉 `/planning/*` 的 POST 与 PUT 一律 **410**；`tests/test_agent_tools.py:290-291` 钉工具表恰好是 `list_files` / `read_file` / `web_search` + 五个 `propose_*`，`:55` 再断表里没有任何名字含 `write/put/save/delete` 的工具。Agent 落不了库，唯一的写是主人点应用那一下的 `actor=ai`（D-37）。
 - **断言搬家（D-33）**：前端代码一行未动，「未成功」那句已由 `chatRows.test.ts:56-68` 与 `uiInvariants.test.ts:226` 钉住，所以本条不新增前端断言（加了就是重复）。后端 `tests/test_agent_tools.py` 那个助手按语义拆开：`proposal_text` 继续断 `ok is True`，新增 `refusal_text` 断 `ok is False`，四处拒绝用例（范围条目、缺字段、自己挑路径、删条目）迁过去，同文件里成功新增三条弧那次仍走 `proposal_text`。原先挂在旧助手上那句注释「a refused payload is text the model can act on, never a crash it cannot see」随语义搬进 `refusal_text` 的 docstring——它说的是拒绝。一条断言都没删。
 - **门禁**：后端 **382 passed**（377 + 5：A 层与正文 2 条 e2e、拒绝→再问回路 1 条、B 层与人物走 tool 面 2 条）、前端 **279 passed / 26 files** 与 `uiInvariants` **55** 条（本条未碰前端，与 D-47 同一份）、`tsc -b --force` 退出 0、`npm run build` 通过；命中区审计（5173 `/novels/5`，与 D-45/D-46 那份同页）small 0 / clipped 0 / unreachable 0，edge 2 + srOnly 1 与那两份同一份。
 - **未验的一半（不许写成已完成）**：真机上「未成功」那三个字要**一次真模型对话**才会亮——假网关的轮子跑在测试里，不在主人浏览器里。这条与 35.11 的三条实测残留同一个前置（花他的网关额度、写他的库），等主人点头。
+
+### D-49 提案卡跟着那一步到，不跟着流的尾巴到；中途与收尾共用同一个抽卡真源
+
+状态：生效。批次 32.4 裁定。判据原句「流结束后必须出现 `toc.md` 完整提案卡」在改之前就已成立，量出来的是它没说的那半句——卡**早于**流结束很久就已经合法了，界面无所谓地等着。
+
+- **机理**：`stream_turn` 从前只在整条流收尾时抽一次围栏，输入是 `merge_step_proposals(...)` 拼出来的最终文本。于是 `propose_toc` 那一步早就编译出了合法目录，主人却要等模型把收尾那句客套话一个字一个字打完才看到卡。真机（假网关，全链路其余皆真）量到这段纯等待是 **1765ms**：`proposal` 事件 7484ms → **5704ms**，与那一步成功的同一毫秒。
+- **改法只加一个发射点，不加第二条通道**：把「读真源 → 过闸门 → 出卡」收进 `_turn_proposals()`，中途那一步与收尾那一次共用它，所以过的仍是同一道 D-38 合法性闸门、走的仍是同一条 D-40 提案通道。收尾那次只补 `surfaced` 里没见过的那些——也就是模型自己写进正文的围栏（没有提案工具的对象才走那条路）。**否掉的两种写法**：在工具回调里另造一份卡（等于把校验规则复制成两份，D-38 就不是唯一闸门了）；或收尾照旧全发一遍（同一条提案会在界面上变两张卡，去重集合就是为这个存在的，已被变异证明会红）。
+- **写清楚的代价**：中途发出去的卡可能赶上一轮后来撞 D-42 预算、被 `AgentBudgetError` 终止。那条分支不 `persist_reply`，于是屏上已有卡而应答没落库。**裁定是接受**：卡不是写，唯一的写仍是主人点应用那一下（D-37），他不按就什么都没有；要改成「出错就把屏上的卡一并撤掉」，那是 `ChatPane` 里一句清理，与本条的时序无关，不在本条范围。
+- **断言搬家（D-33）**：后端新增 `tests/test_agent_chat.py::test_the_b_layer_card_arrives_while_the_stream_is_still_open`，量的是**事件顺序**（`tool` < `proposal` < 最后一个 `delta`）、只有一张卡、以及卡已在屏上时 `chapters == []`；前端新增 `FileEditorPane.test.tsx`「lands the applied rows in the rendered list, and the same document in the source」，钉应用后列表摘掉「待确认预览」改读文件本身、切到源码仍是同一份。三次反向变异各自红一次：关掉中途发射 → `['context','tool','delta','proposal','done','end']`；去掉收尾去重 → 两张卡；摘掉 `applyProposal` 的 `reload` → 应用后 0 行。三处还原后全绿，一条既有断言未删。本条没动任何界面控件，故不新增 `uiInvariants` 断言（加了就是重复计数）。**引用推偏**：本条在 `tests/test_agent_chat.py` 的 `:266` 之前插了 41 行，把 D-48 记的人物那条端到端推成 `:307`（B 层 `:225` 在插入点之上，未动），三处文档已按真值改过——本文件 D-48、`UI-BACKLOG` 35.6 横幅、`WORKSTREAM-PLAN` 35.6 行。
+- **门禁**：后端 **391 passed**（390 + 1）、前端 **283 passed / 26 files** 与 `uiInvariants` **56**（本条未碰），`tsc -b --force` 退出 0、`npm run build` 通过。真机截图两张（列表态与源码态）亲自看过。
+- **未验的一半（不许写成已完成）**：本条的取证通道是**假网关**——它证明的是管线时序，不是真模型的判断。判据原句里「逐步增长的列表内容」未做，另立 **32.5**；真模型那一轮仍与 35.11 三条残留同一个前置，等主人点头。
 
 ## 2. 已废止（删除区）
 

@@ -205,6 +205,84 @@ describe("FileEditorPane", () => {
     expect(api.writeFile).not.toHaveBeenCalled();
   });
 
+  it("lands the applied rows in the rendered list, and the same document in the source", async () => {
+    /* 批注 32.4 后半：「B 层生成必须实时落到提案与渲染层」问的是主人看的那张表。
+       上一条管的是确认前不许伪装成已写入；这条管确认后两屏得是同一份——
+       列表先摘掉「待确认预览」改读文件本身，切到源码看到的还是那一份字。 */
+    const toc: FileDoc = {
+      path: "toc.md",
+      kind: "toc",
+      layer: "B",
+      label: "目录",
+      text: "# 目录（B 层 · 中期）\n\n> 一条一章。\n",
+      ai_fields: ["title", "plot_function", "notes"],
+      revision: "toc-rev-1",
+      grammar: servedGrammar("toc"),
+    };
+    const offered = `${toc.text}\n## 第 1 章 雪夜入城\n- **剧情功能**：主角抵达边城\n- **备注**：埋下旧印线索\n`;
+    useWorkbench.setState({ chapters: [] });
+    useFiles.setState({
+      novelId: 1,
+      tabs: ["toc.md"],
+      active: "toc.md",
+      entries: {
+        "toc.md": {
+          doc: toc,
+          draft: toc.text,
+          loading: false,
+          saving: false,
+          error: null,
+          conflict: false,
+          savedAt: null,
+        },
+      },
+      pending: {
+        "toc.md": {
+          id: 12,
+          path: "toc.md",
+          text: offered,
+          valid: true,
+          error: "",
+          baseText: toc.text,
+          baseRevision: toc.revision,
+        },
+      },
+      views: {},
+      stage: null,
+      jump: null,
+      focus: null,
+      revealSeq: 0,
+      metasError: null,
+    });
+    vi.mocked(api.writeFile).mockResolvedValue({
+      path: "toc.md",
+      changed: ["title"],
+      revision: "toc-rev-2",
+    });
+    vi.mocked(api.readFile).mockResolvedValue({ ...toc, text: offered, revision: "toc-rev-2" });
+    vi.mocked(api.listFiles).mockResolvedValue([
+      { path: "toc.md", kind: "toc", layer: "B", label: "目录" },
+    ]);
+    render(<FileEditorPane />);
+
+    await waitFor(() => expect(screen.getByDisplayValue("雪夜入城")).toBeTruthy());
+    expect(screen.getByText("待确认预览")).toBeTruthy();
+
+    await expect(useFiles.getState().applyProposal("toc.md")).resolves.toBe(true);
+
+    await waitFor(() => expect(screen.queryByText("待确认预览")).toBeNull());
+    // 行还在，但它现在是文件说的话，不再是一句提议
+    expect(document.querySelectorAll(".toc-row")).toHaveLength(1);
+    expect(screen.getByDisplayValue("雪夜入城")).toBeTruthy();
+    expect(useFiles.getState().entries["toc.md"]?.draft).toBe(offered);
+    expect(useFiles.getState().pending["toc.md"]).toBeUndefined();
+
+    useFiles.getState().setView("toc.md", true);
+    await waitFor(() =>
+      expect(document.querySelector(".file-cm .cm-content")?.textContent).toContain("雪夜入城"),
+    );
+  });
+
   it("names the source in reader-facing words when the reader arrived through a B→D jump", () => {
     seed();
     useFiles.setState({

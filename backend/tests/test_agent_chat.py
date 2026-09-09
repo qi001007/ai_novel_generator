@@ -263,6 +263,47 @@ def test_a_propose_toc_ask_lands_the_b_layer_on_the_chapter_rows(client: TestCli
         f"/api/novels/{novel_id}/chapters").json()] == [1, 2]
 
 
+def test_the_b_layer_card_arrives_while_the_stream_is_still_open(client: TestClient) -> None:
+    """批注 32.4「B 层生成必须实时落到提案与渲染层」：卡跟着那一步到，不等收尾那句客套话。
+
+    从前 `proposal` 只在整条流收尾时发一次（`stream_turn` 末尾），于是提案早就成了、
+    界面却要等模型把收尾语打完字才动。这条量的是**事件顺序**，不是有没有卡。
+    """
+    use_fake(
+        client,
+        SteppedClient(
+            [
+                [tool_block("propose_toc", {
+                    "chapters": [
+                        {"number": 1, "title": "开门", "plot_function": "立谜", "notes": ""},
+                        {"number": 2, "title": "验钥", "plot_function": "抬价", "notes": ""},
+                    ]
+                })],
+                ["目录排了两章，"],
+                ["后面再补。"],
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "先把前两章的目录排出来", "mode": "plan"},
+    )
+    events = parse_sse(response.text)
+    order = [name for name, _ in events]
+    cards = [payload for name, payload in events if name == "proposal"]
+
+    assert order.index("tool") < order.index("proposal"), order
+    last_delta = max(i for i, name in enumerate(order) if name == "delta")
+    assert order.index("proposal") < last_delta, order
+    # 同一条提案不因中途发过一次、收尾又发一次而变成两张卡（D-40 只有一条通道）
+    assert len(cards) == 1, cards
+    assert cards[0]["path"] == "toc.md" and cards[0]["valid"] is True, cards[0]
+    # 实时不等于越权：卡已经在界面上了，真源一行都还没写（D-37）
+    assert client.get(f"/api/novels/{novel_id}/chapters").json() == []
+
+
 def test_a_propose_character_ask_lands_a_real_archive(client: TestClient) -> None:
     """批注 35.6 第 5 类：建人物也要从工具量到人，且确认前不落库（D-37）。"""
     use_fake(
