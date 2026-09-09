@@ -25,7 +25,7 @@ def _keep_tests_offline(monkeypatch) -> None:
 class SteppedClient:
     """A different scripted answer per round, so the loop is actually exercised."""
 
-    def __init__(self, rounds) -> None:
+    def __init__(self, rounds, usage=(100, 20)) -> None:
         self.settings = LLMSettings(
             provider="fake",
             api_base_url="https://llm.fake/v1",
@@ -34,12 +34,13 @@ class SteppedClient:
             models={"draft": "fake-d", "review": "fake-r", "summary": "fake-s", "chat": "fake-c"},
         )
         self.rounds = rounds
+        self.usage = usage
         self.seen = []
 
     def stream_messages(self, task_type, messages, temperature=0.6, usage_out=None, model=None, tools=None, reasoning_out=None, channels=False, tool_calls_out=None):
         self.seen.append([dict(item) for item in messages])
         if usage_out is not None:
-            usage_out.update({"model": "fake-c", "token_input": 100, "token_output": 20})
+            usage_out.update({"model": "fake-c", "token_input": self.usage[0], "token_output": self.usage[1]})
         for chunk in self.rounds[len(self.seen) - 1]:
             yield ("content", chunk) if channels else chunk
 
@@ -48,8 +49,8 @@ class SteppedClient:
         return LLMResult(
             content="".join(self.rounds[len(self.seen) - 1]),
             model="fake-c",
-            token_input=100,
-            token_output=20,
+            token_input=self.usage[0],
+            token_output=self.usage[1],
             cost_estimate=0.0,
         )
 
@@ -136,3 +137,21 @@ def test_over_budget_is_an_error_and_persists_no_reply(client: TestClient) -> No
     assert len(fake.seen) == 6  # the default ceiling, not eight
     stored = client.get(f"/api/novels/{novel_id}/chat/messages").json()
     assert [row for row in stored if row["role"] == "assistant"] == []
+
+
+def test_the_ceiling_the_owner_saved_is_the_one_this_turn_runs_on(client: TestClient) -> None:
+    """35.9：「可配置」要能在一轮真实请求里量出来，不然只是页面上多了两个输入框。"""
+    client.put("/api/config/llm", json={"agent": {"max_steps": 2, "max_tokens": 1000}})
+    # 每轮记 660 token：第 2 轮回来 1320，先撞主人存下的 1000，而不是出厂的 60000
+    fake = use_fake(client, SteppedClient([[TOOL_BLOCK_ARCS]] * 6, usage=(600, 60)))
+    novel_id = make_novel(client)
+    create_arc(client, novel_id, start_chapter=1, end_chapter=30, objective="揭开星渊碑")
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "把所有弧重排一遍", "mode": "plan"},
+    )
+    message = payload_of(parse_sse(response.text), "error")["message"]
+    assert "超过上限 1000（第 2 轮）" in message
+    assert "当前上限 1000 token / 2 轮" in message
+    assert len(fake.seen) == 2

@@ -31,6 +31,7 @@ from app.services.agent import (
     ToolCall,
     ToolRegistry,
     ToolResult,
+    budget_hint,
 )
 from app.services.agent_model import GatewayChatModel
 from app.services.agent_tools import framework_tools_from_registry
@@ -155,6 +156,7 @@ def _budget_error(gate: BudgetGate, steps: list[AgentStep]) -> AgentBudgetError:
     return AgentBudgetError(
         f"本轮已停止：{reason}。已花 {spent} token（输入 {usage.input_tokens} / 输出 {usage.output_tokens}）、"
         f"跑了 {len(steps)} 步工具调用。已执行：{trail or '（无）'}"
+        + budget_hint(gate.request_limit, gate.total_tokens_limit)
     )
 
 

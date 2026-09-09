@@ -35,6 +35,13 @@ type LlmProvider = {
   is_default: boolean;
 };
 
+type AgentBudget = {
+  max_steps: number;
+  max_tokens: number;
+  default_max_steps: number;
+  default_max_tokens: number;
+};
+
 type LlmConfig = {
   provider: string;
   api_base_url: string;
@@ -46,6 +53,7 @@ type LlmConfig = {
   providers: LlmProvider[];
   routes: Record<string, string>;
   tasks: string[];
+  agent: AgentBudget;
 };
 
 /** An editable row in the provider list. `api_key` holds only what the owner typed;
@@ -655,6 +663,8 @@ export default function PreferencesPage() {
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [timeout, setTimeout_] = useState("120");
+  const [agentSteps, setAgentSteps] = useState("");
+  const [agentTokens, setAgentTokens] = useState("");
   const [models, setModels] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -670,6 +680,8 @@ export default function PreferencesPage() {
     setConfig(data);
     setBaseUrl(data.api_base_url);
     setTimeout_(String(data.timeout));
+    setAgentSteps(String(data.agent.max_steps));
+    setAgentTokens(String(data.agent.max_tokens));
     setModels(data.models);
     setRoutes(data.routes);
     setProviders(
@@ -715,6 +727,8 @@ export default function PreferencesPage() {
         // Blank means "leave the stored key alone"; the server also ignores a mask echo.
         api_key: apiKey,
         timeout: Number(timeout),
+        // 清空一个框 = 不改动那一项：NaN 经 JSON 出去就是 null，服务端把 null 当作「没填」
+        agent: { max_steps: Number(agentSteps), max_tokens: Number(agentTokens) },
         models,
         providers: providers.map((item) => ({
           id: item.id,
@@ -945,6 +959,37 @@ export default function PreferencesPage() {
                 </div>
               ))}
             </div>
+            {/* 35.9：一轮规划请求要读 3 个文件再出 1 个提案，而每次请求都把整段上下文重新计费。
+                出厂的 30000 卡住的正是这样一轮，所以两个数交给主人在这里定。 */}
+            <p className="prefs-group-title">对话 Agent 预算</p>
+            <label className="prefs-field prefs-field-narrow">
+              单轮最多几轮
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={agentSteps}
+                onChange={(event) => setAgentSteps(event.target.value)}
+                aria-label="对话 Agent 轮数上限"
+              />
+            </label>
+            <label className="prefs-field prefs-field-narrow">
+              单轮 token 上限
+              <input
+                type="number"
+                min={1000}
+                max={1000000}
+                step={1000}
+                value={agentTokens}
+                onChange={(event) => setAgentTokens(event.target.value)}
+                aria-label="对话 Agent token 上限"
+              />
+            </label>
+            <p className="prefs-muted">
+              默认 {config.agent.default_max_steps} 轮 / {config.agent.default_max_tokens} token
+              是按「读 3 个文件 + 出 1 个提案」的一轮实测给的。到了上限对话会停下并说明用了多少，
+              不会把截断后的内容当成回答交出来。
+            </p>
             <p className="prefs-state">
               <span className={config.configured ? "prefs-badge ok" : "prefs-badge warn"}>
                 {config.configured ? "已配置" : "未配置"}

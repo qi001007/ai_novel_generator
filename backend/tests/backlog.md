@@ -1,5 +1,6 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.9（D-42）：新增 7 例。`test_llm_config` 四例盯配置面——出厂即 `6 / 60000` 且带得出厂值、主人改 9/120000 后 GET 读得回、只带一项的 PUT 不许覆盖另一项、越界（`max_steps=0`、`max_tokens=500`）422 且库里什么都没存，另加一例库里被手改成一不是数字的行时回落默认值、二是天文数字时压到护栏上界。`test_agent_loop` 两例盯放大依据——把主人实测那一轮（6 个请求合计 32955）逐笔摊开，在新默认值下必须跑完并交出卡，在旧的 30000 下必须在第 6 轮被掐；`test_the_measured_plan_turn_fits_under_the_default_ceiling` 里那句合计断言就是 60000 的算式，改默认值必须连它一起改。`test_agent_chat` 一例把「可配置」量进真实请求：主人存下 2 轮/1000 后，一轮假网关对话报的是「超过上限 1000（第 2 轮）」而不是出厂数字。既有的两条预算停止测试（含 `test_agent_pydantic` 的引擎参数化那两条）只在原断言后追加「当前上限 N token / M 轮」与入口那句，一条未删。
 - 2026-09-10 · 批次 35.14：`test_agent_tools` 新增 `test_the_arcs_contract_says_the_list_covers_the_whole_book`（`ACTIONS["update_arcs"].rules` 必须含「全量 / 按文件里的顺序 / 新弧追加在末尾」三要素）与 `test_a_moved_range_diagnosis_names_the_way_out`（照抄主人实测那条负载：`arcs` 1 条 + `existing` 2 条，拒绝文案必须出现「把已有各弧一并列进 `arcs`」）。`test_documents` 的既有 append 测试里补一句「一并列全」断言，原断言一条未删。
 
 - 2026-09-10 · 批次 35.10（D-41）：`test_chat_agent` 新增 `INTENT_CASES` 11 句（简报 / 目录 / 剧情弧 / 人物卡 / 蓝图 / 文件路径名各一，正文三类，两边都不点的两句）配 `@pytest.mark.parametrize` 双层，开关拨 `write` 与 `plan` 两个方向都必须判到同一个对象，共 22 例；另加两条端到端——写作开关下「给第 1 章写一份简报」的系统提示含 `## 本轮模式：计划` 与 `propose_chapter_brief`，计划开关下「把第 1 章的正文写出来」拿到写作提示且不含「禁止输出章节正文」。

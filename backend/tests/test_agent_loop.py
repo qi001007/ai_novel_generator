@@ -354,6 +354,57 @@ def test_the_token_cap_raises_rather_than_shipping_a_cut_answer():
             config=AgentConfig(max_steps=5, max_tokens=1_000),
         )
     assert "token" in str(caught.value)
+    # 35.9：拒绝文案要同时报出两个上限和改它的地方，主人不必猜是哪一道闸。
+    assert "当前上限 1000 token / 5 轮" in str(caught.value)
+    assert "设置 → 模型接入 → 对话 Agent 预算" in str(caught.value)
+
+
+# 作品 6 · mode=plan · 一句「新增一条剧情弧」真机跑出来的那一轮：6 个请求、合计 32955
+# token，撞在 30000 上、卡没产出来。每一轮的账照这个合计数摊开。
+MEASURED_PLAN_TURN: list[tuple[int, int]] = [
+    (5000, 50),
+    (5300, 50),
+    (5600, 50),
+    (5900, 50),
+    (6100, 50),
+    (4755, 50),
+]
+
+
+def _a_turn_like_the_one_we_measured() -> ScriptedLLM:
+    paths = ["arcs.md", "toc.md", "blueprint.md", "arcs.md", "toc.md", "blueprint.md"]
+    replies = [
+        {"content": call_block("read_file", path=path), "usage": usage}
+        for path, usage in zip(paths, MEASURED_PLAN_TURN)
+    ]
+    replies[-1] = {"content": "已按文件里的起止章列出全量弧。", "usage": MEASURED_PLAN_TURN[-1]}
+    return ScriptedLLM(replies)
+
+
+def test_the_measured_plan_turn_fits_under_the_default_ceiling():
+    """35.9 的放大依据是一次真实轮的量，不是整数好看。"""
+    assert sum(i + o for i, o in MEASURED_PLAN_TURN) == 32_955
+    llm = _a_turn_like_the_one_we_measured()
+    outcome = run_agent_turn(
+        llm,
+        [{"role": "user", "content": "给全书新增一条剧情弧"}],
+        ToolRegistry([make_tool()]),
+    )
+    assert outcome.token_input + outcome.token_output == 32_955
+    assert outcome.content == "已按文件里的起止章列出全量弧。"
+    assert len(llm.seen) == 6
+
+
+def test_the_same_measured_turn_was_cut_off_by_the_old_ceiling():
+    llm = _a_turn_like_the_one_we_measured()
+    with pytest.raises(AgentBudgetError) as caught:
+        run_agent_turn(
+            llm,
+            [{"role": "user", "content": "给全书新增一条剧情弧"}],
+            ToolRegistry([make_tool()]),
+            config=AgentConfig(max_steps=6, max_tokens=30_000),
+        )
+    assert "第 6 轮" in str(caught.value)
 
 
 def test_a_repeated_call_is_answered_without_being_run_twice() -> None:

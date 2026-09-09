@@ -16,6 +16,10 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Iterator
 
+from sqlmodel import Session
+
+from app.services.llm import stored_overrides
+
 
 class ToolError(RuntimeError):
     """A tool refused or failed. The text reaches the model, so keep it plain."""
@@ -311,7 +315,13 @@ def render_tool_prompt(registry: ToolRegistry) -> str:
 # dies on the ceiling after doing its reading is a budget that is wrong, not a
 # model that is wrong.
 DEFAULT_MAX_STEPS = 6
-DEFAULT_MAX_TOKENS = 30_000
+# Measured on 作品 6 (35.9): every request re-bills the whole grown context, so one
+# legitimate plan turn - read three files, propose once - costs 33k tokens with a fresh
+# conversation and 35.5k by the fifth request once the owner's real history is in it.
+# 30 000 therefore cut off the turn the product asks for, not a runaway. The new default
+# is that measured turn plus the ~17k a full 6-request turn costs when each request
+# carries the longest history window (8 messages, 4 021 chars).
+DEFAULT_MAX_TOKENS = 60_000
 
 
 @dataclass
@@ -320,6 +330,47 @@ class AgentConfig:
 
     max_steps: int = DEFAULT_MAX_STEPS
     max_tokens: int = DEFAULT_MAX_TOKENS
+
+
+# Guard rails against a typo in the settings store, not a policy: anything inside them
+# is what the owner asked for.
+MAX_STEPS_LIMITS = (1, 20)
+MAX_TOKENS_LIMITS = (1_000, 1_000_000)
+MAX_STEPS_KEY = "agent.max_steps"
+MAX_TOKENS_KEY = "agent.max_tokens"
+
+
+def _stored_limit(rows: dict[str, str], key: str, fallback: int, limits: tuple[int, int]) -> int:
+    raw = rows.get(key)
+    if raw is None:
+        return fallback
+    try:
+        value = int(float(raw))
+    except ValueError:
+        return fallback  # a hand-edited row must not brick the chat
+    return min(max(value, limits[0]), limits[1])
+
+
+def resolve_config(session: Session) -> AgentConfig:
+    """The two ceilings for this turn, read once from the settings store.
+
+    One resolver on purpose: the loop, both engines and the settings page all have to
+    agree on what the ceiling currently is, or a turn gets stopped at a number the
+    owner never typed.
+    """
+    rows = stored_overrides(session)
+    return AgentConfig(
+        max_steps=_stored_limit(rows, MAX_STEPS_KEY, DEFAULT_MAX_STEPS, MAX_STEPS_LIMITS),
+        max_tokens=_stored_limit(rows, MAX_TOKENS_KEY, DEFAULT_MAX_TOKENS, MAX_TOKENS_LIMITS),
+    )
+
+
+def budget_hint(max_steps: int, max_tokens: int) -> str:
+    """The one sentence every ceiling stop ends with: which number, and where to change it."""
+    return (
+        f"当前上限 {max_tokens} token / {max_steps} 轮，"
+        "可在「设置 → 模型接入 → 对话 Agent 预算」里改，改完立即生效。"
+    )
 
 
 @dataclass
@@ -486,6 +537,7 @@ def stream_agent_turn(
             raise AgentBudgetError(
                 f"本轮已用 {over} token，超过上限 {limits.max_tokens}（第 {index} 轮）。"
                 "已停止，没有把截断后的内容当成回答交给你。"
+                + budget_hint(limits.max_steps, limits.max_tokens)
             )
 
         if not calls:
@@ -542,6 +594,7 @@ def stream_agent_turn(
     raise AgentBudgetError(
         f"本轮到了 {limits.max_steps} 轮上限仍在要求调用工具，已停止而不是继续烧钱。"
         f"跑了 {len(steps)} 步工具调用。已执行：{trail or '（无）'}"
+        + budget_hint(limits.max_steps, limits.max_tokens)
     )
 
 

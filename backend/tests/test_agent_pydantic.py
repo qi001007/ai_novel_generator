@@ -399,6 +399,9 @@ def test_the_step_cap_raises_instead_of_running_on(engine: str, monkeypatch: pyt
             config=AgentConfig(max_steps=2, max_tokens=10_000),
         )
     assert "2" in str(caught.value)
+    # 两个引擎同一句话：报出两个上限，再报出在哪儿改（35.9）
+    assert "当前上限 10000 token / 2 轮" in str(caught.value)
+    assert "设置 → 模型接入 → 对话 Agent 预算" in str(caught.value)
     assert len(llm.seen) == 2
 
 
@@ -416,6 +419,7 @@ def test_the_token_cap_raises_rather_than_shipping_a_cut_answer(engine: str, mon
             config=AgentConfig(max_steps=5, max_tokens=1_000),
         )
     assert "token" in str(caught.value).lower()
+    assert "当前上限 1000 token / 5 轮" in str(caught.value)
 
 
 def test_framework_runs_two_tool_calls_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -7,6 +7,15 @@ from sqlmodel import Session, SQLModel
 
 from app.db import get_session
 from app.models import AppConfig, utc_now
+from app.services.agent import (
+    DEFAULT_MAX_STEPS,
+    DEFAULT_MAX_TOKENS,
+    MAX_STEPS_KEY,
+    MAX_STEPS_LIMITS,
+    MAX_TOKENS_KEY,
+    MAX_TOKENS_LIMITS,
+    resolve_config,
+)
 from app.services.llm import (
     DEFAULT_PROVIDER_ID,
     MODEL_KEYS,
@@ -60,6 +69,20 @@ class LlmProviderIn(SQLModel):
     timeout: float | None = None
 
 
+class AgentBudgetOut(SQLModel):
+    max_steps: int
+    max_tokens: int
+    # The page shows what a turn costs by default next to the owner's number, so an
+    # edited value never looks like the only possible one.
+    default_max_steps: int
+    default_max_tokens: int
+
+
+class AgentBudgetIn(SQLModel):
+    max_steps: int | None = None
+    max_tokens: int | None = None
+
+
 class LlmConfigOut(SQLModel):
     provider: str
     api_base_url: str
@@ -71,6 +94,7 @@ class LlmConfigOut(SQLModel):
     providers: list[LlmProviderOut]
     routes: dict[str, str]
     tasks: list[str]
+    agent: AgentBudgetOut
 
 
 class LlmConfigIn(SQLModel):
@@ -81,6 +105,7 @@ class LlmConfigIn(SQLModel):
     models: dict[str, str] | None = None
     providers: list[LlmProviderIn] | None = None
     routes: dict[str, str] | None = None
+    agent: AgentBudgetIn | None = None
 
 
 class LlmTestIn(SQLModel):
@@ -108,6 +133,7 @@ def _provider_out(item, providers: list) -> LlmProviderOut:
 def read_llm_config(session: Session = Depends(get_session)) -> LlmConfigOut:
     routing = resolve_routing(session)
     settings = routing.global_settings()
+    budget = resolve_config(session)
     return LlmConfigOut(
         provider=settings.provider,
         api_base_url=settings.api_base_url,
@@ -119,6 +145,12 @@ def read_llm_config(session: Session = Depends(get_session)) -> LlmConfigOut:
         providers=[_provider_out(item, routing.providers) for item in routing.providers],
         routes=dict(routing.routes),
         tasks=list(TASKS),
+        agent=AgentBudgetOut(
+            max_steps=budget.max_steps,
+            max_tokens=budget.max_tokens,
+            default_max_steps=DEFAULT_MAX_STEPS,
+            default_max_tokens=DEFAULT_MAX_TOKENS,
+        ),
     )
 
 
@@ -151,8 +183,30 @@ def write_llm_config(
         _store(session, PROVIDERS_KEY, _validate_providers(payload.providers, session))
     if payload.routes is not None:
         _write_routes(session, payload.routes)
+    if payload.agent is not None:
+        _write_agent_budget(session, payload.agent)
     session.commit()
     return read_llm_config(session)
+
+
+def _write_agent_budget(session: Session, payload: AgentBudgetIn) -> None:
+    """Store the turn ceilings, refusing a number the loop could not run on.
+
+    The accepted range is the resolver's own guard rail, so the page never offers a
+    value that silently comes back as the default.
+    """
+    for key, label, value, limits in (
+        (MAX_STEPS_KEY, "轮数", payload.max_steps, MAX_STEPS_LIMITS),
+        (MAX_TOKENS_KEY, "token", payload.max_tokens, MAX_TOKENS_LIMITS),
+    ):
+        if value is None:
+            continue
+        if not limits[0] <= value <= limits[1]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"对话 Agent {label}上限需在 {limits[0]} 到 {limits[1]} 之间",
+            )
+        _store(session, key, str(value))
 
 
 def _validate_providers(items: list[LlmProviderIn], session: Session) -> str:

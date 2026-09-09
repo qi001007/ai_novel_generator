@@ -28,6 +28,8 @@ const config = {
   ],
   routes: { draft: "default", review: "default", summary: "default", chat: "default", image: "default" },
   tasks: ["draft", "review", "summary", "chat", "image"],
+  // 35.9：一轮规划请求实测 32955 token，出厂上限必须盖得住它，且两个数主人能改
+  agent: { max_steps: 6, max_tokens: 60000, default_max_steps: 6, default_max_tokens: 60000 },
 };
 
 function stubFetch(calls: { method: string; url: string; body: unknown }[]) {
@@ -100,9 +102,39 @@ describe("PreferencesPage", () => {
       api_base_url: "https://other.example/v1",
       api_key: "",
       timeout: 120,
+      agent: { max_steps: 6, max_tokens: 60000 },
       models: config.models,
       providers: [],
       routes: config.routes,
+    });
+  });
+
+  it("shows the agent ceilings the server runs on and saves what the owner edits", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+
+    const steps = (await screen.findByLabelText("对话 Agent 轮数上限")) as HTMLInputElement;
+    const tokens = (screen.getByLabelText("对话 Agent token 上限")) as HTMLInputElement;
+    expect(steps.value).toBe("6");
+    expect(tokens.value).toBe("60000");
+
+    await user.clear(steps);
+    await user.type(steps, "9");
+    await user.clear(tokens);
+    await user.type(tokens, "120000");
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      const put = calls.find((call) => call.method === "PUT");
+      expect((put?.body as { agent: unknown }).agent).toEqual({
+        max_steps: 9,
+        max_tokens: 120000,
+      });
     });
   });
 

@@ -65,3 +65,61 @@ def test_connection_check_needs_a_key_and_never_calls_a_model(client: TestClient
     result = client.post("/api/config/llm/test").json()
     assert result["ok"] is False
     assert "缺少" in result["detail"]
+
+
+def test_the_agent_budget_ships_at_the_measured_default(client: TestClient) -> None:
+    """35.9：一轮真实规划请求量到 32955 token，默认值得盖得住它。"""
+    agent = client.get("/api/config/llm").json()["agent"]
+    assert agent["max_steps"] == 6
+    assert agent["max_tokens"] == 60_000
+    assert agent["default_max_steps"] == 6
+    assert agent["default_max_tokens"] == 60_000
+
+
+def test_the_owner_can_raise_both_ceilings_and_the_page_reads_them_back(client: TestClient) -> None:
+    saved = client.put(
+        "/api/config/llm", json={"agent": {"max_steps": 9, "max_tokens": 120_000}}
+    ).json()
+    assert saved["agent"]["max_steps"] == 9
+    assert saved["agent"]["max_tokens"] == 120_000
+    # 只改一个数时另一个不能被抹回默认值——页面每次整块提交
+    again = client.put("/api/config/llm", json={"agent": {"max_tokens": 45_000}}).json()
+    assert again["agent"]["max_tokens"] == 45_000
+    assert again["agent"]["max_steps"] == 9
+
+
+def test_a_ceiling_the_loop_could_not_run_on_is_refused(client: TestClient) -> None:
+    too_small = client.put("/api/config/llm", json={"agent": {"max_steps": 0}})
+    assert too_small.status_code == 422
+    assert "1 到 20" in too_small.text
+    too_big = client.put("/api/config/llm", json={"agent": {"max_tokens": 500}})
+    assert too_big.status_code == 422
+    assert "1000 到 1000000" in too_big.text
+    # 被拒的那次不落库，主人看到的还是原来那一档
+    agent = client.get("/api/config/llm").json()["agent"]
+    assert agent["max_steps"] == 6 and agent["max_tokens"] == 60_000
+
+
+def test_a_hand_edited_row_that_is_not_a_number_falls_back(db_engine) -> None:
+    """一行坏数据不能把对话闸死，同 llm.* 那些行的规矩。"""
+    from sqlmodel import Session
+
+    from app.models import AppConfig
+    from app.services.agent import DEFAULT_MAX_TOKENS, MAX_TOKENS_LIMITS, resolve_config
+
+    with Session(db_engine) as session:
+        assert resolve_config(session).max_tokens == DEFAULT_MAX_TOKENS
+
+        def store(value: str) -> None:
+            row = session.get(AppConfig, "agent.max_tokens")
+            if row is None:
+                row = AppConfig(key="agent.max_tokens", value=value)
+            else:
+                row.value = value
+            session.add(row)
+            session.commit()
+
+        store("很多")
+        assert resolve_config(session).max_tokens == DEFAULT_MAX_TOKENS
+        store("999999999")
+        assert resolve_config(session).max_tokens == MAX_TOKENS_LIMITS[1]

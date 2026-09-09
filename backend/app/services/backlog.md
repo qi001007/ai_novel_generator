@@ -1,5 +1,7 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.9（裁定进 D-42）：`agent.py` 的 `DEFAULT_MAX_TOKENS` 由 `30_000` 改 `60_000`（`DEFAULT_MAX_STEPS` 仍为 `6`），值按作品 6 副本实测的一轮给：一句「新增一条剧情弧」6 个请求合计 32955 token、带真实历史第 5 个请求 35545，而每次请求都把整段上下文重新计费。新增 `resolve_config(session)` 一个读取点（读 `AppConfig` 的 `agent.max_steps` / `agent.max_tokens`，非数字回落默认值）、`MAX_STEPS_LIMITS (1,20)` / `MAX_TOKENS_LIMITS (1000,1000000)` 两道护栏、`budget_hint(max_steps, max_tokens)` 一句收尾文案（报当前上限并指向「设置 → 模型接入 → 对话 Agent 预算」）。legacy 的两处预算停止与 `agent_pydantic._budget_error` 都改拼这同一句，文案不再有三份。
+
 - 2026-09-10 · 批次 35.14（口径进 D-39）：`proposal_actions` 的 `update_arcs.rules` 开头改成「`arcs` 是**全量**：已有各弧按文件里的顺序写进来，新弧追加在末尾」并点出「只把新弧放进 `arcs`」这个错法；`_arcs` 的起止章拒绝补上唯一出路「把已有各弧一并列进 `arcs`」。`documents._resolve_ids` 的少列条目拒绝补「要新增请把已有条目一并列全」。判定仍然只有 `_resolve_ids` 一处，这次只动文案，没加第二处判定。
 
 - 2026-09-10 · 批次 35.10（D-41）：`chat.py` 新增 `PROSE_CUES` / `PLANNING_CUES` 一张词表与 `effective_mode(text, requested)`——成稿词优先判 `write`，规划对象词判 `plan`，两边都不点才照拨的开关。`prepare_turn` 在文本校验之后判一次，模式体、`temperature_for`、`log_injection` 的 note、落库的 `mode` 全读这个值，两个引擎共用同一条装配。修的是「主人要 D 层简报、Agent 吐正文」：`WRITE_BODY` 第一条就叫模型直接输出可用文字，而 `mode` 默认 `write`。

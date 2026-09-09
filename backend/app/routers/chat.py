@@ -22,7 +22,7 @@ from app.services.chat import (
     prepare_turn,
     stream_turn,
 )
-from app.services.agent import AgentConfig, ToolRegistry
+from app.services.agent import AgentConfig, ToolRegistry, resolve_config
 from app.services.agent_tools import build_registry
 from app.services.context import collect_items
 from app import sse
@@ -218,7 +218,7 @@ def create_chat_reply(
             allowed_models=llm.settings.configured_models,
             attachments=[item.model_dump() for item in payload.attachments],
         )
-        return complete_turn(session, llm, turn, registry=registry)
+        return complete_turn(session, llm, turn, registry=registry, config=resolve_config(session))
     except ChatDomainError as cause:
         raise _to_http(cause) from cause
 
@@ -249,8 +249,11 @@ def stream_chat_reply(
     except ChatDomainError as cause:
         raise _to_http(cause) from cause
 
+    # Resolved here, not inside the generator: the request session is gone by the time
+    # the stream runs, and the owner's ceilings come from that store.
+    config = resolve_config(session)
     return StreamingResponse(
-        _event_stream(llm, turn, lambda: Session(bind), registry=registry),
+        _event_stream(llm, turn, lambda: Session(bind), registry=registry, config=config),
         media_type="text/event-stream",
         headers=sse.HEADERS,
     )

@@ -490,6 +490,24 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(preferences).toMatch(/type="password"[\s\S]{0,200}prefs-provider-key/);
   });
 
+  it("the agent turn ceilings are on the page and read from the server (批次 35.9)", () => {
+    // 「上限有点太低了」的根因不是数字小，是它只在代码里、主人在界面上看不到也改不了。
+    // 两个框都必须在，值从服务端来（前端不存第二份默认值）。
+    expect(preferences).toContain('aria-label="对话 Agent 轮数上限"');
+    expect(preferences).toContain('aria-label="对话 Agent token 上限"');
+    expect(preferences).toContain("String(data.agent.max_steps)");
+    expect(preferences).toContain("String(data.agent.max_tokens)");
+    expect(preferences).toContain("agent: { max_steps: Number(agentSteps), max_tokens: Number(agentTokens) }");
+    // 停止文案指的那个入口必须就是这块面板的名字，不然主人按提示找不到东西
+    const agentSource = readFileSync("../backend/app/services/agent.py", "utf8");
+    const named = [...agentSource.matchAll(/设置 → 模型接入 → ([^」]+)」/g)].map((m) => m[1]);
+    expect(named.length).toBeGreaterThan(0);
+    const titles = [...preferences.matchAll(/className="prefs-group-title">([^<]+)</g)].map((m) => m[1]);
+    for (const target of named) {
+      expect(titles).toContain(target);
+    }
+  });
+
   it("the paperclip is a working control with a removable chip (第十九批批注 1)", () => {
     // It was disabled once, on purpose, because the old picker threw the selection away.
     // Disabled was the honest stop-loss; staying disabled after the owner asked for the
