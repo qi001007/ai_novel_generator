@@ -186,6 +186,34 @@ def test_ai_may_append_rows_but_never_delete_or_renumber_them(client: TestClient
     assert [row["chapter_number"] for row in rows] == [42, 43]
 
 
+def test_the_first_chapter_added_to_an_empty_toc_also_creates_the_chapter(
+    client: TestClient,
+) -> None:
+    """35.13 / D-39：空目录里确认「第一章」，左侧树就要出现第一章本体。
+
+    上面那条测的是**已有条目再追加**的分支；作品 6 的首次规划走的是空文件那条分支，
+    那里只建了 `TocEntry`，主人说「创建第一章」后树仍然是 0 章。
+    """
+    novel_id = client.post("/api/novels", json={"title": "空目录首章"}).json()["id"]
+    empty = read(client, novel_id, "toc.md")["text"]
+    assert "## 第" not in empty, empty
+
+    added = write(
+        client,
+        novel_id,
+        "toc.md",
+        empty.rstrip("\n") + "\n\n## 第 1 章 开门\n- **剧情功能**：立谜\n- **备注**：第一把钥\n",
+        actor="ai",
+    )
+
+    assert added.status_code == 200, added.text
+    assert "1.created" in added.json()["changed"]
+    numbers = [row["chapter_number"] for row in client.get(f"/api/novels/{novel_id}/chapters").json()]
+    assert numbers == [1], numbers
+    files = client.get(f"/api/novels/{novel_id}/files").json()
+    assert any(item["path"] == "chapters/0001/draft.md" for item in files), files
+
+
 def test_the_preview_card_and_the_write_gate_are_one_judgment(client: TestClient) -> None:
     """35.7：预览给出可点的卡，PUT 必须接受同一张卡；分歧本身就是缺陷。
 

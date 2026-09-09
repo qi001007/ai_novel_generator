@@ -1,5 +1,7 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.13：`test_documents` 新增 `test_the_first_chapter_added_to_an_empty_toc_also_creates_the_chapter`——空 toc 用 `actor=ai` 应用「## 第 1 章 开门」，断言 `changed` 含 `1.created`、`/chapters` 由 `[]` 变 `[1]`、文件表出现 `chapters/0001/draft.md`。它补上既有那条「已有条目再追加」测试没覆盖的另一半分支，先红后绿。
+
 - 2026-09-10 · 批次 35.8（D-40）：`test_agent_tools` 补三条——`grammar_text` 与 `grammar_for_kind` 逐标签同源（标签一律从表反查，测试里不硬编码）、`read_file` 给每份文件带上它 kind 的表（按 `FileDoc.kind` 反查）、没有表的正文文档原样返回。`test_chat_agent` 的「提示词教文件提案格式」不删断言、跟着新决定搬家：示例不再落在 `toc.md`、「只改值」改成 D-39 的「只允许追加」、五个 `propose_` 工具名必须在场；新增一条盯住提示词里不许再出现「都可以」这类等价表述（含 legacy 引擎的 `TOOL_RULES`）。
 
 - 2026-09-10 · 批次 35.7（D-39）：原「AI 不能增删记录」改为「可追加、不可删除与改号」，补 `弧 ?` 追加与自选号被拒；新增预览卡与写入闸门同判定的 8 例对照，改号还原单列一测；新增 `propose_arcs` 按当前 `arcs.md` 判主键；改写 `test_agent_chat` 里长期红色的「报给模型的工具清单」断言（补上 5 个 `propose_*`，非删断言）。

@@ -1,5 +1,7 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.13（D-39 落全）：`_write_toc` 建 `TocEntry` 的**全量分支**（空目录或 `actor=human`）补上同一次 `_ensure_chapter`，与上面的 `actor=ai` 追加分支共用。D-39「B 层新增即建章节本体」原先只在追加分支成立，而作品 6 的首次规划恰好走空文件分支，所以主人说「创建第一章」后树仍是 0 章。仍然只有那一条 PUT 写入口（D-01）。
+
 - 2026-09-10 · 批次 35.8（D-40）：`markdown_doc.grammar_text(kind)` 新增，与 `grammar_for_kind` 同读 `_GRAMMAR` 出给模型看的写法表；`agent_tools.read` 把这张表附在文件正文之后，没有表的文档（正文）原样返回。`chat.FILE_EDIT_RULES` 删去「用工具还是直接输出上面的代码块都可以」，A/B/C/D/新建人物只指向各自 `propose_` 工具，手写通道只留伏笔·世界观·改已有人物，过时的「条目增删都会被挡下」按 D-39 改写。`agent.TOOL_RULES` 第 6 条不再叫模型手写提案块——默认引擎那句才是模型一次都没调用工具的直接原因。
 
 - 2026-09-10 · 批次 35.7（D-39）：`_require_same_ids` 由 `_resolve_ids` 取代，预览、`propose_*` 闸门与三条 writer 共用同一主键配对裁定；`? → 分配主键` 在 arcs/设定库真实落地，B 层新章号同时建 `Chapter`；`agent_tools` 经 `current_text_reader` 把当前文件交给闸门，`proposal_actions._gate` 因此能拒掉预览必拒的围栏。人类路径不变（仍可增删改号）。

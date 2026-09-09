@@ -1168,6 +1168,9 @@ def _write_toc(
         if row is None:
             row = TocEntry(novel_id=novel_id, chapter_number=chapter_number, is_active=True)
             session.add(row)
+            session.flush()
+            # D-39：目录里新增一章就要立刻有这一章，35.13 让全量分支与上面的追加分支共用同一次建本体。
+            _ensure_chapter(session, novel_id, chapter_number)
             changed.append(f"{chapter_number}.created")
         for name, value in after.items():
             if name == "chapter":
