@@ -55,6 +55,7 @@
 | D-47 | 路径别名只在 `resolve_path` 折叠一次；写入回报的路径就是界面跟随的路径 |
 | D-48 | 被拒绝的动作是一次「未成功」的步骤；自修复＝诊断回灌＋预算内再问，不新造重试 |
 | D-49 | 提案卡跟着那一步到，不跟着流的尾巴到；中途与收尾共用同一个抽卡真源 |
+| D-50 | 一轮的步骤跟着那条答复落库；轨迹文案只有一个构造器，旧后端缺这一列时只降级这一列 |
 
 ## 1. 决定
 
@@ -307,11 +308,11 @@
 
 状态：生效。批次 35.6 裁定。判据原句「模型输出不得直接成为可应用卡：必须先经过路径白名单、严格结构校验与一次有界自修复；修复仍失败时显示诊断，不提供成功假象」——量下来前两件早就在，缺的是最后那半句，而且缺得很安静。
 
-- **成功假象的机理**：`agent_tools._compile` 从前写成 `return text if ok else f"{DIAG_PREFIX}{text}"`，拒绝的诊断是**返回值**，registry 于是把这一步记成 `ok=True`。前端只在 `ok` 为假时才追加那三个字（`chatRows.ts:81`），所以主人看到的是「第 N 步 · propose_toc · 40ms · 96 字」一片全绿、只有一张卡没出现——绿步骤配红缺失，比红步骤难查一个量级。**改法一行**：改成 `raise ToolError(...)`，`agent.py:117` 把它转成 `ToolResult(ok=False, content=同一句诊断)`。诊断文本一字未改，改的是这一步的记账。
+- **成功假象的机理**：`agent_tools._compile` 从前写成 `return text if ok else f"{DIAG_PREFIX}{text}"`，拒绝的诊断是**返回值**，registry 于是把这一步记成 `ok=True`。前端只在 `ok` 为假时才追加那三个字（`chatRows.ts:89`），所以主人看到的是「第 N 步 · propose_toc · 40ms · 96 字」一片全绿、只有一张卡没出现——绿步骤配红缺失，比红步骤难查一个量级。**改法一行**：改成 `raise ToolError(...)`，`agent.py:117` 把它转成 `ToolResult(ok=False, content=同一句诊断)`。诊断文本一字未改，改的是这一步的记账。
 - **「一次有界自修复」按框架既有预算实现**：拒绝文案回到模型那一侧，模型改对了就是**下一轮请求**，仍受 D-42 主人存下的轮/token 上限管。实测整轮 `len(fake.seen) == 3`（拒绝 → 带着诊断再问 → 收尾那句），修复只多花一次请求。**否掉的修法**：在 `_compile` 里就地重试——那是第二条控制流，绕开预算与停止条件，也绕开 `test_over_budget_is_an_error_and_persists_no_reply` 与 `test_the_ceiling_the_owner_saved_is_the_one_this_turn_runs_on` 钉住的那对护栏。
-- **五类动作的端到端（判据第 1 句 + 验收第 1 句）**：A 层 `tests/test_chat_agent.py:720`、B 层 `tests/test_agent_chat.py:225`、C 层 `test_chat_agent.py:671`、简报 `:631`、正文 `:767`、人物 `test_agent_chat.py:307`。每条都是「模型/工具的输出 → 卡 → `PUT /files/...` → 真源那一行真的变了」，并且都断言了点应用**之前**库里还是空的。B 层与人物那两条走 `tool` 块，量的才是 Agent 唯一那张写表面：动作编译出的路径与 schema 就是文件层认的那一份。新建章与新建简报的落库本身在 `tests/test_documents.py:193 / 638 / 672`。
+- **五类动作的端到端（判据第 1 句 + 验收第 1 句）**：A 层 `tests/test_chat_agent.py:720`、B 层 `tests/test_agent_chat.py:225`、C 层 `test_chat_agent.py:671`、简报 `:631`、正文 `:767`、人物 `test_agent_chat.py:368`。每条都是「模型/工具的输出 → 卡 → `PUT /files/...` → 真源那一行真的变了」，并且都断言了点应用**之前**库里还是空的。B 层与人物那两条走 `tool` 块，量的才是 Agent 唯一那张写表面：动作编译出的路径与 schema 就是文件层认的那一份。新建章与新建简报的落库本身在 `tests/test_documents.py:193 / 638 / 672`。
 - **第二写接口与绕过确认（验收第 2 句）**：`tests/test_planning.py:14-15` 钉 `/planning/*` 的 POST 与 PUT 一律 **410**；`tests/test_agent_tools.py:290-291` 钉工具表恰好是 `list_files` / `read_file` / `web_search` + 五个 `propose_*`，`:55` 再断表里没有任何名字含 `write/put/save/delete` 的工具。Agent 落不了库，唯一的写是主人点应用那一下的 `actor=ai`（D-37）。
-- **断言搬家（D-33）**：前端代码一行未动，「未成功」那句已由 `chatRows.test.ts:56-68` 与 `uiInvariants.test.ts:226` 钉住，所以本条不新增前端断言（加了就是重复）。后端 `tests/test_agent_tools.py` 那个助手按语义拆开：`proposal_text` 继续断 `ok is True`，新增 `refusal_text` 断 `ok is False`，四处拒绝用例（范围条目、缺字段、自己挑路径、删条目）迁过去，同文件里成功新增三条弧那次仍走 `proposal_text`。原先挂在旧助手上那句注释「a refused payload is text the model can act on, never a crash it cannot see」随语义搬进 `refusal_text` 的 docstring——它说的是拒绝。一条断言都没删。
+- **断言搬家（D-33）**：前端代码一行未动，「未成功」那句已由 `chatRows.test.ts:56-68` 与 `uiInvariants.test.ts:250` 钉住，所以本条不新增前端断言（加了就是重复）。后端 `tests/test_agent_tools.py` 那个助手按语义拆开：`proposal_text` 继续断 `ok is True`，新增 `refusal_text` 断 `ok is False`，四处拒绝用例（范围条目、缺字段、自己挑路径、删条目）迁过去，同文件里成功新增三条弧那次仍走 `proposal_text`。原先挂在旧助手上那句注释「a refused payload is text the model can act on, never a crash it cannot see」随语义搬进 `refusal_text` 的 docstring——它说的是拒绝。一条断言都没删。
 - **门禁**：后端 **382 passed**（377 + 5：A 层与正文 2 条 e2e、拒绝→再问回路 1 条、B 层与人物走 tool 面 2 条）、前端 **279 passed / 26 files** 与 `uiInvariants` **55** 条（本条未碰前端，与 D-47 同一份）、`tsc -b --force` 退出 0、`npm run build` 通过；命中区审计（5173 `/novels/5`，与 D-45/D-46 那份同页）small 0 / clipped 0 / unreachable 0，edge 2 + srOnly 1 与那两份同一份。
 - **未验的一半（不许写成已完成）**：真机上「未成功」那三个字要**一次真模型对话**才会亮——假网关的轮子跑在测试里，不在主人浏览器里。这条与 35.11 的三条实测残留同一个前置（花他的网关额度、写他的库），等主人点头。
 
@@ -325,6 +326,21 @@
 - **断言搬家（D-33）**：后端新增 `tests/test_agent_chat.py::test_the_b_layer_card_arrives_while_the_stream_is_still_open`，量的是**事件顺序**（`tool` < `proposal` < 最后一个 `delta`）、只有一张卡、以及卡已在屏上时 `chapters == []`；前端新增 `FileEditorPane.test.tsx`「lands the applied rows in the rendered list, and the same document in the source」，钉应用后列表摘掉「待确认预览」改读文件本身、切到源码仍是同一份。三次反向变异各自红一次：关掉中途发射 → `['context','tool','delta','proposal','done','end']`；去掉收尾去重 → 两张卡；摘掉 `applyProposal` 的 `reload` → 应用后 0 行。三处还原后全绿，一条既有断言未删。本条没动任何界面控件，故不新增 `uiInvariants` 断言（加了就是重复计数）。**引用推偏**：本条在 `tests/test_agent_chat.py` 的 `:266` 之前插了 41 行，把 D-48 记的人物那条端到端推成 `:307`（B 层 `:225` 在插入点之上，未动），三处文档已按真值改过——本文件 D-48、`UI-BACKLOG` 35.6 横幅、`WORKSTREAM-PLAN` 35.6 行。
 - **门禁**：后端 **391 passed**（390 + 1）、前端 **283 passed / 26 files** 与 `uiInvariants` **56**（本条未碰），`tsc -b --force` 退出 0、`npm run build` 通过。真机截图两张（列表态与源码态）亲自看过。
 - **未验的一半（不许写成已完成）**：本条的取证通道是**假网关**——它证明的是管线时序，不是真模型的判断。判据原句里「逐步增长的列表内容」未做，另立 **32.5**；真模型那一轮仍与 35.11 三条残留同一个前置，等主人点头。
+
+### D-50 一轮的步骤跟着那条答复落库；轨迹文案只有一个构造器，旧后端缺这一列时只降级这一列
+
+状态：生效。批次 31.4 裁定。登记时这条写着「需要 schema 决策」，因为判据给了两半：要么界面说明轨迹只属于当前流，要么把步骤持久化。选持久化那一半——**用一句「只属于当前流」把空折叠说成合法，正是本条要消灭的东西**：控件在、承诺没了。
+
+- **机理**：`meta.reads` 只由 SSE 的 `tool` 事件喂（`applyStreamEvent`），落库那行没带任何步骤。刷新走 `fromHistory`，它造的 `reads` 永远是空的——同一条答复，流式期间 N 步、刷新后一道开不出内容的折叠。
+- **一个形状，两端各一处主人**：后端造记录只有 `services/chat.step_record()`，`tool` 事件与 `persist_reply` 落的都是它；前端造文案只有 `chatRows.toolLine()`，流式与历史共用（判据那句「不新造第二份文案」就是这个）；类型 `types.ChatToolStep` 同时是 `ChatStreamEvent` 的 `tool` 分支和 `StoredChatMessage.steps` 的形状。列 `chat_message.steps`（JSON），迁移 `c4e7a1b8d206`。
+- **`steps` 写成可选是量出来的，不是松口**：客户端看不见服务端版本。新前端对上没有该键的旧后端（主人那台 8000），必需写法下 `/chat/messages` **整段历史**在界面上消失（`agentRows 12→1`、`bodyHasHistory true→false`）——`fromHistory` 在 map 里抛一次就一批不渲染。改可选 + 消费处 `(row.steps ?? [])` 后同一台旧后端只掉这一列。**否掉的写法**：给整条 map 包 try/catch 保历史——那是把「一列缺失」和「整批坏掉」重新混成一件事。
+- **旧数据不回填**：`server_default '[]'`，旧行读出空数组、`reads.length` 为 0 时那道闸门本就不出标题。从 `context_refs` 反推步骤是编造，不做。
+- **真机 A/B（自建通道，0 网关额度）**：5173 当前源码 ＋ 改前码 8041 / 改后码 8042 ＋ 同一份副本库 `i324.db` ＋ 假网关 `stub-gateway.py`。改前：刷新前 2 行 → 刷新后 **0 行**，落库字段无 `steps`。改后：2 行 → **2 行**、`逐字相同 true`，明细标题同为「本轮读取 · 2 步」，落库 `steps` 第一行 `{"step":1,"name":"read_file","arguments":{"payload":"{\"path\": \"toc.md\"}"},"ok":false,"ms":0,"chars":234}` 与屏上「第 1 步 · read_file {"path": "toc.md"} · 0ms · 234 字 未成功」逐项对得上。截图 `314-before-8042.png` / `314-after-8042.png` 亲自看过。
+- **迁移只在副本库双向验过**：`b7d4e2a19c53 → c4e7a1b8d206`，65 行 `chat_message` 数量未变、列属性 `('JSON', 1, "'[]'")`、旧行读 `[]`；downgrade 摘掉该列，re-upgrade 幂等。主人的真源库**未碰**——`alembic upgrade head` 是 HANDOFF 那条人工 runbook 门禁，由他执行。
+- **断言搬家（D-33）**：`uiInvariants` 原先内联钉 `ChatStreamEvent` 那份 `tool` 分支形状，形状提成具名类型后断言随它搬家，改成 3 条（`event: "tool"; data: ChatToolStep`、`export type ChatToolStep = {…ms…chars…}`、`steps\?: ChatToolStep\[\];`）并新增 1 条钉降级边界（`reads: (row.steps ?? []).map(toolLine)`）；一个 `it` 里 1 条断言变 4 条，用例数仍是 56，一条未删。后端新增 `test_agent_chat.py:307`（流式那两步与落库那份逐字相同、步号 `[1,2]`）与 `:346`（非流式 `POST /chat` 存同一形状），前端新增 `ChatPane.test.tsx`「puts the tool trace back when the answer is read from history」（只喂 `/chat/messages`，断言屏上那几行 `=== steps.map(toolLine)`）。**四次反向变异各自红、各自还原后绿**：`persist_reply` 不写 steps → 后端两条同红；流式那份与落库那份分家（`chars` 改一个必然不同的值）→ 同源那条红；历史侧换掉 `toolLine` → 前端那条红；摘掉 `??` → `uiInvariants` 新断言红且 `tsc` 报 TS18048。
+- **引用推偏（改的是引用，不是结论）**：本条在 `tests/test_agent_chat.py` 的 `:307` 之前插了 61 行，D-48 记的人物端到端推成 `:368`（B 层 `:225` 与 32.4 那条 `:266` 在插入点之上，未动）。另有两处**不是本条造成、本条核对引用时才发现**的旧偏差一并校正到真值：`chatRows.ts`「未成功」那行文档记 `:81` 而 HEAD 上实际是 `:85`（早先某批在它之上加过行），本条的 4 行 docstring 再把它推到 `:89`；D-48 记的 `uiInvariants.test.ts:226` 实际断言在 `:250`（35.15 与 32.4 的插入推偏了它）。三处文档按真值改过——本文件 D-48、`UI-BACKLOG` 35.6 横幅、`WORKSTREAM-PLAN` 35.6 行。
+- **门禁**：后端 **393 passed**、前端 **284 passed / 26 files** 与 `uiInvariants` **56**、`tsc -b --force` 退出 0、`npm run build` 通过、命中区审计 small/clipped/unreachable 全 0。
+- **未验的一半（不许写成已完成）**：取证用的是**假网关**步骤，证明的是「记下来的与屏上的同源」，不是真模型产出的轨迹；真机那一步仍与 35.11 三条残留同一前置，等主人点头花额度。另量到一件事不算缺陷：折叠摊开后第二行落在滚动折线下方，需下滑才见（`.scratch/probe/overlap314.mjs`），本条不动它。
 
 ## 2. 已废止（删除区）
 

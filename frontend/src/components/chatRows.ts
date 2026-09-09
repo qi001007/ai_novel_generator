@@ -9,7 +9,7 @@
  * 副作用不在这个文件里：提案落库、刷左栏、打开折叠仍归 ChatPane，且必须留在
  * setRows 的更新函数**外面**（放在里面会被 StrictMode 跑两遍）。
  */
-import type { ChatReference, ChatStreamEvent, FileProposal } from "../types";
+import type { ChatReference, ChatStreamEvent, ChatToolStep, FileProposal } from "../types";
 
 export type CommandStatus = "running" | "done" | "failed";
 
@@ -77,8 +77,12 @@ export function patchCommand(rows: Row[], id: number, patch: Partial<Extract<Row
  *
  * The numbers arrive from the backend, which measured them around the call. Nothing here
  * is invented or padded: a step that returned nothing reads 「0 字」, and that is the point.
+ *
+ * One function, two callers: the step that just streamed and the step read back from
+ * history after a reload both come through here, which is why those lines are identical
+ * word for word (第三十一批批注 4).
  */
-export function toolLine(event: Extract<ChatStreamEvent, { event: "tool" }>["data"]): string {
+export function toolLine(event: ChatToolStep): string {
   const subject = Object.values(event.arguments).join(", ");
   const head = `第 ${event.step} 步 · ${event.name}${subject ? ` ${subject}` : ""}`;
   const line = `${head} · ${duration(event.ms)} · ${count(event.chars)} 字`;

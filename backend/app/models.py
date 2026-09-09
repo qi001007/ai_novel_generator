@@ -353,6 +353,13 @@ class ChatMessage(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSON, nullable=False),
     )
+    # Every step this answer executed, in order, field for field what the `tool` event
+    # carried while it streamed. The trace fold is built from these lines, so a reload
+    # shows the same text the live stream showed (批注 31.4).
+    steps: list[dict[str, Any]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     token_input: int = 0
     token_output: int = 0
     created_at: datetime = Field(

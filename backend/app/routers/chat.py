@@ -71,7 +71,7 @@ class ChatProposalOut(SQLModel):
 
 _MESSAGE_FIELDS = (
     "id", "novel_id", "conversation_id", "role", "content", "reasoning", "mode", "model", "mentions",
-    "context_refs", "token_input", "token_output", "created_at",
+    "context_refs", "steps", "token_input", "token_output", "created_at",
 )
 
 
@@ -88,6 +88,9 @@ class ChatMessageOut(SQLModel):
     model: str
     mentions: list[str] = Field(default_factory=list)
     context_refs: list[dict[str, Any]] = Field(default_factory=list)
+    # Same reason as `reasoning` above, for the other fold: the steps are what the
+    # `tool` event carried while the answer streamed (第三十一批批注 4).
+    steps: list[dict[str, Any]] = Field(default_factory=list)
     token_input: int = 0
     token_output: int = 0
     created_at: datetime

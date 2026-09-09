@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPane from "./ChatPane";
+import { toolLine } from "./chatRows";
 import { useWorkbench } from "../store/workbench";
 
 const assistantMessage = {
@@ -15,6 +16,7 @@ const assistantMessage = {
   model: "MiniMax-M2.5",
   mentions: [],
   context_refs: [],
+  steps: [],
   token_input: 1200,
   token_output: 340,
   reasoning: "",
@@ -365,6 +367,35 @@ describe("ChatPane", () => {
     expect(line.closest(".chat-greeting")).toBeTruthy();
     // 它仍然是从 .chat-md 渲染出来的，只是多挂了一个类 - 不改排版结构
     expect(line.closest(".chat-md")).toBeTruthy();
+  });
+
+  /* 批注 31.4「工具轨迹刷新后消失」：那一列从前只活在流上，页面一刷就只剩一个
+     点开却永远为空的折叠。现在步骤跟着那条答复落库，历史用同一个 toolLine 渲染。 */
+  it("puts the tool trace back when the answer is read from history", async () => {
+    const steps = [
+      { step: 1, name: "read_file", arguments: { path: "toc.md" }, ok: false, ms: 12, chars: 234 },
+      { step: 2, name: "propose_toc", arguments: { payload: "{}" }, ok: true, ms: 1400, chars: 541 },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL) => {
+        const url = input.toString();
+        if (url.includes("/chat/messages")) return json([{ ...assistantMessage, steps }]);
+        return Promise.reject(new Error(`unexpected url: ${url}`));
+      }),
+    );
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await screen.findByText("第一章");
+
+    fireEvent.click(screen.getByRole("button", { name: /1\.2k in/ }));
+    const heads = [...document.querySelectorAll(".chat-detail-line")].map((p) => p.textContent);
+    const lines = [...document.querySelectorAll(".chat-trace-row")].map((li) => li.textContent);
+
+    // 判据是「逐字相同」，不是「有东西」：这一列由流式那一个 toolLine 渲染，没有第二份文案。
+    expect(lines).toEqual(steps.map(toolLine));
+    expect(heads).toContain("本轮读取 · 2 步");
+    expect(lines[0]).toContain("未成功");
+    expect(lines[1]).toContain("1.4s");
   });
 
   it("shows no thinking entry when the model gave no reasoning", async () => {

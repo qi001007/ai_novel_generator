@@ -693,6 +693,7 @@ def persist_reply(
     token_input: int,
     token_output: int,
     reasoning: str = "",
+    steps: list[dict[str, Any]] | None = None,
 ) -> ChatMessage:
     """Store the reply twice: message-level tokens plus aggregated run usage."""
     message = ChatMessage(
@@ -704,6 +705,7 @@ def persist_reply(
         mode=turn.mode,
         model=model,
         context_refs=turn.references(),
+        steps=list(steps or []),
         token_input=token_input,
         token_output=token_output,
     )
@@ -760,6 +762,7 @@ def complete_turn(
         model=outcome.model,
         token_input=outcome.token_input,
         token_output=outcome.token_output,
+        steps=[step_record(step) for step in outcome.steps],
     )
 
 
@@ -792,6 +795,26 @@ def _turn_proposals(
         reader = current_text_reader(session, novel_id) if novel_id else None
         person = character_path_reader(session, novel_id) if novel_id else None
         return list(extract_proposals(text, reader, person))
+
+
+def step_record(step: AgentStep) -> dict[str, Any]:
+    """One executed step as a plain dict - the only place this shape is made.
+
+    The `tool` SSE event and the persisted trace are both built here, so the lines a
+    reload puts back are the same records the live stream carried. Nothing is
+    re-derived or padded on either side: `ms` 0 still means "not measured", and a step
+    that came back empty still reads 「0 字」.
+    """
+    return {
+        "step": step.index,
+        "name": step.call.name,
+        "arguments": step.call.arguments,
+        "ok": step.result.ok,
+        # 6.5 step 2: what this step cost. The owner reads the trace and
+        # sees which file took how long and how much of it came back.
+        "ms": step.ms,
+        "chars": step.chars,
+    }
 
 
 def stream_turn(
@@ -845,19 +868,7 @@ def stream_turn(
                 # 边到边给，不等收尾：前端据此在正文第一个字出现之前就把「思考过程」摊开
                 yield ("reasoning", {"text": payload})
             elif name == "tool":
-                yield (
-                    "tool",
-                    {
-                        "step": payload.index,
-                        "name": payload.call.name,
-                        "arguments": payload.call.arguments,
-                        "ok": payload.result.ok,
-                        # 6.5 step 2: what this step cost. The owner reads the trace and
-                        # sees which file took how long and how much of it came back.
-                        "ms": payload.ms,
-                        "chars": payload.chars,
-                    },
-                )
+                yield ("tool", step_record(payload))
                 # 32.4：这一步成了，提案就已经是完整合法的一份——没有道理让主人
                 # 等收尾那句客套话打完字才看到卡。收尾那一次只补这里没见过的。
                 if payload.result.ok and payload.call.name.startswith(PROPOSE_TOOL_PREFIX):
@@ -904,5 +915,6 @@ def stream_turn(
             # the pieces are deltas of one stream, so they join with nothing; the
             # agent loop is what inserts a break between steps
             reasoning="".join(reasoning).strip(),
+            steps=[step_record(step) for step in outcome.steps],
         )
     yield ("done", {"message": message.model_dump(mode="json")})

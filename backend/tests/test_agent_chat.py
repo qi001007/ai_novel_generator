@@ -304,6 +304,67 @@ def test_the_b_layer_card_arrives_while_the_stream_is_still_open(client: TestCli
     assert client.get(f"/api/novels/{novel_id}/chapters").json() == []
 
 
+def test_the_trace_comes_back_with_the_answer_after_a_reload(client: TestClient) -> None:
+    """批注 31.4「工具轨迹刷新后消失」：那一轮跑了哪几步，得跟着这条答复一起落库。
+
+    从前步骤只活在流上那一条 `tool` 事件里，落库那行什么都没有，于是刷新后
+    `reads` 是空的——界面上留下的就是一个点开却永远为空的折叠（实测：刷新前 2 行、
+    刷新后 0 行）。这条量的不是「有没有那一列」，是**落库的那份与流上的那份是否同构**。
+    """
+    use_fake(
+        client,
+        SteppedClient(
+            [
+                [TOOL_BLOCK_ARCS],
+                [tool_block("propose_toc", {
+                    "chapters": [
+                        {"number": 1, "title": "开门", "plot_function": "立谜", "notes": ""},
+                        {"number": 2, "title": "验钥", "plot_function": "抬价", "notes": ""},
+                    ]
+                })],
+                ["目录排了两章。"],
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "先把前两章的目录排出来", "mode": "plan"},
+    )
+    events = parse_sse(response.text)
+    streamed = [payload for name, payload in events if name == "tool"]
+
+    assert len(streamed) == 2, streamed
+    history = client.get(f"/api/novels/{novel_id}/chat/messages").json()
+    assistant = [row for row in history if row["role"] == "assistant"]
+    # 逐字段相同：流与落库都由 `step_record` 构造，不存在第二份形状可漂。
+    assert assistant[-1]["steps"] == streamed, assistant[-1]["steps"]
+    assert [step["step"] for step in assistant[-1]["steps"]] == [1, 2]
+
+
+def test_the_non_streaming_route_stores_the_same_trace(client: TestClient) -> None:
+    """两条写入口对「这一答带着它的步骤」不能一真一假。"""
+    use_fake(
+        client,
+        SteppedClient(
+            [
+                [TOOL_BLOCK_ARCS],
+                ["看过了。"],
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    reply = client.post(
+        f"/api/novels/{novel_id}/chat",
+        json={"content": "先看看现有的弧", "mode": "plan"},
+    ).json()
+
+    assert [step["name"] for step in reply["steps"]] == ["read_file"], reply["steps"]
+    assert reply["steps"][0]["arguments"] == {"path": "arcs.md"}
+
+
 def test_a_propose_character_ask_lands_a_real_archive(client: TestClient) -> None:
     """批注 35.6 第 5 类：建人物也要从工具量到人，且确认前不落库（D-37）。"""
     use_fake(

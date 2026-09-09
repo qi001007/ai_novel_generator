@@ -1,5 +1,7 @@
 # backend/app/routers/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 31.4（D-50）：`chat.py` **+4/−1**，只在读历史这一侧补一列。`_MESSAGE_FIELDS` 里加 `"steps"`（紧跟 `"context_refs"`），`ChatMessageOut` 加 `steps: list[dict[str, Any]] = Field(default_factory=list)`——`ChatPane.fromHistory` 读的就是这条路由，落库了不发出去等于没落。**不改构造**：那一列的形状由 `services/chat.py:800` 的 `step_record` 独家出产，本文件只透传，不在此处再拼一份文案。
+
 - 2026-09-10 · 批次 35.5（D-47）：`chat.py` 的历史端点与卡片构造函数 `ChatMessageOut.of(..., person_path=...)` 各多带一个读手（`character_path_reader(session, novel_id)`），让「已在档的人名 → 改指他的档案路径」这一条在**流式**与**刷新**两条路上同一个判法——刷新走的是这条路由，不是 `services/chat.py` 的生成器。**登记不改**：`ChatProposalOut` 没有 `note` 字段，所以改道时那句「人物「罗九」已在档，提案改指 …」只在流式里出现过，刷新后丢失；主人看的是卡有没有回来，本轮不动它。
 
 - 2026-09-10 · 批次 35.9（D-42）：`config.py` 的 `/api/config/llm` 多带一个 `agent` 对象（`AgentBudgetOut` 读回当前值与出厂值，`AgentBudgetIn` 写入，越界在落库前 422），保存仍走同一条 PUT、同一次 `session.commit()`。`chat.py` 两条路由不再用出厂常量，改由 `resolve_config(session)` 取本轮预算；流式那条在生成器启动**之前**取，因为请求 session 到那时已经关了。

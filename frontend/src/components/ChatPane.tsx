@@ -31,6 +31,7 @@ import {
   applyStreamEvent,
   patchAgent as patchRows,
   patchCommand as patchCommandRows,
+  toolLine,
   type AgentRow,
   type Row,
 } from "./chatRows";
@@ -93,6 +94,12 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
             tokenInput: row.token_input,
             tokenOutput: row.token_output,
             refs: row.context_refs,
+            // 31.4: the steps are stored with the answer, and this is the same line-maker
+            // the live stream uses - so the trace after a reload is not a paraphrase.
+            // The `??` is for a server older than this批注: measured 2026-09-10, without
+            // it a response with no `steps` key dropped the entire history, not just
+            // this column.
+            reads: (row.steps ?? []).map(toolLine),
             mode: row.mode,
             reasoning: row.reasoning,
           },

@@ -214,6 +214,18 @@ export type StoredProposal = {
   error: string;
 };
 
+/** One executed agent step: what ran, whether it worked, and what it cost.
+ *  Shared on purpose (第三十一批批注 4) - the stream's `tool` event and the stored
+ *  trace carry this one shape, so the fold is made by one line-builder, not two. */
+export type ChatToolStep = {
+  step: number;
+  name: string;
+  arguments: Record<string, unknown>;
+  ok: boolean;
+  ms: number;
+  chars: number;
+};
+
 export type StoredChatMessage = {
   id: number;
   novel_id: number;
@@ -226,6 +238,12 @@ export type StoredChatMessage = {
   model: string;
   mentions: string[];
   context_refs: ChatReference[];
+  /** The steps this answer ran, in order - what the trace fold reads back after a reload.
+   *  Optional because the server is a separate process whose version this client cannot
+   *  see: a backend predating 批注 31.4 sends no such key, and then that answer simply
+   *  has no trace. Measured 2026-09-10 - a required field here dropped the whole
+   *  history instead of just the column. */
+  steps?: ChatToolStep[];
   token_input: number;
   token_output: number;
   created_at: string;
@@ -268,17 +286,7 @@ export type ChatStreamEvent =
   | { event: "proposal"; data: { path: string; text: string; valid: boolean; error: string } }
   // One executed tool call: what the agent read this round, whether it worked, and what
   // it cost. Both numbers are measured in the backend step, never estimated here.
-  | {
-      event: "tool";
-      data: {
-        step: number;
-        name: string;
-        arguments: Record<string, unknown>;
-        ok: boolean;
-        ms: number;
-        chars: number;
-      };
-    }
+  | { event: "tool"; data: ChatToolStep }
   | { event: "end"; data: unknown };
 
 export type GenerationStreamEvent =

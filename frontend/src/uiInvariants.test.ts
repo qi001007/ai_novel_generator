@@ -251,8 +251,19 @@ describe("settled UI decisions must not regress", () => {
     // 一秒以内不许被四舍五入成 0s
     expect(line.slice(0, 1400)).toContain("ms >= 1000");
     expect(line.slice(0, 1400)).toContain("chars >= 1000");
-    // and the two numbers are part of the wire contract, not optional extras
-    expect(chatTypes).toMatch(/event: "tool";[\s\S]{0,220}ms: number;[\s\S]{0,24}chars: number;/);
+    // and the two numbers are part of the wire contract, not optional extras.
+    // 31.4 moved that contract out of the inline `tool` branch into a named type: the
+    // stream event and the stored trace carry one shape, so the reload cannot drift.
+    expect(chatTypes).toMatch(/event: "tool"; data: ChatToolStep/);
+    expect(chatTypes).toMatch(
+      /export type ChatToolStep = \{[\s\S]{0,240}ms: number;[\s\S]{0,24}chars: number;/,
+    );
+    // 和落库那一行的同源形状。`?:` 不是松口，是实测换来的：必需字段下，
+    // 没有 `steps` 这个键的旧后端会让整段历史消失（2026-09-10 对 8000 量过），
+    // 而这一列的降级才是我们要的行为。
+    expect(chatTypes).toMatch(/steps\?: ChatToolStep\[\];/);
+    // 读回历史时只降级这一列：缺 `steps` -> 空数组，且文案仍出自同一个 toolLine
+    expect(chatPane).toMatch(/reads: \(row\.steps \?\? \[\]\)\.map\(toolLine\)/);
     // 轨迹行用轨迹那套列表（不许有边框底色，下面那条断言早就钉着了），不借用引用的胶囊
     expect(chatPane).toMatch(/chat-trace-list[\s\S]{0,220}row\.meta\.reads/);
     expect(chatPane).not.toMatch(/chat-refs[\s\S]{0,200}row\.meta\.reads/);
