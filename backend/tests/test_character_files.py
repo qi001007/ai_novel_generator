@@ -91,6 +91,71 @@ def test_new_character_is_created_through_the_same_entry(client: TestClient) -> 
     assert client.get(f"/api/novels/{novel_id}/files/{result.json()['path']}").status_code == 200
 
 
+def test_the_invented_characters_alias_resolves_to_the_create_template(client: TestClient) -> None:
+    """批注 35.5: 「没有这个文件：settings/characters.md」 must not come out of any entry."""
+    novel_id, _ = seed_character(client)
+    body = "\n".join([
+        "# 苏黎（设定库 · 人物）", "",
+        "- **姓名**：苏黎", "- **分级**：supporting", "- **起始章**：3", "- **结束章**：—", "",
+        "## 身份", "", "碑下向导。", "", "## 目标", "", "守住碑。", "",
+        "## 行为约束", "", "不说谎。", "", "## 当前状态", "", "在第 3 章登场。", "",
+    ])
+    for alias in ("settings/characters.md", "characters.md", "settings/characters"):
+        read = client.get(f"/api/novels/{novel_id}/files/{alias}")
+        assert read.status_code == 200, (alias, read.text)
+        assert read.json()["path"] == "settings/characters/new.md"
+
+    created = client.put(
+        f"/api/novels/{novel_id}/files/settings/characters.md",
+        json={"text": body, "actor": "ai"},
+    )
+    assert created.status_code == 200, created.text
+    person = next(c for c in client.get(f"/api/novels/{novel_id}/characters").json() if c["name"] == "苏黎")
+    assert created.json()["path"] == f"settings/characters/{person['id']}.md"
+
+
+def test_an_applied_character_create_fence_is_not_offered_again(client: TestClient) -> None:
+    """批注 35.5：应用过的「新建人物」围栏重读即改道收起，不再给一张只能 409 的卡。"""
+    from app.services.chat import extract_proposals
+
+    novel_id, _ = seed_character(client)
+    body = "\n".join([
+        "# 罗九（设定库 · 人物）", "",
+        "- **姓名**：罗九", "- **分级**：supporting", "- **起始章**：—", "- **结束章**：—", "",
+        "## 身份", "", "碑下向导。", "", "## 目标", "", "看清楚碑。", "",
+        "## 行为约束", "", "不逾矩。", "", "## 当前状态", "", "在场。", "",
+    ])
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/settings/characters/new.md",
+        json={"text": body, "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+    archive = f"/api/novels/{novel_id}/files/{applied.json()['path']}"
+    on_file = client.get(archive).json()["text"]
+    fence = f"```markdown @settings/characters/new.md\n{body}\n```"
+
+    cards = extract_proposals(
+        fence,
+        lambda path: on_file if path == applied.json()["path"] else None,
+        lambda name: applied.json()["path"] if name == "罗九" else None,
+    )
+
+    assert [card["path"] for card in cards] == [applied.json()["path"]], cards
+    assert cards[0]["text"] == on_file, "改道之后与档上完全相同，卡片该还原成文件本身"
+
+    edited = extract_proposals(
+        fence.replace("看清楚碑。", "看清楚碑，替陈默守一夜。"),
+        lambda path: on_file if path == applied.json()["path"] else None,
+        lambda name: applied.json()["path"] if name == "罗九" else None,
+    )
+    assert edited[0]["valid"] is True, edited[0]["error"]
+    assert edited[0]["text"] != on_file
+    put = client.put(archive, json={"text": edited[0]["text"], "actor": "ai"})
+    assert put.status_code == 200, put.text
+    person = next(c for c in client.get(f"/api/novels/{novel_id}/characters").json() if c["name"] == "罗九")
+    assert "替陈默守一夜" in person["goals"]
+
+
 def test_duplicate_name_is_rejected_with_the_owning_path(client: TestClient) -> None:
     novel_id, cid = seed_character(client)
     body = "\n".join([

@@ -52,6 +52,7 @@
 | D-44 | 从 B 层改道出来的弧认档不认块数；`弧 ?` 永不回查已有行 |
 | D-45 | 折叠控件钉在它折叠的内容之上；「展开后没法收起」是几何问题 |
 | D-46 | 写入落地的反应先重读章节清单，再取所选章记录；树只读 `chapters` |
+| D-47 | 路径别名只在 `resolve_path` 折叠一次；写入回报的路径就是界面跟随的路径 |
 
 ## 1. 决定
 
@@ -286,6 +287,17 @@
 - **断言搬家（D-33）**：`uiInvariants.test.ts` 新增「a landed write re-reads the chapter list before its records」，钉面板源文件里 `void reloadChapterList()`、不再出现 `void loadChapterRecords()`，并把 store 里这段动作切出来断言 `set({ briefs, chapters })` 在前、`await get().loadChapterRecords()` 在后、且整段不含 `selectedChapterId`。原「re-reads the chapter records once a proposal has landed」一例**未删**，改写成这条链的完整版（清单两次 GET + 记录一次 GET + StrictMode 双跑不刷新）。
 - **门禁**：前端 277 passed、`tsc -b --force` 退出 0、`npm run build` 通过、命中区审计 small 0 / clipped 0 / unreachable 0（与 D-45 同一份 2 条 edge + 1 条 srOnly）；后端 375 passed（本条未碰后端）。
 - **真机复测（8035 + `i354.db`，0 章作品）**：应用前 `{chapters:0, treeRows:9, 还没有章节:true}` → 点「应用提案」**不刷新** → `{chapters:1, treeRows:12, 还没有章节:false}`，与手动刷新后的快照逐项相同；四个标签逐个 HTTP 200，没有指向不存在文件的标签。
+
+### D-47 路径别名只在 `resolve_path` 折叠一次；写入回报的路径就是界面跟随的路径
+
+状态：生效。批次 35.5 裁定。主人报「果然创建人物卡片它就出错了，你整个业务逻辑就没有跑通」。量下来能力**在**——`PUT settings/characters/new.md` 返回 200 并回报 `settings/characters/7.md`、人物表 +1；跑不通的是三段路，每段各修一处，Agent 循环一行没重写。
+
+- **别名只在一处折叠**：`canonical_path` 那张别名表以前只在画卡时跑一次，读、校验、写各自撞 `resolve_path` 末尾那句 404「没有这个文件：settings/characters.md」。折叠现在做进 `resolve_path` 开头——它本来就是每个入口唯一经过的解析点，所以不再在别处写第二份映射。实测三种写法 `settings/characters.md` / `characters.md` / `settings/characters` 全 **200** 且回报 `path = settings/characters/new.md`；真不存在的人仍 404，文案是更准的那句「人物 9999 不存在」。
+- **界面跟随服务器回报的路径**：`7.md` 这个号是书分配的，不是提案自己点的（D-39）。客户端以前把 `WriteResult.path` 丢掉、继续重读模板，标签页就停在一份刚被这次写入消费掉的空档案上。现在 `applyProposal` 按 `written.path` 重读、把模板那份 entry 退休、标签与 active 一起搬过去。**否掉的修法**：给写入口加一个「新建即打开」的参数（等于第二条写语义，顶 D-01）；或前端按名字自己猜号（客户端造第二真源，顶 D-02）。
+- **应用过的建卡不再回来**：`new.md` 的围栏若姓名已在档，抽提案时就改指那条档案（`existing_character_path` + `character_path_reader`；「同名即同人」的真源仍是 `_write_character` 那个 409，这里只是问它同一个问题）。改道后与档上文本相同，就走 D-43 那条收起路径。**同一份库副本、只换代码的 A/B**：旧那台（8035）msg 71 仍报 `path=new.md、valid=true`，再点一次就是 409；新那台（8036）同一张卡 `path=settings/characters/7.md`、文本与档上逐字节相同，前端按「已逐字应用过」丢掉。解析不了的围栏**仍按新建处理**——那是结构校验该说的红字，不由这里猜。
+- **断言搬家（D-33）**：`uiInvariants.test.ts` 新增「an applied write follows the path the server says it landed on」，把 `applyProposal` 整段切出来断言 `landed = written.path`、`reload(landed)`、不再出现 `reload(path)`、`delete entries[path]`、标签集合改写。`files.test.ts` 里默认的 `writeFile` 桩原先把返回路径写死成 `blueprint.md`——那是一台会说谎的假服务器，改成回显请求路径，另加一例专测建卡落到数字路径。
+- **门禁**：后端 **377 passed**（+2）、前端 **279 passed / 26 files**（277 基线 +2 ＝ `store/files.test.ts` 1 例 + `uiInvariants` 1 条；本条中途曾记作 278，那是两处新增只落了一处时量的，结案前整套复测订正为 279）、`uiInvariants` **55** 条（+1）、`tsc -b --force` 退出 0、`npm run build` 通过；命中区审计在作品 6 真机页 small 0 / clipped 0 / unreachable 0 / edge 0 / srOnly 1（那颗 1×1 的附件输入，与 D-45/D-46 同一份）。
+- **真机复测（5173 当前源码 + 8036 + `i355.db`）**：应用前 `people=[7·罗九]`、标签含 `settings/characters/new.md` → 点「应用提案」**不刷新** → `people=[7·罗九, 8·裴照]`、文件表出现 `settings/characters/8.md`、那一格标签变成 `settings/characters/8.md`、卡消失；刷新后聊天与标签条都**没有** 7.md / 8.md 的建卡（只剩一张旧 msg 65 的无效围栏，登记为 35.17）。截图 `.scratch/probe/355-after.png`、`355-cards.png` 已亲自看过：左树「人物 2」下 `罗九 · 7.md`、`裴照 · 8.md` 两行都在。
 
 ## 2. 已废止（删除区）
 

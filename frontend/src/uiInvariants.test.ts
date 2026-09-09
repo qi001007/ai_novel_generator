@@ -630,6 +630,23 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(listReload).not.toContain("selectedChapterId");
   });
 
+  /* 批注 35.5：一张「新建人物」的卡写的是 settings/characters/new.md，服务器落到的却是
+     settings/characters/7.md——人物号是书分配的，不是提案自己点的。客户端把那个答复丢掉，
+     标签页就一直在重读那份刚被这次写入消费掉的空模板，新建的人始终没打开。 */
+  it("an applied write follows the path the server says it landed on (批次 35.5)", () => {
+    const apply = filesStore.slice(
+      filesStore.indexOf("async applyProposal(path)"),
+      filesStore.indexOf("toggleView(path)"),
+    );
+    expect(apply.length).toBeGreaterThan(0);
+    expect(apply).toContain("landed = written.path;");
+    expect(apply).toContain("await get().reload(landed);");
+    expect(apply).not.toContain("await get().reload(path);");
+    // 模板已被这一次写入消费：它不能再留在 store 里，否则标签页读的是空档案。
+    expect(apply).toContain("delete entries[path];");
+    expect(apply).toMatch(/tabs: \[\.\.\.new Set\(state\.tabs\.map/);
+  });
+
   /* 第十九批批注 3：外观第一次成为「可切换的偏好」。这一类东西最容易在半年后
      被改回硬编码，所以钉的是结构，不是某个色值。 */
   it("an appearance switch repaints tokens, and no preview copies a colour", () => {

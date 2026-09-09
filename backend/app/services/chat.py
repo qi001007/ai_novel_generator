@@ -16,6 +16,9 @@ from app.services.documents import (
     arc_proposal_from_toc_ranges,
     canonical_path,
     canonicalize_proposal,
+    CHARACTER_DIR,
+    CHARACTER_NEW_PATH,
+    character_path_reader,
     DocumentError,
     current_text_reader,
     load_document,
@@ -266,18 +269,23 @@ class ChatTurn:
 def extract_proposals(
     content: str,
     current: Callable[[str], "str | None"] | None = None,
+    person_path: Callable[[str], "str | None"] | None = None,
 ) -> list[dict[str, Any]]:
     """Turn ```markdown @path blocks into reviewable write proposals.
 
     ``current`` resolves a path to the text on file; when it is supplied every
     proposal is stabilised so a section the model merely re-wrapped keeps the
-    original line breaks instead of showing up as churn.
+    original line breaks instead of showing up as churn. ``person_path`` resolves a
+    姓名 to the archive of the person already on file.
 
-    Two shapes are repaired on the way in, deterministically and always from the file
+    Three shapes are repaired on the way in, deterministically and always from the file
     the proposal would overwrite: a path alias such as ``chapters/1/brief.md`` lands on
-    ``chapters/0001/brief.md``, and a range heading written into the B layer
+    ``chapters/0001/brief.md``, a range heading written into the B layer
     (``## 第 11-30 章 弧 3：门钥之谜``) is moved out of toc.md and offered as a second
-    card for arcs.md, because a multi-chapter arc belongs to the C layer.
+    card for arcs.md, because a multi-chapter arc belongs to the C layer, and a
+    新建人物 fence naming someone the book already holds is re-aimed at that person's
+    archive -- the number is the book's to assign, and 同名 in the create template is a
+    409, not a card.
     """
     fences = list(PROPOSAL_BLOCK.findall(content or ""))
     pending_arcs = ""
@@ -298,7 +306,10 @@ def extract_proposals(
         }
         if note:
             entry["note"] = note
-        if base and path in {TOC_PATH, ARCS_PATH} and legacy_proposal_matches(
+        # A card that would write back the file as it stands is a stale card, not a
+        # change: it collapses onto the document and the reader drops it (D-43).
+        collapses = path in {TOC_PATH, ARCS_PATH} or path.startswith(CHARACTER_DIR + "/")
+        if base and collapses and legacy_proposal_matches(
             path, base, entry_text
         ):
             entry["text"] = base
@@ -324,10 +335,34 @@ def extract_proposals(
                 pending_arcs = moved
             if not toc_record_count(entry_text):
                 continue  # 只有范围标题、没有逐章记录的 toc 提案不产出围栏
+        if path == CHARACTER_NEW_PATH and person_path is not None:
+            reaimed = existing_character_path(entry_text, person_path)
+            if reaimed is not None:
+                path, note = reaimed
         proposals.append(build(path, entry_text, note))
     if pending_arcs:
         proposals.append(build(ARCS_PATH, pending_arcs))
     return proposals
+
+
+def existing_character_path(
+    text: str, person_path: Callable[[str], "str | None"]
+) -> tuple[str, str] | None:
+    """这条「新建人物」围栏写的人是否已经在档；在档就改指他的档案路径。
+
+    姓名由写者用的同一个解析器读出来，解析不了的围栏仍按新建处理——那是结构校验要说的
+    红字，不是这里该猜的事。
+    """
+    try:
+        name = str(load_document("character", text).get("name") or "").strip()
+    except DocumentError:
+        return None
+    if not name:
+        return None
+    path = person_path(name)
+    if not path:
+        return None
+    return path, f"人物「{name}」已在档，提案改指 {path}"
 
 
 def legacy_proposal_matches(path: str, current_text: str, proposed_text: str) -> bool:
@@ -827,7 +862,8 @@ def stream_turn(
     with factory() as session:
         novel_id = _novel_id_of(session, turn.user_message_id)
         reader = current_text_reader(session, novel_id) if novel_id else None
-        for proposal in extract_proposals(final_content, reader):
+        person = character_path_reader(session, novel_id) if novel_id else None
+        for proposal in extract_proposals(final_content, reader, person):
             yield ("proposal", proposal)
 
     with factory() as session:

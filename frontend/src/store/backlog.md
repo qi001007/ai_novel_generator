@@ -1,5 +1,7 @@
 # frontend/src/store/ 更改账（最新在上）
 
+- 2026-09-10 · 批次 35.5（裁定进 D-47）：`files.ts.applyProposal` 不再假设「写入落点＝卡片上的路径」，改取 `written.path` 作 `landed`，随后的 `reload(landed)`、pending 清理、`entries`/`tabs`/`active` 全部对 `landed` 说话；`landed !== path` 时删掉模板那条缓存条目、把标签位原地换成数字档案（`new Set` 防同名重复）。这条差别只在**新建**类写入上出现（`settings/characters/new.md` 回来的是 `settings/characters/8.md`），而编号的归属权在服务器（D-02）。`files.test.ts`：默认 `writeFile` 桩原先把所有写入的返回路径写死成 `BLUEPRINT_PATH`（值 `blueprint.md`）——那是一台会说谎的假服务器，正好遮住了这个缺陷；改成回显请求路径，另加 `follows the numbered path a character create actually lands on` 一例断言模板条目被删、标签与 active 换成 `7.md`/`8.md` 那条。
+
 - 2026-09-10 · 批次 35.4（裁定进 D-46）：`workbench.ts` 新增 `reloadChapterList()`，作为左树两份来源（`/planning/briefs` + `/chapters`）唯一的重读入口，**先重读清单、后 `await loadChapterRecords()`**——顺序是这条的正文：`loadChapterRecords` 拒绝为一份它在清单里落不了位的章节取记录，所以「第一章刚被创建、清单还空」那种情况它连请求都不发。后台重读不写 `selectedChapterId` / `selectedBriefId`，主人正在看谁就不动谁。`workbench.test.ts` +2 例（重读两源且不动选择；未选作品时不发任何请求）。
 
 - 2026-09-09 · 提案写入后先确认 Markdown 重载成功再清除 pending，补 B 层应用后同步回归。

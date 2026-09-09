@@ -436,23 +436,43 @@ export const useFiles = create<FilesState>((set, get) => ({
       );
       return false;
     }
+    let landed: string;
     try {
-      await api.writeFile(novelId, path, proposal.text, {
+      const written = await api.writeFile(novelId, path, proposal.text, {
         actor: "ai",
         baseRevision: proposal.baseRevision,
       });
+      /* 批注 35.5: a create does not land on the path the card names. A write to
+         settings/characters/new.md answers with settings/characters/7.md, because the
+         number is the book's to assign. Following that answer is the whole difference
+         between 注入完成 and a tab that re-reads the blank template this write just
+         consumed while the new person stays unopened. */
+      landed = written.path;
     } catch (cause) {
       set((state) => patch(state, path, { error: detail(cause, "提案写入被拒") }));
       return false;
     }
-    await get().reload(path);
+    await get().reload(landed);
     // Keep the proposal visible if the follow-up read failed. A successful PUT
     // with a failed reload must not make the UI appear synchronized with stale
     // Markdown.
-    if (get().entries[path]?.error) return false;
+    if (get().entries[landed]?.error) return false;
     const next = { ...get().pending };
     delete next[path];
-    set({ pending: next, appliedSeq: get().appliedSeq + 1 });
+    set((state) => {
+      if (landed === path) {
+        return { pending: next, appliedSeq: state.appliedSeq + 1 };
+      }
+      const entries = { ...state.entries };
+      delete entries[path];
+      return {
+        pending: next,
+        appliedSeq: state.appliedSeq + 1,
+        entries,
+        tabs: [...new Set(state.tabs.map((tab) => (tab === path ? landed : tab)))],
+        active: state.active === path ? landed : state.active,
+      };
+    });
     await syncMetas(get, set);
     return true;
   },

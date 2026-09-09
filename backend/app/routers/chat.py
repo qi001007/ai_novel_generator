@@ -26,7 +26,7 @@ from app.services.agent import AgentConfig, ToolRegistry, resolve_config
 from app.services.agent_tools import build_registry
 from app.services.context import collect_items
 from app import sse
-from app.services.documents import current_text_reader
+from app.services.documents import character_path_reader, current_text_reader
 from app.services.llm import LLMClient, get_llm_client
 
 
@@ -94,9 +94,9 @@ class ChatMessageOut(SQLModel):
     proposals: list[ChatProposalOut] = Field(default_factory=list)
 
     @classmethod
-    def of(cls, row: ChatMessage, current=None) -> "ChatMessageOut":
+    def of(cls, row: ChatMessage, current=None, person_path=None) -> "ChatMessageOut":
         data = {name: getattr(row, name) for name in _MESSAGE_FIELDS}
-        data["proposals"] = extract_proposals(row.content, current)
+        data["proposals"] = extract_proposals(row.content, current, person_path)
         return cls(**data)
 
 
@@ -141,7 +141,8 @@ def list_chat_messages(
         ).all()
     )
     reader = current_text_reader(session, novel_id)
-    return [ChatMessageOut.of(row, reader) for row in rows[-max(limit, 1):]]
+    person = character_path_reader(session, novel_id)
+    return [ChatMessageOut.of(row, reader, person) for row in rows[-max(limit, 1):]]
 
 
 class ChatConversationOut(SQLModel):

@@ -30,7 +30,12 @@ describe("files store", () => {
     useFiles.getState().reset();
     mocked.listFiles.mockResolvedValue([{ path: BLUEPRINT_PATH, kind: "blueprint", layer: "A", label: "全书蓝图" }]);
     mocked.readFile.mockResolvedValue(DOC);
-    mocked.writeFile.mockResolvedValue({ path: BLUEPRINT_PATH, changed: ["main_line"], revision: "rev-2" });
+    // 服务器回报的是它真正写入的路径；建人物流水线的测试各自覆盖这一条。
+    mocked.writeFile.mockImplementation(async (_novelId, path) => ({
+      path,
+      changed: ["main_line"],
+      revision: "rev-2",
+    }));
   });
 
   it("opens a file and reveals the editor column", async () => {
@@ -169,6 +174,37 @@ describe("files store", () => {
     });
     expect(useFiles.getState().entries[TOC_PATH].draft).toBe(updatedTocDoc.text);
     expect(useFiles.getState().pending[TOC_PATH]).toBeUndefined();
+  });
+
+  it("follows the numbered path a character create actually lands on (批注 35.5)", async () => {
+    const NEW = "settings/characters/new.md";
+    const LANDED = "settings/characters/7.md";
+    const landedDoc = { ...DOC, path: LANDED, kind: "character", layer: "设定", label: "罗九" };
+    mocked.readFile.mockImplementation(async (_novelId, path) =>
+      path === LANDED ? landedDoc : { ...DOC, path: NEW, kind: "character", label: "新建人物" },
+    );
+    mocked.writeFile.mockResolvedValueOnce({ path: LANDED, changed: [], revision: "rev-2" });
+    await useFiles.getState().attach(1);
+    await useFiles.getState().open(NEW);
+    useFiles.getState().offer({
+      id: 6,
+      path: NEW,
+      text: "# 罗九\n- **定位**：主角\n",
+      valid: true,
+      error: "",
+      baseText: DOC.text,
+      baseRevision: "rev-1",
+    });
+
+    await expect(useFiles.getState().applyProposal(NEW)).resolves.toBe(true);
+
+    const state = useFiles.getState();
+    expect(mocked.readFile).toHaveBeenCalledWith(1, LANDED);
+    expect(state.entries[NEW]).toBeUndefined();
+    expect(state.entries[LANDED].draft).toBe(landedDoc.text);
+    expect(state.pending[NEW]).toBeUndefined();
+    expect(state.tabs).toEqual([LANDED]);
+    expect(state.active).toBe(LANDED);
   });
 
   it("discards a proposal without touching the server", async () => {

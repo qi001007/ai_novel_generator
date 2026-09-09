@@ -223,8 +223,14 @@ def _as_list(value: Any, label: str) -> list[str]:
 
 
 def resolve_path(path: str) -> tuple[str, int | None]:
-    """Map a document path onto (kind, chapter number)."""
-    normalized = (path or "").lstrip("/").replace("\\", "/")
+    """Map a path onto (kind, chapter number), folding the model's aliases first.
+
+    canonical_path is the one alias table, and this is the one resolution every entry
+    passes through, so read / validate / write cannot disagree about where a path
+    points. A None number means the create template: the path a write lands on is
+    assigned here and reported back by WriteResult.
+    """
+    normalized = canonical_path(path)[0]
     if normalized == BLUEPRINT_PATH:
         return "blueprint", None
     if normalized == TOC_PATH:
@@ -1611,3 +1617,23 @@ def current_text_reader(session: Session, novel_id: int):
         return cache[path]
 
     return current
+
+
+def character_path_reader(session: Session, novel_id: int):
+    """Return ``姓名 -> 该人物的档案路径``，一本书内查一次、缓存住。
+
+    「同名即同人」这条规则的真源是 `_write_character` 那个 409；抽提案的人要问同一件事，
+    所以在这儿问，别处不再写一份名字查询。
+    """
+    cache: dict[str, str | None] = {}
+
+    def person_path(name: str) -> str | None:
+        key = (name or "").strip()
+        if key not in cache:
+            row = session.exec(
+                select(Character).where(Character.novel_id == novel_id, Character.name == key)
+            ).first()
+            cache[key] = character_path(row.id) if row is not None else None
+        return cache[key]
+
+    return person_path
