@@ -231,6 +231,32 @@ def test_write_mode_prompt_allows_prose(client: TestClient) -> None:
     assert "不加解释、不加标题、不加大纲" in system
 
 
+def test_write_mode_prompt_names_the_draft_file_as_the_landing_point(client: TestClient) -> None:
+    """批注 35.29a：一整章正文的落点是那一章的 `draft.md`，不是回答气泡。
+
+    量出来的现状（真机 作品 7）：第 76 条回答 977 字整章正文，`chapter` 表里 10 章的
+    `content` 全是 0——`WRITE_BODY` 只说了「直接输出可用文字」，从没把 `chapters/NNNN/draft.md`
+    说给模型听，而校验器早就接受这道围栏（`test_a_streamed_prose_fence_lands_on_the_chapter_it_names`）。
+    """
+    fake = use_fake(client, FakeChatClient())
+    novel_id = make_novel(client)
+
+    client.post(
+        f"/api/novels/{novel_id}/chat",
+        json={"content": "生成第一章正文", "mode": "write"},
+    )
+
+    system = fake.calls[0]["messages"][0]["content"]
+    assert "@chapters/NNNN/draft.md" in system, system
+    assert "一整章的正文不是一段回答" in system, system
+    assert "围栏外不要把这一章再复述一遍" in system, system
+    # 模型读的是拼在一起的一整段。另两处「只有没有动作工具的对象才手写代码块」的封闭清单
+    # （chat.py 的 FILE_EDIT_RULES、agent.py 的 TOOL_RULES 第 6 条）不带上正文，
+    # 就等于一边给落点一边禁止这条路——所以这两句也要一起钉住。
+    assert "一整章正文没有类型动作" in system, system
+    assert "改已有人物、一整章正文这类没有动作工具的对象" in system, system
+
+
 def test_the_reasoning_arrives_before_the_first_content_delta(client: TestClient) -> None:
     """主人 2026-09-07 批注 6：思考过程要**先于**正文流出来，不是答完才补一个折叠。
 
