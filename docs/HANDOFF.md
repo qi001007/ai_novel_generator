@@ -44,6 +44,13 @@
     cd E:\novel-generator\backend
     .venv\Scripts\python.exe -m pytest -q
 
+本机跑这条会红 5 条，且**不是树的错**：shell 里带着 `ALL_PROXY=`（空值）和 `NO_PROXY` 中的
+`[::1]`，httpx 把空值当成 `all://` 去解析端口，`int(':1]')` 抛 `ValueError`，命中的是
+`test_llm_status`（2）／`test_llm_providers`／`test_draft_generation`／`test_writing_context`。
+2026-09-10 同一条命令实测：带代理 **5 failed / 388 passed**，清掉代理变量 **393 passed**。跑门禁把代理变量摘掉：
+
+    env -u ALL_PROXY -u all_proxy -u HTTP_PROXY -u http_proxy -u HTTPS_PROXY -u https_proxy -u NO_PROXY -u no_proxy .venv\Scripts\python.exe -m pytest -q
+
 前端：
 
     cd E:\novel-generator\frontend
