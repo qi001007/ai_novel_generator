@@ -170,6 +170,40 @@ def test_cast_character_is_core_and_bystander_is_fill(session):
     assert _one(ctx, "人物 · 路人甲").tier == TIER_FILL
 
 
+# 批注 30.7 第一条（＝ WORKSTREAM-PLAN §3 P0-2 第三条判据的那一半）：简报点名而人物库
+# 精确匹配不上的名字，今天不进任何清单、也不记原因——作者只会看到正文里凭空少一个人。
+def test_brief_named_character_without_a_card_is_reported(session):
+    novel, brief = _book(session)
+    brief.characters = ["林渊", "白衣人"]
+    session.add(brief)
+    session.commit()
+    ctx = _window(session, novel, brief)
+    assert ctx.missing_characters == ["白衣人"]
+    assert ctx.manifest()["missing_characters"] == ["白衣人"]
+
+
+def test_fully_matched_cast_adds_nothing_to_the_manifest(session):
+    novel, brief = _book(session)
+    ctx = _window(session, novel, brief)
+    assert ctx.missing_characters == []
+    assert ctx.manifest()["missing_characters"] == []
+
+
+def test_terminal_report_names_the_unmatched_cast(session):
+    novel, brief = _book(session)
+    # 全命中时不许多出一行空话（先量这一份，再改简报）
+    assert "未命中人物" not in injection_report(
+        _window(session, novel, brief), novel_id=novel.id, chapter_number=25
+    )
+    brief.characters = ["林渊", "白衣人"]
+    session.add(brief)
+    session.commit()
+    report = injection_report(
+        _window(session, novel, brief), novel_id=novel.id, chapter_number=25
+    )
+    assert "未命中人物：白衣人" in report
+
+
 def test_current_arc_is_core_and_closed_arc_is_continuity(session):
     novel, brief = _book(session)
     ctx = _window(session, novel, brief)

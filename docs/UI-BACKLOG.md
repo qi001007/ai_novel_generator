@@ -174,10 +174,9 @@
 
 ### 30.7 人物匹配
 
-- [ ] 简报点名但人物库未精确匹配的名字在清单中明示，不静默丢失。
 - [ ] 正文出现疑似未建档人物时提供预填新建入口；AI 不能自动建卡。
 
-- 2026-09-11 实测：第一条**今天不成立**。匹配只有精确一条路（`brief.characters` 里的串与 `Character.name` `row.name in cast`，`context.py:766-770`），对不上的名字**不进任何清单、也不记原因**——`WritingContext.manifest()` 只有 `budget`／`used`／带 `reason` 的 blocks（`:658-668`），全仓 `未命中`／`missing`（除 `machine_check` 的 `missing_fact`）0 命中。**这条同时是 WORKSTREAM-PLAN §3 P0-2 第三条判据「清单明确显示…未命中人物」的那一半，那半边没代码。** 第二条**只有一半**：「AI 不能自动建卡」成立（新建人物只能产出一份提案，`proposal_actions.py` 人物 ActionSpec 的 `rules` 逐字写着「新建人物只能产出这一份提案，人物号由系统分配」）；但**「预填」没有**——全仓 `预填`／`prefill` 0 命中，人物库那颗「新建人物」开的是空白卡（`CharacterLibrary.tsx:216` → `openFile(NEW_CHARACTER_PATH)`，常量在 `CharacterFormCard.tsx:60`），不带那个被发现的名字；何况「正文出现疑似未建档人物」这件事本身没有任何检测代码，判据前件就无从谈起。
+- 2026-09-11 · **第一条已结案、按口径移出本清单**：判据那句「在清单中明示，不静默丢失」现在有两处出口——run 详情「注入上下文」表头**上方**那条 `.manifest-missing`（真机 run 41：`x=21 y=262 w=1244 h=37`，`beforeColumns=true`，`.manifest-row` 12 行未变），以及终端 `injection_report` 那句「未命中人物：守碑人（简报点名，人物库无同名卡，本窗未注入）」（`NOVEL_CONTEXT_DEBUG=1`，日志第 27 行）。值是 `sorted(cast - 已命中卡)` 一个集合差，随 `manifest()` 落进 `generation_run.input_summary`。结论行在 WORKSTREAM-PLAN 当日历史表。**第二条本轮仍不做**：「AI 不能自动建卡」成立（新建人物只能产出一份提案，`proposal_actions.py` 人物 ActionSpec 的 `rules` 逐字写着「新建人物只能产出这一份提案，人物号由系统分配」）；但**「预填」没有**——全仓 `预填`／`prefill` 0 命中（2026-09-11 复量，本批未动），人物库那颗「新建人物」开的是空白卡（`CharacterLibrary.tsx:216` → `openFile(NEW_CHARACTER_PATH)`，常量在 `CharacterFormCard.tsx:60`），不带那个被发现的名字；何况「正文出现疑似未建档人物」这件事本身没有任何检测代码，判据前件就无从谈起。它的前一半是**推测性 NLP**，主人已定「不先做推测性 NLP」，所以这一条不是漏做，是排在裁定之后。
 
 ### 设定面板接线
 

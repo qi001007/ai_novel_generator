@@ -5445,6 +5445,22 @@ body.resizing {
   font-weight: 500;
 }
 
+.manifest-missing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--warn-soft);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.manifest-missing span {
+  color: var(--text-2);
+}
+
 .manifest-columns {
   display: grid;
   grid-template-columns: 26px 34px 84px minmax(0, 1fr) 56px 200px;

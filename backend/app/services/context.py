@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from json import JSONDecodeError
 from typing import Any
 
@@ -653,11 +653,15 @@ class WritingContext:
     used: int
     selected: list[ContextBlock]
     dropped: list[ContextBlock]
+    # 简报点名、人物库里没有精确同名卡的名字。它们变不成 block（无卡可注），
+    # 所以要在清单上单独占一行，否则这个名字就静默消失了（批注 30.7 第一条）。
+    missing_characters: list[str] = field(default_factory=list)
 
     def manifest(self) -> dict[str, Any]:
         return {
             "budget": self.budget,
             "used": self.used,
+            "missing_characters": self.missing_characters,
             "blocks": [
                 *[block.as_manifest(i) for i, block in enumerate(self.selected, start=1)],
                 *[block.as_manifest() for block in self.dropped],
@@ -764,10 +768,14 @@ def build_writing_context(
         ).first()
 
     cast = {name.strip() for name in (brief.characters if brief else []) if name.strip()}
-    cast_refs = _chapter_refs(
-        [row for row in session.exec(select(Character).where(Character.novel_id == novel_id)).all() if row.name in cast],
-        "character",
-    )
+    cast_rows = [
+        row
+        for row in session.exec(select(Character).where(Character.novel_id == novel_id)).all()
+        if row.name in cast
+    ]
+    # 精确同名才算命中；对不上的名字要能被作者看见，但不做任何模糊匹配（30.7 第二条仍缓）。
+    missing_characters = sorted(cast - {row.name for row in cast_rows})
+    cast_refs = _chapter_refs(cast_rows, "character")
     current_arcs, previous_arcs = _arc_refs_for_chapter(session, novel_id, chapter_number)
     open_foreshadows = _open_foreshadow_refs(session, novel_id)
     brief_ref = f"brief:{brief.id}" if brief and brief.id is not None else ""
@@ -837,6 +845,7 @@ def build_writing_context(
         used=trimmed.used,
         selected=trimmed.selected,
         dropped=[*trimmed.dropped, *empties],
+        missing_characters=missing_characters,
     )
 
 
@@ -872,6 +881,11 @@ def injection_report(
         lines.append(
             f" --. [{TIER_NAMES[block.tier]}] {block.item.kind:<10} "
             f"{block.chars:>5} 字  未注入：{block.item.label}（{block.reason}）"
+        )
+    if ctx.missing_characters:
+        lines.append(
+            f"未命中人物：{'、'.join(ctx.missing_characters)}"
+            "（简报点名，人物库无同名卡，本窗未注入）"
         )
     return "\n".join(lines)
 

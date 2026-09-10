@@ -993,6 +993,24 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(runDetailPage).toContain("scrollHeight - el.clientHeight");
   });
 
+  /* 批次 30.7 第一条（＝ WORKSTREAM-PLAN §3 P0-2 第三条判据里「未命中人物」那一半，
+     2026-09-11 实测那半边没代码）：简报点名、人物库没有同名卡的名字变不成任何一行注入，
+     所以它必须在清单上有一处出口，且这句话只许有一个措辞。 */
+  it("an unmatched cast name has one visible home (批注 30.7 / P0-2)", () => {
+    // 前端：有名字才出这一行
+    expect(runDetailPage).toContain('className="manifest-missing"');
+    expect(runDetailPage).toContain("{manifest.missing_characters?.length ?");
+    // 类型上它是可选的——旧 run 的清单里没有这一项，界面上就不许多出一行空话
+    expect(chatTypes).toContain("missing_characters?: string[]");
+    // 后端清单带着这个键，且那句话与前端同词、各只有一处
+    const contextService = readFileSync("../backend/app/services/context.py", "utf8");
+    expect(contextService).toContain('"missing_characters": self.missing_characters');
+    expect((contextService.match(/未命中人物：/g) ?? []).length).toBe(1);
+    expect((runDetailPage.match(/未命中人物：/g) ?? []).length).toBe(1);
+    // 提醒的底色走既有变量，不许硬写一个色值
+    expect(rule(".manifest-missing")).toContain("var(--warn-soft)");
+  });
+
   it("only the theme picker is cards, and sizes and fonts have one source each", () => {
     expect(preferences).toContain('label="主题"');
     expect(preferences).toContain('value: "system"');

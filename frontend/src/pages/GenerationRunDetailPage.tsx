@@ -355,6 +355,14 @@ export default function GenerationRunDetailPage() {
             {tab === "context" ? (
               manifest ? (
                 <>
+                  {/* 简报点名、人物库没有同名卡的人进不了下面任何一行（无卡可注），
+                      所以在这里显式说一句，否则这个名字就静默消失了（批注 30.7 第一条）。 */}
+                  {manifest.missing_characters?.length ? (
+                    <p className="manifest-missing">
+                      <strong>未命中人物：{manifest.missing_characters.join("、")}</strong>
+                      <span>简报点名，人物库无同名卡，本窗未注入</span>
+                    </p>
+                  ) : null}
                   <div className="manifest-columns" aria-hidden="true">
                     <span>#</span><span>层</span><span>资料</span><span>内容</span>
                     <span>字数</span><span>说明</span>

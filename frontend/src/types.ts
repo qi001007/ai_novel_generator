@@ -92,6 +92,8 @@ export type ContextManifestBlock = {
 export type ContextManifest = {
   budget: number;
   used: number;
+  /** 简报点名、人物库无同名卡的名字。旧 run 的清单里没有这一项。 */
+  missing_characters?: string[];
   blocks: ContextManifestBlock[];
 };
 
