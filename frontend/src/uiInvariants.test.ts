@@ -322,7 +322,11 @@ describe("settled UI decisions must not regress", () => {
     expect(chatPane).toMatch(/proposals\.filter\(\s*\(item\) => item\.valid &&/);
     // 只有恢复那一次调用带 restore；实时流那一支照旧把文件端到前面。
     expect((chatPane.match(/offerFromStream\(row\.id, seed, \{ restore: true \}/g) ?? []).length).toBe(1);
-    expect(filesStore).toMatch(/tabs:\s*restore \|\| state\.tabs\.includes\(proposal\.path\)/);
+    // 批次 35.17 把这个守卫扩到「连不合格的那一份也不加格子」：被闸门拒过的提案画不出 diff
+    // band、应用那颗永远 disabled，占的那一格只是每次刷新多出来的空白「新建人物」。
+    expect(filesStore).toMatch(
+      /tabs:\s*restore \|\| !proposal\.valid \|\| state\.tabs\.includes\(proposal\.path\)/,
+    );
     expect(filesStore).toMatch(/const bringTocForward = !restore &&/);
   });
 

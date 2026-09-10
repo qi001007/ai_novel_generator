@@ -413,8 +413,12 @@ export const useFiles = create<FilesState>((set, get) => ({
       // proposal is also staged immediately: its rendered list is the first place
       // the owner should see the generated directory, while pending remains a
       // separate overlay and is never mistaken for the saved buffer.
+      /* 批注 35.17: 被闸门拒掉的那一份不在这个理由里——它永远画不出 band（应用那颗是
+         disabled 的，applyProposal 也在唯一写入口再拒一遍），所以它不配占一格。以前每次
+         刷新与每一轮实时流都往标签条补一格空白的「新建人物」，刚建好的那一格反而被它换掉。
+         卡片照旧挂在它那条消息上：pending 仍然要写，主人得看见被拒的是哪一份、也丢得掉。 */
       tabs:
-        restore || state.tabs.includes(proposal.path)
+        restore || !proposal.valid || state.tabs.includes(proposal.path)
           ? state.tabs
           : [...state.tabs, proposal.path],
       ...(bringTocForward

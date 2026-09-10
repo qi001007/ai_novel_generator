@@ -126,6 +126,36 @@ describe("files store", () => {
     expect(useFiles.getState().active).not.toBe(TOC_PATH);
   });
 
+  /* 批注 35.17 (2026-09-11): 一张被校验拒掉的围栏不是「一个等着打开的文件」，而是「这一行
+     AI 提议过什么、而那份提议不合格」。以前 offer() 给任何路径都补一格标签，于是作品 6 的
+     msg 65（缺 `姓名/分级/起始章/结束章`、`valid=false`、路径 `settings/characters/new.md`）
+     每次刷新都在标签条留一格空白的「新建人物」。卡片必须继续挂在原消息上（主人得看见被拒的
+     是哪一份、也才丢得掉），被砍的只有那一格。 */
+  it("keeps an invalid proposal off the tab strip (批注 35.17)", async () => {
+    const NEW = "settings/characters/new.md";
+    const proposal = {
+      id: 65,
+      path: NEW,
+      text: "# 无名\n",
+      error: "缺少「姓名/分级/起始章/结束章」",
+      baseText: DOC.text,
+      baseRevision: "rev-1",
+    };
+    await useFiles.getState().attach(1);
+    const tabs = useFiles.getState().tabs;
+
+    useFiles.getState().offer({ ...proposal, valid: false });
+    const state = useFiles.getState();
+    expect(state.tabs).toEqual(tabs);
+    // 提案本身还在：卡片靠它渲染，「丢弃」也靠它从 pending 里摘掉。
+    expect(state.pending[NEW]).toBeTruthy();
+
+    // 另一半，不许被「一律不加标签」顺手打死：合法的那一份仍要落到标签条，
+    // 否则 35.5 那条「建卡换格」的链就没有格子可换。
+    useFiles.getState().offer({ ...proposal, valid: true });
+    expect(useFiles.getState().tabs).toEqual([...tabs, NEW]);
+  });
+
   it("writes an accepted proposal as actor=ai and drops it from pending", async () => {
     await useFiles.getState().attach(1);
     await useFiles.getState().open(BLUEPRINT_PATH);
