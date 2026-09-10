@@ -24,7 +24,7 @@ import MarkdownText from "./MarkdownText";
 import { compressRefs } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, stripProposalFences, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
-import { useFiles } from "../store/files";
+import { draftChapter, useFiles } from "../store/files";
 import type { ChatContextItem, ChatMode, ChatStreamEvent, Chapter, FileProposal, ChatAttachment, StoredChatMessage } from "../types";
 import { useWorkbench } from "../store/workbench";
 import {
@@ -349,6 +349,15 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       baseText,
       baseRevision,
     };
+    /* 批注 35.29b（D-56）：整章正文不再等一次「要不要放进渲染页」的确认——主人要审的是稿子，
+       审的地方是那一章的正文页，确认点搬到定稿入库那一颗。落笔仍走唯一那条 PUT（就在
+       applyProposal 里，actor:"ai" 且带着刚读到的 base_revision），只是这一次点击由系统替他按下。
+       刷新恢复（opts.restore）不走这条路：那一次生成早就落过盘，此刻再写一遍会盖掉他之后
+       在正文页改的字。写砸了就往下走，把卡挂回去——围栏里的字不许两头都不见。 */
+    if (proposal.valid && !opts?.restore && draftChapter(proposal.path) !== null) {
+      offerFile(proposal);
+      if (await useFiles.getState().applyProposal(proposal.path)) return;
+    }
     setRows((prev) =>
       prev.map((row) =>
         row.kind === "agent" && row.id === rowId
@@ -1166,19 +1175,11 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 event.target.value = "";
               }}
             />
+            {/* 批注 35.29b（D-56）：这里原来有一颗「确认并生成」，选中章节就出现、点一下才跑
+                /generate。撤掉：它守的那条路本来就逐字流式（workbench.ts 里每个 delta 直接
+                setDraft 进正文页缓冲），这道确认从没挡住任何东西；主人要的确认是定稿入库，
+                不是「要不要把正文放进渲染页」。发起生成只剩 /generate 这一条命令。 */}
             <span className="spacer" />
-            {selectedChapterId !== null ? (
-              <button
-                type="button"
-                className="primary chat-generate-confirm"
-                disabled={busy || running}
-                onClick={() => void runCommand("/generate")}
-                aria-label="确认并生成正文"
-                title="确认当前章节简报并生成正文"
-              >
-                确认并生成
-              </button>
-            ) : null}
             <div className="model-menu-wrap" ref={modelMenuRef}>
               <button
                 type="button"

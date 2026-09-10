@@ -1172,4 +1172,25 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(workbenchStore).toContain("还没有 D 层简报：");
   });
 
+  /* 批注 35.29b（D-56，2026-09-11）：主人原话「我应该确认的，也是确认定稿入库，而不是确认
+     是不是要放进正文的渲染页。你这个确认就很没有意义」。所以那颗选中章节就出现的
+     「确认并生成」和「整章正文要一次应用点击」这道确认一起撤；确认点搬到定稿入库。
+     注：组件里那段说明提到了这颗按钮的中文名，所以这里数的是三种代码形状，不是中文名。 */
+  it("整章正文直接落进那一章的 draft.md，不再要一次确认（第三十五批批注 35.29b）", () => {
+    expect(chatPane).not.toContain('aria-label="确认并生成正文"');
+    expect(chatPane).not.toContain("chat-generate-confirm");
+    expect(chatPane).not.toContain('title="确认当前章节简报并生成正文"');
+    // 发起生成只剩命令那一条路：组件里不再有用代码写死的那一次 /generate
+    expect(chatPane).not.toContain('void runCommand("/generate")');
+    // 落点仍然只有一条：这一份走的就是 applyProposal 里那条唯一 PUT（actor:"ai"）
+    expect(chatPane).toContain(
+      "if (proposal.valid && !opts?.restore && draftChapter(proposal.path) !== null) {",
+    );
+    expect(chatPane).toContain("if (await useFiles.getState().applyProposal(proposal.path)) return;");
+    // 路径语法归文件层管，组件不自己抄一份正则
+    expect(filesStore).toContain("export const draftChapter = (path: string) => {");
+    // 确认点搬家不是消失：定稿那一颗仍在正文页上
+    expect(editorPane).toContain("通过终审");
+  });
+
 });

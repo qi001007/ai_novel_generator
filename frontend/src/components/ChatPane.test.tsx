@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import ChatPane from "./ChatPane";
 import { toolLine } from "./chatRows";
+import { draftDocument, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 
 const assistantMessage = {
@@ -74,8 +75,26 @@ describe("ChatPane", () => {
     vi.unstubAllGlobals();
   });
 
-  it("requires an explicit confirmation before starting chapter generation", async () => {
+  /* 批注 35.29b（D-56）：主人裁定「确认」不在「要不要把正文放进渲染页」这一头，而在定稿入库
+     那一头——「你这个确认就很没有意义」。这颗按钮守的那条路本来就逐字流式
+     （workbench.ts:464-500 每个 delta 直接 setDraft），它从来没有挡住任何东西。 */
+  const fileDoc = (text: string, revision: string) => ({
+    path: "chapters/0001/draft.md",
+    kind: "draft",
+    layer: "D",
+    label: "正文",
+    text,
+    ai_fields: [],
+    revision,
+  });
+
+  it("批注 35.29b：生成一章不用先点确认，正文随 delta 一个字一个字长进正文页", async () => {
     const user = userEvent.setup();
+    const streamed = "意识恢复的瞬间，疼痛也跟着回来了。";
+    // 与真机一致：选中作品时文件层 store 就 attach 上了（ChatPaneProposal.test.tsx 同一做法），
+    // 否则 applyProposal / reload 在 novelId 为 null 时直接返回，测的就不是跑的那条路。
+    useFiles.getState().reset();
+    useFiles.setState({ novelId: 1 });
     useWorkbench.setState({
       selectedChapterId: 7,
       briefs: [{ id: 8, novel_id: 1, arc_plan_id: null, chapter_number: 1, goal: "推进", events: "相遇", pov: "主角", characters: [], conflict: "", hook: "", required_facts: [], status: "ready" }],
@@ -86,15 +105,115 @@ describe("ChatPane", () => {
       const url = input.toString();
       urls.push(url);
       if (url.includes("/chapters/from-brief/8/stream")) {
-        return Promise.resolve(sse([["done", { chapter: { id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: "正文", word_count: 2, status: "draft", final_decision: "", final_comment: "" }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: 2, issues: [] } }], ["end", {}]]));
+        return Promise.resolve(sse([
+          ["delta", { text: "意识恢复的" }],
+          ["delta", { text: "瞬间，疼痛也跟着回来了。" }],
+          ["done", { chapter: { id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: streamed, word_count: streamed.length, status: "draft", final_decision: "", final_comment: "" }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: streamed.length, issues: [] } }],
+          ["end", {}],
+        ]));
       }
+      if (url.includes("/files/chapters/0001/draft.md")) return json(fileDoc(draftDocument(1, streamed), "r2"));
       return Promise.resolve(json([]));
     }));
 
     render(<MemoryRouter><ChatPane /></MemoryRouter>);
-    await user.click(await screen.findByRole("button", { name: "确认并生成正文" }));
+    // 判据①：选了章节也不许再出现这颗确认，三种节点各数一遍
+    expect(screen.queryByRole("button", { name: "确认并生成正文" })).toBeNull();
+    expect(screen.queryByText("确认并生成")).toBeNull();
+    expect(document.querySelector(".chat-generate-confirm")).toBeNull();
+
+    // 判据②：命令本身就是那一次发起，全程零点击；正文页缓冲随 delta 单调变长
+    const growth: number[] = [];
+    const stop = useFiles.subscribe((state) => {
+      const next = state.entries["chapters/0001/draft.md"]?.draft.length ?? 0;
+      if (growth[growth.length - 1] !== next) growth.push(next);
+    });
+    await user.type(screen.getByLabelText("对话输入"), "/generate 1");
+    await user.keyboard("{Enter}");
     await waitFor(() => expect(urls.some((url) => url.includes("/chapters/from-brief/8/stream"))).toBe(true));
+    await waitFor(() =>
+      expect(useFiles.getState().entries["chapters/0001/draft.md"]?.draft).toContain(streamed),
+    );
+    stop();
     expect(screen.getAllByText("/generate").length).toBeGreaterThan(0);
+    const rising = growth.filter((length) => length > 0);
+    expect(rising.length).toBeGreaterThanOrEqual(2);
+    expect(rising.every((length, index) => index === 0 || length > rising[index - 1])).toBe(true);
+  });
+
+  /* 另一路：模型在回答里自己写 `​```markdown @chapters/0001/draft.md`（D-54 立的落点）。
+     今天它挂一张卡等一次「应用」；按 D-56 这一份直接落进那一章，卡不再出现。 */
+  it("批注 35.29b：整章正文的围栏不挂卡、不等点击，直接写进那一章的 draft.md", async () => {
+    const user = userEvent.setup();
+    const fence = "```markdown @chapters/0001/draft.md\n意识恢复的瞬间，疼痛也跟着回来了。\n```";
+    useFiles.getState().reset();
+    useFiles.setState({ novelId: 1 });
+    const proposed = draftDocument(1, "意识恢复的瞬间，疼痛也跟着回来了。");
+    const writes: { url: string; body: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if ((init?.method ?? "GET").toUpperCase() === "PUT") {
+        writes.push({ url, body: JSON.parse(String(init?.body)) as Record<string, unknown> });
+        return json({ path: "chapters/0001/draft.md", changed: ["content"], revision: "r2" });
+      }
+      if (url.includes("/chat/stream")) {
+        return Promise.resolve(sse([
+          ["context", { items: [], unknown_mentions: [], mode: "write", temperature: 0.7 }],
+          ["delta", { text: `写完了。\n\n${fence}` }],
+          ["proposal", { path: "chapters/0001/draft.md", text: proposed, valid: true, error: null }],
+          ["done", { message: stored(`写完了。\n\n${fence}`) }],
+          ["end", {}],
+        ]));
+      }
+      if (url.includes("/files/chapters/0001/draft.md")) return json(fileDoc(draftDocument(1, "旧稿"), "r1"));
+      return Promise.resolve(json([]));
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "把第 1 章写完整");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(writes.length).toBe(1));
+    expect(writes[0].url).toBe("/api/novels/1/files/chapters/0001/draft.md");
+    expect(writes[0].body).toMatchObject({ actor: "ai", text: proposed, base_revision: "r1" });
+    // 不挂卡：这张卡的任何一个部件都不许在屏幕上
+    expect(document.querySelector(".proposal-file")).toBeNull();
+    expect(document.querySelector(".proposal-btn")).toBeNull();
+    // 35.21 的另一半仍然成立：摘围栏靠渲染，不靠这张卡在不在
+    const bubble = document.querySelector(".chat-card.agent");
+    expect(bubble?.textContent).toContain("写完了。");
+    expect(bubble?.textContent).not.toContain("```markdown");
+    expect(bubble?.textContent).not.toContain("意识恢复的瞬间");
+  });
+
+  /* D-56 那道守卫得有行为钉着，不能只在源码串里出现一次：刷新恢复的那一次生成早就落过盘，
+     此刻再写一遍会盖掉主人之后在正文页框选改的字。所以历史里的 draft 围栏只回卡片，不落笔。 */
+  it("批注 35.29b：刷新恢复只把卡片挂回去，不再写第二遍那一章的 draft.md", async () => {
+    const proposed = draftDocument(1, "意识恢复的瞬间，疼痛也跟着回来了。");
+    useFiles.getState().reset();
+    useFiles.setState({ novelId: 1 });
+    useWorkbench.setState({ selectedNovelId: 1, selectedChapterId: null } as never);
+    const writes: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if ((init?.method ?? "GET").toUpperCase() === "PUT") {
+        writes.push(url);
+        return json({ path: "chapters/0001/draft.md", changed: ["content"], revision: "r2" });
+      }
+      if (url.includes("/chat/messages")) {
+        return json([{
+          ...assistantMessage,
+          proposals: [{ path: "chapters/0001/draft.md", text: proposed, valid: true, error: "" }],
+        }]);
+      }
+      if (url.includes("/files/chapters/0001/draft.md")) return json(fileDoc(draftDocument(1, "主人改过的稿子"), "r3"));
+      return Promise.resolve(json([]));
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    // 卡片回来了：35.22 那条裁定（刷新后卡片在、页签不动）不被 29b 推翻
+    await waitFor(() => expect(document.querySelector(".proposal-file")).toBeTruthy());
+    expect(document.querySelector(".proposal-file")?.textContent).toContain("chapters/0001/draft.md");
+    expect(writes).toEqual([]);
   });
 
   it("renders the streamed reply and its token detail", async () => {
