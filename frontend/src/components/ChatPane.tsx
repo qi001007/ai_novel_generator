@@ -25,7 +25,7 @@ import { compressRefs } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, stripProposalFences, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
-import type { ChatContextItem, ChatMode, ChatStreamEvent, FileProposal, ChatAttachment, StoredChatMessage } from "../types";
+import type { ChatContextItem, ChatMode, ChatStreamEvent, Chapter, FileProposal, ChatAttachment, StoredChatMessage } from "../types";
 import { useWorkbench } from "../store/workbench";
 import {
   applyStreamEvent,
@@ -38,7 +38,7 @@ import {
 import { modeLabel } from "../labels";
 
 const commands = [
-  { name: "/generate", args: "", desc: "按当前 D 简报生成正文" },
+  { name: "/generate", args: "<章节序号>", desc: "生成该章正文；不写序号就是当前选中章" },
   { name: "/review", args: "", desc: "AI 七维自检当前章节" },
   { name: "/check", args: "", desc: "机械校验（字数/必要事实）" },
   { name: "/summary", args: "", desc: "章摘要与事实落库" },
@@ -54,6 +54,20 @@ const PLAN_LAYERS: Record<string, { label: string; mention: string }> = {
   C: { label: "C 剧情弧", mention: "@弧" },
   D: { label: "D 章节简报", mention: "@简报" },
 };
+
+// 批注 35.30：这一串原先算出来就丢掉，`/generate 3` 实际生成的还是碰巧选中的那一章。
+function chapterByArgument(argument: string, chapters: Chapter[]): Chapter | null {
+  const number = Number(argument);
+  if (!argument || !Number.isInteger(number)) return null;
+  return chapters.find((item) => item.chapter_number === number) ?? null;
+}
+
+function unmatchedChapter(argument: string, chapters: Chapter[]): string {
+  const example = chapters[0];
+  return example
+    ? `「${argument}」对不上任何一章：/generate 后面跟章节序号，例如 /generate ${example.chapter_number}`
+    : "这本书还没有章节：先在 B 目录里建一章，或在对话里说「新建第 1 章」";
+}
 
 const DOCK_MAX_HEIGHT = 420;
 // 批注 8: the field already grows with what you type, so a second, manual way to
@@ -586,6 +600,17 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     const errorBefore = state.error;
     try {
       if (command.name === "/generate") {
+        if (argument) {
+          const picked = chapterByArgument(argument, useWorkbench.getState().chapters);
+          if (!picked) {
+            patchCommand(id, {
+              status: "failed",
+              detail: unmatchedChapter(argument, useWorkbench.getState().chapters),
+            });
+            return;
+          }
+          useWorkbench.getState().openChapterTab(picked.id);
+        }
         await state.generateDraft();
         const snapshot = useWorkbench.getState();
         const chapter = snapshot.chapters.find((item) => item.id === snapshot.selectedChapterId);

@@ -1137,4 +1137,18 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect((chatPane.match(/void offerFromStream\(/g) ?? []).length).toBe(1);
   });
 
+  // 批注 35.30（2026-09-11）：`/generate` 那颗步骤只显示「请先选择章节；该章还需要一份
+  // D 层简报」——两句话都是原因，没有一句是下一步，命令怎么带参数在界面上查不到。
+  it("says how to drive a slash command, not only why it refused", () => {
+    // 自动补全那一行带着参数形状（<code> 渲染的就是 name + args）
+    expect(chatPane).toContain('{ name: "/generate", args: "<章节序号>"');
+    // 序号不是算出来再丢掉：解析在一个地方，解析到了就把那一章端到前面
+    expect(chatPane).toContain("function chapterByArgument(");
+    expect(chatPane).toContain("useWorkbench.getState().openChapterTab(picked.id)");
+    // 两种原因各说各的，每一句都带着可以照抄的下一步
+    expect(workbenchStore).not.toContain("请先选择章节；该章还需要一份 D 层简报");
+    expect(workbenchStore).toContain("在左边点一章，或输入 /generate ${");
+    expect(workbenchStore).toContain("还没有 D 层简报：");
+  });
+
 });

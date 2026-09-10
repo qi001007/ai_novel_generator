@@ -655,6 +655,58 @@ describe("ChatPane", () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/chat/stream"))).toHaveLength(0);
   });
 
+  // 批注 35.30：/generate 后面到底跟什么，界面上原先任何地方都查不到。
+  const chapterOne = { id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: "", word_count: 0, status: "draft" as const, final_decision: "", final_comment: "" };
+  const chapterTwo = { id: 9, novel_id: 1, brief_id: 10, chapter_number: 2, title: "第二章", content: "", word_count: 0, status: "draft" as const, final_decision: "", final_comment: "" };
+  const briefOf = (id: number, chapterNumber: number) => ({ id, novel_id: 1, arc_plan_id: null, chapter_number: chapterNumber, goal: "推进", events: "相遇", pov: "主角", characters: [], conflict: "", hook: "", required_facts: [], status: "ready" as const });
+
+  it("generates the chapter named by the /generate argument", async () => {
+    const user = userEvent.setup();
+    useWorkbench.setState({
+      selectedChapterId: chapterOne.id,
+      chapters: [chapterOne, chapterTwo],
+      briefs: [briefOf(8, 1), briefOf(10, 2)],
+    });
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = input.toString();
+      urls.push(url);
+      if (url.includes("/chapters/from-brief/10/stream")) {
+        return Promise.resolve(sse([
+          ["done", { chapter: { ...chapterTwo, content: "正文", word_count: 2 }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: 2, issues: [] } }],
+          ["end", {}],
+        ]));
+      }
+      return Promise.resolve(json([]));
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "/generate 2");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(urls.some((url) => url.includes("/chapters/from-brief/10/stream"))).toBe(true));
+    expect(urls.some((url) => url.includes("/chapters/from-brief/8/stream"))).toBe(false);
+    expect(useWorkbench.getState().selectedChapterId).toBe(chapterTwo.id);
+  });
+
+  it("tells what to type next when /generate has no chapter in scope", async () => {
+    const user = userEvent.setup();
+    useWorkbench.setState({
+      selectedChapterId: null,
+      chapters: [chapterOne, chapterTwo],
+      briefs: [briefOf(8, 1), briefOf(10, 2)],
+    });
+    vi.stubGlobal("fetch", vi.fn(() => json([])));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "/generate");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() =>
+      expect(screen.getByText(/在左边点一章，或输入 \/generate 1 生成第 1 章/)).toBeTruthy(),
+    );
+  });
+
   it("says a round needed no tool rather than leaving the detail blank", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

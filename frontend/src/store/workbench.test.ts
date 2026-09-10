@@ -165,6 +165,31 @@ describe("workbench chapter writes", () => {
     expect(useFiles.getState().entries[draftDoc.path].doc?.revision).toBe("draft-2");
     expect(useWorkbench.getState().error).toBeNull();
   });
+
+  // 批注 35.30：原来一句「请先选择章节；该章还需要一份 D 层简报」把两种原因揉成一句，
+  // 全是原因、没有下一步。现在两句分开，各自带着可以照抄的命令。
+  it("names a copyable next step when no chapter is selected", async () => {
+    useWorkbench.setState({ selectedChapterId: null });
+
+    await useWorkbench.getState().generateDraft();
+
+    expect(api.streamGeneration).not.toHaveBeenCalled();
+    const error = useWorkbench.getState().error ?? "";
+    expect(error).toContain("在左边点一章");
+    expect(error).toContain("/generate 42");
+    expect(error).not.toContain("简报");
+  });
+
+  it("stops blaming the selection when a chapter is selected but has no brief", async () => {
+    useWorkbench.setState({ briefs: [] });
+
+    await useWorkbench.getState().generateDraft();
+
+    const error = useWorkbench.getState().error ?? "";
+    expect(error).not.toContain("请先选择章节");
+    expect(error).toContain("第 42 章还没有 D 层简报");
+    expect(error).toContain("/generate 42");
+  });
 });
 
 describe("workbench novel selection", () => {

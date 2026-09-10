@@ -441,8 +441,20 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         : null) ??
       briefs.find((item) => item.id === selectedBriefId) ??
       null;
-    if (!chapter || !brief) {
-      set({ error: "请先选择章节；该章还需要一份 D 层简报" });
+    if (!chapter) {
+      // 批注 35.30：原来这一句把两种原因揉在一起，全是原因、没有下一步。
+      const first = chapters[0];
+      set({
+        error: first
+          ? `还没选中章节：在左边点一章，或输入 /generate ${first.chapter_number} 生成第 ${first.chapter_number} 章`
+          : "这本书还没有章节：先在 B 目录里建一章，或在对话里说「新建第 1 章」",
+      });
+      return;
+    }
+    if (!brief) {
+      set({
+        error: `第 ${chapter.chapter_number} 章还没有 D 层简报：先说「给第 ${chapter.chapter_number} 章写一份简报」，应用卡片后再 /generate ${chapter.chapter_number}`,
+      });
       return;
     }
 
