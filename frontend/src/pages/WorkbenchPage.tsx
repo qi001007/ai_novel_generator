@@ -983,7 +983,7 @@ export default function WorkbenchPage() {
             <div className="right-column">
               {rightView === "feedback" && <FeedbackPanel novelId={state.selectedNovelId} />}
               {rightView === "worldmap" && <WorldMapPanel novelId={state.selectedNovelId} />}
-              {rightView === "foreshadow" && <ForeshadowWall novelId={state.selectedNovelId} />}
+              {rightView === "foreshadow" && <ForeshadowWall />}
               {rightView === "files" && <FileEditorPane />}
               {rightView === "editor" && <EditorPane />}
             </div>

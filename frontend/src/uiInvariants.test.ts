@@ -1011,6 +1011,28 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(rule(".manifest-missing")).toContain("var(--warn-soft)");
   });
 
+  /* 批次 35.36（完成定义 3「没有假按钮」＋ 4「未做能力明确标为未开放」）：
+     2026-09-11 全仓量到 153 枚 <button> 里有 4 枚既不带任何 on* 处理器、也不写 disabled
+     ——伏笔墙与世界观地图那两枚写的是 disabled={!novelId}，选中作品的那一刻它就是亮的，
+     点下去什么都不发生。钉法照抄 T-19 的教训：扫整类而不是点名，否则下一个组件再犯一次。 */
+  it("no button looks usable but does nothing (批注 35.36 / 完成定义 3·4)", () => {
+    const offenders: string[] = [];
+    let tags = 0;
+    for (const [file, source] of Object.entries(componentSources)) {
+      if (file.includes(".test.")) continue;
+      for (const tag of source.match(/<button\b[\s\S]*?>/g) ?? []) {
+        tags += 1;
+        const acts = /\son[A-Z]\w*=/.test(tag) || /type="submit"/.test(tag);
+        // 只认**裸** disabled。disabled={!novelId} 正是这条要挡的写法：条件一满足就复活成假按钮
+        const shut = /\sdisabled(?![=\w])/.test(tag);
+        if (!acts && !shut) offenders.push(`${file} | ${tag.replace(/\s+/g, " ").slice(0, 70)}`);
+      }
+    }
+    // 扫描本身要跑到整棵树，别退化成空断言
+    expect(tags).toBeGreaterThanOrEqual(150);
+    expect(offenders, offenders.join("\n")).toEqual([]);
+  });
+
   it("only the theme picker is cards, and sizes and fonts have one source each", () => {
     expect(preferences).toContain('label="主题"');
     expect(preferences).toContain('value: "system"');

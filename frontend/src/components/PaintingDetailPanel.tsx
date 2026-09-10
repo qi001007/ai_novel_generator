@@ -27,11 +27,12 @@ export default function PaintingDetailPanel({ onBack }: PaintingDetailPanelProps
         </button>
         <h2>观星阁全域图 · 参考稿 v3</h2>
         <div className="painting-header-actions">
-          <button type="button" className="secondary" title="下载参考图">
+          {/* 这一页自己就写着「生图暂未开放」，那两颗动作也不许装作能用（批注 35.36） */}
+          <button type="button" className="secondary" disabled title="暂未开放">
             <Download size={14} />
             下载
           </button>
-          <button type="button" className="primary" title="设为参考">
+          <button type="button" className="primary" disabled title="暂未开放">
             <Star size={14} />
             设为参考
           </button>
