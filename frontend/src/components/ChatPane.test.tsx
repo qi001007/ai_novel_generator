@@ -185,12 +185,30 @@ describe("ChatPane", () => {
     });
   }
 
-  it("says on the answer which mode the sentence used, while the dial stays where it was put", async () => {
+  it("says on the answer which mode the sentence used, and the readout lights that same one", async () => {
     await runTurn("plan");
     expect(document.querySelector(".chat-card .chat-mode")?.textContent).toBe("按「计划」");
-    // 开关仍显示主人拨的那一侧：它说的是下一句的起点，不是这一答的结论，两处不互相矛盾。
-    expect(screen.getByRole("radio", { name: "写作" }).getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByRole("radio", { name: "计划" }).getAttribute("aria-checked")).toBe("false");
+    // 批注 35.28（方案 1）：原先这里钉的是「开关仍显示主人拨的那一侧」——两颗各说一套，
+    // 于是「我点了写作却被改成计划」永远看得见、永远改不掉。现在只有一个答案：
+    // 点亮的那一侧就是最近一答实际用的那一侧，与上面那颗标签同源。
+    expect(document.querySelector(".mode-switch button.selected")?.textContent).toBe("计划");
+  });
+
+  it("批注 35.28：那两颗是状态栏，点它不改任何东西", async () => {
+    const user = userEvent.setup();
+    await runTurn("plan");
+    const readouts = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".mode-switch button"),
+    );
+    expect(readouts.map((node) => node.textContent)).toEqual(["计划", "写作"]);
+    for (const node of readouts) {
+      // 判据逐条：role 不为 radio、aria-disabled 为真，且真的点不动（disabled 不带入 Tab 序）
+      expect(node.getAttribute("role")).toBeNull();
+      expect(node.getAttribute("aria-disabled")).toBe("true");
+      expect(node.disabled).toBe(true);
+    }
+    await user.click(readouts[1]);
+    expect(document.querySelector(".mode-switch button.selected")?.textContent).toBe("计划");
   });
 
   it("says 按「写作」 on the answer when the sentence really asked for prose", async () => {

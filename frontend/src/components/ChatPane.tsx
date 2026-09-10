@@ -189,6 +189,14 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     streaming ||
     rows.some((row) => row.kind === "command" && row.status === "running");
 
+  // 批注 35.28：那两颗不再是开关，所以「哪一侧亮」不能再看本地 mode——它只是这一句
+  // 发出去时的起点，跑起来会由那句话改判（D-41）。唯一的出处是最近一答实际用的模式，
+  // 也就是答案行那颗「按「X」」读的同一条数据。还没有一答时才是本地值。
+  const shownMode =
+    rows
+      .filter((row): row is AgentRow => row.kind === "agent" && Boolean(row.meta.mode))
+      .at(-1)?.meta.mode ?? mode;
+
   useEffect(() => {
     const node = scrollRef.current;
     if (node && typeof node.scrollTo === "function") {
@@ -1118,23 +1126,19 @@ export default function ChatPane({ className = "" }: { className?: string }) {
             />
           </div>
           <div className="chat-toolbar">
-            <div className="mode-switch" role="radiogroup" aria-label="对话模式">
-              <button
-                type="button"
-                role="radio"
-                aria-checked={mode === "plan"}
-                className={mode === "plan" ? "selected" : ""}
-                onClick={() => setMode("plan")}
-              >
+            {/* 批注 35.28（方案 1）：这两颗从此只是状态栏。模式由主人这句话判（D-41），
+                一颗点了却决定不了任何事的开关只剩误导（「我点了『写作』，它自动切成『计划』」）。
+                disabled 与 aria-disabled 是两个用途：前者让它真的点不动、也不进 Tab 序，
+                后者是这条批注判据要能在 DOM 上量到的那个属性。要回硬交互得先立新决定推翻 D-41。 */}
+            <div
+              className="mode-switch"
+              aria-label="对话模式"
+              title="点亮的是最近一答实际用的模式；这一轮跑哪个，由你这句话定"
+            >
+              <button type="button" disabled aria-disabled={true} className={shownMode === "plan" ? "selected" : ""}>
                 {modeLabel("plan")}
               </button>
-              <button
-                type="button"
-                role="radio"
-                aria-checked={mode === "write"}
-                className={mode === "write" ? "selected" : ""}
-                onClick={() => setMode("write")}
-              >
+              <button type="button" disabled aria-disabled={true} className={shownMode === "write" ? "selected" : ""}>
                 {modeLabel("write")}
               </button>
             </div>

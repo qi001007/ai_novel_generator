@@ -1560,11 +1560,12 @@ select:focus-visible {
   color: var(--text-2);
   font-size: 12px;
   line-height: 20px;
+  /* 批注 35.28：状态栏，不是开关。 */
+  cursor: default;
 }
 
-.mode-switch button:hover:not(.selected) {
-  color: var(--text-1);
-}
+/* 原来这里有一条规则：鼠标停在未选中那一侧时把灰字提亮——那是「你可以点它」的手势。
+   这两颗不再可点，手势就得跟着撤，否则屏幕上仍然是一片「点了会有事发生」的样子。 */
 
 /* No filled pill: a tinted box on one item and nothing on its neighbour is what
    made the active one look taller. Colour plus an inset underline keeps the box

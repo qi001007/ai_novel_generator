@@ -172,6 +172,27 @@ describe("settled UI decisions must not regress", () => {
     expect(rule(".chat-card .chat-mode")).toContain("var(--text-2)");
   });
 
+  it("composer 那两颗是状态栏不是开关（第三十五批批注 35.28）", () => {
+    // 主人：「我点击了『写作』之后，它就一定是以『写作』的形式进行工作……它自动切成了『计划』。」
+    // D-41 早已裁定模式由那句话判，所以这颗可以拨动、却决定不了任何事的开关只剩误导。
+    // 方案 1 的代价（没有强制某模式的入口）登记在 UI-BACKLOG；要回硬交互得先立新 D-xx 推翻 D-41。
+    // radio 归零：radiogroup 是随这颗开关一起走的，不许留半套语义。
+    expect((chatPane.match(/role="radio"/g) ?? []).length).toBe(0);
+    expect(chatPane).not.toContain('className="mode-switch" role="radiogroup"');
+    // 数的是 JSX 属性写法：组件里那段说明也提到了这个名字。
+    expect((chatPane.match(/aria-disabled=\{true\}/g) ?? []).length).toBe(2);
+    // 点亮哪一侧只有一个出处：最近一答实际用的模式——与上面那颗「按「X」」同一条数据。
+    // 本地 mode 仍然是请求体与 /plan 的起点，但它不再决定屏幕上哪一侧亮。
+    expect(chatPane).toContain(".at(-1)?.meta.mode ?? mode");
+    expect((chatPane.match(/\{shownMode === "(plan|write)" \? "selected" : ""\}/g) ?? []).length).toBe(2);
+    expect(chatPane).not.toMatch(/className=\{mode === "(plan|write)" \? "selected"/);
+    // 不可点的控件不许还留着可点的手势
+    expect(css).not.toMatch(/\.mode-switch button:hover/);
+    // 不借 rule()：它取到「第一个 }」为止，而这条规则里那段老注释带着 button{min-height:32px}，
+    // 声明会被那句注释截断。按行从选择器往后找。
+    expect(css).toMatch(/\.mode-switch button \{[\s\S]*?\n  cursor: default;/);
+  });
+
   it("the two tab strips shrink and stop at the same two numbers (第十五批批注 1.1、1.2)", () => {
     // The floor and the ceiling are what decide when a strip overflows, and the
     // owner asked for the chapter strip to behave like the file strip - not for a
