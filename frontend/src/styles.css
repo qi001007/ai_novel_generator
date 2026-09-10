@@ -1101,6 +1101,26 @@ select:focus-visible {
   color: var(--text-2);
 }
 
+.chat-md table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.chat-md th,
+.chat-md td {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.chat-md th {
+  background: var(--surface-alt);
+  color: var(--text-2);
+  font-weight: 600;
+}
+
 .chat-md code {
   padding: 1px 4px;
   border-radius: 3px;

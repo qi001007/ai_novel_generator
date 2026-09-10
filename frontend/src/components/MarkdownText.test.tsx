@@ -69,4 +69,40 @@ describe("MarkdownText", () => {
     expect(paragraphs).toHaveLength(1);
     expect(paragraphs[0].querySelector("[data-testid='caret']")).toBeTruthy();
   });
+
+  // 批次 35.26，主人原话「看来你现在的对话页面并不支持列表的形式」。输入是他作品 7
+  // 第 70 条回答里那段逐字表格——渲染器压根没有表格分支，每行都掉进 <p>。
+  const OWNER_TABLE = [
+    "| 层级 | 当前状态 | 建议 |",
+    "|------|----------|------|",
+    "| **B 目录** | 仅第42章 | 需要扩展，至少覆盖卷一10-60章的章节规划 |",
+    '| **C 剧情弧** | 弧6"卷一"（第10-60章） | 需补充目标/冲突/收束的具体内容 |',
+    "| **世界观** | 空 | 建议先设计星渊碑的基本设定（能量机制、来源） |",
+    '| **人物** | 空 | 主角"探针"及三方势力代表需要人物卡 |',
+  ].join("\n");
+
+  it("renders the owner's pipe table as a table, not as six paragraphs", () => {
+    const { container } = render(<MarkdownText text={OWNER_TABLE} />);
+    expect(container.querySelectorAll("thead th")).toHaveLength(3);
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(4);
+    expect(container.querySelectorAll("tr")).toHaveLength(5);
+    expect(container.querySelector("table")).toBeTruthy();
+    // the markup that made it a table must not survive as text
+    expect(container.textContent).not.toContain("|");
+    expect(container.textContent).not.toContain("---");
+    expect(container.querySelectorAll("p")).toHaveLength(0);
+  });
+
+  it("still parses inline markup inside table cells", () => {
+    const { container } = render(<MarkdownText text={OWNER_TABLE} />);
+    const first = container.querySelector("tbody td");
+    expect(first?.querySelector("strong")?.textContent).toBe("B 目录");
+    expect(container.textContent).not.toContain("**");
+  });
+
+  it("keeps a sentence that merely contains a bar out of the table branch", () => {
+    const { container } = render(<MarkdownText text={"可选 A | B 两种落点"} />);
+    expect(container.querySelector("table")).toBeNull();
+    expect(container.querySelector("p")?.textContent).toBe("可选 A | B 两种落点");
+  });
 });

@@ -18,6 +18,22 @@ import { Copy } from "lucide-react";
 const INLINE =
   /(`[^`]+`|\*\*[^*\n]+\*\*|\*[^*\n]+\*|\[[^\]\n]+\]\((?:https?:\/\/|mailto:)[^)\s]*\)|https?:\/\/[^\s)）】」，。；]+)/g;
 
+/**
+ * A GFM pipe table. The owner's 35.26 answer is one, and this renderer had no table
+ * branch at all, so every row fell through to `<p>` and the `|` reached the screen.
+ *
+ * A table is only a table when the second line is the `|---|---|` separator - that is
+ * what keeps "可选 A | B 两种落点" a sentence.
+ */
+const TABLE_SEPARATOR = /^\s*\|?[\s:|-]*-[\s:|-]*\|[\s:|-]*$/;
+
+function cells(line: string): string[] {
+  let body = line.trim();
+  if (body.startsWith("|")) body = body.slice(1);
+  if (body.endsWith("|")) body = body.slice(0, -1);
+  return body.split("|").map((one) => one.trim());
+}
+
 function inline(raw: string, key: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let rest = raw;
@@ -146,6 +162,39 @@ export default function MarkdownText({
         i += 1;
       }
       nodes.push(<CodeBlock key={`c${i}`} info={info} text={body.join("\n")} />);
+      continue;
+    }
+    if (line.includes("|") && i + 1 < lines.length && TABLE_SEPARATOR.test(lines[i + 1])) {
+      const at = i;
+      const header = cells(line);
+      const rows: string[][] = [];
+      i += 2;
+      while (i < lines.length && lines[i].includes("|")) {
+        rows.push(cells(lines[i]));
+        i += 1;
+      }
+      i -= 1;
+      flushList();
+      nodes.push(
+        <table key={`t${at}`}>
+          <thead>
+            <tr>
+              {header.map((one, n) => (
+                <th key={n}>{inline(one, `t${at}h${n}`)}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row, r) => (
+              <tr key={r}>
+                {row.map((one, n) => (
+                  <td key={n}>{inline(one, `t${at}r${r}c${n}`)}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>,
+      );
       continue;
     }
     const heading = line.match(/^(#{1,4})\s+(.*)$/);
