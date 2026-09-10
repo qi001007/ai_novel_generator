@@ -50,7 +50,7 @@ export const draftBody = (text: string, chapter: number) => {
 
 export const briefChapter = (path: string) => {
   const m = /^(?:briefs\/([0-9]{4})\.md|chapters\/([0-9]{4})\/brief\.md)$/.exec(path);
-  return m ? Number(m[1]) : null;
+  return m ? Number(m[1] ?? m[2]) : null;
 };
 const CHARACTER_PATH = /^settings\/characters\/[0-9]{1,6}\.md$/;
 

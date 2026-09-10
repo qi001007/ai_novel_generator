@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api";
-import { BLUEPRINT_PATH, TOC_PATH, chapterMatches, chapterNumberLabel, isDirty, useFiles } from "./files";
+import {
+  BLUEPRINT_PATH,
+  TOC_PATH,
+  briefChapter,
+  chapterMatches,
+  chapterNumberLabel,
+  isDirty,
+  useFiles,
+} from "./files";
 
 vi.mock("../api", async (importOriginal) => {
   const real = await importOriginal<typeof import("../api")>();
@@ -294,5 +302,21 @@ describe("the tree's chapter search", () => {
   it("pads to four digits but never truncates a long number", () => {
     expect(chapterNumberLabel(1)).toBe("0001");
     expect(chapterNumberLabel(12345)).toBe("12345");
+  });
+});
+
+describe("the chapter a brief path names", () => {
+  // 批注 35.33：`chapters/NNNN/brief.md` 才是规范路径（D-03），它命中的是第二个捕获组，
+  // 而旧写法只读 m[1]，于是回 NaN。NaN 不是 null，调用方那句 `?? 0` 挡不住它，
+  // 屏上就成了「第 NaN 章」。
+  it("reads the number out of the canonical path, not just the legacy one", () => {
+    expect(briefChapter("briefs/0007.md")).toBe(7);
+    expect(briefChapter("chapters/0007/brief.md")).toBe(7);
+  });
+
+  it("says null for a path that names no brief, so callers never see NaN", () => {
+    expect(briefChapter("chapters/0007/draft.md")).toBeNull();
+    expect(briefChapter("chapters/0007/meta.md")).toBeNull();
+    expect(briefChapter("toc.md")).toBeNull();
   });
 });

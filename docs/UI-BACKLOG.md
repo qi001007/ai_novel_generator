@@ -111,15 +111,6 @@
 
 验收：任选一条判据并写明取哪一条：① 围栏那一路在真机上右栏字符数随时间单调增长（要一次真模型对话）；② 与主人确认「一次落完」可接受，本条结案进 DECISIONS。
 
-### 35.33 `briefChapter()` 对规范路径回 `NaN`，第二个分支等于没写（35.29b 复核 `draftChapter` 时顺手量到，本轮不改）
-
-- [ ] 实测（`node -e` 跑同一份正则）：`briefs/0001.md` → `1`，`chapters/0001/brief.md` → **`NaN`**。正则里那个 `chapters/([0-9]{4})/brief\.md` 是第二个捕获组，而 `return m ? Number(m[1]) : null` 只读 `m[1]`——命中第二个分支时 `m[1]` 是 `undefined`。`NaN` 还不是 `null`，所以调用方那句 `?? 0` 挡不住它（`WorkbenchPage.tsx:659`）。责任提交：加第二个分支的是 `41c1a36b`，只读 `m[1]` 的是 `cb2018f7`。
-- [ ] 为什么界面上今天看不出来（登记要如实）：`briefRows` 随后按 `row.chapter > 0` 把 `NaN` 那几条丢掉，再由 `state.chapters.forEach` 用 `briefPath(chapter)` 补回来（`WorkbenchPage.tsx:663-672`），而简报与章节是成对建的，所以**有章节行的简报仍然在列**。掉出来的是「只有 `brief.md`、还没有 `chapter` 行」那一种——正是 29c 要系统自动补简报那一轮会先造出来的形状。**本轮不改**（工作规则 2：顺手发现的只登记），但 29c 动手前得先看它一眼。
-- [x] 29c 按本条要求「动手前先看它一眼」的结论（**本轮仍不改**）：29c 这一路的 `target` 取自 `live.chapters`，所以**必然已有章节行**，「只有 `brief.md`、还没有 `chapter` 行」那一种形状在本路不成立；真机 `3529c.db` 那一次左侧树 `0001` 下 `draft.md` 与 `brief.md` 两枚都在（截图 `g3529c-4500s.png`），屏上任何地方没有「第 NaN 章」。
-- [ ] 修法候选：`Number(m[1] ?? m[2])`——同一份 `draftChapter`（`files.ts:119-122`）已经是这个写法，照它改即可。
-
-验收：`briefChapter("chapters/0007/brief.md") === 7` 与 `briefChapter("briefs/0007.md") === 7` 各一条断言（`files.ts` 那侧的测试），且屏上任何地方不出现「第 NaN 章」。
-
 ### 35.34 斜杠命令那一行是实时行，刷新后不留痕（35.29c 真机取证时顺手量到，本轮不改）
 
 - [ ] 实测（真机 5174→8010→`.scratch/probe/3529c.db`，脚本 `.scratch/g3529c.mjs`）：一次 `/generate` 全程，那一行的三段文案（先补简报 → 简报已落、开始写正文 → 56 字结算）在屏上逐字可见；`Page.reload` 之后 `.chat-card.command` **0 张**，而它替人做的事全在（简报 **1** 份、正文 **56** 字、答案气泡 **18** 字仍在）。也就是**结果留痕、过程不留痕**。
