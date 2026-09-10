@@ -24,9 +24,9 @@ import MarkdownText from "./MarkdownText";
 import { compressRefs } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, stripProposalFences, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
-import { draftChapter, useFiles } from "../store/files";
+import { briefPath, draftChapter, useFiles } from "../store/files";
 import type { ChatContextItem, ChatMode, ChatStreamEvent, Chapter, FileProposal, ChatAttachment, StoredChatMessage } from "../types";
-import { useWorkbench } from "../store/workbench";
+import { findBriefForChapter, useWorkbench } from "../store/workbench";
 import {
   applyStreamEvent,
   patchAgent as patchRows,
@@ -146,7 +146,6 @@ function readAsText(file: File): Promise<string> {
 export default function ChatPane({ className = "" }: { className?: string }) {
   const navigate = useNavigate();
   const selectedNovelId = useWorkbench((s) => s.selectedNovelId);
-  const selectedChapterId = useWorkbench((s) => s.selectedChapterId);
   const llmStatus = useWorkbench((s) => s.llmStatus);
   const busy = useWorkbench((s) => s.busy);
   const setTab = useWorkbench((s) => s.setTab);
@@ -184,6 +183,29 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [attachError, setAttachError] = useState<string | null>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  /* 批注 35.29c（D-57）：缺 D 层简报的那一章不再被推回去自己补——主人要的是「你要自己明白，
+     要按顺序先生成一遍简章，然后再去生成正文」。briefHandoff 记的是「哪一条 /generate 正在
+     等哪一章的简报」；autoLand 只在这一轮里给那一个 brief.md 路径免一次卡（别的文件、别轮
+     次照样走卡，D-37 与 D-56 的边界都不动）。接力是**事件驱动**的：简报真的出现在 store 里
+     才续写，所以他从卡片上点、还是从文件页自己存一份，两条路都能接上。 */
+  const briefHandoff = useRef<{ chapterNumber: number; commandId: number } | null>(null);
+  const autoLand = useRef<Set<string>>(new Set());
+
+  // 一个 ref 一份订阅：StrictMode 双跑 effect 时两个监听器读同一个 ref，先到的那个把它清空，
+  // 后到的直接 return——续写只会发生一次，不靠「忽略首执行」那种在真机上会失效的写法。
+  useEffect(
+    () =>
+      useWorkbench.subscribe((state, previous) => {
+        const handoff = briefHandoff.current;
+        if (!handoff || state.briefs === previous.briefs) return;
+        if (!state.briefs.some((item) => item.chapter_number === handoff.chapterNumber)) return;
+        briefHandoff.current = null;
+        autoLand.current.delete(briefPath(handoff.chapterNumber));
+        void continueAfterBrief(handoff);
+      }),
+    [],
+  );
 
   const running =
     streaming ||
@@ -323,7 +345,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   async function offerFromStream(
     rowId: number,
     data: { path: string; text: string; valid: boolean; error: string | null },
-    opts?: { restore?: boolean },
+    opts?: { restore?: boolean; autoLand?: boolean },
   ) {
     if (!selectedNovelId) return;
     let baseText = "";
@@ -353,10 +375,22 @@ export default function ChatPane({ className = "" }: { className?: string }) {
        审的地方是那一章的正文页，确认点搬到定稿入库那一颗。落笔仍走唯一那条 PUT（就在
        applyProposal 里，actor:"ai" 且带着刚读到的 base_revision），只是这一次点击由系统替他按下。
        刷新恢复（opts.restore）不走这条路：那一次生成早就落过盘，此刻再写一遍会盖掉他之后
-       在正文页改的字。写砸了就往下走，把卡挂回去——围栏里的字不许两头都不见。 */
-    if (proposal.valid && !opts?.restore && draftChapter(proposal.path) !== null) {
+       在正文页改的字。写砸了就往下走，把卡挂回去——围栏里的字不许两头都不见。
+       批注 35.29c（D-57）又开了一道**很窄**的口子：autoLand 只由 /generate 的补简报接力在
+       这一轮里加上，名单里只有那一章的 brief.md 这一个路径，一轮过去就收回。其余 D 层简报
+       的卡一张不少——那道口子不是按路径类型开的，是按「这一轮系统自己刚要去补的那一份」开的。 */
+    if (
+      proposal.valid &&
+      !opts?.restore &&
+      (draftChapter(proposal.path) !== null || opts?.autoLand === true)
+    ) {
       offerFile(proposal);
-      if (await useFiles.getState().applyProposal(proposal.path)) return;
+      if (await useFiles.getState().applyProposal(proposal.path)) {
+        // 补简报那一份自己重读两源：右栏那格重读挂在文件页签上，而 /generate 跑的时候
+        // 主人多半在正文页，不重读简报永远不「出现」，接力就静默停在半路（35.29c）。
+        if (opts?.autoLand === true) await useWorkbench.getState().reloadChapterList();
+        return;
+      }
     }
     setRows((prev) =>
       prev.map((row) =>
@@ -378,7 +412,12 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     // 规则在 chatRows.ts（纯函数）。三个副作用留在外面：放进 setRows 的更新函数里，
     // StrictMode 会把它们跑两遍（本项目 2026-09-03 记过的同一形状）。
     setRows((prev) => applyStreamEvent(prev, id, event));
-    if (event.event === "proposal") void offerFromStream(id, event.data);
+    if (event.event === "proposal")
+      void offerFromStream(
+        id,
+        event.data,
+        autoLand.current.has(event.data.path) ? { autoLand: true } : undefined,
+      );
     if (event.event === "context") void refreshConversations();
     if (event.event === "reasoning") setThinkingOpen(id);
   }
@@ -415,7 +454,9 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         {
           content: text,
           mode,
-          chapter_id: selectedChapterId,
+          // 现取不取闭包：/generate 5 那一条在同一趟里先把选中章换过去再发这一句，
+          // 渲染闭包里还是旧的那一章，注入的资料会跟着错（批注 35.29c）。
+          chapter_id: useWorkbench.getState().selectedChapterId,
           model: selectedModel,
           attachments: files.length ? files : undefined,
         },
@@ -581,6 +622,44 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     );
   }
 
+  /* 生成那一步的结算只有一处：/generate 自己走完走这里，35.29c 的接力走完也走这里——
+     同一个形状（哪一章、多少字、机械校验过没过）不许在两条路上各写一份文案。 */
+  async function settleGenerate(id: number, errorBefore: string | null) {
+    const snapshot = useWorkbench.getState();
+    const chapter = snapshot.chapters.find((item) => item.id === snapshot.selectedChapterId);
+    if (snapshot.error && snapshot.error !== errorBefore) {
+      patchCommand(id, { status: "failed", detail: snapshot.error });
+    } else if (chapter) {
+      patchCommand(id, {
+        status: "done",
+        runId: snapshot.lastGenerationRunId ?? undefined,
+        chapterId: chapter.id,
+        detail: `第 ${chapter.chapter_number} 章《${chapter.title || "未命名"}》· ${chapter.word_count} 字 · 机械校验 ${
+          snapshot.machineCheck?.passed ? "通过" : "未通过"
+        }`,
+      });
+    } else {
+      patchCommand(id, { status: "failed", detail: "未找到可生成的简报，先在 B 目录或 D 简报里建一章" });
+    }
+  }
+
+  /* 批注 35.29c（D-57）：简报真的落到那一章上了，正文这一步才接着跑。generateDraft 找简报
+     认的是选中章（brief_id 或同号的 brief），所以先把那一章端到前面。 */
+  async function continueAfterBrief(handoff: { chapterNumber: number; commandId: number }) {
+    const state = useWorkbench.getState();
+    const chapter = state.chapters.find((item) => item.chapter_number === handoff.chapterNumber);
+    if (!chapter) return;
+    state.openChapterTab(chapter.id);
+    const live = useWorkbench.getState();
+    patchCommand(handoff.commandId, {
+      status: "running",
+      detail: `第 ${handoff.chapterNumber} 章简报已落，开始写正文`,
+    });
+    const errorBefore = useWorkbench.getState().error;
+    await live.generateDraft();
+    await settleGenerate(handoff.commandId, errorBefore);
+  }
+
   async function runCommand(raw: string) {
     const [name, ...rest] = raw.split(/\s+/);
     const command = commands.find((item) => item.name === name);
@@ -628,23 +707,31 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           }
           useWorkbench.getState().openChapterTab(picked.id);
         }
-        await state.generateDraft();
-        const snapshot = useWorkbench.getState();
-        const chapter = snapshot.chapters.find((item) => item.id === snapshot.selectedChapterId);
-        if (snapshot.error && snapshot.error !== errorBefore) {
-          patchCommand(id, { status: "failed", detail: snapshot.error });
-        } else if (chapter) {
+        /* 批注 35.29c（D-57）：缺简报不再是「推回去自己补」。主人常常忘了先生成简报，
+           所以这一步由系统自己按顺序补齐——先那一章的 D 层简报，再它的正文。 */
+        const live = useWorkbench.getState();
+        const target = live.chapters.find((item) => item.id === live.selectedChapterId) ?? null;
+        // 与 generateDraft 同一把尺子：它说「有简报、可以开写」的地方，这里就不许改道去补简报
+        if (target && !findBriefForChapter(target, live.briefs, live.selectedBriefId)) {
+          const path = briefPath(target.chapter_number);
+          briefHandoff.current = { chapterNumber: target.chapter_number, commandId: id };
+          autoLand.current.add(path);
           patchCommand(id, {
             status: "done",
-            runId: snapshot.lastGenerationRunId ?? undefined,
-            chapterId: chapter.id,
-            detail: `第 ${chapter.chapter_number} 章《${chapter.title || "未命名"}》· ${chapter.word_count} 字 · 机械校验 ${
-              snapshot.machineCheck?.passed ? "通过" : "未通过"
-            }`,
+            detail: `第 ${target.chapter_number} 章还没有 D 层简报：先补简报，它一落地就自动接着写正文`,
           });
-        } else {
-          patchCommand(id, { status: "failed", detail: "未找到可生成的简报，先在 B 目录或 D 简报里建一章" });
+          await ask(
+            `第 ${target.chapter_number} 章《${target.title || "未命名"}》还没有 D 层简报。` +
+              `只给这一章调用 propose_chapter_brief，goal 与 events 按 B 目录里这一章的章名和它在目录中的位置来写；` +
+              `不要写正文，也不要顺带补别的章。`,
+            undefined,
+            true,
+          );
+          autoLand.current.delete(path);
+          return;
         }
+        await state.generateDraft();
+        await settleGenerate(id, errorBefore);
       } else if (command.name === "/review") {
         await state.runAiReview();
         const snapshot = useWorkbench.getState();

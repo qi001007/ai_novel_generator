@@ -666,6 +666,10 @@ const componentSources = import.meta.glob("./**/*.tsx", {
       "用 @ 可以点名某份资料", // the second line of that same answer
       "请盘点", // sent to the model, never rendered as UI copy
       "请用 web_search", // ditto
+      // 批注 35.29c：/generate 发现这一章没简报时，系统自己发出的那句补简报请求。
+      // 两句都是 suppressUser 送进模型的提示词，线程上根本不出现，不是界面文字。
+      "还没有 D 层简报",
+      "不要写正文，也不要顺带补别的章",
       "中国水墨风格", // an image prompt for the painting panel
     ];
     const offenders: string[] = [];
@@ -1182,15 +1186,42 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(chatPane).not.toContain('title="确认当前章节简报并生成正文"');
     // 发起生成只剩命令那一条路：组件里不再有用代码写死的那一次 /generate
     expect(chatPane).not.toContain('void runCommand("/generate")');
-    // 落点仍然只有一条：这一份走的就是 applyProposal 里那条唯一 PUT（actor:"ai"）
-    expect(chatPane).toContain(
-      "if (proposal.valid && !opts?.restore && draftChapter(proposal.path) !== null) {",
+    // 落点仍然只有一条：这一份走的就是 applyProposal 里那条唯一 PUT（actor:"ai"）。
+    // 35.29c 把这一行的条件摊成多行、给简报接力开了一道按名字点权的口子，所以断言
+    // 跟着搬成整段的形状——三段一个都不能少：合法、不是刷新恢复、路径是正文或本轮点名要免卡的那一份。
+    expect(chatPane).toMatch(
+      /if \(\s*proposal\.valid &&\s*!opts\?\.restore &&\s*\(draftChapter\(proposal\.path\) !== null \|\| opts\?\.autoLand === true\)\s*\) \{/,
     );
-    expect(chatPane).toContain("if (await useFiles.getState().applyProposal(proposal.path)) return;");
+    expect(chatPane).toContain("if (await useFiles.getState().applyProposal(proposal.path)) {");
     // 路径语法归文件层管，组件不自己抄一份正则
     expect(filesStore).toContain("export const draftChapter = (path: string) => {");
     // 确认点搬家不是消失：定稿那一颗仍在正文页上
     expect(editorPane).toContain("通过终审");
+  });
+
+  /* 批注 35.29c（D-57，2026-09-11）：主人原话「用户经常容易忘记生成简章，所以你要自己明白，
+     要按顺序先生成一遍简章，然后再去生成 draft.md 以及正文的内容」。缺简报不再推回给他补。 */
+  it("缺 D 层简报时系统先补简报，简报一落地就自动接着写正文（第三十五批批注 35.29c）", () => {
+    // 挂名的只有「本轮 /generate 选中却缺简报」那一章的那一份 brief.md，一轮结束就收回
+    expect(chatPane).toContain("autoLand.current.add(path);");
+    expect(chatPane).toContain("autoLand.current.delete(path);");
+    // 续写是事件驱动的：认的是简报真的进了 store，不是「发完那句就当它成了」
+    expect(chatPane).toContain("void continueAfterBrief(handoff);");
+    expect(chatPane).toContain("state.briefs.some((item) => item.chapter_number === handoff.chapterNumber)");
+    // 自己落的那一份简报要自己重读两源——右栏那格挂在文件页签上，正文页签时不会重读
+    expect(chatPane).toContain(
+      "if (opts?.autoLand === true) await useWorkbench.getState().reloadChapterList();",
+    );
+    // 那一步要说清接下来会发生什么，不是只报「没有简报」
+    expect(chatPane).toContain("它一落地就自动接着写正文");
+    // 「这一章有没有简报」只有一把尺子：接力不许自己再算一遍，否则会与 generateDraft 各说各话
+    expect(workbenchStore).toContain("export const findBriefForChapter = (");
+    expect(chatPane).toContain("findBriefForChapter(target, live.briefs, live.selectedBriefId)");
+    // 结算只有一处：两条路（自己跑完／接力跑完）都走 settleGenerate，
+    // 同一份「第 N 章《T》· X 字 · 机械校验 Y」不许再在组件里写第二遍
+    expect(chatPane).toContain("await settleGenerate(id, errorBefore);");
+    expect(chatPane).toContain("await settleGenerate(handoff.commandId, errorBefore);");
+    expect(chatPane.match(/机械校验 \$/g) ?? []).toHaveLength(1);
   });
 
 });

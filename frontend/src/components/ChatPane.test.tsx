@@ -216,6 +216,161 @@ describe("ChatPane", () => {
     expect(writes).toEqual([]);
   });
 
+  /* 批注 35.29c（D-57）：主人「经常容易忘记生成简章」，所以缺简报那一章不再被推回去自己补——
+     /generate 先自己发一句补简报，那一份一落地就自动接着写正文。两份 fixture 与真机同形状。 */
+  const chapterOneRow = {
+    id: 7,
+    novel_id: 1,
+    brief_id: null,
+    chapter_number: 1,
+    title: "第一章",
+    content: "",
+    word_count: 0,
+    status: "draft" as const,
+    final_decision: "",
+    final_comment: "",
+  };
+  const briefRowOne = {
+    id: 8,
+    novel_id: 1,
+    arc_plan_id: null,
+    chapter_number: 1,
+    goal: "确认意识的代价",
+    events: "苏醒",
+    pov: "陈九思",
+    characters: [],
+    conflict: "",
+    hook: "",
+    required_facts: [],
+    status: "draft" as const,
+  };
+  // 服务器那份是空模板，围栏里是填好的：两者逐字相同会被「已原样落过盘」那道判断摘掉，
+  // 测的就不是落笔那一步了。
+  const briefProposed = "# 第 1 章简报（D 层 · 单章简报）\n\n## 本章目标\n\n确认意识的代价\n";
+  const briefDocOne = {
+    path: "chapters/0001/brief.md",
+    kind: "brief",
+    layer: "D",
+    label: "简报",
+    text: "# 第 1 章简报（D 层 · 单章简报）\n\n## 本章目标\n\n\n",
+    ai_fields: [],
+    revision: "r1",
+  };
+
+  it("批注 35.29c：/generate 缺简报时先补简报，简报一落地就自动接着写正文", async () => {
+    const user = userEvent.setup();
+    useFiles.getState().reset();
+    useFiles.setState({ novelId: 1 });
+    useWorkbench.setState({
+      selectedNovelId: 1,
+      selectedChapterId: chapterOneRow.id,
+      chapters: [chapterOneRow],
+      briefs: [],
+    });
+    const urls: string[] = [];
+    const writes: string[] = [];
+    let briefAsk = "";
+    // 那一行随后还要被改两次，所以把这一轮流压住，先读到它此刻说的话再放行
+    let releaseStream = () => {};
+    const streamGate = new Promise<void>((resolve) => {
+      releaseStream = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      urls.push(url);
+      if ((init?.method ?? "GET").toUpperCase() === "PUT") {
+        writes.push(url);
+        return json({ path: "chapters/0001/brief.md", changed: ["goal"], revision: "r2" });
+      }
+      if (url.includes("/chat/stream")) {
+        briefAsk = String(JSON.parse(String(init?.body)).content);
+        return streamGate.then(() =>
+          sse([
+            ["context", { items: [], unknown_mentions: [], mode: "plan", temperature: 0.7 }],
+            ["delta", { text: "这一章的简报已给出。" }],
+            ["proposal", { path: "chapters/0001/brief.md", text: briefProposed, valid: true, error: null }],
+            ["done", { message: stored("这一章的简报已给出。") }],
+            ["end", {}],
+          ]),
+        );
+      }
+      if (url.includes("/chapters/from-brief/8/stream")) {
+        return Promise.resolve(sse([
+          ["delta", { text: "意识恢复的瞬间。" }],
+          ["done", {
+            chapter: { ...chapterOneRow, brief_id: 8, content: "意识恢复的瞬间。", word_count: 8 },
+            generation_run: { id: 12 },
+            machine_check: { passed: true, word_count: 8, issues: [] },
+          }],
+          ["end", {}],
+        ]));
+      }
+      if (url.includes("/files/chapters/0001/brief.md")) return json(briefDocOne);
+      if (url.endsWith("/planning/briefs")) return json([briefRowOne]);
+      if (url.endsWith("/api/novels/1/chapters")) return json([{ ...chapterOneRow, brief_id: 8 }]);
+      return Promise.resolve(json([]));
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "/generate");
+    await user.keyboard("{Enter}");
+
+    // ①那一句是替主人发的：点名这一章、走工具那唯一编译器，而且不显示成他说的话
+    await waitFor(() => expect(urls.some((item) => item.includes("/chat/stream"))).toBe(true));
+    expect(briefAsk).toContain("第 1 章《第一章》还没有 D 层简报");
+    expect(briefAsk).toContain("propose_chapter_brief");
+    // 那一步要说清接下来会发生什么，不是只报一个原因
+    expect(screen.getByText(/先补简报，它一落地就自动接着写正文/)).toBeTruthy();
+    expect(screen.queryByText(/还没有 D 层简报。/)).toBeNull();
+    releaseStream();
+
+    // ②本轮那一份简报不挂卡、不等点击，写仍只有那一条 PUT
+    await waitFor(() => expect(writes).toEqual(["/api/novels/1/files/chapters/0001/brief.md"]));
+    expect(document.querySelector(".proposal-file")).toBeNull();
+
+    // ③简报真的进了 store，正文这一步才自己接上；结算仍走同一处
+    await waitFor(() =>
+      expect(urls.some((item) => item.includes("/chapters/from-brief/8/stream"))).toBe(true),
+    );
+    await waitFor(() =>
+      expect(screen.getByText(/第 1 章《第一章》· 8 字 · 机械校验 通过/)).toBeTruthy(),
+    );
+  });
+
+  /* 那道口子有多窄，用反面钉住：不是 /generate 接力点名的那一轮，简报照样只挂一张卡。 */
+  it("批注 35.29c：平时要简报的那一轮仍然只挂卡，不动笔", async () => {
+    const user = userEvent.setup();
+    useFiles.getState().reset();
+    useFiles.setState({ novelId: 1 });
+    useWorkbench.setState({ selectedNovelId: 1, selectedChapterId: null, chapters: [], briefs: [] });
+    const writes: string[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if ((init?.method ?? "GET").toUpperCase() === "PUT") {
+        writes.push(url);
+        return json({ path: "chapters/0001/brief.md", changed: ["goal"], revision: "r2" });
+      }
+      if (url.includes("/chat/stream")) {
+        return Promise.resolve(sse([
+          ["delta", { text: "简报写好了。" }],
+          ["proposal", { path: "chapters/0001/brief.md", text: briefProposed, valid: true, error: null }],
+          ["done", { message: stored("简报写好了。") }],
+          ["end", {}],
+        ]));
+      }
+      if (url.includes("/files/chapters/0001/brief.md")) return json(briefDocOne);
+      return Promise.resolve(json([]));
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "给第 1 章写一份 D 层简报");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(document.querySelector(".proposal-file")).toBeTruthy());
+    expect(document.querySelector(".proposal-file")?.textContent).toContain("chapters/0001/brief.md");
+    expect(writes).toEqual([]);
+  });
+
   it("renders the streamed reply and its token detail", async () => {
     const user = userEvent.setup();
     const contextEvent: [string, unknown] = [

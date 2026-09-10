@@ -18,6 +18,21 @@ import type {
  * prose page and the file editor read it, so they cannot overwrite each other. */
 export const chapterDraftPath = (chapter: Chapter) => draftPath(chapter.chapter_number);
 
+/** 「这一章到底有没有 D 层简报」唯一的一把尺子：章节自己的 brief_id → 同号的简报 →
+ *  当前选中的那份。/generate 要先补简报还是直接写正文（批注 35.29c）问的就是这个问题，
+ *  它和 generateDraft 必须读同一个判断，否则一个说没有、另一个照样开写。 */
+export const findBriefForChapter = (
+  chapter: Chapter | null,
+  briefs: ChapterBrief[],
+  selectedBriefId: number | null,
+): ChapterBrief | null =>
+  (chapter
+    ? briefs.find((item) => item.id === chapter.brief_id) ??
+      briefs.find((item) => item.chapter_number === chapter.chapter_number)
+    : null) ??
+  briefs.find((item) => item.id === selectedBriefId) ??
+  null;
+
 const dirtyOf = (chapter: Chapter): boolean => {
   const entry = useFiles.getState().entries[chapterDraftPath(chapter)];
   if (!entry?.doc) return false;
@@ -434,13 +449,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     const { selectedNovelId, selectedChapterId, selectedBriefId, briefs, chapters, busy } = get();
     if (!selectedNovelId || busy) return;
     const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
-    const brief =
-      (chapter
-        ? briefs.find((item) => item.id === chapter.brief_id) ??
-          briefs.find((item) => item.chapter_number === chapter.chapter_number)
-        : null) ??
-      briefs.find((item) => item.id === selectedBriefId) ??
-      null;
+    const brief = findBriefForChapter(chapter, briefs, selectedBriefId);
     if (!chapter) {
       // 批注 35.30：原来这一句把两种原因揉在一起，全是原因、没有下一步。
       const first = chapters[0];
