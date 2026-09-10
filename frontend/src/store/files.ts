@@ -200,7 +200,7 @@ type FilesState = {
   setDraft: (path: string, text: string) => void;
   save: (path: string) => Promise<boolean>;
   closeTab: (path: string) => void;
-  offer: (proposal: FileProposal) => void;
+  offer: (proposal: FileProposal, opts?: { restore?: boolean }) => void;
   applyProposal: (path: string) => Promise<boolean>;
   discardProposal: (path: string) => void;
   toggleView: (path: string) => void;
@@ -399,8 +399,13 @@ export const useFiles = create<FilesState>((set, get) => ({
     set({ tabs, active, pending, ...(active === null ? { jump: null } : {}) });
   },
 
-  offer(proposal) {
-    const bringTocForward = proposal.path === TOC_PATH;
+  offer(proposal, opts) {
+    /* 批注 35.22: an offer restored from history is not a request to rearrange the tab
+       strip. The owner closed this file, and re-adding it after a trip to 设置 says that
+       click never happened. The card still comes back - it is read on its own message,
+       and 「在编辑器中打开」 is the gesture that opens the file. */
+    const restore = opts?.restore ?? false;
+    const bringTocForward = !restore && proposal.path === TOC_PATH;
     set((state) => ({
       pending: { ...state.pending, [proposal.path]: proposal },
       // The band is drawn against the buffer the diff was computed from, so the
@@ -408,7 +413,10 @@ export const useFiles = create<FilesState>((set, get) => ({
       // proposal is also staged immediately: its rendered list is the first place
       // the owner should see the generated directory, while pending remains a
       // separate overlay and is never mistaken for the saved buffer.
-      tabs: state.tabs.includes(proposal.path) ? state.tabs : [...state.tabs, proposal.path],
+      tabs:
+        restore || state.tabs.includes(proposal.path)
+          ? state.tabs
+          : [...state.tabs, proposal.path],
       ...(bringTocForward
         ? {
             active: TOC_PATH,

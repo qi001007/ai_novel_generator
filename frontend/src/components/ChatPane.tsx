@@ -230,11 +230,20 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         for (const row of history) {
           if (cancelled) return;
           if (row.role !== "assistant" || !row.proposals?.length) continue;
-          // A fence naming a retired .yaml path can never be applied again, so
-          // restoring it would only hang a dead error card on the thread.
-          for (const seed of row.proposals.filter((item) => !item.path.endsWith(".yaml"))) {
+          /* A fence naming a retired .yaml path can never be applied again, so
+             restoring it would only hang a dead error card on the thread.
+             批注 35.20/35.21: neither can one the structure gate refused. Its 应用 mark is
+             disabled, `applyProposal` refuses it at the only write entry, and D-38 already
+             says the agent offers only valid proposals - so what came back on reload was a
+             67-row box of words that could never be written, measured 2026-09-10 on 作品 6
+             (+51 −16 on settings/characters/new.md). Restoring is not an exception to D-38. */
+          const restorable = row.proposals.filter(
+            (item) => item.valid && !item.path.endsWith(".yaml"),
+          );
+          for (const seed of restorable) {
             if (cancelled) return;
-            await offerFromStream(row.id, seed);
+            // 批注 35.22: the card comes back; the tab strip the owner arranged does not.
+            await offerFromStream(row.id, seed, { restore: true });
           }
         }
       })
@@ -292,6 +301,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   async function offerFromStream(
     rowId: number,
     data: { path: string; text: string; valid: boolean; error: string | null },
+    opts?: { restore?: boolean },
   ) {
     if (!selectedNovelId) return;
     let baseText = "";
@@ -324,7 +334,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           : row,
       ),
     );
-    offerFile(proposal);
+    offerFile(proposal, opts);
   }
 
   async function applyProposal(path: string) {

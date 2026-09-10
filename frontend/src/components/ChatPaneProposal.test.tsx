@@ -249,6 +249,70 @@ describe("ChatPane proposals", () => {
     expect(document.querySelector(".proposal")).toBeNull();
   });
   
+  /* 批注 35.20/35.21 (2026-09-10): the box the owner called 弹窗 was this path. A
+     proposal the structure gate refused cannot be applied - the mark is disabled and
+     applyProposal refuses it - so putting it back after a reload only reprinted a
+     67-row diff of words that would never be written. */
+  it("leaves a proposal the server refused off the thread after a reload", async () => {
+    historyRows = [
+      {
+        id: 5,
+        novel_id: 1,
+        role: "assistant",
+        content: "我建了一张人物卡",
+        mode: "plan",
+        model: "MiniMax-M2.5",
+        mentions: [],
+        context_refs: [],
+        steps: [],
+        token_input: 1,
+        token_output: 1,
+        created_at: "",
+        proposals: [
+          { path: "settings/characters/new.md", text: NEW, valid: false, error: "缺少 姓名、分级" },
+        ],
+      },
+    ];
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+
+    await screen.findByText("我建了一张人物卡");
+    await new Promise((resolve) => window.setTimeout(resolve, 40));
+    expect(document.querySelector(".proposal")).toBeNull();
+    expect(useFiles.getState().pending["settings/characters/new.md"]).toBeUndefined();
+  });
+
+  /* 批注 35.22: 关掉的标签，进设置页再退出来又自己打开. The card is read on its own
+     message, so restoring it needs no tab - and re-adding one overwrites the owner's
+     own click. */
+  it("brings a still-open question back without reopening its tab", async () => {
+    historyRows = [
+      {
+        id: 3,
+        novel_id: 1,
+        role: "assistant",
+        content: "目录还没落库",
+        mode: "plan",
+        model: "MiniMax-M2.5",
+        mentions: [],
+        context_refs: [],
+        steps: [],
+        token_input: 1,
+        token_output: 1,
+        created_at: "",
+        proposals: [{ path: "blueprint.md", text: NEW, valid: true, error: "" }],
+      },
+    ];
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+
+    await screen.findByText("目录还没落库");
+    await waitFor(() => expect(document.querySelector(".proposal")).toBeTruthy());
+    expect(useFiles.getState().tabs).not.toContain("blueprint.md");
+
+    // The explicit gesture is what opens the file, and it still does.
+    await userEvent.click(screen.getByRole("button", { name: "在编辑器中打开" }));
+    expect(useFiles.getState().tabs).toContain("blueprint.md");
+  });
+
   it("opens the file in the editor instead of writing", async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><ChatPane /></MemoryRouter>);

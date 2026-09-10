@@ -289,6 +289,21 @@ describe("settled UI decisions must not regress", () => {
     expect(rule(".proposal-more")).not.toContain("align-self: flex-start");
   });
 
+  /* 批次 35.20 / 35.21 / 35.22（2026-09-10，主人原话「我刚关了，它又给我打开了」）：
+     从历史恢复提案只有一个入口，它只做两件事——把卡片放回它那条消息、不许动主人理好的
+     标签条。真机量的（作品 6，副本库）：关掉 settings/characters/new.md 后标签 3 张、
+     卡片 0 张；进 /settings 再退回来，标签 4 张、卡片 1 张（proposal invalid，
+     +51 −16 · 67 行），pending-dot 1 颗。所以这两条是行为，不是样式偏好。 */
+  it("a restored proposal comes back as a card, never as a tab (批次 35.20-35.22)", () => {
+    // 被结构闸门拒过的提案永远写不进去，恢复回来就是那个「代码框」——D-38 不许端上来，
+    // 恢复这一支不是它的例外。
+    expect(chatPane).toMatch(/proposals\.filter\(\s*\(item\) => item\.valid &&/);
+    // 只有恢复那一次调用带 restore；实时流那一支照旧把文件端到前面。
+    expect((chatPane.match(/offerFromStream\(row\.id, seed, \{ restore: true \}/g) ?? []).length).toBe(1);
+    expect(filesStore).toMatch(/tabs:\s*restore \|\| state\.tabs\.includes\(proposal\.path\)/);
+    expect(filesStore).toMatch(/const bringTocForward = !restore &&/);
+  });
+
   it("the chapter tab carries one dot, not two (第十二批批注1)", () => {
     expect(editorPane).not.toContain("StatusBadge");
   });

@@ -95,6 +95,29 @@ describe("files store", () => {
     expect(mocked.writeFile).not.toHaveBeenCalled();
   });
 
+  /* 批注 35.22 (2026-09-10): the same rule one level down. A restored offer is the card
+     coming back, not the tab strip being rearranged behind the owner's back. */
+  it("restores an offer onto the message without touching the tab strip", async () => {
+    await useFiles.getState().attach(1);
+    const tabs = useFiles.getState().tabs;
+    useFiles.getState().offer(
+      {
+        id: 9,
+        path: TOC_PATH,
+        text: "## 第 1 章 开门\n",
+        valid: true,
+        error: "",
+        baseText: DOC.text,
+        baseRevision: "rev-1",
+      },
+      { restore: true },
+    );
+    expect(useFiles.getState().pending[TOC_PATH]).toBeTruthy();
+    expect(useFiles.getState().tabs).toEqual(tabs);
+    // A B-layer offer normally comes forward; a restored one must not move the screen.
+    expect(useFiles.getState().active).not.toBe(TOC_PATH);
+  });
+
   it("writes an accepted proposal as actor=ai and drops it from pending", async () => {
     await useFiles.getState().attach(1);
     await useFiles.getState().open(BLUEPRINT_PATH);
