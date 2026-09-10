@@ -45,6 +45,7 @@ import workPage from "./pages/WorkbenchPage.tsx?raw";
 import bookshelf from "./pages/BookshelfPage.tsx?raw";
 import apiSource from "./api.ts?raw";
 import chatRowsSource from "./components/chatRows.ts?raw";
+import chatTraceSource from "./components/chatTrace.ts?raw";
 import labelsSource from "./labels.ts?raw";
 import paneLayoutSource from "./paneLayout.ts?raw";
 
@@ -302,6 +303,17 @@ describe("settled UI decisions must not regress", () => {
     expect((chatPane.match(/offerFromStream\(row\.id, seed, \{ restore: true \}/g) ?? []).length).toBe(1);
     expect(filesStore).toMatch(/tabs:\s*restore \|\| state\.tabs\.includes\(proposal\.path\)/);
     expect(filesStore).toMatch(/const bringTocForward = !restore &&/);
+  });
+
+  /* 批次 35.21（2026-09-10 真机，作品 4）：一条应答把整份被提议的 toc.md 摊在
+     ```markdown @toc.md 围栏里，下面的提案卡又把同一份文件逐行列一遍——同一屏两个代码框；
+     点完应用，卡片走了、围栏留下，线程上剩的就是一个代码框。决定：被提议的文件只在卡片上
+     出现一次。 */
+  it("the offered file shows once, on the card (批次 35.21)", () => {
+    expect(chatPane).toContain("splitTrace(stripProposalFences(row.text))");
+    // @路径 是必需段：没有它，模型在正文里引用的代码块会被一起吃掉。
+    expect(chatTraceSource).toContain("(?:ya?ml|md|markdown)[ \\t]+@");
+    expect(chatTraceSource).toContain("export function stripProposalFences");
   });
 
   it("the chapter tab carries one dot, not two (第十二批批注1)", () => {

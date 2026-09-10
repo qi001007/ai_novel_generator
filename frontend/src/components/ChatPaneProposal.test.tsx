@@ -44,11 +44,13 @@ function sse(events: [string, unknown][]) {
 
 const writes: unknown[][] = [];
 let historyRows: unknown[] = [];
+let streamDelta = "我改好了";
 
 describe("ChatPane proposals", () => {
   beforeEach(() => {
     writes.length = 0;
     historyRows = [];
+    streamDelta = "我改好了";
     useFiles.getState().reset();
     useFiles.setState({ novelId: 1 });
     useWorkbench.setState({
@@ -69,7 +71,7 @@ describe("ChatPane proposals", () => {
         if (url.includes("/chat/stream")) {
           return Promise.resolve(
             sse([
-              ["delta", { text: "我改好了" }],
+              ["delta", { text: streamDelta }],
               ["proposal", { path: "blueprint.md", text: NEW, valid: true, error: "" }],
               [
                 "done",
@@ -78,7 +80,7 @@ describe("ChatPane proposals", () => {
                     id: 7,
                     novel_id: 1,
                     role: "assistant",
-                    content: "我改好了",
+                    content: streamDelta,
                     mode: "write",
                     model: "MiniMax-M2.5",
                     mentions: [],
@@ -311,6 +313,27 @@ describe("ChatPane proposals", () => {
     // The explicit gesture is what opens the file, and it still does.
     await userEvent.click(screen.getByRole("button", { name: "在编辑器中打开" }));
     expect(useFiles.getState().tabs).toContain("blueprint.md");
+  });
+
+  /* 批次 35.21（2026-09-10 真机，作品 4）：正文里那个 ```markdown @toc.md 围栏把整份
+     被提议的文件又摊了一遍，卡片在下面逐行列一次——同一屏两个代码框；点完应用，卡片走了、
+     围栏留下，线程上只剩一个代码框。被提议的文件只在卡片上出现一次。 */
+  it("shows the offered file on the card only, never as a second code box", async () => {
+    streamDelta =
+      "我改好了\n\n```markdown @blueprint.md\n# A 层\nconstraints: 不可挪动凡人命轨\n```\n";
+    const user = userEvent.setup();
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+
+    await user.type(document.querySelector(".chat-input textarea") as HTMLElement, "把第二条收紧一点");
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(document.querySelector(".proposal")).toBeTruthy());
+
+    const card = document.querySelector(".chat-card.agent") as HTMLElement;
+    expect(card.textContent).toContain("我改好了");
+    expect(card.querySelector(".chat-code")).toBeNull();
+    // The offered words are still there - once, on the card.
+    const diff = document.querySelector(".proposal-diff") as HTMLElement;
+    expect(diff.textContent).toContain("凡人命轨");
   });
 
   it("opens the file in the editor instead of writing", async () => {

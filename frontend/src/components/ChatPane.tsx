@@ -22,7 +22,7 @@ import { useNavigate } from "react-router-dom";
 import { api } from "../api";
 import MarkdownText from "./MarkdownText";
 import { compressRefs } from "../contextLayers";
-import { ACTION_LABELS, reasoningParagraphs, splitTrace, traceActions } from "./chatTrace";
+import { ACTION_LABELS, reasoningParagraphs, splitTrace, stripProposalFences, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
 import { useFiles } from "../store/files";
 import type { ChatContextItem, ChatMode, ChatStreamEvent, FileProposal, ChatAttachment, StoredChatMessage } from "../types";
@@ -787,7 +787,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           const refs = row.meta.refs ?? [];
           const chips = compressRefs(refs);
           // The trace is not prose. Fold it above the answer instead of printing it.
-          const { prose, trace } = splitTrace(row.text);
+          const { prose, trace } = splitTrace(stripProposalFences(row.text));
           const reasoning = reasoningParagraphs(row.meta.reasoning ?? "");
           return (
             <div key={row.id} className="chat-row assistant">

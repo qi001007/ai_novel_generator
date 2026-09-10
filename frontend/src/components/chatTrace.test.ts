@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { reasoningParagraphs, traceActions } from "./chatTrace";
+import { reasoningParagraphs, stripProposalFences, traceActions } from "./chatTrace";
 
 /* 第十七批批注 1: 「你一个字、一两个字一行就不对」. Rows written while the join bug was
    live stored one entry per streamed delta; they are still in the database, so the fold
@@ -69,5 +69,37 @@ describe("traceActions", () => {
     const [action] = traceActions(['[TOOL_CALL]\n{"name": "list_files", "arguments": {}}\n[/TOOL_CALL]']);
     expect(action.name).toBe("list_files");
     expect(action.arg).toBeNull();
+  });
+});
+
+/* 批次 35.21（2026-09-10 真机）：这条正文是作品 4 落库那条消息的形状——一句话，后面跟着
+   整份被提议的 toc.md。卡片已经把同一份文件逐行列了一遍，正文再摊一遍就是「两个代码框」，
+   而点完应用之后卡片走了、围栏留下，主人看到的就只剩一个代码框。 */
+describe("stripProposalFences", () => {
+  const offered = "目录排了三章，B 层落定。\n\n```markdown @toc.md\n# 目录（B 层 · 中期）\n\n## 第 1 章 未命名\n- **剧情功能**：开篇钩子\n```\n";
+
+  it("keeps the sentence and drops the offered file", () => {
+    expect(stripProposalFences(offered)).toBe("目录排了三章，B 层落定。");
+  });
+
+  it("keeps prose that follows a fence, so only the block goes", () => {
+    expect(stripProposalFences("先给结论。\n\n```markdown @arcs.md\n# C 层\n```\n\n理由在后面。")).toBe(
+      "先给结论。\n\n理由在后面。",
+    );
+  });
+
+  it("leaves a quoted code block alone - it has no @path, so it is not an offer", () => {
+    const quoted = "示例写法：\n\n```markdown\n## 剧情弧\n- 起始章: 1\n```\n";
+    expect(stripProposalFences(quoted)).toBe(quoted.trim());
+  });
+
+  it("shows nothing of a fence that has not closed yet", () => {
+    expect(stripProposalFences("目录排好了。\n\n```markdown @toc.md\n# 目录（B 层 · 中期）\n## 第 1 章")).toBe(
+      "目录排好了。",
+    );
+  });
+
+  it("accepts the yaml dialect the backend still accepts", () => {
+    expect(stripProposalFences("好了。\n\n```yaml @settings/foreshadow.md\n伏笔: 3\n```\n")).toBe("好了。");
   });
 });

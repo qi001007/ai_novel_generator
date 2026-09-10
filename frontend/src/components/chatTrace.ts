@@ -25,6 +25,31 @@ export function splitTrace(text: string): { prose: string; trace: string[] } {
 }
 
 /**
+ * A ```markdown @path block IS the offered file, and the card underneath it already
+ * lists that file line by line. Left in the body it prints a second box of the same
+ * words: measured 2026-09-10 on 作品 4, one answer showed the file in a fence and then
+ * again in the card (批注 35.21「相当于出现了两个代码框」), and after 应用 the card went
+ * while the fence stayed - so what remained on the thread was a code box.
+ *
+ * The shape is the backend's, not ours: services/chat.py `PROPOSAL_BLOCK` accepts
+ * ya?ml|md|markdown followed by `@path`. A plain fence with no `@path` is the model
+ * quoting something in prose, and must stay.
+ */
+const FENCE = /```(?:ya?ml|md|markdown)[ \t]+@[^\s`]+[ \t]*\n[\s\S]*?```/g;
+const FENCE_OPEN = /```(?:ya?ml|md|markdown)[ \t]+@[^\s`]+[ \t]*\n/;
+
+export function stripProposalFences(text: string): string {
+  const prose = text
+    .replace(FENCE, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  // Mid-stream the closing ``` may not have arrived yet, and half a file must not
+  // flash on screen as if it were the answer.
+  const open = prose.search(FENCE_OPEN);
+  return (open < 0 ? prose : prose.slice(0, open)).trim();
+}
+
+/**
  * The stored reasoning, turned into paragraphs that actually read as paragraphs
  * (第十六批之后的第十七批批注 1: 「你一个字、一两个字一行就不对」).
  *
