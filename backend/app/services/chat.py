@@ -48,6 +48,7 @@ from app.services.context import (
     mention_tokens,
     render_context,
 )
+from app.services.proposal_actions import run_action
 
 # An attachment is not a second injection path (D-04): it becomes an ordinary
 # ContextBlock in the same list the collectors produce, so the prompt renderer, the
@@ -155,6 +156,33 @@ PROPOSAL_BLOCK = re.compile(
     r"```(?:ya?ml|md|markdown)\s+@([^\s`]+)\s*\n(.*?)```",
     re.S,
 )
+
+# A ```json fence is not a proposal fence: when the model writes the propose_toc
+# payload out as prose instead of calling the tool, the whole proposal used to
+# disappear - no card, no red text, nothing to apply (35.27).
+JSON_BLOCK = re.compile(r"```json[ \t]*\r?\n(.*?)\r?\n[ \t]*```", re.S)
+
+
+def promote_json_toc_block(
+    content: str, current: "Callable[[str], str | None] | None"
+) -> str:
+    """把当成正文吐出来的 `{"chapters": […]}` 围栏接回提案通道。
+
+    判别不靠我自己读 JSON：交给工具用的同一个编译器（`run_action`）。它认这个形状，
+    就换出一道它自己写的 `@toc.md` 围栏；它不认，那段代码在屏幕上原样留着。
+    已经有一张目录卡在管 `toc.md` 时不造第二张——一份文件两个落点只会让主人二选一。
+    """
+    if '"chapters"' not in content:
+        return content
+    if any(canonical_path(raw)[0] == TOC_PATH for raw, _ in PROPOSAL_BLOCK.findall(content)):
+        return content
+
+    def replace(match: re.Match[str]) -> str:
+        accepted, fence = run_action("update_toc", match.group(1), current)
+        return fence if accepted else match.group(0)
+
+    return JSON_BLOCK.sub(replace, content)
+
 
 FILE_EDIT_RULES = """
 
@@ -290,7 +318,7 @@ def extract_proposals(
     archive -- the number is the book's to assign, and 同名 in the create template is a
     409, not a card.
     """
-    fences = list(PROPOSAL_BLOCK.findall(content or ""))
+    fences = list(PROPOSAL_BLOCK.findall(promote_json_toc_block(content or "", current)))
     pending_arcs = ""
     # A fence for arcs.md in the answer already owns that file: two cards for one
     # document would leave the owner choosing between two writes.

@@ -309,11 +309,14 @@ describe("settled UI decisions must not regress", () => {
      ```markdown @toc.md 围栏里，下面的提案卡又把同一份文件逐行列一遍——同一屏两个代码框；
      点完应用，卡片走了、围栏留下，线程上剩的就是一个代码框。决定：被提议的文件只在卡片上
      出现一次。 */
-  it("the offered file shows once, on the card (批次 35.21)", () => {
-    expect(chatPane).toContain("splitTrace(stripProposalFences(row.text))");
+  it("the offered file shows once, on the card (批次 35.21 / 35.27)", () => {
+    expect(chatPane).toContain("splitTrace(stripProposalFences(row.text, row.proposals ?? []))");
     // @路径 是必需段：没有它，模型在正文里引用的代码块会被一起吃掉。
     expect(chatTraceSource).toContain("(?:ya?ml|md|markdown)[ \\t]+@");
     expect(chatTraceSource).toContain("export function stripProposalFences");
+    // 35.27：被编译成目录卡的 ```json payload 同样只在卡上出现一次。
+    expect(chatTraceSource).toContain("const JSON_TOC =");
+    expect(chatTraceSource).toContain("proposals.some((one) => one.path === TOC_PATH)");
   });
 
   it("the chapter tab carries one dot, not two (第十二批批注1)", () => {

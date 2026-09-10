@@ -1,3 +1,5 @@
+import { TOC_PATH } from "../store/files";
+
 /**
  * The model's own trace - the tool calls it made, in whatever dialect it emitted
  * them - is not prose, and it was being printed as prose: message 20 of the demo
@@ -38,8 +40,26 @@ export function splitTrace(text: string): { prose: string; trace: string[] } {
 const FENCE = /```(?:ya?ml|md|markdown)[ \t]+@[^\s`]+[ \t]*\n[\s\S]*?```/g;
 const FENCE_OPEN = /```(?:ya?ml|md|markdown)[ \t]+@[^\s`]+[ \t]*\n/;
 
-export function stripProposalFences(text: string): string {
-  const prose = text
+/**
+ * 35.27: a ```json {"chapters": […]} block is the propose_toc payload the model wrote
+ * out as prose instead of calling the tool. services/chat.py compiles it into a toc.md
+ * card with the SAME two conditions checked here, and the stored text keeps the block -
+ * so the offered file would show twice, which is the one thing D-51 forbids.
+ */
+// A JSON payload never contains a backtick, so the body cannot run past its own
+// closing fence into the next block.
+const JSON_TOC = /```json[ \t]*\r?\n([^`]*)\r?\n[ \t]*```/g;
+const TOC_FENCE_OPEN = /```(?:ya?ml|md|markdown)[ \t]+@toc\.md[ \t]*\r?\n/;
+
+export function stripProposalFences(
+  text: string,
+  proposals: { path: string }[] = [],
+): string {
+  const promoted =
+    proposals.some((one) => one.path === TOC_PATH) && !TOC_FENCE_OPEN.test(text);
+  const prose = (promoted
+    ? text.replace(JSON_TOC, (block, body: string) => (body.includes('"chapters"') ? "" : block))
+    : text)
     .replace(FENCE, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();

@@ -787,7 +787,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           const refs = row.meta.refs ?? [];
           const chips = compressRefs(refs);
           // The trace is not prose. Fold it above the answer instead of printing it.
-          const { prose, trace } = splitTrace(stripProposalFences(row.text));
+          const { prose, trace } = splitTrace(stripProposalFences(row.text, row.proposals ?? []));
           const reasoning = reasoningParagraphs(row.meta.reasoning ?? "");
           return (
             <div key={row.id} className="chat-row assistant">

@@ -550,6 +550,60 @@ def test_a_range_heading_in_the_b_layer_becomes_an_appliable_c_layer_card(client
     assert read(client, novel_id, "arcs.md")["text"].count("## 弧 ") == arcs_after.count("## 弧 ")
 
 
+def test_a_json_chapters_block_becomes_a_toc_card(client: TestClient) -> None:
+    """35.27：主人要一份目录提案，模型把 `propose_toc` 的 payload 格式当正文吐了出来。
+
+    ```json 围栏不匹配 PROPOSAL_BLOCK，所以从前是无卡、无报错、整份 JSON 静默消失。
+    输入是主人作品 7 第 72 条回答里那份逐字形状（书上有第 42 章，追加只能往上加）。
+    """
+    from app.services.chat import extract_proposals
+
+    novel_id = seed_novel(client, "JSON 目录")
+    toc_live = read(client, novel_id, "toc.md")["text"]
+    payload = """{
+  "chapters": [
+    {"number": 1, "title": "苏醒", "plot_function": "主角醒来，失去记忆，被追捕", "notes": "开篇悬念"},
+    {"number": 2, "title": "追猎", "plot_function": "首次遭遇守碑人组织", "notes": "冲突引入"},
+    {"number": 42, "title": "星渊碑影", "plot_function": "揭示碑的来历", "notes": "两行"}
+  ]
+}"""
+    answer = f"我先给出目录：\n\n```json\n{payload}\n```\n\n要不要我继续扩展？"
+
+    cards = extract_proposals(answer, lambda path: toc_live if path == "toc.md" else None)
+    toc = next((c for c in cards if c["path"] == "toc.md"), None)
+    assert toc is not None, cards
+    assert toc["valid"] is True, toc["error"]
+    assert "## 第 1 章 苏醒" in toc["text"] and "## 第 42 章 星渊碑影" in toc["text"]
+
+    applied = write(client, novel_id, "toc.md", toc["text"], actor="ai")
+    assert applied.status_code == 200, applied.text
+    assert "## 第 2 章 追猎" in read(client, novel_id, "toc.md")["text"]
+
+
+def test_a_json_block_that_is_not_a_toc_payload_stays_plain_code(client: TestClient) -> None:
+    """认的是 `{"chapters": […]}` 这一个形状，别的 json 块一张卡都不许造。"""
+    from app.services.chat import extract_proposals
+
+    cards = extract_proposals('```json\n{"persons": [{"name": "沈曜"}]}\n```', lambda path: None)
+    assert cards == []
+
+
+def test_a_json_chapters_block_the_compiler_refuses_still_produces_no_card(client: TestClient) -> None:
+    """编译器说「缺 title」就不许改口造一张坏卡出来——卡片这一侧只有合法与没有两种。"""
+    from app.services.chat import extract_proposals
+
+    novel_id = seed_novel(client, "JSON 目录缺字段")
+    toc_live = read(client, novel_id, "toc.md")["text"]
+    payload = (
+        '{"chapters": ['
+        '{"number": 42, "title": "星渊碑影", "plot_function": "揭示碑的来历", "notes": "两行"},'
+        '{"number": 43, "plot_function": "没有标题", "notes": "z"}'
+        "]}"
+    )
+    cards = extract_proposals(f"```json\n{payload}\n```", lambda path: toc_live if path == "toc.md" else None)
+    assert cards == []
+
+
 def test_dropping_an_arc_is_still_refused_after_the_inheritance_fix(client: TestClient) -> None:
     # 35.1 的修法只放开「继承不再整段放弃」这一件事，结构校验一寸没让：少一条＝删除。
     novel_id, header = _two_arc_novel(client)

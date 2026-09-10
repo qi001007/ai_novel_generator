@@ -103,3 +103,32 @@ describe("stripProposalFences", () => {
     expect(stripProposalFences("好了。\n\n```yaml @settings/foreshadow.md\n伏笔: 3\n```\n")).toBe("好了。");
   });
 });
+
+/* 批次 35.27（2026-09-10 真机，作品 7 第 72 条回答）：主人要一份目录提案，模型没调
+   propose_toc，而是把它的 payload 原样摊在正文里。后端现在认这个形状、编成一张目录卡，
+   落库的正文却还留着那份 JSON——同一屏两个代码框，正是 D-51 挡住的那件事。 */
+describe("stripProposalFences with a promoted json payload", () => {
+  const payload =
+    '{"chapters": [{"number": 1, "title": "苏醒", "plot_function": "开篇悬念", "notes": "钩子"}]}';
+  const answer = `我先给出目录：\n\n\`\`\`json\n${payload}\n\`\`\`\n\n要不要我继续扩展？`;
+  const tocCard = [{ path: "toc.md" }];
+
+  it("drops the block once the card carries that file", () => {
+    expect(stripProposalFences(answer, tocCard)).toBe("我先给出目录：\n\n要不要我继续扩展？");
+  });
+
+  it("keeps the block when no card came out of it", () => {
+    expect(stripProposalFences(answer, [])).toBe(answer.trim());
+    expect(stripProposalFences(answer, [{ path: "arcs.md" }])).toBe(answer.trim());
+  });
+
+  it("keeps the block when a real @toc.md fence already owns the file", () => {
+    const both = `${answer}\n\n\`\`\`markdown @toc.md\n# 目录（B 层 · 全书）\n\n## 第 1 章 苏醒\n\`\`\`\n`;
+    expect(stripProposalFences(both, tocCard)).toContain(payload);
+  });
+
+  it("leaves a json block that is not a chapters payload alone", () => {
+    const quoted = '示例：\n\n```json\n{"persons": [{"name": "沈曜"}]}\n```\n';
+    expect(stripProposalFences(quoted, tocCard)).toBe(quoted.trim());
+  });
+});
