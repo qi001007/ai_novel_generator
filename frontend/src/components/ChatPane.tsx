@@ -29,6 +29,7 @@ import type { ChatContextItem, ChatMode, ChatStreamEvent, Chapter, FileProposal,
 import { findBriefForChapter, useWorkbench } from "../store/workbench";
 import {
   applyStreamEvent,
+  attachProposal,
   patchAgent as patchRows,
   patchCommand as patchCommandRows,
   toolLine,
@@ -357,11 +358,6 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     } catch {
       // Unknown path: keep the card, but it cannot be applied.
     }
-    // Already applied verbatim: offering it again would be a stale card.
-    if (baseRevision && baseText === data.text) {
-      discardFile(data.path);
-      return;
-    }
     const proposal: FileProposal = {
       id: nextProposalId++,
       path: data.path,
@@ -371,6 +367,15 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       baseText,
       baseRevision,
     };
+    /* 批注 35.20：已经逐字应用过的提案再挂一张就是陈卡，所以这里不 offerFile。
+       批注 35.31：可这一份「这一行提议过什么」仍然要记在行上——摘掉气泡里那整份 JSON 的
+       条件读的就是它。以前这里直接 return，那张卡不存在、记录也不存在，于是那份 JSON
+       常年摊成一个代码框。卡片一张没多，只是这一行不再失忆。 */
+    if (baseRevision && baseText === data.text) {
+      discardFile(data.path);
+      setRows((prev) => attachProposal(prev, rowId, proposal));
+      return;
+    }
     /* 批注 35.29b（D-56）：整章正文不再等一次「要不要放进渲染页」的确认——主人要审的是稿子，
        审的地方是那一章的正文页，确认点搬到定稿入库那一颗。落笔仍走唯一那条 PUT（就在
        applyProposal 里，actor:"ai" 且带着刚读到的 base_revision），只是这一次点击由系统替他按下。
@@ -392,13 +397,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         return;
       }
     }
-    setRows((prev) =>
-      prev.map((row) =>
-        row.kind === "agent" && row.id === rowId
-          ? { ...row, proposals: [...(row.proposals ?? []), proposal] }
-          : row,
-      ),
-    );
+    setRows((prev) => attachProposal(prev, rowId, proposal));
     offerFile(proposal, opts);
   }
 

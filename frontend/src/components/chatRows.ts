@@ -70,6 +70,15 @@ export function patchCommand(rows: Row[], id: number, patch: Partial<Extract<Row
   return rows.map((row) => (row.kind === "command" && row.id === id ? { ...row, ...patch } : row));
 }
 
+/** 把一份提案记到它所属的那一条答复上。**卡片在不在是另一件事**：一张已经逐字应用过的
+ *  提案不该再挂出来（35.20），可「这一行提议过哪一份」必须留在行上——摘掉正文里那份整
+ *  JSON 的条件读的就是它（批注 35.31）。 */
+export function attachProposal(rows: Row[], id: number, proposal: FileProposal): Row[] {
+  return rows.map((row) =>
+    row.kind === "agent" && row.id === id ? { ...row, proposals: [...(row.proposals ?? []), proposal] } : row,
+  );
+}
+
 /**
  * One executed step, as the trace should read it: which step, what it ran, how long it
  * took and how much came back (§六 第 2 步判据 31.1 - 预算交给框架之后，代价要摊到每一步，

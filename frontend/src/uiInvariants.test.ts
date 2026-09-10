@@ -340,6 +340,19 @@ describe("settled UI decisions must not regress", () => {
     expect(chatTraceSource).toContain("proposals.some((one) => one.path === TOC_PATH)");
   });
 
+  /* 批次 35.31（2026-09-11 真机，作品 7）：fefb85e 立的摘除条件读的是「这一行有没有 toc.md
+     那一份提案」，而 b6a4acd 那一支「服务器已逐字等于提案 → 不挂卡直接 return」根本没往行上
+     记过任何东西——于是已经应用过的那一条永远不满足摘除条件，那份整 JSON 就常年摊成代码框。
+     决定：卡片可以没有，「这一行提议过什么」不能没有。摘除依赖的是行上的记录，不是屏幕上
+     此刻有几张卡。 */
+  it("a discarded-already-applied proposal still lands on its row (批次 35.31)", () => {
+    // 一条行规则、两个调用点：挂卡那一支与丢弃那一支共用同一份「记到这一行上」。
+    expect((chatPane.match(/setRows\(\(prev\) => attachProposal\(prev, rowId, proposal\)\);/g) ?? []).length).toBe(2);
+    // 组件里不许再留第二份内联的追加写法——行规则住在 chatRows.ts（候选 6 的同一条规矩）。
+    expect(chatPane).not.toContain("proposals: [...(row.proposals ?? []), proposal]");
+    expect(chatRowsSource).toContain("export function attachProposal");
+  });
+
   it("the chapter tab carries one dot, not two (第十二批批注1)", () => {
     expect(editorPane).not.toContain("StatusBadge");
   });

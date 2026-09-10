@@ -9,6 +9,18 @@ import { useWorkbench } from "../store/workbench";
 
 const OLD = "# A 层\nconstraints: 不可挪动皇朝命轨\n";
 const NEW = "# A 层\nconstraints: 不可挪动凡人命轨\n";
+/* 批注 35.31：气泡里摊着的那份整 JSON，与它对应的那一份提案已经逐字落到 toc.md 上了
+   ——两边相等才会走 offerFromStream 的丢弃分支。 */
+const TOC_JSON = [
+  "我先给出目录：",
+  "",
+  "```json",
+  '{"chapters":[{"number":1,"title":"苏醒"}]}',
+  "```",
+  "",
+  "要不要我继续扩展？",
+].join("\n");
+const TOC_APPLIED = "# B 目录\n\n| 章 | 标题 |\n| --- | --- |\n| 1 | 苏醒 |\n";
 
 const doc = {
   path: "blueprint.md",
@@ -45,12 +57,15 @@ function sse(events: [string, unknown][]) {
 const writes: unknown[][] = [];
 let historyRows: unknown[] = [];
 let streamDelta = "我改好了";
+/** 服务器上的 toc.md 此刻是什么：与那份提案逐字相等＝已经应用过，走丢弃分支（批注 35.31）。 */
+let tocOnServer = TOC_APPLIED;
 
 describe("ChatPane proposals", () => {
   beforeEach(() => {
     writes.length = 0;
     historyRows = [];
     streamDelta = "我改好了";
+    tocOnServer = TOC_APPLIED;
     useFiles.getState().reset();
     useFiles.setState({ novelId: 1 });
     useWorkbench.setState({
@@ -102,6 +117,11 @@ describe("ChatPane proposals", () => {
           return Promise.resolve(json({ path: "blueprint.md", changed: ["constraints"], revision: "rev-2" }));
         }
         if (url.includes("/files/blueprint.md")) return Promise.resolve(json(doc));
+        if (url.includes("/files/toc.md")) {
+          return Promise.resolve(
+            json({ path: "toc.md", kind: "toc", layer: "B", label: "目录", text: tocOnServer, ai_fields: [], revision: "rev-toc" }),
+          );
+        }
         return Promise.resolve(json([]));
       }),
     );
@@ -224,6 +244,73 @@ describe("ChatPane proposals", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 40));
     expect(document.querySelector(".proposal")).toBeNull();
     expect(useFiles.getState().pending["blueprint.md"]).toBeUndefined();
+  });
+
+  /* 批注 35.31（2026-09-11 真机量到）：这一条已经应用过了——服务器上的 toc.md 逐字等于那份
+     提案，于是 offerFromStream 走丢弃分支：不挂卡，也不给这一行留下任何「它提议过什么」。
+     而摘掉那份 JSON 的条件读的正是「这一行有没有 toc.md 那一份」，所以永远不成立，
+     那几行 JSON 就一直摊在气泡里成第二个代码框。判据：pre 数 0、文本里 "chapters" 命中 0，
+     而且不许顺手把人说的话一起摘掉。 */
+  it("批注 35.31：已经应用过的那份整 JSON 不再摊在气泡里", async () => {
+    historyRows = [
+      {
+        id: 6,
+        novel_id: 1,
+        role: "assistant",
+        content: TOC_JSON,
+        mode: "plan",
+        model: "MiniMax-M2.5",
+        mentions: [],
+        context_refs: [],
+        steps: [],
+        token_input: 1,
+        token_output: 1,
+        created_at: "",
+        proposals: [{ path: "toc.md", text: TOC_APPLIED, valid: true, error: "" }],
+      },
+    ];
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+
+    await screen.findByText("要不要我继续扩展？");
+    await new Promise((resolve) => window.setTimeout(resolve, 40));
+    // 不挂卡：这一半是 35.20 的既有决定，本条不许推翻
+    expect(document.querySelector(".proposal")).toBeNull();
+    expect(useFiles.getState().pending["toc.md"]).toBeUndefined();
+    expect(document.querySelectorAll("pre")).toHaveLength(0);
+    const bubble = document.querySelector(".chat-card.agent");
+    expect(bubble?.textContent).not.toContain('"chapters"');
+    expect(bubble?.textContent).toContain("我先给出目录：");
+    expect(bubble?.textContent).toContain("要不要我继续扩展？");
+  });
+
+  /* 35.31 验收的第二句：未应用的那一条仍然「有卡 ＋ 无代码框」。这一条钉的是本条没把
+     D-51 的既有语义改掉——服务器上的文件和提案不相等时，卡照挂，那份 JSON 照摘。 */
+  it("批注 35.31：还没应用的那一份照旧挂卡，气泡里仍不摊第二个代码框", async () => {
+    tocOnServer = "# B 目录\n\n（空）\n";
+    historyRows = [
+      {
+        id: 7,
+        novel_id: 1,
+        role: "assistant",
+        content: TOC_JSON,
+        mode: "plan",
+        model: "MiniMax-M2.5",
+        mentions: [],
+        context_refs: [],
+        steps: [],
+        token_input: 1,
+        token_output: 1,
+        created_at: "",
+        proposals: [{ path: "toc.md", text: TOC_APPLIED, valid: true, error: "" }],
+      },
+    ];
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+
+    await screen.findByText("要不要我继续扩展？");
+    await waitFor(() => expect(document.querySelector(".proposal")).toBeTruthy());
+    expect(document.querySelector(".proposal-file")?.textContent).toBe("toc.md");
+    expect(document.querySelectorAll("pre")).toHaveLength(0);
+    expect(document.querySelector(".chat-card.agent")?.textContent).not.toContain('"chapters"');
   });
 
   it("ignores a stored fence that names a retired .yaml path", async () => {
