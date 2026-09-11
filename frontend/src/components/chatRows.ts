@@ -54,7 +54,9 @@ export type Row =
       command: string;
       status: CommandStatus;
       detail: string;
-      startedAt: number;
+      /** 只有正在跑的那几条有：「运行中 Ns」读的是组件里的 elapsed，不是这个数。
+       *  刷新回来的那一条因此不带它——这一行的「何时」由服务器那条的 created_at 说过了。 */
+      startedAt?: number;
       runId?: number;
       chapterId?: number;
     };

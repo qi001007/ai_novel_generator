@@ -360,6 +360,13 @@ class ChatMessage(SQLModel, table=True):
         default_factory=list,
         sa_column=Column(JSON, nullable=False),
     )
+    # 批注 35.34: 一条斜杠命令最后结算成的那张卡。它原先只活在浏览器的行列表里，
+    # Page.reload 之后整张卡消失，而它替人做的事全在——结果留痕、过程不留痕。
+    # 结算文案住 `content`（一个事实一个主人），这一列只装「画这张卡还差的三样」。
+    command_state: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
     token_input: int = 0
     token_output: int = 0
     created_at: datetime = Field(

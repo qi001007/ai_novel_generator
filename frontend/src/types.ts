@@ -228,10 +228,22 @@ export type ChatToolStep = {
   chars: number;
 };
 
+/** 一条斜杠命令最后结算成的那张卡（批注 35.34）。
+ *
+ *  结算文案住这一行的 `content`，这里只补画卡还差的三样：哪条命令、结局如何、跳哪去。
+ *  `status` 只会是这两种——「运行中」不落库，刷新回来的不许是一张永远转完不了的圈。 */
+export type ChatCommandState = {
+  command: string;
+  status: "done" | "failed";
+  run_id: number | null;
+  chapter_id: number | null;
+};
+
 export type StoredChatMessage = {
   id: number;
   novel_id: number;
-  role: "user" | "assistant";
+  /** 第三种是命令那一行：它不是谁说的话，是这一条线程上的一步。 */
+  role: "user" | "assistant" | "command";
   content: string;
   /** The model's own reasoning for this answer. Never part of `content`: that is what
    *  gets replayed into later prompts, and thoughts must not come back as spoken text. */
@@ -246,6 +258,9 @@ export type StoredChatMessage = {
    *  has no trace. Measured 2026-09-10 - a required field here dropped the whole
    *  history instead of just the column. */
   steps?: ChatToolStep[];
+  /** 命令行那一行画的卡片（批注 35.34）。可选与 `steps` 同一个理由：后端是另一个进程，
+   *  比这条批注更老的服务器不带这个键——那时候这一行什么都画不出来，就干脆不画。 */
+  command_state?: ChatCommandState;
   token_input: number;
   token_output: number;
   created_at: string;

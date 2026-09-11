@@ -63,6 +63,8 @@
 | D-55 | 模式那颗是状态栏，不是开关：点亮哪一侧只看最近一答实际用的模式，点它不改任何东西 |
 | D-56 | 整章正文不等「要不要放进渲染页」那一次点击：落笔即进那一章的 `draft.md`，确认点搬到定稿入库 |
 | D-57 | 缺 D 层简报时 `/generate` 自己先把这一章的简报补上，落地那一刻接着写正文；这道自动落笔只开在这一轮、只开给这一个路径 |
+| D-58 | 标签条只跟真实文件与被主人主动要看的文件；被闸门拒掉的那一份不占格子 |
+| D-59 | 斜杠命令那一行有第三种落库形状：`command` 角色 + `command_state` JSON；`running` 不落库，命令行不进模型上下文 |
 
 ## 1. 决定
 
@@ -458,6 +460,22 @@
 - **实测（真机、零额度、主人的库一字未动）**：通道 `5177 → 8015 → 副本库 .scratch/probe/3517.db → 8125 桩网关`，桩日志里 A／B／C **各命中 1 次**（整场取证累计 **6** 次：06:04:43／06:07:00／06:10:37 是选择器读错那一版，06:11:46／06:12:35／06:13:21 才是这三组）；**外部请求 0 是结构保证不是运气**——`stub-gateway.py` 里没有任何网络客户端（`requests|urllib|http.client|forward` 全文零命中），它只会就地回一段写死的字。桩这一轮替模型答的是一段正文，里面那张 `@settings/characters/new.md` 围栏缺 `姓名/分级/起始章/结束章`。**A 组（带守卫）**：卡到了（`invalid: true`、`applyDisabled: true`、红字正是那四个小节），标签条 `["settings/foreshadow.md"]` 一字未动，`newTabsDuringTurn: []`；同一次会话里点卡上那颗「在编辑器中打开」，格子立刻开出来 `["settings/foreshadow.md", "settings/characters/new.md"]` ＋ pending 点 1 颗——这是**灵敏度对照**：这条 DOM 看得见格子，所以那个 0 是守卫挡出来的，不是量不到。**B 组（摘掉守卫，同一脚本同一副本库）**：`newTabsDuringTurn: ["settings/characters/new.md"]`，正是主人报的那一格。**C 组（还原）**复现 A。截图 `3517-fixed-no-extra-cell.png` 亲自看过；**B 组只有 DOM 数字、没留图**（脚本同名覆盖，我不为一句话再翻一次源码）。
 - **门禁**：前端 **326 passed / 27 files**（净 ＋1：`store/files.test.ts` 那条新用例，两个方向都钉——不合格不加格、合法的照旧要加，否则 35.5 那条「建卡换格」的链就没格子可换）；`uiInvariants` 第 **65** 条不变，其中 35.20-35.22 那条钉住 `tabs:` 守卫的断言**随决定搬家**成新形状（`restore || !proposal.valid || …`），**删除 0**；后端 **400 passed**（本轮未改后端源码）；`tsc -b --force` 退出 0；`npm run build` ✓ 1.73 s（收口复跑；同一次改动更早一轮是 1.69 s）；命中区审计**两本各跑一遍**：`/novels/6` small／clipped／unreachable／edge 全 **0** ＋ srOnly 1（与既有同一份），`/novels/7` 前三类 **0**、edge **2**（`brief.md` 那一行与那条 2px 拖拽线被窗口边缘裁掉，既有项、非本轮造成）。**反向变异各自红、还原后绿**：摘掉 `!proposal.valid ||` → `files.test.ts` 新用例 ＋ `uiInvariants` 那条 **2 failed / 82 passed**，还原后 84 passed。
 - **写坏的三处，记给下一个人（也记给我自己）**：① 取证脚本里 `return { … };` 之后又多写了一个 `}`，送进页面的表达式整段解析失败——同一个错我犯了两次；② 第一次量到 `tabs: []` 时那**不是结论**，是选择器读错：`.editor-tabs` 是**正文页**那一条，文件页的标签条是 `.file-tabs .file-tab`。发现「读数恰好是我想要的」之后先把测量本身证伪了一遍（A 组的灵敏度对照就是为此），这一步没省，是对的；③ **结案行第一版是凭记忆写的**，三处错：基线标签条写成 **5** 格（实际 **1** 格，`settings/foreshadow.md`）、B 组写成「5 → 6」（实际 **1 → 2**）、引用了 `3517b-runA/B/C.png` **三张不存在的图**（脚本按同名覆盖，只剩 C 那一份），还把搬家那条断言写成「`uiInvariants` 第 63 条」（它不是新增、也不在 63，是第 **18** 条里那一枚源码串）。发现方式是收口时回读 `.scratch/probe/3517-run*.json` 与 `awk '/^  it\(/'` 数位置，而不是重读我自己的正文。**教训：结案行只能从证据文件抄，不能从记忆写。**
+
+### D-59 斜杠命令那一行有第三种落库形状：`command` 角色 + `command_state` JSON；`running` 不落库，命令行不进模型上下文
+
+状态：生效。批次 35.34 裁定（2026-09-11）。
+
+- **本条的依据是那条批注自己写下的验收**，不是新下的话：「刷新前后 `.chat-card.command` 计数 1 → 1，`detail` 逐字等于刷新前那一份」，判据候选「状态是**最后一次结算**的那一份（不是运行中），且不许因此多出第二个气泡」。主人本轮的话是「你按计划工作吧，尽早完工」。
+- **先认一笔账，否则这条会被读错**：35.34 登记时写的症状是「斜杠命令那一行是实时行，刷新后不留痕」，而**登记时给出的判断是「这不是 29c 造的——`/generate`／`/review`／`/check` 每一条命令一直如此」**，且「要修就得给命令行一个落库形状，牵动 `chat_message` 的 role／meta 与历史恢复那一路（D-50／D-51），够单独一条批注」。所以本条不是修一个 bug，是**给命令行立一个落库形状**，并把 D-50／D-51 的历史恢复那一路扩到第三种角色。
+- **裁定**：`chat_message` 新增第三种 `role` = `"command"`。`content` 只存**最后一次结算**的那一句文案（单 owner，不存中间态）；`command_state` JSON 存 `{command, status, run_id, chapter_id}` 四件——命令行需要记住的、`content` 装不下的那三件加一个命令名。upsert 语义：同一 `run_id` 再来一次就覆盖，不新增行。
+- **`running` 不落库**：`patchCommand` 里那道守卫 `if (!entry || (patch.status !== "done" && patch.status !== "failed")) return;`（`ChatPane.tsx:396`）——运行中那一次 `patchCommand({ status: "running" })` 只改本地 `commandRows` 账本，不调 `recordCommand`。理由：刷新回来的那一条得是最后一次结算，不是一张转不完的圈（D-50 的同一条道理：落库的是结果，不是过程）。
+- **命令行不进模型上下文**：`_history_messages`（`app/services/chat.py`）那道筛 `role in {"user", "assistant"}` 自动把 `command` 角色排除在外——不需要新加任何逻辑，旧代码字面上就做到了。D-04 的唯一资料池因此不被污染。
+- **一写一读，没有第二条通路**：写只在 `POST /api/novels/{id}/chat/commands`（`app/routers/chat.py`），调 `record_command()`（`app/services/chat.py`）这一个函数；读只在 `/chat/messages` 历史恢复那一路的 `fromHistory` command 分支（`ChatPane.tsx:101`）。前端 `commandRows` 账本（`ChatPane.tsx:221`）是本地缓存，不是第二真源——刷新后从历史重建，不另存。
+- **不做的**：不存 `running`；不给命令行另开一条「只看不写」的标签语义；不顺手吸收 35.38（命令那一轮的用户侧两行：敲进去的没落库，系统代拟的那句落了库——那是产品决定不是缺陷修复，已登记）。
+- **实测（真机、零额度、主人的库一字未动）**：通道 `5174 → 8010 → 副本库 .scratch/probe/3534.db → 8124 桩网关`。刷新前 `.chat-card.command` **3** 张（`/check` 一条 + `/save` 两条，正是最后一次结算的文案），刷新后 **3** 张；`detail` 逐字相等（`detailEqual: true`）；`status` 全是 `done`（`statusEqual: true`）；`running` 全 false（`runningAfter: false`）；`.chat-bubble` 刷新前 **3**、刷新后 **1**（`bubbleDelta: -2`）——消失的那两个正是命令自己的用户气泡，35.38 登记为产品决定。**截图 `g3534-before.png` 与 `g3534-reload.png` 亲自看过**。
+- **迁移双向量过**：`d8f3b6c05a17` 给 `chat_message` 加 `command_state` JSON **NOT NULL** `server_default="'{}'"`——加 NOT NULL 列必须给默认，否则库里既有行落不下去。空库 `upgrade head` → `downgrade` → 再 `upgrade head`，列在／消失／再在； populated DB（`.scratch/probe/3534.db`，从 `create_all` 建的副本、无 `alembic_version`）先 `stamp` 到 `c4e7a1b8d206` 再 `upgrade head`，列在、旧行 `command_state` 是 `{}`。**没碰主人的真源**：同一条命令实测 `backend/novel_generator.db` 仍是 `c4e7a1b8d206` 且 `command_state` 不存在——`app/main.py` 与 `app/db.py` 都不在启动跑 alembic，这一列要他自己在 HANDOFF.md 那条 runbook 里补。
+- **门禁**：后端 **405 passed**（＋5：`test_chat_command.py` 新文件，upsert／role／command_state／exclude-from-context／downgrade 各一条）；前端 **330 passed / 27 files**（＋3：`ChatPane.test.tsx` 三条——restore／write-once／relay-single-row；`uiInvariants` 第 **66** 条不变量钉住 `command` 角色 + `command_state` 形状 + `running` 不落库）；`tsc -b --force` 退出 0；`npm run build` ✓ 1.68 s；命中区审计 small／clipped／unreachable 全 **0**。**反向变异三次各自红、还原后绿**：M1 摘 `void recordCommand(...)` 调用 → **3 failed**（invariant #66 + 2 行为用例）；M2 摘 `running` 守卫 → **2 failed**（invariant #66 + relay 用例）；M3 摘 `fromHistory` command 分支 → **2 failed**（invariant #66 + restore 用例）。
+- **顺手登记一条不改**：**35.38** 命令那一轮的用户侧两行：敲进去的没落库（`ChatPane.tsx:725` `appendMessage({ kind: "user", … })` 只画进本地 `rows`），系统代拟的那句落了库（D-57 补简报时 `ask()` 真的落了库，刷新后仍以用户气泡出现，逐字看着像主人自己打的话）。这两半各是一种产品决定，要主人裁。
 
 ## 2. 已废止（删除区）
 

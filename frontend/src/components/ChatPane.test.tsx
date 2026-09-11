@@ -999,6 +999,184 @@ describe("ChatPane", () => {
     );
   });
 
+  /* 批注 35.34（真机量到的形状：`.scratch/g3529c.mjs`，作品 6 副本库 3529c.db）：
+     一次 /generate 全程，卡片上那三段文案在屏上逐字可见；Page.reload 之后
+     .chat-card.command **0 张**，而它替人做的事全在（简报 1 份、正文 56 字、答案气泡 18 字仍在）
+     ——结果留痕、过程不留痕。下面三条钉的是补上的那一半：刷新回来的还是那一张卡、
+     卡上的那一句逐字等于结算那一刻屏上的那一句、接力结算两次库里仍只有一行。 */
+  const settledDetail = "第 1 章《第一章》· 56 字 · 机械校验 通过";
+  const commandMessageRow = {
+    id: 21,
+    novel_id: 1,
+    conversation_id: 1,
+    role: "command" as const,
+    content: settledDetail,
+    reasoning: "",
+    mode: "",
+    model: "",
+    mentions: [],
+    context_refs: [],
+    steps: [],
+    command_state: { command: "/generate", status: "done", run_id: 12, chapter_id: 7 },
+    token_input: 0,
+    token_output: 0,
+    created_at: "2026-09-11T06:00:00Z",
+  };
+  const plainUserRow = {
+    id: 20,
+    novel_id: 1,
+    conversation_id: 1,
+    role: "user" as const,
+    content: "写第 1 章",
+    reasoning: "",
+    mode: "write",
+    model: "",
+    mentions: [],
+    context_refs: [],
+    steps: [],
+    token_input: 0,
+    token_output: 0,
+    created_at: "2026-09-11T05:59:00Z",
+  };
+
+  it("批注 35.34：刷新回来那条命令还在，说的是结算那一份，也不多出一个气泡", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes("/chat/messages")) return json([plainUserRow, commandMessageRow]);
+      return json([]);
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await waitFor(() => expect(document.querySelectorAll(".chat-card.command")).toHaveLength(1));
+
+    const card = document.querySelector(".chat-card.command") as HTMLElement;
+    // 判据逐字：detail 就是刷新前那一份，不是重新拼的
+    expect(card.querySelector("p")?.textContent).toBe(settledDetail);
+    expect(card.querySelector("code")?.textContent).toBe("/generate");
+    // 状态是最后一次结算的那一份，不是运行中：没有圈，写着「完成」
+    expect(card.className).toContain("done");
+    expect(card.querySelector(".chat-state")?.textContent).toBe("完成");
+    expect(card.querySelector(".spinner")).toBeNull();
+    // 两个跳转按钮跟着回来（run_id／chapter_id 也落库了）
+    expect(screen.getByLabelText("查看调用详情")).toBeTruthy();
+    expect(screen.getByLabelText("在正文打开")).toBeTruthy();
+    // 「不许因此多出第二个气泡」：那一条 user 仍是唯一的气泡，命令行没扮成答复
+    expect(document.querySelectorAll(".chat-bubble")).toHaveLength(1);
+    expect(document.querySelectorAll(".chat-message")).toHaveLength(1);
+  });
+
+  it("批注 35.34：命令结算的那一刻落一次库，落的就是屏上那一句", async () => {
+    const user = userEvent.setup();
+    useFiles.getState().reset();
+    useFiles.setState({ novelId: 1 });
+    useWorkbench.setState({
+      selectedChapterId: 7,
+      chapters: [{ id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: "", word_count: 0, status: "draft", final_decision: "", final_comment: "" }],
+      briefs: [{ id: 8, novel_id: 1, arc_plan_id: null, chapter_number: 1, goal: "推进", events: "相遇", pov: "主角", characters: [], conflict: "", hook: "", required_facts: [], status: "ready" }],
+    });
+    const posts: Record<string, unknown>[] = [];
+    const streamed = "意识恢复的瞬间，疼痛也跟着回来了。";
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes("/chat/commands")) {
+        posts.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return json({ id: 41 });
+      }
+      if (url.includes("/chapters/from-brief/8/stream")) {
+        return Promise.resolve(sse([
+          ["delta", { text: streamed }],
+          ["done", { chapter: { id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: streamed, word_count: streamed.length, status: "draft", final_decision: "", final_comment: "" }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: streamed.length, issues: [] } }],
+          ["end", {}],
+        ]));
+      }
+      if (url.includes("/files/chapters/0001/draft.md")) return json(fileDoc(draftDocument(1, streamed), "r2"));
+      return json([]);
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "/generate 1");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(posts).toHaveLength(1));
+    const card = document.querySelector(".chat-card.command") as HTMLElement;
+    // 落库的那一份与屏上的那一份逐字相同，不是各写一遍文案
+    expect(posts[0].detail).toBe(card.querySelector("p")?.textContent);
+    expect(posts[0]).toMatchObject({
+      message_id: null,
+      command: "/generate",
+      status: "done",
+      run_id: 12,
+      chapter_id: 7,
+    });
+  });
+
+  it("批注 35.34：简报接力让同一张卡结算两次，库里仍只有一行", async () => {
+    const user = userEvent.setup();
+    useFiles.getState().reset();
+    useFiles.setState({ novelId: 1 });
+    useWorkbench.setState({
+      selectedNovelId: 1,
+      selectedChapterId: chapterOneRow.id,
+      chapters: [chapterOneRow],
+      briefs: [],
+    });
+    const posts: Record<string, unknown>[] = [];
+    let releaseStream = () => {};
+    const streamGate = new Promise<void>((resolve) => {
+      releaseStream = resolve;
+    });
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if ((init?.method ?? "GET").toUpperCase() === "PUT") {
+        return json({ path: "chapters/0001/brief.md", changed: ["goal"], revision: "r2" });
+      }
+      if (url.includes("/chat/commands")) {
+        posts.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return json({ id: 41 });
+      }
+      if (url.includes("/chat/stream")) {
+        return streamGate.then(() => sse([
+          ["context", { items: [], unknown_mentions: [], mode: "plan", temperature: 0.7 }],
+          ["delta", { text: "这一章的简报已给出。" }],
+          ["proposal", { path: "chapters/0001/brief.md", text: briefProposed, valid: true, error: null }],
+          ["done", { message: stored("这一章的简报已给出。") }],
+          ["end", {}],
+        ]));
+      }
+      if (url.includes("/chapters/from-brief/8/stream")) {
+        return Promise.resolve(sse([
+          ["delta", { text: "意识恢复的瞬间。" }],
+          ["done", {
+            chapter: { ...chapterOneRow, brief_id: 8, content: "意识恢复的瞬间。", word_count: 8 },
+            generation_run: { id: 12 },
+            machine_check: { passed: true, word_count: 8, issues: [] },
+          }],
+          ["end", {}],
+        ]));
+      }
+      if (url.includes("/files/chapters/0001/brief.md")) return json(briefDocOne);
+      if (url.endsWith("/planning/briefs")) return json([briefRowOne]);
+      if (url.endsWith("/api/novels/1/chapters")) return json([{ ...chapterOneRow, brief_id: 8 }]);
+      return json([]);
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "/generate");
+    await user.keyboard("{Enter}");
+
+    // 第一次结算：这一张卡要去补简报
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0].message_id).toBeNull();
+    expect(posts[0].status).toBe("done");
+    releaseStream();
+    // 第二次结算：正文真的写完了，改写的是同一行
+    await waitFor(() => expect(posts).toHaveLength(2), { timeout: 4000 });
+    expect(posts[1].message_id).toBe(41);
+    expect(posts[1].detail).toBe("第 1 章《第一章》· 8 字 · 机械校验 通过");
+    // 屏上仍是一张卡：两次结算改写的是同一行
+    expect(document.querySelectorAll(".chat-card.command")).toHaveLength(1);
+  });
+
   it("says a round needed no tool rather than leaving the detail blank", async () => {
     const user = userEvent.setup();
     vi.stubGlobal(

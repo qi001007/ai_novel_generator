@@ -759,6 +759,54 @@ def persist_reply(
     return message
 
 
+def record_command(
+    session: Session,
+    novel_id: int,
+    *,
+    message_id: int | None,
+    command: str,
+    status: str,
+    detail: str,
+    run_id: int | None,
+    chapter_id: int | None,
+) -> ChatMessage:
+    """一条命令在一整条线程上占一行；它结算几次，那一行就改写几次（批注 35.34）。
+
+    为什么必须能改写：35.29c 那道简报接力会让同一张卡先 `done`（「先补简报，它一落地就
+    自动接着写正文」）、接力跑完再 `done`（正文那一份结算）。 append 两次就是刷新回来
+    两张卡，判据要的是 1 → 1。
+
+    `message_id` 指不到本作品的一条命令行时重新起一行，不去改写别人的行：线程刚被清空、
+    卡还活着，这一行的最新状态仍然要落下。
+
+    `role="command"` 是这一行的身份，也是它与模型的边界——`_history_messages` 只把
+    user／assistant 递给模型，所以这张卡的文案不会在下一轮被当成 Agent 说过的话回放。
+    """
+    row: ChatMessage | None = None
+    if message_id is not None:
+        found = session.get(ChatMessage, message_id)
+        if found is not None and found.novel_id == novel_id and found.role == "command":
+            row = found
+    if row is None:
+        row = ChatMessage(
+            novel_id=novel_id,
+            conversation_id=current_conversation(session, novel_id),
+            role="command",
+            mode="",
+        )
+    row.content = detail
+    row.command_state = {
+        "command": command,
+        "status": status,
+        "run_id": run_id,
+        "chapter_id": chapter_id,
+    }
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
 def complete_turn(
     session: Session,
     llm: LLMClient,

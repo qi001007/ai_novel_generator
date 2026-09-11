@@ -95,31 +95,51 @@ function tokens(input?: number, output?: number) {
 }
 
 function fromHistory(rows: StoredChatMessage[]): Row[] {
-  return rows.map((row) =>
-    row.role === "user"
-      ? { kind: "user", id: row.id, text: row.content }
-      : {
-          kind: "agent",
+  // flatMap 而不是 map：一条命令行画不出卡片时就整个不画（批注 35.34）。让它退成一条
+  // 答复气泡，等于把「看不见自己跑过的那一步」换成「界面在瞎说」。
+  return rows.flatMap((row): Row[] => {
+    if (row.role === "command") {
+      const state = row.command_state;
+      // 卡片还差的三样全在这一列里；比这条批注更老的服务器不带它，那一行就没有卡可画
+      if (!state) return [];
+      return [
+        {
+          kind: "command",
           id: row.id,
-          text: row.content,
-          status: "done" as const,
-          question: "",
-          meta: {
-            model: row.model,
-            tokenInput: row.token_input,
-            tokenOutput: row.token_output,
-            refs: row.context_refs,
-            // 31.4: the steps are stored with the answer, and this is the same line-maker
-            // the live stream uses - so the trace after a reload is not a paraphrase.
-            // The `??` is for a server older than this批注: measured 2026-09-10, without
-            // it a response with no `steps` key dropped the entire history, not just
-            // this column.
-            reads: (row.steps ?? []).map(toolLine),
-            mode: row.mode,
-            reasoning: row.reasoning,
-          },
+          command: state.command,
+          status: state.status,
+          // 结算文案只有 content 这一份：刷新回来的与屏上看过的逐字相同（判据）
+          detail: row.content,
+          runId: state.run_id ?? undefined,
+          chapterId: state.chapter_id ?? undefined,
         },
-  );
+      ];
+    }
+    if (row.role === "user") return [{ kind: "user", id: row.id, text: row.content }];
+    return [
+      {
+        kind: "agent",
+        id: row.id,
+        text: row.content,
+        status: "done" as const,
+        question: "",
+        meta: {
+          model: row.model,
+          tokenInput: row.token_input,
+          tokenOutput: row.token_output,
+          refs: row.context_refs,
+          // 31.4: the steps are stored with the answer, and this is the same line-maker
+          // the live stream uses - so the trace after a reload is not a paraphrase.
+          // The `??` is for a server older than this批注: measured 2026-09-10, without
+          // it a response with no `steps` key dropped the entire history, not just
+          // this column.
+          reads: (row.steps ?? []).map(toolLine),
+          mode: row.mode,
+          reasoning: row.reasoning,
+        },
+      },
+    ];
+  });
 }
 
 /* The same limits the server enforces (services/chat.py), checked here first so a
@@ -192,6 +212,14 @@ export default function ChatPane({ className = "" }: { className?: string }) {
      才续写，所以他从卡片上点、还是从文件页自己存一份，两条路都能接上。 */
   const briefHandoff = useRef<{ chapterNumber: number; commandId: number } | null>(null);
   const autoLand = useRef<Set<string>>(new Set());
+
+  /* 批注 35.34：命令行落库的账本——本地行 id → 「这张卡此刻的那一份 ＋ 它在库里那一行的
+     id」（id 第一次结算之后才有）。它不是第二真源：界面读的还是 rows，这里只记「该往库里
+     写什么」。为什么不从一份 rows 的快照里读：`/generate 9` 那一拍是先建卡、紧接着在同一次
+     同步里判失败，React 还没落图，任何「渲染后的 rows」都还是空的——那一条恰恰最该留下痕。 */
+  const commandRows = useRef(
+    new Map<number, { row: Extract<Row, { kind: "command" }>; messageId?: number }>(),
+  );
 
   // 一个 ref 一份订阅：StrictMode 双跑 effect 时两个监听器读同一个 ref，先到的那个把它清空，
   // 后到的直接 return——续写只会发生一次，不靠「忽略首执行」那种在真机上会失效的写法。
@@ -329,6 +357,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const activeModel = selectedModel ?? "默认模型";
 
   function appendMessage(message: Row) {
+    if (message.kind === "command") commandRows.current.set(message.id, { row: message });
     setRows((prev) => [...prev, message]);
   }
 
@@ -336,8 +365,36 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     setRows((prev) => patchRows(prev, id, patch));
   }
 
+  /* 批注 35.34：命令行落库只有一个地方，就是这里。五种命令各自的结算、35.29c 那道接力的
+     第二次结算、每一路的失败，全都从 patchCommand 过——写在调用点上就是十份副本。 */
+  async function recordCommand(entry: { row: Extract<Row, { kind: "command" }>; messageId?: number }) {
+    // 不读闭包里那个 selectedNovelId：接力那一次结算发生在几百毫秒之后
+    const novelId = useWorkbench.getState().selectedNovelId;
+    if (!novelId) return;
+    try {
+      const saved = await api.post<{ id: number }>(`/api/novels/${novelId}/chat/commands`, {
+        message_id: entry.messageId ?? null,
+        command: entry.row.command,
+        status: entry.row.status,
+        detail: entry.row.detail,
+        run_id: entry.row.runId ?? null,
+        chapter_id: entry.row.chapterId ?? null,
+      });
+      // 一条命令一行：往后同一张卡再结算，改写的是这一行
+      commandRows.current.set(entry.row.id, { ...entry, messageId: saved.id });
+    } catch {
+      // 没写进库里，影响的只是下一次刷新看不到这张卡；此刻它正好好地待在屏上，
+      // 不必再弹一条红字去抢它的屏（也不许把已经成功的这一步说成失败）。
+    }
+  }
+
   function patchCommand(id: number, patch: Partial<Extract<Row, { kind: "command" }>>) {
+    const entry = commandRows.current.get(id);
+    if (entry) commandRows.current.set(id, { ...entry, row: { ...entry.row, ...patch } });
     setRows((prev) => patchCommandRows(prev, id, patch));
+    // running 不落库：刷新回来的那一条得是最后一次结算，不是一张转不完的圈
+    if (!entry || (patch.status !== "done" && patch.status !== "failed")) return;
+    void recordCommand({ ...entry, row: { ...entry.row, ...patch } });
   }
 
   // The stream carries the whole proposed file, so the diff the reader sees is

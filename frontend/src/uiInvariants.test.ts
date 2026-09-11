@@ -1281,4 +1281,26 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(chatPane.match(/机械校验 \$/g) ?? []).toHaveLength(1);
   });
 
+  /* 批注 35.34（2026-09-11）：斜杠命令那张卡原先只活在组件本地的 rows 里，真机
+     Page.reload 之后 .chat-card.command **0 张**，而它替人做的事全在——结果留痕、过程不留痕。
+     补上这一路之后，最容易散的两处是「写」（五种命令各自的结算点）与「读」（历史恢复那一个
+     分支）。所以这里一边钉一处：写只有 patchCommand 里那一次，读只有 fromHistory 里那一支。 */
+  it("批注 35.34：命令行一处写、一处读，两边都不多画", () => {
+    // 写：只有一个落库处；「运行中」不落库，刷新回来的不许是一张转不完的圈
+    expect((chatPane.match(/void recordCommand\(/g) ?? []).length).toBe(1);
+    expect(chatPane).toContain(
+      'if (!entry || (patch.status !== "done" && patch.status !== "failed")) return;',
+    );
+    // 一条命令一行：第一次结算拿到服务器那一行的 id 记回账本，之后的结算改写它
+    expect(chatPane).toContain(
+      "commandRows.current.set(entry.row.id, { ...entry, messageId: saved.id });",
+    );
+    // 读：第三种行有它自己的分支，结算文案只从 content 取那一份
+    expect(chatPane).toContain('if (row.role === "command") {');
+    expect(chatPane).toContain("detail: row.content,");
+    // 画不出来就整行不画——退成一条答复气泡是瞎说，不是留痕
+    expect(chatPane).toContain("if (!state) return [];");
+    expect(chatTypes).toContain('role: "user" | "assistant" | "command";');
+  });
+
 });
