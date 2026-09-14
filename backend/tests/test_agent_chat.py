@@ -397,3 +397,56 @@ def test_a_propose_character_ask_lands_a_real_archive(client: TestClient) -> Non
     assert applied.json()["path"] != "settings/characters/new.md"
     rows = client.get(f"/api/novels/{novel_id}/characters").json()
     assert [(row["name"], row["identity"]) for row in rows] == [("沈砚", "守钥人末代")]
+
+
+def test_tool_call_and_text_fence_produce_one_arcs_card(client: TestClient) -> None:
+    """批注 36.7：模型既调了 propose_arcs 工具，又在文本里写了 @propose_arcs。
+
+    merge_step_proposals 把工具结果的 @arcs.md 合进正文后，extract_proposals 不应再把
+    文本里的 @propose_arcs 编译成第二张卡。文本里那份 payload 故意写缺字段，触发
+    extract_proposals 的 fallback 路径——即便 fallback 把路径改成 arcs.md，也不许产出
+    第二张卡。
+    """
+    arc_payload = {
+        "arcs": [
+            {
+                "title": "苏醒与逃离",
+                "start_chapter": 1,
+                "end_chapter": 5,
+                "objective": "逃出设施",
+                "conflict": "实验设施追捕",
+                "resolution": "成功脱离",
+                "status": "planned",
+            }
+        ]
+    }
+    # 文本里那份缺 conflict 和 resolution，编译必然失败
+    broken_payload = {"arcs": [{"title": "残缺弧", "start_chapter": 1, "end_chapter": 3}]}
+    use_fake(
+        client,
+        SteppedClient(
+            [
+                [tool_block("propose_arcs", arc_payload)],
+                [
+                    "已更新 C 层剧情弧。\n\n"
+                    "```markdown\n@propose_arcs\n"
+                    + json.dumps(broken_payload, ensure_ascii=False)
+                    + "\n```\n"
+                ],
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "生成第一幕剧情弧", "mode": "plan"},
+    )
+    events = parse_sse(response.text)
+    proposals = [payload for event, payload in events if event == "proposal"]
+
+    assert len(proposals) == 1, f"期望 1 张卡，实际 {len(proposals)} 张：{[p['path'] for p in proposals]}"
+    card = proposals[0]
+    assert card["path"] == "arcs.md"
+    assert card["valid"] is True, card["error"]
+    assert "## 弧 1 苏醒与逃离" in card["text"]

@@ -48,7 +48,7 @@ from app.services.context import (
     mention_tokens,
     render_context,
 )
-from app.services.proposal_actions import run_action
+from app.services.proposal_actions import ACTIONS, run_action
 
 # An attachment is not a second injection path (D-04): it becomes an ordinary
 # ContextBlock in the same list the collectors produce, so the prompt renderer, the
@@ -125,27 +125,8 @@ HISTORY_WINDOW = 8
 MODES = ("plan", "write")
 MODE_LABEL = {"plan": "计划模式", "write": "写作模式"}
 
-# 35.10：模式原先只有 composer 上那个手动开关，`mode` 默认 write，于是「给第 3 章写一份简报」
-# 拿到的是写作提示词——它照 WRITE_BODY 第一句把正文吐在对话里。判定改成先读这句话指向哪个对象。
-# 成稿一类优先：一句话里既点了简报又点了正文时，主人要的是能用的字。
-PROSE_CUES = ("正文", "成稿", "续写", "扩写", "接着写", "往下写", "写出来", "直接写")
-PLANNING_CUES = (
-    "简报", "简章", "brief", "大纲", "目录", "toc", "剧情弧", "故事弧", "弧段", "蓝图",
-    "人物卡", "人物", "设定", "伏笔", "世界观", "题旨", "规划",
-    "a层", "b层", "c层", "d层", "blueprint.md", "toc.md", "arcs.md", "characters.md",
-)
-
-
 def effective_mode(text: str, requested: str) -> str:
-    """这句话要的是规划对象还是成稿；两边都没点中才照主人拨的开关。"""
-    # 层名挨着「层」的那个空格不是这句话的一部分：主人写「重新生成C层」不带空格，
-    # 表里带一个就把两把提示词表都点不中，模式整个落回开关（35.18）。只抹「层」
-    # 两侧的空白，不抹全部——全抹会把拉丁词焊在一起，「to cache」就含得下 "toc"。
-    lowered = re.sub(r"\s+(?=层)|(?<=层)\s+", "", text.lower())
-    if any(cue in lowered for cue in PROSE_CUES):
-        return "write"
-    if any(cue in lowered for cue in PLANNING_CUES):
-        return "plan"
+    """The owner-selected mode is authoritative; text never silently overrides it."""
     return requested
 
 
@@ -321,7 +302,33 @@ def extract_proposals(
     archive -- the number is the book's to assign, and 同名 in the create template is a
     409, not a card.
     """
-    fences = list(PROPOSAL_BLOCK.findall(promote_json_toc_block(content or "", current)))
+    raw_fences = PROPOSAL_BLOCK.findall(promote_json_toc_block(content or "", current))
+    fences: list[tuple[str, str]] = []
+    tool_actions = {spec.tool: spec.action for spec in ACTIONS.values()}
+    for raw_path, text in raw_fences:
+        # Some gateways return the model's attempted tool call as a markdown block:
+        # ``@propose_arcs`` followed by the JSON payload.  It is not a file path.
+        # Compile it through the very same ActionSpec used by a real tool call so an
+        # otherwise valid C/A/B/D/person proposal never becomes a dead "missing file"
+        # card.  A malformed payload remains a diagnostic on the canonical target.
+        action = tool_actions.get(raw_path.strip())
+        if action is None:
+            # 36.7: dedup plain fences too (e.g., @arcs.md from tool result)
+            if not any(p.strip() == raw_path.strip() for p, _ in fences):
+                fences.append((raw_path, text))
+            continue
+        accepted, compiled = run_action(action, text, current)
+        compiled_fence = PROPOSAL_BLOCK.findall(compiled)
+        if accepted and len(compiled_fence) == 1:
+            compiled_path, compiled_body = compiled_fence[0]
+            # 36.7: if this path is already in fences (e.g., from tool result), skip
+            if not any(p.strip() == compiled_path.strip() for p, _ in fences):
+                fences.extend(compiled_fence)
+            continue
+        spec = ACTIONS[action]
+        # 36.7: if spec.path is already in fences, skip
+        if not any(p.strip() == spec.path.strip() for p, _ in fences):
+            fences.append((spec.path, text))
     pending_arcs = ""
     # A fence for arcs.md in the answer already owns that file: two cards for one
     # document would leave the owner choosing between two writes.
@@ -929,7 +936,7 @@ def stream_turn(
 
     outcome: Any = None
     reasoning: list[str] = []
-    surfaced: set[tuple[str, str]] = set()
+    surfaced: set[str] = set()
     try:
         for name, payload in stream_agent_turn(
             llm,
@@ -954,7 +961,7 @@ def stream_turn(
                     for proposal in _turn_proposals(
                         factory, turn.user_message_id, payload.result.content or ""
                     ):
-                        surfaced.add((proposal["path"], proposal["text"]))
+                        surfaced.add(proposal["path"])
                         yield ("proposal", proposal)
             else:
                 outcome = payload
@@ -979,7 +986,7 @@ def stream_turn(
     # 收尾再抽一次，补的是模型自己写进正文的那些围栏（没有提案工具的对象才走这条路）；
     # 中途已经给过的卡不再重复发一遍（32.4）。
     for proposal in _turn_proposals(factory, turn.user_message_id, final_content):
-        if (proposal["path"], proposal["text"]) in surfaced:
+        if proposal["path"] in surfaced:
             continue
         yield ("proposal", proposal)
 
