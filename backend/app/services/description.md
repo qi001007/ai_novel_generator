@@ -1,10 +1,11 @@
 # backend/app/services/ —— 业务与 AI 编排
 
-context.py 的 collect_items() 是唯一资料池；documents.py + markdown_doc.py 管投影读写与语法；
+context_planner.py 是新模型的唯一动态资料选择器；旧链路在退役前仍由 context.py 的 collect_items() 管资料池。documents.py + markdown_doc.py 管投影读写与语法；
 renumber.py 管全部章号引用；storage.py 管快照与本机文件；errors.py 管领域错误。
 
-chat.py 接对话事务；agent.py 管公共契约与 legacy 路径；agent_pydantic.py 管框架循环；
-agent_model.py 翻译网关流；agent_tools.py 是只读工具注册表。llm.py 管供应商协议与路由。
-draft/chapters/planning/reviews/export/prompts 各自服务对应业务，不把选择上下文的逻辑搬出 context.py。
+chat.py 接对话事务；agent.py 只保留公共契约与网关协议；agent_pydantic.py 是唯一工具循环；
+agent_model.py 翻译网关流；agent_tools.py 提供只读观察与统一命令工具；agent_run_log.py 统一保存 AgentRun/ToolCall 与审批状态，所有写入仍由命令目录负责。llm.py 管供应商协议与路由。
+workflow_engine.py 执行不可变版本并记录节点；python_worker.py 是可替换的本地纯计算进程边界，不宣称安全沙箱。
+draft/chapters/planning/reviews/export/prompts 各自服务对应业务，不自行复制上下文选择逻辑。
 
 修改本目录前先找唯一写者；若触及大文件，只提取当前需求涉及的部分。

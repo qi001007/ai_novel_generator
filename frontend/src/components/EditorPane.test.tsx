@@ -1,8 +1,9 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import EditorPane from "./EditorPane";
+import { api } from "../api";
 import { draftDocument, useFiles } from "../store/files";
 import type { Chapter } from "../types";
 import { useWorkbench } from "../store/workbench";
@@ -23,6 +24,7 @@ let canvasGetContext: PropertyDescriptor | null | undefined = null;
 
 function seed(chapters: Chapter[], content = "") {
   useWorkbench.setState({
+    selectedNovelId: 1,
     chapters,
     selectedChapterId: chapters[0]?.id ?? null,
     chapterTabs: chapters.map((item) => item.id),
@@ -77,6 +79,7 @@ describe("EditorPane", () => {
   });
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     if (canvasGetContext) {
       Object.defineProperty(
         window.HTMLCanvasElement.prototype,
@@ -131,7 +134,7 @@ describe("EditorPane", () => {
     const map = document.querySelector(".minimap") as HTMLElement;
     expect(map.style.getPropertyValue("--view-top")).not.toBe("");
     expect(map.style.getPropertyValue("--view-height")).not.toBe("");
-    expect(document.querySelector(".editor-scroll textarea")).toBeTruthy();
+    expect(document.querySelector(".editor-cm .cm-content")).toBeTruthy();
   });
 
   it("keeps the records panel folded until the icon asks for it", () => {
@@ -171,6 +174,85 @@ describe("EditorPane", () => {
     // no longer takes them with it.
     expect(document.querySelector(".editor-status")?.textContent).toContain("字");
     expect(window.localStorage.getItem("novelgen.editor-bottom")).toContain("true");
+  });
+
+  it("opens an empty records panel immediately, before records finish loading", () => {
+    seed([emptyChapter], emptyChapter.content);
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "展开调用记录" }));
+
+    expect(screen.getByText("调用记录")).toBeTruthy();
+    expect(screen.getByRole("list", { name: "生成与审稿记录" })).toBeTruthy();
+    expect(screen.getByText("这一章还没有调用记录")).toBeTruthy();
+  });
+
+  it("shows only records belonging to the selected chapter", () => {
+    const otherChapter = { ...emptyChapter, id: 2, chapter_number: 2, title: "另一章" };
+    seed([emptyChapter, otherChapter], emptyChapter.content);
+    useWorkbench.setState({
+      generationRuns: [
+        { id: 7, chapter_id: 1, task_type: "draft", model: "当前章模型", prompt_version: "v1", input_summary: "", output: "", token_input: 10, token_output: 20, cost_estimate: 0, status: "done", created_at: "2026-09-03T03:16:58" },
+        { id: 8, chapter_id: 2, task_type: "draft", model: "其他章模型", prompt_version: "v1", input_summary: "", output: "", token_input: 10, token_output: 20, cost_estimate: 0, status: "done", created_at: "2026-09-03T03:16:59" },
+      ],
+    });
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "展开调用记录" }));
+
+    expect(screen.getByText("当前章模型")).toBeTruthy();
+    expect(screen.queryByText("其他章模型")).toBeNull();
+  });
+
+  it("marks a live AI suggestion in the real prose CodeMirror and only applies an intact anchor", async () => {
+    const content = "雨落在旧桥上，沈曜没有回头。";
+    seed([{ ...emptyChapter, content }], content);
+    const review = {
+        id: 19,
+        chapter_id: 1,
+        reviewer: "ai",
+        decision: "needs_revision",
+        comments: "可再收束语气。",
+        scores: {},
+        evidence: {
+          suggestions: [{
+            quote: "沈曜没有回头。",
+            replacement: "沈曜仍没有回头。",
+            comment: "强化人物克制。",
+            anchor: { before: "雨落在旧桥上，", after: "", occurrence: 0 },
+          }],
+        },
+        created_at: "2026-09-16T09:00:00",
+      };
+    vi.spyOn(api, "patch").mockResolvedValue({
+      ...review,
+      evidence: {
+        ...review.evidence,
+        suggestions: [{
+          ...(review.evidence.suggestions as object[])[0],
+          status: "applied",
+        }],
+      },
+    });
+    useWorkbench.setState({
+      reviews: [review],
+    });
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+
+    await waitFor(() => expect(document.querySelector(".editor-cm .cm-editor")).toBeTruthy());
+    const mark = document.querySelector(".cm-review-mark") as HTMLElement;
+    expect(mark?.textContent).toBe("沈曜没有回头。");
+    fireEvent.mouseDown(mark);
+    expect(screen.getByRole("complementary", { name: "审稿批注" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "应用这条建议" }));
+    expect(useFiles.getState().entries["chapters/0001/draft.md"]?.draft).toContain("沈曜仍没有回头。");
+    await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
+      "/api/novels/1/chapters/1/reviews/19/suggestions/0",
+      { replacement: "沈曜仍没有回头。", status: "applied" },
+    ));
+
+    act(() => useWorkbench.getState().setDraftContent("雨落在旧桥上，沈曜回头了。"));
+    expect(screen.getByText("原文已变化，不能强行应用这条建议")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "应用这条建议" }).hasAttribute("disabled")).toBe(true);
   });
 
   /* 第十五批批注 1.4: the pair-toggle used to exist only on the file strip, so the

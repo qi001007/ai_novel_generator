@@ -32,7 +32,7 @@ def test_export_dir_roundtrip_and_rejects_relative_paths(client: TestClient, tmp
 
 def test_saving_an_export_refuses_without_a_directory(client: TestClient) -> None:
     novel_id = _novel(client)
-    create_chapter(client, novel_id, chapter_number=1, content="雪。")
+    create_chapter(client, novel_id, chapter_number=1, content="雪。", status="final")
 
     refused = client.post(f"/api/novels/{novel_id}/export/save", json={"format": "txt"})
     assert refused.status_code == 409
@@ -43,7 +43,7 @@ def test_saving_an_export_refuses_without_a_directory(client: TestClient) -> Non
 
 def test_saving_an_export_writes_the_file_it_names(client: TestClient, tmp_path) -> None:
     novel_id = _novel(client)
-    create_chapter(client, novel_id, chapter_number=1, content="雪夜碑鸣。")
+    create_chapter(client, novel_id, chapter_number=1, content="雪夜碑鸣。", status="final")
     client.put("/api/export/settings", json={"dir": str(tmp_path)})
 
     saved = client.post(f"/api/novels/{novel_id}/export/save", json={"format": "txt"})
@@ -79,7 +79,7 @@ def test_saving_a_document_uses_its_own_label(client: TestClient, tmp_path) -> N
 
 def test_saving_an_export_writes_nothing_to_the_database(client: TestClient, tmp_path) -> None:
     novel_id = _novel(client)
-    create_chapter(client, novel_id, chapter_number=1, content="不许被导出改动。")
+    create_chapter(client, novel_id, chapter_number=1, content="不许被导出改动。", status="final")
     client.put("/api/export/settings", json={"dir": str(tmp_path)})
     before = client.get(f"/api/novels/{novel_id}/chapters").json()
 

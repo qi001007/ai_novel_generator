@@ -13,10 +13,10 @@ def _novel(client: TestClient, title: str = "观星") -> int:
     return client.post("/api/novels", json={"title": title}).json()["id"]
 
 
-def test_book_export_skips_chapters_without_prose(client: TestClient) -> None:
+def test_book_export_uses_only_approved_chapters(client: TestClient) -> None:
     novel_id = _novel(client)
-    create_chapter(client, novel_id, chapter_number=1, content="第一段的碑。")
-    create_chapter(client, novel_id, chapter_number=2, content="第二段的雪。")
+    create_chapter(client, novel_id, chapter_number=1, content="第一段的碑。", status="final")
+    create_chapter(client, novel_id, chapter_number=2, content="第二段的雪。", status="final")
     create_chapter(client, novel_id, chapter_number=3)  # 有简报、没正文
 
     response = client.get(f"/api/novels/{novel_id}/export?format=txt")
@@ -32,7 +32,7 @@ def test_book_export_skips_chapters_without_prose(client: TestClient) -> None:
 
 def test_chapter_export_keeps_markdown_headings(client: TestClient) -> None:
     novel_id = _novel(client)
-    create_chapter(client, novel_id, chapter_number=4, content="碑下的名字。")
+    create_chapter(client, novel_id, chapter_number=4, content="碑下的名字。", status="final")
 
     response = client.get(
         f"/api/novels/{novel_id}/export?scope=chapter&chapter_number=4&format=md"
@@ -58,7 +58,7 @@ def test_export_reports_why_it_refused(client: TestClient) -> None:
 
 def test_export_writes_nothing(client: TestClient) -> None:
     novel_id = _novel(client)
-    create_chapter(client, novel_id, chapter_number=1, content="不许被导出改动。")
+    create_chapter(client, novel_id, chapter_number=1, content="不许被导出改动。", status="final")
     before = client.get(f"/api/novels/{novel_id}/chapters").json()
 
     assert client.get(f"/api/novels/{novel_id}/export?format=md").status_code == 200
@@ -69,3 +69,25 @@ def test_export_writes_nothing(client: TestClient) -> None:
 
     after = client.get(f"/api/novels/{novel_id}/chapters").json()
     assert after == before
+
+
+def test_export_keeps_last_approval_after_new_draft_and_stops_after_withdrawal(client: TestClient) -> None:
+    novel_id = _novel(client)
+    chapter = create_chapter(client, novel_id, chapter_number=1, content="已通过的正文。", status="final")
+    draft = client.get(f"/api/novels/{novel_id}/files/chapters/0001/draft.md").json()
+    changed = client.put(
+        f"/api/novels/{novel_id}/files/chapters/0001/draft.md",
+        json={"text": draft["text"].replace("已通过的正文。", "尚未终审的新正文。"), "base_revision": draft["revision"]},
+    )
+    assert changed.status_code == 200, changed.text
+    exported = client.get(f"/api/novels/{novel_id}/export?scope=chapter&chapter_number=1")
+    assert exported.status_code == 200
+    assert "已通过的正文。" in exported.text
+    assert "尚未终审的新正文。" not in exported.text
+
+    withdrawn = client.post(
+        f"/api/novels/{novel_id}/chapters/{chapter['id']}/final-review",
+        json={"decision": "reject", "comments": "撤回终审"},
+    )
+    assert withdrawn.status_code == 201
+    assert client.get(f"/api/novels/{novel_id}/export?scope=chapter&chapter_number=1").status_code == 409

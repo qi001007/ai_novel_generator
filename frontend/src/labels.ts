@@ -42,13 +42,13 @@ export const MODE_LABELS: Record<string, string> = {
   write: "写作",
 };
 
-/** 供应商路由表按这个顺序列任务；`image` 是留的槽位，没接通前明写未启用。 */
+/** 供应商路由表按这个顺序列任务；每一项都由后端统一供应商目录路由。 */
 export const PROVIDER_TASKS: Array<readonly [string, string]> = [
   ["draft", TASK_LABELS.draft],
   ["review", TASK_LABELS.review],
   ["summary", TASK_LABELS.summary],
   ["chat", TASK_LABELS.chat],
-  ["image", `${TASK_LABELS.image}（未启用）`],
+  ["image", TASK_LABELS.image],
 ];
 
 export const taskLabel = (task: string): string => TASK_LABELS[task] ?? task;

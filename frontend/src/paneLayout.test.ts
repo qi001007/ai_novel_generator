@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   CHAT_MIN,
+  EDITOR_MIN,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
   chatMaxAt,
@@ -48,6 +49,14 @@ describe("paneLayout", () => {
     expect(clampPaneAt("sidebar", 40, { viewport: 1440 })).toBe(SIDEBAR_MIN);
     // 上限照样生效：拖过头不许把列拖出窗口
     expect(dragValueAt("sidebar", 9999, { sidebar: 300, viewport: 1440 })).toBe(SIDEBAR_MAX);
+    const clamped = dragValueAt("sidebar", 9999, { sidebar: 300, viewport: 1680 });
+    expect(editorWidthAt({
+      viewport: 1680,
+      sidebar: clamped,
+      chat: 400,
+      sidebarHidden: false,
+      chatHidden: false,
+    })).toBeGreaterThanOrEqual(EDITOR_MIN);
   });
 
   it("正文列的宽度由可见的那几列算出来，隐藏的不占位", () => {

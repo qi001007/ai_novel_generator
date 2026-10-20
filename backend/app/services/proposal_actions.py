@@ -127,6 +127,27 @@ def _str_list(record: Mapping[str, Any], name: str, label: str) -> list[str]:
     return items
 
 
+def _custom_sections(record: Mapping[str, Any], label: str) -> list[dict[str, str]]:
+    """Compile author-defined `##` sections without inventing a fixed vocabulary."""
+    raw = record.get("custom_sections", [])
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ActionError(f"{label} 的「custom_sections」必须是对象数组")
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw, start=1):
+        if not isinstance(item, Mapping):
+            raise ActionError(f"{label} 的 custom_sections 第 {index} 项必须是对象")
+        item_label = f"{label} custom_sections 第 {index} 项"
+        section = _text(item, "label", item_label, required=True, single_line=True)
+        if section in seen:
+            raise ActionError(f"{label} 的自定义小节「{section}」不能重复")
+        seen.add(section)
+        result.append({"label": section, "content": _text(item, "content", item_label)})
+    return result
+
+
 def _positive_int(record: Mapping[str, Any], name: str, label: str, *,
                   required: bool = True) -> int | None:
     raw = record.get(name)
@@ -157,6 +178,7 @@ def _reject_range(value: Any, label: str) -> None:
 # --- the five actions -------------------------------------------------------
 
 _BLUEPRINT_INPUT = ("main_line", "ending", "core_conflicts", "themes", "constraints")
+_CUSTOM_INPUT = ("custom_sections",)
 _TOC_INPUT = ("number", "title", "plot_function", "notes")
 _ARC_INPUT = ("title", "start_chapter", "end_chapter", "objective", "conflict", "resolution", "status")
 _BRIEF_INPUT = ("chapter_number", "goal", "events", "pov", "characters", "conflict", "hook",
@@ -167,8 +189,9 @@ _CHARACTER_INPUT = ("name", "level", "expected_start_chapter", "expected_end_cha
 
 def _blueprint(fields: dict[str, Any]) -> tuple[str, str]:
     label = "update_blueprint"
-    _keys(fields, _BLUEPRINT_INPUT, _BLUEPRINT_INPUT, label)
+    _keys(fields, _BLUEPRINT_INPUT + _CUSTOM_INPUT, _BLUEPRINT_INPUT, label)
     row = {name: _prose(fields, name, label) for name in _BLUEPRINT_INPUT}
+    row["custom_sections"] = _custom_sections(fields, label)
     return "blueprint.md", markdown_doc.render("blueprint", row)
 
 
@@ -268,7 +291,7 @@ def _arcs(fields: dict[str, Any]) -> tuple[str, str]:
 
 def _chapter_brief(fields: dict[str, Any]) -> tuple[str, str]:
     label = "upsert_chapter_brief"
-    _keys(fields, _BRIEF_INPUT, ("chapter_number", "goal"), label)
+    _keys(fields, _BRIEF_INPUT + _CUSTOM_INPUT, ("chapter_number", "goal"), label)
     number = _positive_int(fields, "chapter_number", label)
     assert number is not None
     row = {
@@ -283,13 +306,14 @@ def _chapter_brief(fields: dict[str, Any]) -> tuple[str, str]:
         "hook": _text(fields, "hook", label),
         "required_facts": _str_list(fields, "required_facts", label),
         "status": _text(fields, "status", label) or "draft",
+        "custom_sections": _custom_sections(fields, label),
     }
     return brief_path(number), markdown_doc.render("brief", row, chapter=number)
 
 
 def _character(fields: dict[str, Any]) -> tuple[str, str]:
     label = "create_character"
-    _keys(fields, _CHARACTER_INPUT, ("name",), label)
+    _keys(fields, _CHARACTER_INPUT + _CUSTOM_INPUT, ("name",), label)
     row = {
         "name": _text(fields, "name", label, required=True, single_line=True),
         "level": _text(fields, "level", label) or "supporting",
@@ -299,6 +323,7 @@ def _character(fields: dict[str, Any]) -> tuple[str, str]:
         "goals": _text(fields, "goals", label),
         "behavior_constraints": _text(fields, "behavior_constraints", label),
         "current_status": _text(fields, "current_status", label),
+        "custom_sections": _custom_sections(fields, label),
     }
     # The id is assigned by the file layer when 应用 is pressed, which is why this and
     # only this path exists: settings/characters.md is not a document and never was.
@@ -332,8 +357,8 @@ ACTIONS: dict[str, ActionSpec] = {
             action="update_blueprint",
             tool="propose_blueprint",
             path="blueprint.md",
-            fields='{"main_line":"…","ending":"…","core_conflicts":"…","themes":"…","constraints":"…"}',
-            rules="五个键都要给：这是一份整文件提案，漏一个就等于把那一节清空；正文可以改，小节名不能改。",
+            fields='{"main_line":"…","ending":"…","core_conflicts":"…","themes":"…","constraints":"…","custom_sections":[{"label":"自定义标题","content":"…"}]}',
+            rules="五个预置键都要给：这是一份整文件提案，漏一个就等于把那一节清空；预置小节正文可以改，也可通过 custom_sections 增删自定义小节。",
             build=_blueprint,
         ),
         ActionSpec(
@@ -365,10 +390,11 @@ ACTIONS: dict[str, ActionSpec] = {
             tool="propose_chapter_brief",
             path="chapters/NNNN/brief.md",
             fields='{"chapter_number":1,"goal":"本章目标","events":"…","pov":"…","characters":["…"],'
-                   '"conflict":"…","hook":"…","required_facts":["…"],"status":"draft"}',
+                   '"conflict":"…","hook":"…","required_facts":["…"],"status":"draft",'
+                   '"custom_sections":[{"label":"自定义标题","content":"…"}]}',
             rules="goal 必填，其余可省略留空；characters 与 required_facts 是字符串数组，"
-                  "既定事实要能在新章正文里逐字找到，别填整句。章号由 chapter_number 渲染成四位，"
-                  "路径不是你写的。",
+                  "既定事实要能在新章正文里逐字找到，别填整句；可用 custom_sections 增删额外小节。"
+                  "章号由 chapter_number 渲染成四位，路径不是你写的。",
             build=_chapter_brief,
         ),
         ActionSpec(
@@ -376,8 +402,9 @@ ACTIONS: dict[str, ActionSpec] = {
             tool="propose_character",
             path=CHARACTER_NEW_PATH,
             fields='{"name":"姓名","level":"supporting","expected_start_chapter":1,'
-                   '"identity":"…","goals":"…","behavior_constraints":"…","current_status":"…"}',
-            rules="name 必填；新建人物只能产出这一份提案，人物号由系统分配——"
+                   '"identity":"…","goals":"…","behavior_constraints":"…","current_status":"…",'
+                   '"custom_sections":[{"label":"特殊能力","content":"…"}]}',
+            rules="name 必填；custom_sections 可声明任意额外小节；新建人物只能产出这一份提案，人物号由系统分配——"
                   "不存在 settings/characters.md 这个文件，往那儿提会被挡下。",
             build=_character,
         ),

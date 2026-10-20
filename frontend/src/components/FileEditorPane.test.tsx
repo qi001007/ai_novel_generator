@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EditorView } from "@codemirror/view";
 
-import FileEditorPane from "./FileEditorPane";
+import FileEditorPane, { fileTabLabel } from "./FileEditorPane";
 import { useFiles, type FileEntry } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 import type { FileDoc } from "../types";
@@ -59,6 +59,12 @@ function seed(over: Partial<FileEntry> = {}) {
 }
 
 describe("FileEditorPane", () => {
+  it("keeps chapter number and file kind at the start of every document tab", () => {
+    expect(fileTabLabel("chapters/0001/draft.md")).toBe("0001 · draft.md");
+    expect(fileTabLabel("chapters/0042/brief.md")).toBe("0042 · brief.md");
+    expect(fileTabLabel("settings/worldview.md")).toBe("worldview.md");
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     useWorkbench.setState({ novels: [{ id: 1, title: "九霄观星录" } as never], selectedNovelId: 1 });
@@ -98,7 +104,7 @@ describe("FileEditorPane", () => {
     // shortcut, so the button only repeated a third time what was already said.
     expect(document.querySelector(".file-save")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "toc.md" }));
+    await user.click(screen.getByRole("button", { name: "打开 toc.md" }));
     expect(useFiles.getState().active).toBe("toc.md");
   });
 

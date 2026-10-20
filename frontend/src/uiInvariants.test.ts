@@ -48,6 +48,10 @@ import chatRowsSource from "./components/chatRows.ts?raw";
 import chatTraceSource from "./components/chatTrace.ts?raw";
 import labelsSource from "./labels.ts?raw";
 import paneLayoutSource from "./paneLayout.ts?raw";
+import contextWorkflowPanel from "./components/ContextWorkflowPanel.tsx?raw";
+import worldviewPanel from "./components/WorldviewPanel.tsx?raw";
+import minimapSource from "./components/minimap.ts?raw";
+import activityRail from "./components/ActivityRail.tsx?raw";
 
 /**
  * Every declaration block for a top-level selector, joined. A selector can appear
@@ -88,6 +92,8 @@ describe("settled UI decisions must not regress", () => {
     expect(css).toMatch(/\.h-scroll \{[\s\S]*?position: absolute/);
     expect(css).not.toMatch(/\.editor-tabs::-webkit-scrollbar/);
     expect(css).not.toMatch(/\.file-tabs:hover \{[^}]*scrollbar-width/);
+    expect(rule(".file-tabs-actions")).toContain("z-index: 2");
+    expect(rule(".file-tabs-actions")).toContain("min-width: max-content");
   });
 
   it("the thread's bar fades without moving the page (第十二批批注2.1)", () => {
@@ -177,31 +183,30 @@ describe("settled UI decisions must not regress", () => {
     // D-41 早已裁定模式由那句话判，所以这颗可以拨动、却决定不了任何事的开关只剩误导。
     // 方案 1 的代价（没有强制某模式的入口）登记在 UI-BACKLOG；要回硬交互得先立新 D-xx 推翻 D-41。
     // radio 归零：radiogroup 是随这颗开关一起走的，不许留半套语义。
-    expect((chatPane.match(/role="radio"/g) ?? []).length).toBe(0);
-    expect(chatPane).not.toContain('className="mode-switch" role="radiogroup"');
+    expect((chatPane.match(/role="radio"/g) ?? []).length).toBe(2);
+    expect(chatPane).toContain('role="radiogroup"');
     // 数的是 JSX 属性写法：组件里那段说明也提到了这个名字。
-    expect((chatPane.match(/aria-disabled=\{true\}/g) ?? []).length).toBe(2);
+    expect((chatPane.match(/aria-checked=\{mode === "(plan|write)"\}/g) ?? []).length).toBe(2);
     // 点亮哪一侧只有一个出处：最近一答实际用的模式——与上面那颗「按「X」」同一条数据。
     // 本地 mode 仍然是请求体与 /plan 的起点，但它不再决定屏幕上哪一侧亮。
-    expect(chatPane).toContain(".at(-1)?.meta.mode ?? mode");
-    expect((chatPane.match(/\{shownMode === "(plan|write)" \? "selected" : ""\}/g) ?? []).length).toBe(2);
-    expect(chatPane).not.toMatch(/className=\{mode === "(plan|write)" \? "selected"/);
+    expect((chatPane.match(/onClick=\{\(\) => setMode\("(plan|write)"\)\}/g) ?? []).length).toBe(2);
+    expect((chatPane.match(/className=\{mode === "(plan|write)" \? "selected" : ""\}/g) ?? []).length).toBe(2);
     // 不可点的控件不许还留着可点的手势
-    expect(css).not.toMatch(/\.mode-switch button:hover/);
+    expect(css).not.toMatch(/\.mode-switch button:disabled/);
     // 不借 rule()：它取到「第一个 }」为止，而这条规则里那段老注释带着 button{min-height:32px}，
     // 声明会被那句注释截断。按行从选择器往后找。
-    expect(css).toMatch(/\.mode-switch button \{[\s\S]*?\n  cursor: default;/);
+    expect(css).toMatch(/\.mode-switch button \{[\s\S]*?\n  cursor: pointer;/);
   });
 
-  it("the two tab strips shrink and stop at the same two numbers (第十五批批注 1.1、1.2)", () => {
-    // The floor and the ceiling are what decide when a strip overflows, and the
-    // owner asked for the chapter strip to behave like the file strip - not for a
-    // second thumb on a strip that can never overflow.
+  it("the two tab strips preserve document identity and overflow into horizontal scrolling", () => {
     for (const sel of [".editor-tab", ".file-tab"]) {
-      expect(rule(sel), sel + " floor").toMatch(/min-width: 5\.5rem/);
+      expect(rule(sel), sel + " floor").toContain("min-width: var(--document-tab-min-width)");
       expect(rule(sel), sel + " ceiling").toMatch(/max-width: 15rem/);
-      expect(rule(sel), sel + " shrink").toMatch(/flex: 0 1 auto/);
+      expect(rule(sel), sel + " fixed floor").toMatch(/flex: 0 0 auto/);
     }
+    expect(css).toContain("--document-tab-min-width: 9rem");
+    expect(fileEditor).toContain("fileTabLabel(path)");
+    expect(fileEditor).toContain('title={path} aria-label={`打开 ${path}`}');
     // And the real cause of "the wheel does nothing": the editor pane is a grid
     // item, so without a bounded column the strip grew to 938px inside a 768px
     // column and its scroller never had anything to scroll.
@@ -216,9 +221,9 @@ describe("settled UI decisions must not regress", () => {
     );
   });
 
-  it("every editor surface is the prose's black (第十批批注6 / 第十二批批注2)", () => {
+  it("every editor surface uses the shared VS Code editor colour (第十批批注6 / V-11)", () => {
     for (const sel of [".file-editor", ".file-code", ".file-bar", ".editor-toolbar", ".editor-body", ".minimap"]) {
-      expect(rule(sel), sel + " colour").toContain("background: var(--bg)");
+      expect(rule(sel), sel + " colour").toContain("background: var(--editor-bg)");
     }
   });
 
@@ -499,15 +504,45 @@ describe("settled UI decisions must not regress", () => {
     // 「我老是感觉你下面的这行小字的中心，跟上面那个章节编辑的中心不在同一条线上」.
     // Measured, the two lines agreed with each other and disagreed with the page: every
     // block that fills the editor column centres on the full pane, while the text lives
-    // in (pane - 56px minimap) - a constant 28px error in four places. One token now,
+    // in (pane - minimap) - a constant half-gutter error in four places. One token now,
     // and the gutter cannot drift away from the insets that reference it.
-    expect(css).toMatch(/--minimap-w: 56px;/);
+    expect(css).toMatch(/--minimap-w: 88px;/);
     expect(rule(".minimap")).toContain("width: var(--minimap-w)");
     expect(rule(".editor-empty")).toContain("padding-right: var(--minimap-w)");
     expect(rule(".toc-list-overlay")).toContain("padding-right: 0");
     expect(rule(".character-doc-overlay")).toContain("var(--minimap-w)");
-    // a second literal 56px for the gutter is how this drifts back
-    expect(css.split("width: 56px;").length - 1).toBe(0);
+    // the minimap rule itself must keep consuming the token rather than copying its value
+    expect(rule(".minimap")).not.toContain("width: 88px");
+    expect(minimapSource).toContain("const MM_PITCH = 3.5");
+  });
+
+  it("the minimap is the only visible vertical scroll track in prose and markdown editors (V-02)", () => {
+    for (const selector of [".editor-cm .cm-scroller", ".file-cm .cm-scroller"]) {
+      const body = rule(selector);
+      expect(body, selector).toContain("scrollbar-width: none");
+      expect(body, selector).not.toContain("scrollbar-gutter:");
+    }
+    expect(rule(".editor-cm .cm-scroller::-webkit-scrollbar")).toContain("display: none");
+    expect(rule(".file-cm .cm-scroller::-webkit-scrollbar")).toContain("display: none");
+    expect(rule(".minimap-viewport")).toContain("var(--minimap-thumb-bg)");
+    expect(rule(".minimap-viewport")).toContain("opacity: 0");
+    expect(css).toMatch(/\.minimap:hover \.minimap-viewport[\s\S]*opacity: 1/);
+    expect(css).toMatch(/\*::-webkit-scrollbar-button\s*\{[\s\S]*display: none;[\s\S]*width: 0;[\s\S]*height: 0;/);
+    expect(css).toMatch(/--minimap-thumb-bg: rgb\(121 121 121 \/ 0\.24\);/);
+    expect(editorPane).toContain("requestAnimationFrame(() =>");
+    expect(fileEditor).toContain("requestAnimationFrame(() =>");
+    expect(editorPane).toContain("node.scrollHeight - node.clientHeight");
+    expect(fileEditor).toContain("dom.scrollHeight - dom.clientHeight");
+    expect(editorPane).toContain("onWheel={onMinimapWheel}");
+    expect(fileEditor).toContain("onWheel={onMinimapWheel}");
+    expect(editorPane).toContain('role="scrollbar"');
+    expect(fileEditor).toContain('role="scrollbar"');
+    expect(editorPane).toContain('tabIndex={0}');
+    expect(fileEditor).toContain('tabIndex={0}');
+    expect(editorPane).toContain("tokenValue(\"--accent\"), view.progress");
+    expect(fileEditor).toContain("tokenValue(\"--accent\"),\n      scrollProgress");
+    expect(minimapSource).toContain("const MM_PITCH = 3.5");
+    expect(minimapSource).toContain("const scrollOffset = Math.min(1, Math.max(0, progress)) * contentTravel");
   });
 
   it("the prose page says focus with a caret and nothing else (第十五批批注4.1)", () => {
@@ -517,10 +552,11 @@ describe("settled UI decisions must not regress", () => {
     // surface keeps its see-through 1px border the same before and after the click.
     expect(css).not.toMatch(/\.editor-body:focus-within\s+\.editor-scroll/);
     expect(css).toMatch(/\.editor-scroll\s*\{[^}]*border: 1px solid transparent;/);
-    const body = rule(".editor-body textarea:focus-visible");
+    const body = rule(".editor-cm .cm-content:focus-visible");
     expect(body).toContain("outline: 0");
     expect(body).toContain("caret-color: var(--accent)");
     expect(body).not.toMatch(/border|box-shadow/);
+    expect(css).toMatch(/\.editor-cm \.cm-editor\.cm-focused\s*\{\s*outline: 0;/);
   });
 
   it("one document, one toggle, on every strip that holds it (第十五批批注 1.3、1.4、3.4)", () => {
@@ -595,18 +631,109 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     for (const task of ["draft", "review", "summary", "chat", "image"]) {
       expect(labelsSource).toContain(`["${task}",`);
     }
-    // the reserved slot says so instead of pretending to work
-    expect(labelsSource).toContain("image}（未启用）");
-    expect(preferences).toContain('placeholder={key === "image" ? "未启用" : ""}');
+    // image generation is routed through the same provider/model table, not a disabled stub
+    expect(labelsSource).toContain('["image", TASK_LABELS.image]');
+    expect(labelsSource).not.toContain("image}（未启用）");
+    expect(preferences).toContain('key === "image" ? "需独立生图 Provider / 模型 ID" : "模型 ID"');
+    expect(preferences).toContain("/api/config/llm/models?provider_id=");
+    expect(preferences).toContain("<Combobox");
+    expect(preferences).not.toContain("<datalist");
+    expect(preferences).not.toMatch(/<select[^>]*prefs-route-provider/);
+    expect(preferences).toContain("catalogOpen");
+    expect(preferences).toContain("prefs-model-list");
+    expect(preferences).toContain("data.detail");
     // a secret is never echoed into a value, only into a placeholder as a mask
     expect(preferences).toContain("api_key: item.api_key,");
     expect(preferences).toMatch(/type="password"[\s\S]{0,200}prefs-provider-key/);
   });
 
+  it("context workflow exposes only the six executable node types and real canvas actions", () => {
+    expect(preferences).not.toContain('key: "workflow"');
+    expect(layout).toContain("<ContextWorkflowPanel />");
+    expect(contextWorkflowPanel).toContain("@xyflow/react");
+    expect(contextWorkflowPanel).toContain("onNodesChange={changeNodes}");
+    expect(contextWorkflowPanel).toContain("applyNodeChanges(changes");
+    expect(contextWorkflowPanel).toContain("onNodeDragStop");
+    expect(contextWorkflowPanel).toContain("onNodeClick={(_event, node) => setSelectedNodeIds([node.id])}");
+    expect(contextWorkflowPanel).toContain("onNodeContextMenu");
+    expect(contextWorkflowPanel).toContain("initialWidth: WORKFLOW_NODE_SIZE.width");
+    expect(contextWorkflowPanel).toContain("initialHeight: WORKFLOW_NODE_SIZE.height");
+    expect(contextWorkflowPanel).toContain("function fitWorkflowView(duration = 0)");
+    expect(contextWorkflowPanel).toContain("flow.setViewport({");
+    expect(contextWorkflowPanel).toContain("onConnect={connect}");
+    expect(contextWorkflowPanel).toContain("copyNodes();");
+    expect(contextWorkflowPanel).toContain("deleteNodes();");
+    expect(contextWorkflowPanel).toContain('aria-label={fullscreen ? "退出全屏" : "全屏"}');
+    expect(contextWorkflowPanel).toContain('<Splitter orientation="horizontal" label="上下文策略高度"');
+    expect(contextWorkflowPanel).toContain("<JsonCodeEditor");
+    expect(contextWorkflowPanel).toContain('aria-label="提示词编辑器"');
+    expect(contextWorkflowPanel).not.toContain("workflow.json");
+    expect(contextWorkflowPanel).not.toContain("<MiniMap");
+    expect(contextWorkflowPanel).not.toContain("WorkflowOverview");
+    for (const node of ['start: "开始"', 'context: "动态上下文"', 'prompt: "提示词模板"', 'model: "模型调用"', 'condition: "条件判断"', 'output: "输出"']) {
+      expect(contextWorkflowPanel).toContain(node);
+    }
+    for (const retired of ['python: "Python 纯计算"', 'approval: "人工审批"', 'loop: "有界循环"', 'function: "平台函数"']) {
+      expect(contextWorkflowPanel).not.toContain(retired);
+    }
+    expect(contextWorkflowPanel).toContain('"workflow.create"');
+    expect(contextWorkflowPanel).toContain('"workflow.save"');
+    expect(contextWorkflowPanel).toContain('"workflow.publish"');
+    expect(contextWorkflowPanel).toContain('"workflow.rename"');
+    expect(contextWorkflowPanel).toContain('"workflow.set_default"');
+    expect(contextWorkflowPanel).toContain("api.runWorkflow(draft.id, novelId");
+    expect(apiSource).toContain("/api/commands/${name}/execute");
+    expect(activityRail).not.toContain('label: "人物库"');
+    expect(activityRail).not.toContain('label: "世界库"');
+    expect(treePane).toContain('className="tree-children tree-section-workflows"');
+    expect(treePane).toContain('requestWorkflowCommand("rename", menuWorkflow.id)');
+    expect(treePane).toContain('requestWorkflowCommand("default", menuWorkflow.id)');
+    expect(treePane).toContain('requestWorkflowCommand("duplicate", menuWorkflow.id)');
+    expect(treePane).toContain('requestWorkflowCommand("delete", menuWorkflow.id)');
+    expect(workbenchStore).toContain("workflowCommand: { action: WorkflowResourceAction; workflowId: number; nonce: number } | null");
+  });
+
+  it("each workflow owns its movable context policy and uses shared sizing tokens", () => {
+    expect(contextWorkflowPanel).toContain('proOptions={{ hideAttribution: true }}');
+    expect(contextWorkflowPanel).toContain('>适配全图</Button>');
+    expect(contextWorkflowPanel).toContain("fitWorkflowView(180)");
+    expect(contextWorkflowPanel).toContain('brief_mentions');
+    expect(contextWorkflowPanel).toContain('kind: "author_instructions", label: "作者约束"');
+    expect(contextWorkflowPanel).toContain('className="context-module-popover"');
+    expect(contextWorkflowPanel).toContain('const [moduleWindows, setModuleWindows]');
+    expect(contextWorkflowPanel).toContain('Object.entries(moduleWindows).map');
+    expect(contextWorkflowPanel).toContain('dragModule(event, id)');
+    expect(contextWorkflowPanel).toContain('aria-modal="false"');
+    expect(rule(".context-module-popover > header")).toContain("cursor: move");
+    expect(contextWorkflowPanel).not.toContain('<details className="context-workflow-module"');
+    expect(css).toContain("--size-compact-control: 28px");
+    expect(css).toContain("--toolbar-control-height: var(--control-height-compact)");
+    expect(rule(".context-workflow-toolbar button, .workflow-viewbar button")).toContain("height: var(--toolbar-control-height)");
+    expect(rule(".workflow-row-splitter")).toContain("height: var(--splitter-hit-size)");
+    expect(rule(".workflow-row-splitter::after")).toContain("height: var(--splitter-line-size)");
+    expect(rule(".workflow-row-splitter:hover::after, .workflow-row-splitter:active::after")).toContain("background: var(--border-strong)");
+  });
+
+  it("世界观资料与地图库是两个入口，世界观使用结构化资料库", () => {
+    expect(treePane).toContain("onOpenWorldview");
+    expect(treePane).not.toContain("onOpenWorldMap");
+    expect(layout).toContain('setRightView("worldview")');
+    expect(layout).toContain('<WorldviewPanel novelId={state.selectedNovelId} path={metas.find((meta) => meta.kind === "worldview")?.path ?? null} />');
+    expect(layout).toContain('rightView === "worldmap" && <WorldMapPanel');
+    expect(worldviewPanel).toContain('`/api/novels/${novelId}/settings`');
+    expect(worldviewPanel).toContain('aria-label="搜索世界观"');
+    expect(worldviewPanel).toContain('ariaLabel="世界观类别"');
+    expect(worldviewPanel).toContain('ariaLabel="世界观审批状态"');
+    expect(worldviewPanel).toContain('ariaLabel="世界观排序"');
+    expect(worldviewPanel).toContain('void openFile(path)');
+  });
+
   it("the agent turn ceilings are on the page and read from the server (批次 35.9)", () => {
     // 「上限有点太低了」的根因不是数字小，是它只在代码里、主人在界面上看不到也改不了。
     // 两个框都必须在，值从服务端来（前端不存第二份默认值）。
-    expect(preferences).toContain('aria-label="对话 Agent 轮数上限"');
+    expect(preferences).toContain('aria-label="对话 Agent 内部步骤上限"');
+    expect(preferences).not.toContain("单轮最多几轮");
+    expect(preferences).toContain("不限制您能继续问多少个问题");
     expect(preferences).toContain('aria-label="对话 Agent token 上限"');
     expect(preferences).toContain("String(data.agent.max_steps)");
     expect(preferences).toContain("String(data.agent.max_tokens)");
@@ -691,7 +818,7 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     ];
     const offenders: string[] = [];
     for (const [file, source] of Object.entries(componentSources)) {
-      if (file.includes(".test.")) continue;
+      if (file.includes(".test.") || file.endsWith("/components/ui.tsx")) continue;
       const stripped = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
       for (const raw of stripped.split("\n")) {
         const line = raw.trim();
@@ -777,7 +904,7 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(previewRules).not.toMatch(/#[0-9a-fA-F]{3,8}/);
     expect(previewRules).toContain("background: var(--accent)");
     // 正文字体只有一个出处，canvas 读它，不在组件里再写一份
-    expect(rule(".editor-body textarea")).toContain("font-family: var(--prose)");
+    expect(rule(".editor-cm .cm-content")).toContain("font-family: var(--prose)");
     expect(editorPane).toContain('tokenValue("--prose")');
     expect(css).not.toMatch(/font-family: "Noto Serif SC", "Source Han Serif SC", serif;/);
     // data-theme 只有一个写者（workbench 曾经也写它）
@@ -1023,7 +1150,7 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     const offenders: string[] = [];
     let tags = 0;
     for (const [file, source] of Object.entries(componentSources)) {
-      if (file.includes(".test.")) continue;
+      if (file.includes(".test.") || file.endsWith("/components/ui.tsx")) continue;
       for (const tag of source.match(/<button\b[\s\S]*?>/g) ?? []) {
         tags += 1;
         const acts = /\son[A-Z]\w*=/.test(tag) || /type="submit"/.test(tag);
@@ -1051,7 +1178,17 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(fileEditor).not.toMatch(/Noto Sans SC/);
     // 字号：界面走 #root 的 zoom，正文走 --prose-size，两个都由 store 独家写
     expect(css).toMatch(/#root \{\s*\n\s*zoom: var\(--ui-zoom, 1\);/);
-    expect(rule(".editor-body textarea")).toContain("font-size: var(--prose-size)");
+    expect(rule(".editor-cm .cm-content")).toContain("font-size: var(--prose-size)");
+    expect(css).toMatch(/--prose-size: 18px;/);
+    expect(appearanceStore).toContain("proseSize: 18");
+    expect(rule(".file-cm .cm-scroller")).toContain("font-size: 15px");
+    expect(rule(".file-cm .cm-scroller")).toContain("line-height: 23px");
+    expect(css).toContain("--editor-bg: #ffffff");
+    expect(css).toContain("--editor-fg: #1f1f1f");
+    expect(css).toContain("--editor-selection: #add6ff");
+    expect(css).toMatch(/\[data-theme="dark"\][\s\S]*--editor-bg: #1e1e1e/);
+    expect(css).toMatch(/\[data-theme="dark"\][\s\S]*--editor-fg: #d4d4d4/);
+    expect(css).toMatch(/\[data-theme="dark"\][\s\S]*--editor-selection: #264f78/);
     expect(appearanceStore).toContain('root.style.setProperty("--ui-zoom"');
     expect(appearanceStore).toContain('root.style.setProperty("--prose-size"');
     // 指针是视觉像素、style 是 CSS 像素：两者之间只许有一道换算
@@ -1140,7 +1277,7 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(workbenchStore).toContain("await get().refreshConversations();");
     // 真机审计抓到的溢出：首句是一整句不换行的话，button 作为 grid item 的自动最小
     // 尺寸 = min-content，不设 min-width:0 整条侧栏会被撑开、页头图标推出栏外。
-    const conv = css.match(/\.tree-section-conversations,\s*\.tree-row\.conversation\s*\{([^}]*)\}/);
+    const conv = css.match(/\.tree-section-conversations,[^{]*\.tree-row\.conversation[^{]*\{([^}]*)\}/);
     expect(conv, "历史对话那一行必须钉住 min-width:0").not.toBeNull();
     expect(conv![1]).toMatch(/min-width:\s*0;/);
   });
@@ -1245,15 +1382,26 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(chatPane).not.toContain('void runCommand("/generate")');
     // 落点仍然只有一条：这一份走的就是 applyProposal 里那条唯一 PUT（actor:"ai"）。
     // 35.29c 把这一行的条件摊成多行、给简报接力开了一道按名字点权的口子，所以断言
-    // 跟着搬成整段的形状——三段一个都不能少：合法、不是刷新恢复、路径是正文或本轮点名要免卡的那一份。
+    // 跟着搬成整段的形状——四段一个都不能少：合法、不是刷新恢复、正文、C 层弧线或本轮点名要免卡的简报。
     expect(chatPane).toMatch(
-      /if \(\s*proposal\.valid &&\s*!opts\?\.restore &&\s*\(draftChapter\(proposal\.path\) !== null \|\| opts\?\.autoLand === true\)\s*\) \{/,
+      /if \(\s*proposal\.valid\s*&&\s*!opts\?\.restore\s*&&\s*opts\?\.writeMode === true\s*&&\s*\(draftPathNumber !== null \|\| proposal\.path === "arcs\.md" \|\| opts\?\.autoLand === true\)\s*&&[\s\S]{0,500}draftPreviewUntouched\s*\) \{/,
+    );
+    // 预览流开始后主人若编辑了正文，draftPreviewUntouched 必须变成 false，避免自动 PUT 覆盖手改内容。
+    expect(chatPane).toMatch(
+      /const draftPreviewUntouched\s*=\s*!draftStream\s*\|\|\s*\(\s*!draftStream\.diverged\s*&&\s*\(localDraft \?\? ""\) === draftStream\.text\s*\);/,
     );
     expect(chatPane).toContain("if (await useFiles.getState().applyProposal(proposal.path)) {");
     // 路径语法归文件层管，组件不自己抄一份正则
     expect(filesStore).toContain("export const draftChapter = (path: string) => {");
     // 确认点搬家不是消失：定稿那一颗仍在正文页上
     expect(editorPane).toContain("通过终审");
+  });
+
+  it("调用记录只属于当前章节，并且展开按钮有稳定的目标（批注 9）", () => {
+    expect(editorPane).toContain("generationRuns.filter((run) => run.chapter_id === chapter.id)");
+    expect(editorPane).toContain('id="editor-records"');
+    expect(editorPane).toContain('aria-controls="editor-records"');
+    expect(editorPane).toContain("这一章还没有调用记录");
   });
 
   /* 批注 35.29c（D-57，2026-09-11）：主人原话「用户经常容易忘记生成简章，所以你要自己明白，
@@ -1278,7 +1426,7 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 同一份「第 N 章《T》· X 字 · 机械校验 Y」不许再在组件里写第二遍
     expect(chatPane).toContain("await settleGenerate(id, errorBefore);");
     expect(chatPane).toContain("await settleGenerate(handoff.commandId, errorBefore);");
-    expect(chatPane.match(/机械校验 \$/g) ?? []).toHaveLength(1);
+    expect(chatPane.match(/错别字检查 \$/g) ?? []).toHaveLength(1);
   });
 
   /* 批注 35.34（2026-09-11）：斜杠命令那张卡原先只活在组件本地的 rows 里，真机
@@ -1301,6 +1449,33 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 画不出来就整行不画——退成一条答复气泡是瞎说，不是留痕
     expect(chatPane).toContain("if (!state) return [];");
     expect(chatTypes).toContain('role: "user" | "assistant" | "command";');
+  });
+
+  it("重建启动页沿用原工作台视觉，只借 Codex 的项目层级", () => {
+    expect(css).toContain(".launcher-continue {");
+    expect(css).toContain("min-height: 246px;");
+    expect(css).toContain("background: var(--surface);");
+    expect(css).not.toMatch(/\.launcher-continue\s*\{[\s\S]{0,500}linear-gradient/);
+    expect(css).toContain(".launcher-book-slot {");
+    expect(css).toContain("width: 136px;");
+    expect(css).toContain(".project-status::before {");
+    expect(css).not.toMatch(/\.project-status\s*\{[\s\S]{0,260}border-radius:\s*999px/);
+  });
+
+  it("书架只展示有完整语义的最近列表，并且主卡不吞掉第一行", () => {
+    expect(bookshelf).toContain("const recentNovels =");
+    expect(bookshelf).toContain("recentNovels.map((novel) => bookCard(novel, \"row\"))");
+    expect(bookshelf).not.toContain("visibleNovels.slice(1)");
+    expect(bookshelf).not.toContain('"pinned"');
+    expect(bookshelf).not.toContain('"archived"');
+  });
+
+  it("中栏 Agent 的高风险操作展示真实差异并走持久化审批", () => {
+    expect(chatPane).toContain('aria-label="高风险操作确认"');
+    expect(chatPane).toContain('aria-label="批准高风险操作"');
+    expect(chatPane).toContain('aria-label="拒绝高风险操作"');
+    expect(chatPane).toContain("api.resumeAgentRun(runId, toolCallId, decision)");
+    expect(chatPane).toContain("JSON.stringify(diff ?? approval.preview, null, 2)");
   });
 
 });

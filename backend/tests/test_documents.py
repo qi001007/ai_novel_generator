@@ -5,7 +5,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.planning_helpers import create_arc, create_brief, create_toc
+from tests.planning_helpers import create_arc, create_brief, create_setting, create_toc
 from app.services.markdown_doc import render
 
 
@@ -698,14 +698,112 @@ def test_an_applied_arc_fence_does_not_come_back_red_on_reload(client: TestClien
     assert card["text"] == live, card["text"]
 
 
-def test_broken_markdown_is_refused_before_any_write(client: TestClient) -> None:
+def test_custom_blueprint_section_round_trips_through_the_file_writer(client: TestClient) -> None:
     novel_id = seed_novel(client)
     doc = read(client, novel_id, "blueprint.md")
 
-    refused = write(client, novel_id, "blueprint.md", doc["text"] + "## 我随手加的一节\n")
+    accepted = write(client, novel_id, "blueprint.md", doc["text"] + "## 我随手加的一节\n\n蓝图旁注\n")
 
-    assert refused.status_code == 422
-    assert "结构标识" in refused.json()["detail"]
+    assert accepted.status_code == 200, accepted.text
+    assert "custom_sections" in accepted.json()["changed"]
+    refreshed = read(client, novel_id, "blueprint.md")["text"]
+    assert "## 我随手加的一节\n蓝图旁注" in refreshed
+    row = client.get(f"/api/novels/{novel_id}/planning/blueprints").json()[0]
+    assert row["custom_sections"] == [{"label": "我随手加的一节", "content": "蓝图旁注"}]
+
+
+def test_custom_brief_section_round_trips_and_is_allowed_in_ai_proposals(client: TestClient) -> None:
+    novel_id = seed_novel(client)
+    path = "chapters/0042/brief.md"
+    doc = read(client, novel_id, path)
+    text = doc["text"] + "## 场景色调\n冷蓝色，压低亮度。\n"
+
+    human = write(client, novel_id, path, text)
+    assert human.status_code == 200, human.text
+    assert "场景色调" in read(client, novel_id, path)["text"]
+
+    ai = write(client, novel_id, path, text.replace("压低亮度", "压低亮度，雨声不断"), actor="ai")
+    assert ai.status_code == 200, ai.text
+    refreshed = read(client, novel_id, path)["text"]
+    assert "雨声不断" in refreshed
+
+
+def test_custom_character_section_round_trips_and_renders(client: TestClient) -> None:
+    from tests.planning_helpers import create_character
+
+    novel_id = client.post("/api/novels", json={"title": "开放人物小节"}).json()["id"]
+    person = create_character(client, novel_id, name="顾遥")
+    path = f"settings/characters/{person['id']}.md"
+    doc = read(client, novel_id, path)
+    text = doc["text"] + "## 特殊能力\n能听见石头里的回声。\n"
+
+    result = write(client, novel_id, path, text)
+    assert result.status_code == 200, result.text
+    assert "## 特殊能力\n能听见石头里的回声。" in read(client, novel_id, path)["text"]
+    row = next(item for item in client.get(f"/api/novels/{novel_id}/characters").json() if item["id"] == person["id"])
+    assert row["custom_sections"] == [{"label": "特殊能力", "content": "能听见石头里的回声。"}]
+
+
+def test_custom_worldview_section_round_trips_inside_a_record(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "开放世界观小节"}).json()["id"]
+    setting = create_setting(client, novel_id, name="潮汐历", category="制度", content="一年十三月")
+    path = "settings/worldview.md"
+    doc = read(client, novel_id, path)
+    text = doc["text"].rstrip() + "\n### 历法例外\n每逢蓝月停摆。\n"
+
+    result = write(client, novel_id, path, text)
+    assert result.status_code == 200, result.text
+    refreshed = read(client, novel_id, path)["text"]
+    assert "### 历法例外\n每逢蓝月停摆。" in refreshed
+    row = next(item for item in client.get(f"/api/novels/{novel_id}/settings").json() if item["id"] == setting["id"])
+    assert row["custom_sections"] == [{"label": "历法例外", "content": "每逢蓝月停摆。"}]
+
+
+def test_custom_record_sections_are_rendered_and_parsed_for_foreshadow() -> None:
+    from app.services.markdown_doc import parse, render
+
+    source = [{
+        "foreshadow": 3,
+        "title": "黑潮",
+        "planted_chapter": 2,
+        "expected_payoff_chapter": 9,
+        "payoff_chapter": None,
+        "status": "open",
+        "content": "潮声先于风出现。",
+        "custom_sections": [{"label": "回收提示", "content": "必须保留蓝月意象。"}],
+    }]
+    text = render("foreshadow", source)
+    assert "### 回收提示\n必须保留蓝月意象。" in text
+    assert parse("foreshadow", text) == source
+
+
+def test_typed_agent_actions_accept_custom_sections() -> None:
+    from app.services.proposal_actions import run_action
+
+    ok, blueprint = run_action(
+        "update_blueprint",
+        {
+            "main_line": "主线",
+            "ending": "终局",
+            "core_conflicts": "冲突",
+            "themes": "主题",
+            "constraints": "约束",
+            "custom_sections": [{"label": "个人评价", "content": "值得继续扩展。"}],
+        },
+    )
+    assert ok, blueprint
+    assert "## 个人评价\n值得继续扩展。" in blueprint
+
+    ok, brief = run_action(
+        "upsert_chapter_brief",
+        {
+            "chapter_number": 3,
+            "goal": "推进",
+            "custom_sections": [{"label": "情绪曲线", "content": "由冷转热。"}],
+        },
+    )
+    assert ok, brief
+    assert "## 情绪曲线\n由冷转热。" in brief
 
 
 def test_a_list_section_rejects_prose(client: TestClient) -> None:

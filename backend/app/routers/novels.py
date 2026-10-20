@@ -14,6 +14,7 @@ from app.models import (
     Character,
     CharacterAppearance,
     ChatMessage,
+    ContextWorkflow,
     Foreshadow,
     GenerationRun,
     Novel,
@@ -48,6 +49,7 @@ NOVEL_SCOPED_MODELS = (
     ArcPlan,
     TocEntry,
     PlanningBlueprint,
+    ContextWorkflow,
 )
 
 

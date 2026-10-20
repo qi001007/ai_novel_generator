@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { EditorState } from "@codemirror/state";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { EditorView, keymap } from "@codemirror/view";
 import { BookOpen, ScrollText, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -12,6 +15,8 @@ import {
 import { toCssPx, tokenValue } from "../store/appearance";
 import { TASK_LABELS } from "../labels";
 import { formatTime } from "../utils/time";
+import { api } from "../api";
+import type { Review } from "../types";
 
 type MapVars = CSSProperties & Record<`--${string}`, string | number>;
 
@@ -50,15 +55,27 @@ function readBottomPref() {
 
 import HScrollThumb from "./HScrollThumb";
 import ViewToggle from "./ViewToggle";
+import {
+  proseReviewExtensions,
+  setProseReviewConfig,
+  suggestionRange,
+  suggestionsFromReviews,
+} from "./proseReview";
 import { chapterNumberLabel, draftBody, draftPath, useFiles } from "../store/files";
 import { chapterDraftPath, useWorkbench } from "../store/workbench";
+import { Button, Dialog, IconButton, TextField } from "./ui";
 
 export default function EditorPane() {
   const navigate = useNavigate();
   const state = useWorkbench();
-  const { selectedChapterId, chapters, generationRuns, busy, notice } = state;
+  const { selectedChapterId, chapters, generationRuns, reviews, busy, notice } = state;
 
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
+  // Keep the ownership boundary here too: a stale/in-flight response must never
+  // make a different chapter's calls appear under the current draft.
+  const chapterRuns = chapter
+    ? generationRuns.filter((run) => run.chapter_id === chapter.id)
+    : [];
   /* 批注 3.3: the prose used to live in its own `chapterDrafts` map while the file
      page held `entries["chapters/NNNN/draft.md"]`, and both wrote that one file -
      whichever saved last silently deleted the other's words. There is now a single
@@ -82,17 +99,82 @@ export default function EditorPane() {
   // and the minimap reads and writes its scrollTop. Growing it to its full
   // content height instead once produced 41707px, because scrollHeight is taken
   // while the flex row is still laid out a few dozen pixels wide.
-  const scrollRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<EditorView | null>(null);
+  const draftContentRef = useRef(draftContent);
+  const setDraftContentRef = useRef(state.setDraftContent);
+  draftContentRef.current = draftContent;
+  setDraftContentRef.current = state.setDraftContent;
+  const [editorHost, setEditorHost] = useState<HTMLDivElement | null>(null);
+  const [proseView, setProseView] = useState<EditorView | null>(null);
   const minimapRef = useRef<HTMLDivElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
   const tabsScrollRef = useRef<HTMLDivElement>(null);
   const grabRef = useRef<number | null>(null);
+  const scrubFrameRef = useRef<number | null>(null);
+  const [minimapDragging, setMinimapDragging] = useState(false);
   const [view, setView] = useState({ progress: 0, height: 1 });
   const [redraw, setRedraw] = useState(0);
   const [bottom, setBottom] = useState(readBottomPref);
+  const [selectedSuggestionId, setSelectedSuggestionId] = useState<string | null>(null);
+  const [checkOpen, setCheckOpen] = useState(false);
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawReason, setWithdrawReason] = useState("");
+  const [ignoredSuggestions, setIgnoredSuggestions] = useState<Set<string>>(() => new Set());
+  const reviewSuggestions = useMemo(() => suggestionsFromReviews(reviews), [reviews]);
+  const visibleSuggestions = useMemo(
+    () => reviewSuggestions.filter((suggestion) => !ignoredSuggestions.has(suggestion.id)),
+    [ignoredSuggestions, reviewSuggestions],
+  );
+  const selectedSuggestion = reviewSuggestions.find((suggestion) => suggestion.id === selectedSuggestionId) ?? null;
+  const selectedSuggestionRange = selectedSuggestion
+    ? suggestionRange(draftContent, selectedSuggestion)
+    : null;
+
+  function replaceReviewSuggestion(
+    suggestionId: string,
+    change: Record<string, unknown>,
+  ) {
+    const current = useWorkbench.getState().reviews;
+    useWorkbench.setState({
+      reviews: current.map((review) => {
+        const [reviewId, rawIndex] = suggestionId.split(":");
+        if (review.id !== Number(reviewId)) return review;
+        const suggestions = (review.evidence as Record<string, unknown>).suggestions;
+        const index = Number(rawIndex);
+        if (!Array.isArray(suggestions) || !Number.isInteger(index) || !suggestions[index] || typeof suggestions[index] !== "object") {
+          return review;
+        }
+        const next = [...suggestions];
+        next[index] = { ...(next[index] as Record<string, unknown>), ...change };
+        return { ...review, evidence: { ...review.evidence, suggestions: next } };
+      }),
+    });
+  }
+
+  async function persistReviewSuggestion(
+    suggestion: NonNullable<typeof selectedSuggestion>,
+    change: Record<string, unknown>,
+  ) {
+    const novelId = useWorkbench.getState().selectedNovelId;
+    const selected = useWorkbench.getState().selectedChapterId;
+    if (!novelId || selected === null) return;
+    try {
+      const review = await api.patch<Review>(
+        `/api/novels/${novelId}/chapters/${selected}/reviews/${suggestion.reviewId}/suggestions/${suggestion.index}`,
+        change,
+      );
+      useWorkbench.setState({
+        reviews: useWorkbench.getState().reviews.map((item) => item.id === review.id ? review : item),
+      });
+    } catch (cause) {
+      useWorkbench.setState({
+        error: cause instanceof Error ? cause.message : "保存审稿建议失败",
+      });
+    }
+  }
 
   const syncView = useCallback(() => {
-    const node = scrollRef.current;
+    const node = editorRef.current?.scrollDOM;
     if (!node) return;
     const { scrollTop, scrollHeight, clientHeight } = node;
     const span = scrollHeight - clientHeight;
@@ -109,6 +191,19 @@ export default function EditorPane() {
   // only refreshes after a save, and comparing against it hid edits made while a
   // generation was in flight.
   const dirty = chapter ? draftContent !== draftSaved : false;
+
+  function applyMachineIssue(index: number) {
+    const issue = state.machineCheck?.issues[index];
+    if (!issue?.quote || issue.replacement === undefined) return;
+    let start = typeof issue.start === "number" ? issue.start : -1;
+    if (start < 0 || draftContent.slice(start, start + issue.quote.length) !== issue.quote) {
+      const first = draftContent.indexOf(issue.quote);
+      if (first < 0 || first !== draftContent.lastIndexOf(issue.quote)) return;
+      start = first;
+    }
+    state.setDraftContent(`${draftContent.slice(0, start)}${issue.replacement}${draftContent.slice(start + issue.quote.length)}`);
+    setCheckOpen(false);
+  }
 
   useEffect(() => {
     setSavedAt(null);
@@ -131,9 +226,62 @@ export default function EditorPane() {
       setRedraw((count) => count + 1);
     });
     if (minimapRef.current) observer.observe(minimapRef.current);
-    if (scrollRef.current) observer.observe(scrollRef.current);
+    if (proseView) observer.observe(proseView.scrollDOM);
     return () => observer.disconnect();
-  }, [syncView, selectedChapterId]);
+  }, [proseView, syncView, selectedChapterId]);
+
+  useEffect(() => {
+    const node = proseView?.scrollDOM;
+    if (!node) return undefined;
+    node.addEventListener("scroll", syncView, { passive: true });
+    syncView();
+    return () => node.removeEventListener("scroll", syncView);
+  }, [proseView, syncView]);
+
+  // The prose page uses the same CodeMirror engine as source documents. Its only
+  // writer is still the shared draft.md buffer; CodeMirror merely exposes that buffer
+  // with anchor decorations instead of trying to own a second chapter string.
+  useEffect(() => {
+    if (!editorHost) return undefined;
+    const editor = new EditorView({
+      parent: editorHost,
+      state: EditorState.create({
+        doc: draftContentRef.current,
+        extensions: [
+          EditorView.lineWrapping,
+          history(),
+          keymap.of([...defaultKeymap, ...historyKeymap]),
+          EditorView.contentAttributes.of({ "aria-label": "章节正文", spellcheck: "false" }),
+          EditorView.updateListener.of((update) => {
+            if (update.docChanged) setDraftContentRef.current(update.state.doc.toString());
+          }),
+          proseReviewExtensions,
+        ],
+      }),
+    });
+    editorRef.current = editor;
+    setProseView(editor);
+    return () => {
+      editorRef.current = null;
+      setProseView(null);
+      editor.destroy();
+    };
+  }, [editorHost]);
+
+  useEffect(() => {
+    if (!proseView || proseView.state.doc.toString() === draftContent) return;
+    proseView.dispatch({ changes: { from: 0, to: proseView.state.doc.length, insert: draftContent } });
+  }, [draftContent, proseView]);
+
+  useEffect(() => {
+    if (!proseView) return;
+    proseView.dispatch({
+      effects: setProseReviewConfig({
+        suggestions: visibleSuggestions,
+        onOpen: setSelectedSuggestionId,
+      }),
+    });
+  }, [proseView, visibleSuggestions]);
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -169,7 +317,7 @@ export default function EditorPane() {
 
   // The map is painted with theme-dependent ink, and nothing in the redraw key
   // changes when the theme does - so after a theme switch the canvas kept the old
-  // marks (measured: light-theme ink left the 56px column at #AAAAAA on a dark
+  // marks (measured: light-theme ink left the minimap column at #AAAAAA on a dark
   // page) until the next scroll. Watch every attribute that carries a look now -
   // palette, prose face and syntax colours are all painted in here.
   useEffect(() => {
@@ -213,17 +361,11 @@ export default function EditorPane() {
 
     // Scale the real page: one minimap row is one wrapped editor row.
     const dark = document.documentElement.dataset.theme === "dark";
-    // 批注 1: this used to re-wrap every line into the 56px column, so the map was
+    // 批注 1: this used to re-wrap every line into the minimap column, so the map was
     // a band of glyph soup rather than text - and when the band was reported as a
     // seam, dimming the ink made it unreadable. It draws like the file editor's map
     // now: one row per line, the same painter in both places.
-    paintMinimap(ctx, draftContent.split("\n"), height, dark, tokenValue("--prose"), tokenValue("--accent"));
-
-    // Fade whatever the slider does not cover: the bright band is the page you see.
-    const geo = thumbGeometry(height);
-    ctx.fillStyle = dark ? "rgba(22,22,24,.6)" : "rgba(252,252,251,.62)";
-    ctx.fillRect(0, 0, width, Math.max(0, geo.top));
-    ctx.fillRect(0, geo.top + geo.height, width, Math.max(0, height - geo.top - geo.height));
+    paintMinimap(ctx, draftContent.split("\n"), height, dark, tokenValue("--prose"), tokenValue("--accent"), view.progress);
   }, [draftContent, view, redraw]);
 
   if (!chapter) {
@@ -246,7 +388,7 @@ export default function EditorPane() {
   // Dragging the slider keeps the offset you grabbed it at; clicking bare track
   // centres it under the cursor. Either way it scrolls the page, not the map.
   function scrubTo(clientY: number) {
-    const node = scrollRef.current;
+    const node = editorRef.current?.scrollDOM;
     const map = minimapRef.current;
     if (!node || !map) return;
     const rect = map.getBoundingClientRect();
@@ -258,7 +400,17 @@ export default function EditorPane() {
       toCssPx(rect.top),
       grabRef.current,
     );
-    node.scrollTop = progress * Math.max(0, node.scrollHeight - node.clientHeight);
+    const apply = () => {
+      node.scrollTop = progress * Math.max(0, node.scrollHeight - node.clientHeight);
+    };
+    apply();
+    if (scrubFrameRef.current !== null) window.cancelAnimationFrame(scrubFrameRef.current);
+    // CodeMirror refines wrapped-line heights after a long jump. Re-apply once
+    // with the settled scrollHeight or a click at 50% can stop around 46%.
+    scrubFrameRef.current = window.requestAnimationFrame(() => {
+      apply();
+      scrubFrameRef.current = null;
+    });
   }
 
   function onMinimapPointerDown(event: React.PointerEvent<HTMLDivElement>) {
@@ -269,6 +421,7 @@ export default function EditorPane() {
     const offset = toCssPx(event.clientY - rect.top);
     const inside = isOnThumb(mapHeight, view.height, view.progress, offset);
     grabRef.current = inside ? offset - geo.top : geo.height / 2;
+    setMinimapDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     scrubTo(event.clientY);
   }
@@ -279,9 +432,17 @@ export default function EditorPane() {
 
   function endMinimapScrub(event: React.PointerEvent<HTMLDivElement>) {
     grabRef.current = null;
+    setMinimapDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+  }
+
+  function onMinimapWheel(event: React.WheelEvent<HTMLDivElement>) {
+    const node = editorRef.current?.scrollDOM;
+    if (!node) return;
+    event.preventDefault();
+    node.scrollTop += event.deltaY;
   }
 
   function startBottomDrag(event: React.PointerEvent<HTMLButtonElement>) {
@@ -384,60 +545,140 @@ export default function EditorPane() {
         {notice ? <span className="notice">{notice}</span> : null}
         {state.error ? <span className="status-error">{state.error}</span> : null}
         <div className="editor-actions">
-          <button type="button" disabled={busy} onClick={() => void state.runMachineCheck()}>机械校验</button>
-          <button type="button" disabled={busy} onClick={() => void state.runAiReview()}>AI 自检</button>
-          <button type="button" disabled={busy} onClick={() => void state.reviewChapter("accept")}>通过终审</button>
-          <button type="button" disabled={busy} onClick={() => void state.reviewChapter("reject")}>打回</button>
-          <button
-            type="button"
-            className="primary"
-            disabled={busy || chapter.status !== "final"}
-            onClick={() => void state.extractChapterFacts()}
-          >
-            事实落库
-          </button>
+          <Button compact disabled={busy} onClick={async () => { await state.runMachineCheck(); setCheckOpen(true); }}>错别字检查</Button>
+          <Button compact disabled={busy} onClick={() => void state.runAiReview()}>AI 自检</Button>
+          <Button compact disabled={busy} onClick={() => void state.reviewChapter("accept")}>通过终审</Button>
+          <Button compact disabled={busy || chapter.status !== "final"} onClick={() => setWithdrawOpen(true)}>撤回终审</Button>
           {/* 批注 18: the entry point was a full-width bar sitting under the text
               whether or not anyone wanted it. One icon beside the other actions
               now opens a panel that carries its own heading. */}
-          <button
-            type="button"
-            className="icon-button"
+          <IconButton
             aria-expanded={!bottom.collapsed}
+            aria-controls="editor-records"
             aria-label={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
             title={bottom.collapsed ? "展开调用记录" : "收起调用记录"}
             onClick={() => setBottom((prev) => ({ ...prev, collapsed: !prev.collapsed }))}
           >
             {/* 批注 8: a clock face reads as "go back in time", not "call records". */}
             <ScrollText size={15} />
-          </button>
+          </IconButton>
         </div>
       </header>
       <div className="editor-body">
         <div className="editor-scroll">
-          <textarea
-            ref={scrollRef}
-            value={draftContent}
-            onChange={(event) => state.setDraftContent(event.target.value)}
-            onScroll={syncView}
-            aria-label="章节正文"
-            spellCheck={false}
-          />
+          <div ref={setEditorHost} className="editor-cm" />
         </div>
         <div
-          className="minimap"
+          className={`minimap${minimapDragging ? " dragging" : ""}`}
           ref={minimapRef}
           style={{ "--view-top": view.progress, "--view-height": view.height } as MapVars}
-          aria-hidden="true"
+          role="scrollbar"
+          aria-label="正文缩略栏"
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(view.progress * 100)}
+          tabIndex={0}
           title="缩略栏：拖动透明滑块翻页"
           onPointerDown={onMinimapPointerDown}
           onPointerMove={onMinimapPointerMove}
           onPointerUp={endMinimapScrub}
           onPointerCancel={endMinimapScrub}
+          onWheel={onMinimapWheel}
         >
           <canvas ref={minimapCanvasRef} className="minimap-canvas" />
           <i className="minimap-viewport" />
         </div>
       </div>
+      {withdrawOpen ? <Dialog title="撤回终审" onClose={() => setWithdrawOpen(false)}>
+        <p>终审快照会失效，工作稿保留为 draft</p>
+        <TextField autoFocus aria-label="撤回原因" placeholder="填写原因" value={withdrawReason} onChange={(event) => setWithdrawReason(event.target.value)} />
+        <footer>
+          <Button compact onClick={() => setWithdrawOpen(false)}>取消</Button>
+          <Button compact tone="danger" disabled={!withdrawReason.trim() || busy} onClick={async () => { await state.reviewChapter("reject", withdrawReason.trim()); setWithdrawOpen(false); setWithdrawReason(""); }}>确认撤回</Button>
+        </footer>
+      </Dialog> : null}
+      {checkOpen && state.machineCheck ? (
+        <aside className="review-drawer spelling-drawer" role="complementary" aria-label="错别字检查结果">
+          <div className="review-drawer-head">
+            <div>
+              <span className="review-drawer-kicker">错别字检查</span>
+              <strong>{state.machineCheck.issues.length ? `${state.machineCheck.issues.length} 个问题` : "未发现问题"}</strong>
+            </div>
+            <IconButton aria-label="关闭错别字检查" onClick={() => setCheckOpen(false)}><X size={14} /></IconButton>
+          </div>
+          <div className="spelling-issues">
+            {state.machineCheck.issues.map((issue, index) => (
+              <article key={`${issue.type}-${issue.start ?? index}-${index}`}>
+                <strong>{issue.message}</strong>
+                {issue.quote ? <div className="spelling-diff"><del>{issue.quote}</del>{issue.replacement !== undefined ? <ins>{issue.replacement || "删除"}</ins> : null}</div> : null}
+                {issue.quote && issue.replacement !== undefined ? <Button compact onClick={() => applyMachineIssue(index)}>应用</Button> : null}
+              </article>
+            ))}
+          </div>
+          <p>应用后只修改当前缓冲，保存前仍可撤销</p>
+        </aside>
+      ) : null}
+      {selectedSuggestion ? (
+        <aside className="review-drawer" role="complementary" aria-label="审稿批注">
+          <div className="review-drawer-head">
+            <div>
+              <span className="review-drawer-kicker">AI 审稿建议</span>
+              <q>{selectedSuggestion.quote}</q>
+            </div>
+            <button type="button" aria-label="关闭审稿批注" onClick={() => setSelectedSuggestionId(null)}>
+              <X size={14} />
+            </button>
+          </div>
+          {selectedSuggestion.comment ? <p>{selectedSuggestion.comment}</p> : null}
+          <label>
+            建议改为
+            <textarea
+              value={selectedSuggestion.replacement}
+              onChange={(event) => {
+                const next = event.target.value;
+                replaceReviewSuggestion(selectedSuggestion.id, { replacement: next });
+              }}
+              aria-label="建议替换文本"
+              rows={3}
+            />
+          </label>
+          {selectedSuggestionRange ? null : (
+            <p className="review-stale">原文已变化，不能强行应用这条建议</p>
+          )}
+          <div className="review-drawer-actions">
+            <button
+              type="button"
+              disabled={!selectedSuggestionRange || !selectedSuggestion.replacement}
+              onClick={() => {
+                if (!selectedSuggestionRange) return;
+                state.setDraftContent(
+                  `${draftContent.slice(0, selectedSuggestionRange.from)}${selectedSuggestion.replacement}${draftContent.slice(selectedSuggestionRange.to)}`,
+                );
+                replaceReviewSuggestion(selectedSuggestion.id, { status: "applied" });
+                void persistReviewSuggestion(selectedSuggestion, {
+                  replacement: selectedSuggestion.replacement,
+                  status: "applied",
+                });
+              }}
+            >
+              应用这条建议
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIgnoredSuggestions((previous) => new Set(previous).add(selectedSuggestion.id));
+                replaceReviewSuggestion(selectedSuggestion.id, { status: "ignored" });
+                void persistReviewSuggestion(selectedSuggestion, { status: "ignored" });
+                setSelectedSuggestionId(null);
+              }}
+            >
+              忽略
+            </button>
+          </div>
+          <p className="review-save-note">应用只改当前草稿；请按 Ctrl+S 保存</p>
+        </aside>
+      ) : null}
       <div
         className="editor-bottom"
         // 批注: one record should not cost 168px of panel. The dragged number is a
@@ -460,9 +701,9 @@ export default function EditorPane() {
             stays the History icon in the action row. A second "收起" button here
             was a duplicate control with a duplicate accessible name. */}
         {bottom.collapsed ? null : <h3 className="records-title">调用记录</h3>}
-      {generationRuns.length > 0 && !bottom.collapsed && (
-        <ul className="record-list" aria-label="生成与审稿记录">
-            {generationRuns.map((run) => (
+        {!bottom.collapsed && (
+        <ul id="editor-records" className="record-list" aria-label="生成与审稿记录">
+            {chapterRuns.length > 0 ? chapterRuns.map((run) => (
               <li key={`run-${run.id}`}>
                 <div>
                   <strong>{run.model}</strong>
@@ -481,7 +722,7 @@ export default function EditorPane() {
                   详情
                 </button>
               </li>
-          ))}
+          )) : <li className="empty-records">这一章还没有调用记录</li>}
         </ul>
       )}
       </div>

@@ -1,89 +1,69 @@
-# 架构现状
+# 重建架构
 
-最后核对：2026-09-09。本文只描述跨模块的真实结构；进度看 WORKSTREAM-PLAN.md，理由看 DECISIONS.md。
+## 1. 目标结构
 
-## 0. 系统形状
+```text
+React 页面 / Agent / Workflow
+             ↓
+       统一函数与命令目录
+             ↓
+          应用用例层
+             ↓
+作品结构 / 文档规划 / 知识事实 / Workflow / 生成审计 / 地图媒体
+             ↓
+     仓储 / 单事务 / 模型网关 / 搜索 / 文件存储
+```
 
-    React 单页应用
-      → frontend/src/api.ts（唯一网络边界）
-      → FastAPI routers（HTTP 解析与错误映射）
-      → services（业务、投影、AI 编排）
-      → SQLite / SQLModel（唯一持久化真源）
+FastAPI、SQLModel、Alembic 与 SQLite 继续组成单体应用。新模型避免 SQLite 专属设计，为 PostgreSQL 和对象存储保留适配器边界。
 
-这是单机自用应用。前后端共用一套数据模型，但写文与对话是两条消费链：写文生成章节，对话负责检索、讨论和提出改动；二者都从 collect_items() 取得资料。
+## 0. 代码地图
 
-### 0.5 Map 跳转表（改什么，先读哪里）
+### 0.5 Map 跳转表
 
-| 任务 | 先读 | 验证 |
-|---|---|---|
-| 表或字段 | backend/app/description.md → models.py；backend/alembic/description.md | 迁移升降级 + 后端测试 |
-| API | backend/app/routers/description.md | 对应路由测试 |
-| 生成、恢复、校验 | backend/app/services/description.md | 后端测试 + 对应 smoke |
-| 注入内容 | services/context.py 的 collect_items() 及写作排序 | 清单测试 + NOVEL_CONTEXT_DEBUG=1 |
-| 对话 Agent | services/agent*.py、agent_tools.py、chat.py | test_agent_*.py + 真网关最小冒烟 |
-| 页面 | frontend/src/pages/description.md | Vitest + 类型检查 + 真机截图 |
-| 组件 | frontend/src/components/description.md | 同名测试 + uiInvariants.test.ts |
-| 状态 | frontend/src/store/description.md | store 测试 |
-| 决策原因或已删方案 | DECISIONS.md 索引、§2、§3 | 对照当前代码后再行动 |
+| 任务 | 当前入口 |
+|---|---|
+| 统一命令目录与事务 | `backend/app/core/commands.py`、`backend/app/application/functions.py` |
+| 新核心模型 | `backend/app/models.py`、`backend/alembic/versions/` |
+| Workspace / SSE / 上下文 | `backend/app/routers/workspace.py`、`events.py`、`context.py` |
+| Agent 单一路径 | `backend/app/services/agent.py`、`agent_pydantic.py`、`agent_tools.py`、`agent_run_log.py`、`frontend/src/components/ChatPane.tsx` |
+| Workflow DSL 与运行 | `backend/app/application/workflow_schema.py`、`backend/app/services/workflows.py`、`workflow_engine.py`、`python_worker.py`、`backend/app/routers/workflows.py` |
+| 启动页与工作台 | `frontend/src/pages/BookshelfPage.tsx`、`WorkbenchPage.tsx` |
+| Workflow Studio | `frontend/src/components/ContextWorkflowPanel.tsx`、`JsonCodeEditor.tsx` |
+| 前端网络边界 | `frontend/src/api.ts` |
+| 模型与生图网关 | `backend/app/services/llm.py`、`backend/app/routers/config.py`、`images.py` |
+| Codex 平台操控 MCP | `tools/novel_platform_mcp/server.py`、`client.py`、`install.ps1`、`smoke_test.py` |
 
-进入目录后先读同层 description.md；确定要改，再读同层 backlog.md。不要从仓库根目录全量读取源码。
+## 3. 新核心模型
+
+`Novel`、`OutlineNode`、`Document`、`KnowledgeEntry`、`Fact`、`Revision`、`Operation`、`WorkflowVersion`、`WorkflowRun`、`NodeRun`、`Conversation`、`ToolCall`、`MapProject`、`MapTile`、`GenerationJob`。消息仍由现有 `ChatMessage` 承载，Workflow 定义仍在收口为独立模型。
+
+可编辑资产统一使用 revision 乐观锁和 draft/approved/retired 状态；Workflow 定义已具备 revision，其创建、保存、重命名、默认切换、发布和删除都进入统一命令。删除只允许未发布、未运行的草稿，已有历史的流程必须保留；Operation 保存命令输入、差异、影响对象、执行者和撤销数据，历史运行固定引用不可变 WorkflowVersion。
+
+## 4. 不可绕过的边界
+
+- 路由、Agent 与 Workflow 不得直接提交数据库；写入必须进入统一命令处理器。
+- 同一命令只有一个事务提交点；幂等键和目标 revision 在执行前校验。
+- Python 节点不得访问仓储、数据库或平台函数，只接收声明输入并返回 JSON。
+- 动态上下文每次调用重新计算；只有 approved Fact 可进入稳定事实区。
+- Workflow 图是执行真源；不得再维护独立 policy 作为另一份执行定义。
+- 历史调用读取当时快照，不从当前配置反推。
+
+## 5. 当前过渡边界
+
+新核心已与旧路由并存，以保护现有可用前端；旧 documents/context/chat 服务仍有历史职责，禁止继续扩张。尚未迁入统一核心的功能在 `WORKSTREAM-PLAN.md` 和 `UI-BACKLOG.md` 明列，不能称为重建完成。
+
+开发侧 `novel_platform` MCP 只通过本地 HTTP API 操作平台，不直连数据库。统一命令已经覆盖的动作优先走命令；尚未迁移的旧能力通过受限的 `/api/*` 读写工具临时覆盖。页面验收只允许 click/input/scroll/drag 白名单与 DOM 测量，不开放任意脚本。MCP 不属于产品 UI，也不等同于产品内对话 Agent；它验证并驱动产品 Agent 将来要复用的同一函数能力。
+
+模型网关当前默认接入百炼 Token Plan：正文使用 `qwen3.7-plus`，审稿、摘要与对话使用 `qwen3.8-flash`，无计费 `/models` 鉴权已返回 HTTP 200。生图走同一供应商路由和 `/api/images/generations` 传输边界，但 `sk-sp-` Token Plan 密钥经文本 Base URL 直调图片会按官方规则返回 400；正式启用必须新增百炼标准 `sk-` 生图供应商及对应地域/Workspace URL，不能把文本密钥复用成假可用状态。
 
 ### 0.6 文档职责
 
 | 文件 | 唯一职责 |
 |---|---|
-| AGENTS.md | 工作纪律、不可违反的项目红线 |
-| ARCHITECTURE.md | 跨模块现状、代码地图、风险边界 |
-| PRD.md | 产品目标、范围、验收标准 |
-| UI-DESIGN.md | 当前视觉与交互规格、不可回退项 |
-| WORKSTREAM-PLAN.md | 唯一进度入口、下一步、收尾标准 |
-| UI-BACKLOG.md | 尚未完成的界面批注，完成即删 |
-| DECISIONS.md | 决定、理由、废止与防复活记录 |
-| HANDOFF.md | 新会话启动与验证入口 |
-| CONTEXT.md | 领域词汇表 |
-| 目录 description.md / backlog.md | 本层职责与本层变更史 |
-
-## 1. 数据与写通路
-
-- app/models.py 定义 16 张表；其中 app_config 是全局配置，其余数据按作品归属。
-- SQLite 是唯一持久化真源。blueprint.md、toc.md、arcs.md、chapters/NNNN/{brief.md,draft.md} 与 settings/* 都是按需渲染的 Markdown 投影，不是磁盘真文件。
-- 规划与文本设定写入只走 PUT /api/novels/{id}/files/{path}，统一经过结构锁、AI 字段白名单和 base_revision 并发检查（D-01/D-02/D-10/D-15）。
-- 主人确认的首次 B/C 提案可以初始化空投影；已有记录仍禁止 AI 提案增删或改主键（D-38）。
-- /planning/* 的写路由保留为 410 退役桩，避免旧调用静默产生第二写口；读取仍可用。
-- 图片、作品删除、章节生成和快照恢复是不同资源动作，不伪装成规划文档写入。章节改名最终仍写 toc.md；章节删插由 renumber.py 集中搬移全部章号引用（D-29/D-32）。
-- 导出是单向读；恢复写回时复用文件投影写手。v1 不做磁盘双向同步。
-
-## 2. AI 与上下文
-
-    collect_items(session, novel_id)
-      ├─ build_chat_context()      按问题相关度排序
-      └─ build_writing_context()   按写作层级与字符预算排序
-           └─ manifest → generation_run.input_summary / 调试终端
-
-- collect_items() 是唯一资料池；新资料只增加 collector，不在调用方拼第二份提示词（D-04/D-06）。
-- 对话历史、推理、工具轨迹和正文内容分开建模；推理不回灌为历史正文（D-18）。
-- Agent 的工具注册表当前只有 list_files、read_file、web_search，没有直接写工具。改规划只能产出提案，主人确认后再走文件写入口。
-- Agent 有 legacy 与 Pydantic AI 两个引擎；NOVEL_AGENT_ENGINE=pydantic 才启用后者，默认仍是 legacy。两者共享注册表和外部事件契约；迁移结束前不得删回退路径（D-28）。
-- 当前写作上下文仍使用 12000 字预算、目录邻域 ±3、上一章末尾 600 字；这些是待调整的实现现状，不是新需求的最终口径，工单见 UI-BACKLOG.md。
-
-## 3. 前端边界
-
-- api.ts 是唯一 fetch 所在地；组件、页面和 store 不直接感知后端实现（D-07）。
-- workbench、files、appearance 是三个状态持有者；新增全局状态前先证明现有三处不能承载。
-- CodeMirror 6 承担 Markdown/正文编辑；投影语法只由后端 markdown_doc._GRAMMAR 发布，前端按 kind 消费（D-08/D-35）。
-- 视觉决定由 UI-DESIGN.md 描述、uiInvariants.test.ts 机械保护；效果类改动必须真机量测。
-
-## 4. 结构风险
-
-| 风险 | 当前证据 | 收尾策略 |
-|---|---|---|
-| 大文件 | styles.css 6569 行；ChatPane.tsx 1174；PreferencesPage.tsx 1143；WorkbenchPage.tsx 1001 | 不做全量重构；功能触及某块时只拆该块，并保持测试不减 |
-| 后端服务过厚 | documents.py 1169；context.py 900；chat.py 686；storage.py 581 | 先完成 v1 主链；仅在修改相应职责时提取纯函数或子模块 |
-| Agent 双引擎 | 默认 legacy，Pydantic 路径已存在但尚未完成迁移 | 先补行为等价与真机稳定性，再切默认，最后删 legacy |
-| 前端主包偏大 | 当前生产构建主 JS 约 874 KB（gzip 约 296 KB），Vite 给出 500 KB 提示 | 不阻塞本地 v1；真实启动变慢时先做路由级 dynamic import |
-| 测试卫生 | 前端测试通过，但 BookshelfPage 与 FileEditorPane 各有 act(...) 警告 | 不混入文档任务；后续触及对应测试时修 |
-| 文档漂移 | 多份文档曾重复测试数字、已完成流水和旧结论 | 禁止固定测试条数；状态只写 WORKSTREAM-PLAN.md，历史交给 Git |
-
-## 5. 运行时核对
-
-2026-09-09 本机导入应用得到 74 条 /api 路由、16 张表。测试总数不写入文档，以门禁当次输出与退出码为准。启动与完整验证命令只看 HANDOFF.md。
+| `PRD.md` | 当前产品需求与正式验收 |
+| `ARCHITECTURE.md` | 当前代码地图、目标边界与过渡事实 |
+| `DECISIONS.md` | 仍有效且影响实现的决定 |
+| `WORKSTREAM-PLAN.md` | 已完成、当前施工和未完成阶段 |
+| `UI-DESIGN.md` | 稳定界面语言 |
+| `UI-BACKLOG.md` | 尚未完成、可验证的反馈项 |
+| `HANDOFF.md` | 启动、验证和接手入口 |

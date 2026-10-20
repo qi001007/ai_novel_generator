@@ -41,6 +41,7 @@ router = APIRouter(prefix="/novels", tags=["chapters"])
 
 
 class MachineCheckRequest(SQLModel):
+    content: str | None = None
     min_word_count: int = 0
     max_word_count: int = 0
     forbidden_words: list[str] = []

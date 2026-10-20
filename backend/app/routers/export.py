@@ -30,6 +30,7 @@ class SaveIn(SQLModel):
     chapter_number: int | None = None
     format: str = "txt"
     document_path: str | None = None
+    allow_partial: bool = False
 
 
 class SavedOut(SQLModel):
@@ -83,7 +84,7 @@ def save_export(
                 session, novel, payload.chapter_number, payload.format
             )
         else:
-            text, name = export.book_document(session, novel, payload.format)
+            text, name = export.book_document(session, novel, payload.format, payload.allow_partial)
         saved = storage.write_export(session, name, text)
     except (export.ExportError, storage.StorageError) as cause:
         raise HTTPException(**errors.http_kwargs(cause)) from cause
@@ -98,12 +99,13 @@ def export_prose(
     scope: str = "book",
     chapter_number: int | None = None,
     format: str = "txt",
+    allow_partial: bool = False,
     session: Session = Depends(get_session),
 ) -> Response:
     novel = get_novel_or_404(novel_id, session)
     try:
         if scope == "book":
-            text, filename = export.book_document(session, novel, format)
+            text, filename = export.book_document(session, novel, format, allow_partial)
             stem = "book"
         elif scope == "chapter":
             if chapter_number is None:

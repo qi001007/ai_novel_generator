@@ -20,6 +20,7 @@ from pydantic_ai import (
     UsageLimitExceeded,
     UserPromptPart,
     TextPart,
+    ToolCallPart,
 )
 from pydantic_ai.usage import RunUsage, UsageLimits
 
@@ -32,6 +33,7 @@ from app.services.agent import (
     ToolRegistry,
     ToolResult,
     budget_hint,
+    draft_fence_partial,
 )
 from app.services.agent_model import GatewayChatModel
 from app.services.agent_tools import framework_tools_from_registry
@@ -62,6 +64,40 @@ def to_framework_messages(messages: list[dict[str, str]]) -> list[ModelRequest |
         else:
             framework.append(ModelRequest([UserPromptPart(content=content)]))
     return framework
+
+
+def _split_system_prompt(
+    messages: list[dict[str, str]],
+) -> tuple[str, list[ModelRequest | ModelResponse]]:
+    # Static Agent system prompts are not inserted in front of an already supplied
+    # history. Keep the prepared system row inside that history so the gateway sees
+    # exactly the same order as the editor assembled.
+    return "", to_framework_messages(messages)
+
+
+def _steps_from_messages(messages: list[Any], timings: dict[str, int]) -> list[AgentStep]:
+    """Read the framework's durable tool transcript without forcing model streaming."""
+    pending: dict[str, ToolCall] = {}
+    steps: list[AgentStep] = []
+    for message in messages:
+        for part in getattr(message, "parts", []):
+            kind = getattr(part, "part_kind", "")
+            call_id = getattr(part, "tool_call_id", "")
+            if kind == "tool-call":
+                args = part.args_as_dict() if hasattr(part, "args_as_dict") else (part.args or {})
+                pending[call_id] = ToolCall(name=part.tool_name, arguments=args)
+            elif kind in {"tool-return", "retry-prompt"} and call_id in pending:
+                call = pending.pop(call_id)
+                content = _message_content(getattr(part, "content", ""))
+                steps.append(
+                    AgentStep(
+                        index=len(steps) + 1,
+                        call=call,
+                        result=ToolResult(call=call, content=content, ok=kind == "tool-return"),
+                        ms=timings.pop(call_id, 0),
+                    )
+                )
+    return steps
 
 
 def _step_from_event(
@@ -149,9 +185,15 @@ def _budget_error(gate: BudgetGate, steps: list[AgentStep]) -> AgentBudgetError:
     # 一个词一个意思（真机量出来的：模型一轮里可以并行要 10 步工具）：
     # 「轮」= 一次模型请求，「步」= 一次工具调用，和界面轨迹里的「第 N 步」同一个意思。
     if gate.gate == "request":
-        reason = f"到了 {gate.request_limit} 轮上限，第 {usage.requests + 1} 轮仍在要求调用工具"
+        reason = (
+            f"到了 {gate.request_limit} 个内部步骤上限，"
+            f"第 {usage.requests + 1} 个内部步骤仍在要求调用工具"
+        )
     else:
-        reason = f"第 {usage.requests} 轮回来时已用 {spent} token，过了 {gate.total_tokens_limit} 的上限"
+        reason = (
+            f"第 {usage.requests} 个内部步骤回来时已用 {spent} token，"
+            f"过了 {gate.total_tokens_limit} 的上限"
+        )
     trail = "; ".join(step.as_line() for step in steps)
     return AgentBudgetError(
         f"本轮已停止：{reason}。已花 {spent} token（输入 {usage.input_tokens} / 输出 {usage.output_tokens}）、"
@@ -167,10 +209,23 @@ def _agent(
     model: Any,
     temperature: float,
     framework_tools: list[Any] | None,
+    system_prompt: str = "",
+    draft_callback: Any = None,
     ) -> Agent:
+    resolved_model = (
+        model
+        if model is not None and not isinstance(model, str)
+        else GatewayChatModel(
+            llm,
+            task_type=task_type,
+            model_override=model or None,
+            draft_callback=draft_callback,
+        )
+    )
     agent = Agent(
-        model or GatewayChatModel(llm, task_type=task_type),
+        resolved_model,
         tools=framework_tools or [],
+        system_prompt=system_prompt,
         model_settings={"temperature": temperature},
         retries=0,
     )
@@ -208,9 +263,9 @@ def run_pydantic_agent_turn(
 ) -> AgentOutcome:
     """Run the framework loop without streaming, with the same event contract."""
     timings: dict[str, int] = {}
-    framework_tools = framework_tools or framework_tools_from_registry(registry, timings)
     steps: list[AgentStep] = []
-    handler = _event_consumer(steps, timings)
+    framework_tools = framework_tools or framework_tools_from_registry(registry, timings, steps)
+    system_prompt, history = _split_system_prompt(messages)
     gate = _limits(config)
     agent = _agent(
         llm,
@@ -218,16 +273,18 @@ def run_pydantic_agent_turn(
         model=model,
         temperature=temperature,
         framework_tools=framework_tools,
+        system_prompt=system_prompt,
     )
     try:
         result = agent.run_sync(
             None,
-            message_history=to_framework_messages(messages),
+            message_history=history,
             usage_limits=gate,
-            event_stream_handler=handler,
         )
     except UsageLimitExceeded as cause:
         raise _budget_error(gate, steps) from cause
+    if not steps:
+        steps = _steps_from_messages(result.all_messages(), timings)
     return _result_outcome(result, steps, model if isinstance(model, str) else None)
 
 
@@ -249,9 +306,19 @@ def stream_pydantic_agent_turn(
     events: queue.Queue[tuple[str, Any] | tuple[str, None] | tuple[str, BaseException]] = queue.Queue()
     steps: list[AgentStep] = []
     gate = _limits(config)
+    system_prompt, history = _split_system_prompt(messages)
 
     async def drive() -> None:
         pending: dict[str, FunctionToolCallEvent] = {}
+        last_draft: tuple[str, str] | None = None
+
+        def publish_raw_draft(text: str) -> None:
+            nonlocal last_draft
+            draft = draft_fence_partial(text)
+            if draft is not None and draft != last_draft:
+                last_draft = draft
+                path, body = draft
+                events.put(("draft", {"path": path, "text": body}))
 
         async def handler(_context: Any, stream: Any) -> None:
             # Same reason as _event_consumer: 第 N 步 is the Nth tool call of the turn.
@@ -284,11 +351,13 @@ def stream_pydantic_agent_turn(
             model=model,
             temperature=temperature,
             framework_tools=framework_tools,
+            system_prompt=system_prompt,
+            draft_callback=publish_raw_draft,
         )
         try:
             result = await agent.run(
                 None,
-                message_history=to_framework_messages(messages),
+                message_history=history,
                 usage_limits=gate,
                 event_stream_handler=handler,
             )

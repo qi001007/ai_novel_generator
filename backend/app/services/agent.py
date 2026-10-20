@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import re
-import time
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Iterator
 
@@ -30,10 +29,8 @@ class AgentBudgetError(RuntimeError):
 
 
 def agent_engine() -> str:
-    """Migration switch: read once per call from process settings, never from the DB."""
-    import os
-
-    return "pydantic" if os.getenv("NOVEL_AGENT_ENGINE", "").strip().lower() == "pydantic" else "legacy"
+    """The rebuilt product has one tool loop: Pydantic AI."""
+    return "pydantic"
 
 
 @dataclass(frozen=True)
@@ -162,6 +159,28 @@ CONTROL_PAIRS: tuple[tuple[str, str], ...] = (
 )
 CALL_OPENERS = tuple(opener for opener, _ in CONTROL_PAIRS)
 HOLDBACK_LIMIT = max(len(opener) for opener in CALL_OPENERS)
+
+# A chapter draft is a user-visible file even while the model is still filling its
+# proposal fence.  Keep this separate from ``releasable_len``: the latter protects
+# the chat bubble from control syntax, while this path feeds the existing draft
+# buffer and never writes a file.  Only chapter draft paths are surfaced here; no
+# arbitrary Agent write channel is opened.
+DRAFT_FENCE_OPEN = re.compile(
+    FENCE + r"(?:ya?ml|md|markdown)[ \t]+@chapters/(?P<number>[0-9]{1,6})/draft\.md[ \t]*\r?\n",
+    re.I,
+)
+
+
+def draft_fence_partial(text: str) -> tuple[str, str] | None:
+    """Return the current chapter draft proposal body, if one is being streamed."""
+    matches = list(DRAFT_FENCE_OPEN.finditer(text or ""))
+    if not matches:
+        return None
+    opener = matches[-1]
+    close = text.find(FENCE, opener.end())
+    body = text[opener.end() : close if close >= 0 else len(text)]
+    path = f"chapters/{int(opener.group('number')):04d}/draft.md"
+    return path, body
 
 
 def holdback_len(text: str) -> int:
@@ -310,11 +329,10 @@ def render_tool_prompt(registry: ToolRegistry) -> str:
     return TOOL_RULES + "\n\n## 本轮可用工具\n" + registry.catalogue()
 # --- the loop ---------------------------------------------------------------
 
-# Six, not four: a plan edit measured live needs to read the arc book, the
-# foreshadow book and the brief before it can propose anything, and a turn that
-# dies on the ceiling after doing its reading is a budget that is wrong, not a
-# model that is wrong.
-DEFAULT_MAX_STEPS = 6
+# This is the request/tool budget inside one user message, not a cap on how many
+# questions the owner may ask. Twenty leaves room for read -> inspect -> preview ->
+# approval workflows while the token ceiling still stops runaway turns.
+DEFAULT_MAX_STEPS = 20
 # Measured on 作品 6 (35.9): every request re-bills the whole grown context, so one
 # legitimate plan turn - read three files, propose once - costs 33k tokens with a fresh
 # conversation and 35.5k by the fifth request once the owner's real history is in it.
@@ -334,7 +352,7 @@ class AgentConfig:
 
 # Guard rails against a typo in the settings store, not a policy: anything inside them
 # is what the owner asked for.
-MAX_STEPS_LIMITS = (1, 20)
+MAX_STEPS_LIMITS = (1, 64)
 MAX_TOKENS_LIMITS = (1_000, 1_000_000)
 MAX_STEPS_KEY = "agent.max_steps"
 MAX_TOKENS_KEY = "agent.max_tokens"
@@ -368,7 +386,7 @@ def resolve_config(session: Session) -> AgentConfig:
 def budget_hint(max_steps: int, max_tokens: int) -> str:
     """The one sentence every ceiling stop ends with: which number, and where to change it."""
     return (
-        f"当前上限 {max_tokens} token / {max_steps} 轮，"
+        f"当前上限 {max_tokens} token / {max_steps} 个内部步骤，"
         "可在「设置 → 模型接入 → 对话 Agent 预算」里改，改完立即生效。"
     )
 
@@ -403,19 +421,6 @@ class AgentOutcome:
     model: str
 
 
-def _result_message(step: AgentStep) -> dict[str, str]:
-    """Hand a result back as a labelled user turn.
-
-    role="tool" needs an id pairing this gateway does not keep, so the block says in
-    words whose utterance it is.
-    """
-    state = "结果" if step.result.ok else "未成功"
-    return {
-        "role": "user",
-        "content": f"【工具 {step.call.name} 第 {step.index} 步{state}】\n{step.result.content}",
-    }
-
-
 def stream_agent_turn(
     llm: Any,
     messages: list[dict[str, str]],
@@ -428,173 +433,18 @@ def stream_agent_turn(
     streaming: bool = True,
     reasoning_out: list[str] | None = None,
 ) -> Iterator[tuple[str, Any]]:
-    """Ask, act, feed the result back, ask again - until the model just answers.
+    """Run the sole Pydantic AI tool loop and preserve the public SSE contract."""
+    from app.services.agent_pydantic import stream_pydantic_agent_turn
 
-    Yields ("delta", text) as prose becomes safe to show, ("tool", AgentStep) after
-    each call, and ends with ("final", AgentOutcome). Budgets raise: an answer that
-    ran out of budget is never handed over as if it were finished.
-
-    `messages` is the turn the caller already assembled, because prepare_turn owns
-    that shape - the loop appends, it does not rebuild context.
-    """
-    if agent_engine() == "pydantic":
-        from app.services.agent_pydantic import stream_pydantic_agent_turn
-
-        yield from stream_pydantic_agent_turn(
-            llm,
-            messages,
-            registry,
-            task_type=task_type,
-            model=model,
-            temperature=temperature,
-            config=config,
-            reasoning_out=reasoning_out,
-        )
-
-        return
-
-    limits = config or AgentConfig()
-    if limits.max_steps < 1:
-        raise AgentBudgetError("max_steps 至少为 1")
-
-    history = list(messages)
-    steps: list[AgentStep] = []
-    done: set[tuple[str, str]] = set()
-    spent_in = 0
-    spent_out = 0
-    model_name = model or ""
-    specs = registry.specs() if len(registry) else None
-
-    for index in range(1, limits.max_steps + 1):
-        released = 0
-        parts: list[str] = []
-        usage: dict[str, Any] = {}
-        calls: list[ToolCall] = []
-        raw: dict[str, Any] = {}
-        native: list[dict[str, Any]] = []
-
-        if streaming:
-            # One accumulator for the whole turn. Deltas are pieces of a single stream
-            # and get concatenated as they arrive; the paragraph break belongs between
-            # the steps, so it is written here rather than by whoever joins the list.
-            if reasoning_out is not None and index > 1 and reasoning_out:
-                reasoning_out.append("\n\n")
-            chunks = llm.stream_messages(
-                task_type,
-                history,
-                temperature=temperature,
-                usage_out=usage,
-                model=model,
-                tools=specs,
-                # one accumulator for the whole turn: a turn that used tools has one
-                # reasoning stretch per step, and the reader wants them in order
-                reasoning_out=reasoning_out,
-                # 推理单独一路发出去（主人 2026-09-07 批注 6：思考过程要先于正文）
-                channels=True,
-                # 原生工具调用也在这条流上（27.1）：交给传输层按 index 拼好带回来
-                tool_calls_out=native,
-            )
-            for kind, chunk in chunks:
-                if kind == "reasoning":
-                    yield ("reasoning", chunk)
-                    continue
-                parts.append(chunk)
-                visible, found = parse_call_blocks("".join(parts))
-                if found:
-                    # A whole control block has arrived: nothing further goes on screen.
-                    calls = found
-                    continue
-                # Hold back anything that could still grow into a control block.
-                safe = releasable_len(visible)
-                if safe > released:
-                    yield ("delta", visible[released:safe])
-                    released = safe
-            content = "".join(parts)
-            # 流式这一路从此和整条应答那一路喂同一个形状给 parse_native_calls；
-            # 以前 raw 在这条分支里永远是 {}，那句「认原生 tool_calls」只在非流式成立。
-            raw = {"tool_calls": native}
-            spent_in += int(usage.get("token_input", 0))
-            spent_out += int(usage.get("token_output", 0))
-            model_name = str(usage.get("model") or model_name)
-        else:
-            answer = llm.complete_messages(
-                task_type,
-                history,
-                model=model,
-                tools=specs,
-                temperature=temperature,
-            )
-            content, raw = answer.content, answer.raw_message
-            spent_in += answer.token_input
-            spent_out += answer.token_output
-            model_name = answer.model or model_name
-
-        visible, found = parse_call_blocks(content)
-        calls = found + parse_native_calls(raw)
-
-        over = spent_in + spent_out
-        if over > limits.max_tokens:
-            raise AgentBudgetError(
-                f"本轮已用 {over} token，超过上限 {limits.max_tokens}（第 {index} 轮）。"
-                "已停止，没有把截断后的内容当成回答交给你。"
-                + budget_hint(limits.max_steps, limits.max_tokens)
-            )
-
-        if not calls:
-            if streaming:
-                # The stream ended, so the held-back tail can never become a block.
-                if len(visible) > released:
-                    yield ("delta", visible[released:])
-            else:
-                yield ("delta", visible.strip())
-            yield (
-                "final",
-                AgentOutcome(
-                    content=visible.strip(),
-                    steps=steps,
-                    token_input=spent_in,
-                    token_output=spent_out,
-                    model=model_name,
-                ),
-            )
-            return
-
-        # The control block leaves the history, the prose stays: keeping our own
-        # markers in there only teaches the model to imitate them back at us.
-        history.append({"role": "assistant", "content": visible})
-        for call in calls:
-            signature = (call.name, json.dumps(call.arguments, ensure_ascii=False, sort_keys=True))
-            if signature in done:
-                # Measured live: the model re-read the arc book twice in one turn.
-                # Re-running it costs the same answer; saying so lets the round end.
-                step = AgentStep(
-                    call=call,
-                    index=len(steps) + 1,
-                    result=ToolResult(
-                        call=call,
-                        content="这份内容本轮已经给过你了，不必再查。请基于已有资料直接回答。",
-                        ok=True,
-                    ),
-                )
-            else:
-                done.add(signature)
-                started = time.perf_counter()
-                result = registry.run(call)
-                step = AgentStep(
-                    index=len(steps) + 1,
-                    call=call,
-                    result=result,
-                    ms=round((time.perf_counter() - started) * 1000),
-                )
-            steps.append(step)
-            history.append(_result_message(step))
-            yield ("tool", step)
-
-    trail = "; ".join(step.as_line() for step in steps)
-    raise AgentBudgetError(
-        f"本轮到了 {limits.max_steps} 轮上限仍在要求调用工具，已停止而不是继续烧钱。"
-        f"跑了 {len(steps)} 步工具调用。已执行：{trail or '（无）'}"
-        + budget_hint(limits.max_steps, limits.max_tokens)
+    yield from stream_pydantic_agent_turn(
+        llm,
+        messages,
+        registry,
+        task_type=task_type,
+        model=model,
+        temperature=temperature,
+        config=config,
+        reasoning_out=reasoning_out,
     )
 
 
@@ -604,16 +454,7 @@ def run_agent_turn(
     registry: ToolRegistry,
     **kwargs: Any,
 ) -> AgentOutcome:
-    """The same loop with the deltas discarded, for the non-streaming route."""
-    if agent_engine() == "pydantic":
-        from app.services.agent_pydantic import run_pydantic_agent_turn
+    """Run the sole Pydantic AI tool loop without streaming UI events."""
+    from app.services.agent_pydantic import run_pydantic_agent_turn
 
-        return run_pydantic_agent_turn(llm, messages, registry, **kwargs)
-    kwargs["streaming"] = False
-    outcome: AgentOutcome | None = None
-    for name, payload in stream_agent_turn(llm, messages, registry, **kwargs):
-        if name == "final":
-            outcome = payload
-    if outcome is None:  # unreachable: the generator ends with final or raises
-        raise AgentBudgetError("agent loop ended without an answer")
-    return outcome
+    return run_pydantic_agent_turn(llm, messages, registry, **kwargs)

@@ -1,5 +1,7 @@
 # backend/ 更改账（最新在上）
 
+- 2026-09-15 · 新增 `ContextWorkflow` 持久化与 `/api/workflows` CRUD/默认切换 API；policy 与 graph 使用严格 Pydantic 类型及拓扑校验，迁移 `f4c9d2a7b801` 含可逆 downgrade。
+
 - 2026-09-14 · 批注 36.7：修复 C 层弧线提案重复出卡——流式去重改为按路径而非 (路径, 文本) 元组。
 - 2026-09-09 · 校正目录说明与 pyproject 的 D-28 注释，移除已删除的 WORKSTREAM §6.8 引用。
 - 2026-09-08 · 接入 Pydantic AI 网关适配、离线契约、框架预算闸与每步耗时/字符数；保留 legacy 回退。

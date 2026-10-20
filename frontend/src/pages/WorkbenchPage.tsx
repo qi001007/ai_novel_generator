@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { ArrowLeft, MessagesSquare, PanelLeft, PanelRight, Settings } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, MessagesSquare, PanelLeft, PanelRight, Settings } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { api } from "../api";
 import CharacterLibrary from "../components/CharacterLibrary";
 import ChatPane from "../components/ChatPane";
+import ContextWorkflowPanel from "../components/ContextWorkflowPanel";
 import EditorPane from "../components/EditorPane";
 import FeedbackPanel from "../components/FeedbackPanel";
 import FileEditorPane from "../components/FileEditorPane";
@@ -14,6 +15,7 @@ import Splitter, { type PaneKey } from "../components/Splitter";
 import ActivityRail, { type RailPage } from "../components/ActivityRail";
 import TreePane, { type BriefRow } from "../components/TreePane";
 import WorldMapPanel from "../components/WorldMapPanel";
+import WorldviewPanel from "../components/WorldviewPanel";
 import { briefChapter, briefPath, draftChapter, draftPath, useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
 import type { RenumberPlan } from "../types";
@@ -34,7 +36,7 @@ import {
 } from "../paneLayout";
 import { toCssPx } from "../store/appearance";
 
-type RightView = "editor" | "files" | "feedback" | "worldmap" | "foreshadow" | "characters";
+type RightView = "editor" | "files" | "feedback" | "worldmap" | "worldview" | "foreshadow" | "characters" | "workflow";
 
 type Panes = { sidebar: number; chat: number };
 
@@ -50,8 +52,8 @@ const STAGE_STORAGE_KEY = "workbench.stage";
    那一扇门，和 ?file= 深链走的是同一条路。 */
 type StageChoice = { view: RightView; rail: RailPage; file: string | null };
 
-const STAGE_VIEWS: RightView[] = ["editor", "files", "feedback", "worldmap", "foreshadow", "characters"];
-const STAGE_RAILS: RailPage[] = ["plan", "library", "chat"];
+const STAGE_VIEWS: RightView[] = ["editor", "files", "feedback", "worldmap", "worldview", "foreshadow", "characters", "workflow"];
+const STAGE_RAILS: RailPage[] = ["plan", "library", "map", "workflow", "chat"];
 
 function readStage(novelId: number): StageChoice | null {
   try {
@@ -162,6 +164,9 @@ export default function WorkbenchPage() {
   // 批注 14: any of the three columns can be put away, and the choice survives a
   // reload - the layout you settle on is yours, not a default to re-fight.
   const [hidden, setHidden] = useState<Hidden>(readHidden);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const projectMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectedNovel = state.novels.find((item) => item.id === state.selectedNovelId);
 
   const metas = useFiles((store) => store.metas);
   // 恢复要等这本书的文件层挂上之后再谈：attach() 会重置 active/tabs，
@@ -187,6 +192,22 @@ export default function WorkbenchPage() {
   const [renumberPlan, setRenumberPlan] = useState<RenumberPlan | null>(null);
   const [renumberError, setRenumberError] = useState<string | null>(null);
   const chapterCancelRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!projectMenuOpen) return;
+    function closeProjectMenu(event: MouseEvent) {
+      if (!projectMenuRef.current?.contains(event.target as Node)) setProjectMenuOpen(false);
+    }
+    function closeProjectMenuOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setProjectMenuOpen(false);
+    }
+    window.addEventListener("mousedown", closeProjectMenu);
+    window.addEventListener("keydown", closeProjectMenuOnEscape);
+    return () => {
+      window.removeEventListener("mousedown", closeProjectMenu);
+      window.removeEventListener("keydown", closeProjectMenuOnEscape);
+    };
+  }, [projectMenuOpen]);
 
   function reportExport(promise: Promise<string>) {
     setExportError(null);
@@ -438,7 +459,7 @@ export default function WorkbenchPage() {
   }
 
   const sidebarWidth = clampPane("sidebar", panes.sidebar);
-  const chatWidth = charactersOpen ? 0 : clampPane("chat", panes.chat, sidebarWidth);
+  const chatWidth = clampPane("chat", panes.chat, sidebarWidth);
 
   /* A narrower window does not re-render this component on its own, so the chat
      pane kept the pixel width it had on a wider screen and the prose column - the
@@ -468,9 +489,7 @@ export default function WorkbenchPage() {
     const tracks: string[] = [`${RAIL_WIDTH}px`];
     // The rail never collapses: it is how you get a page back.
     if (!hidden.sidebar) tracks.push(`${sidebarWidth}px`, "1px");
-    if (charactersOpen) {
-      tracks.push("minmax(0, 1fr)");
-    } else if (hidden.editor) {
+    if (hidden.editor) {
       if (!hidden.chat) tracks.push("minmax(0, 1fr)");
     } else {
       if (!hidden.chat) tracks.push(`${chatWidth}px`, "1px");
@@ -524,7 +543,11 @@ export default function WorkbenchPage() {
       return;
     }
     reopenPane(pane);
-    if (editorWidthIf(pane, raw) < EDITOR_MIN) {
+    // A sidebar drag stops at its own ceiling. Using the raw off-screen pointer
+    // position here used to close the editor even though the visible sidebar had
+    // already stopped growing; the editor then fell into an implicit grid row.
+    const widthForEditor = pane === "sidebar" ? dragPane(pane, raw) : raw;
+    if (editorWidthIf(pane, widthForEditor) < EDITOR_MIN) {
       closePane("editor");
       return;
     }
@@ -689,7 +712,13 @@ export default function WorkbenchPage() {
     return [...rows.values()].sort((a, b) => a.chapter - b.chapter);
   }, [metas, state.chapters, chapter?.chapter_number]);
 
-  const novel = state.novels.find((item) => item.id === state.selectedNovelId);
+  function selectRail(next: RailPage) {
+    setRailPage(next);
+    if (next === "map") setRightView("worldmap");
+    if (next === "workflow") setRightView("workflow");
+    if (next === "plan" && rightView === "workflow") setRightView("editor");
+    if (next === "library" && rightView === "workflow") setRightView("files");
+  }
 
   return (
     <div className="app-shell">
@@ -698,7 +727,41 @@ export default function WorkbenchPage() {
           <button type="button" className="icon-button" aria-label="返回书架" onClick={() => navigate("/")}>
             <ArrowLeft size={16} />
           </button>
-          <strong className="topbar-title">{novel?.title ?? "未选择作品"}</strong>
+          <div className="project-switcher-wrap" ref={projectMenuRef}>
+            <button
+              type="button"
+              className="topbar-title project-switcher"
+              aria-label="切换作品"
+              aria-haspopup="menu"
+              aria-expanded={projectMenuOpen}
+              title={selectedNovel?.title}
+              onClick={() => setProjectMenuOpen((open) => !open)}
+            >
+              <span>{selectedNovel?.title ?? "选择作品"}</span>
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+            {projectMenuOpen ? (
+              <div className="project-switcher-menu" role="menu" aria-label="作品列表">
+                {state.novels.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    role="menuitem"
+                    className="project-switcher-option"
+                    title={item.title}
+                    onClick={() => {
+                      setProjectMenuOpen(false);
+                      if (item.id === state.selectedNovelId) return;
+                      void state.selectNovel(item.id).then(() => navigate(`/novels/${item.id}`));
+                    }}
+                  >
+                    <Check size={14} aria-hidden="true" className={item.id === state.selectedNovelId ? "is-current" : ""} />
+                    <span>{item.title}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
         {/* Icons in the title bar, not a bar under each column: a collapse
             control that lives inside the thing it hides cannot be reached once
@@ -770,10 +833,11 @@ export default function WorkbenchPage() {
         style={{ gridTemplateColumns: columns }}
         data-hidden-panels={hiddenAttr || undefined}
       >
-        <ActivityRail page={railPage} onSelect={setRailPage} />
+        <ActivityRail page={railPage} onSelect={selectRail} />
         <aside className="sidebar" aria-label="结构栏">
           <TreePane
             page={railPage}
+            novelId={state.selectedNovelId}
             chapters={state.chapters}
             selectedChapterId={state.selectedChapterId}
             activeFile={rightView === "files" ? activeFile : null}
@@ -785,7 +849,11 @@ export default function WorkbenchPage() {
             onNewConversation={() => void state.startChatConversation()}
             conversations={state.conversations}
             activeConversation={state.chatConversation}
-            onSelectConversation={(conversationId) => state.openConversation(conversationId)}
+            onSelectConversation={(conversationId) => {
+              state.openConversation(conversationId);
+              // 批注 36.4 补充：从人物页切回对话时，必须离开 characters 视图让 ChatPane 可见
+              if (charactersOpen) setRightView("editor");
+            }}
             onRenumber={openRenumber}
             renumberNeeded={renumberNeeded}
             onRenameChapter={(chapterNumber) => {
@@ -811,7 +879,10 @@ export default function WorkbenchPage() {
             exportError={exportError ?? exportNote}
             charactersOpen={charactersOpen}
             feedbackOpen={rightView === "feedback"}
-            onOpenFile={(path) => void openFile(path)}
+            onOpenFile={(path) => {
+              setRightView("files");
+              void openFile(path);
+            }}
             onSelectChapter={(chapterId) => {
               setRightView("editor");
               // Bringing the prose page on stage IS the answer to "which side of the
@@ -826,13 +897,13 @@ export default function WorkbenchPage() {
             onOpenFeedback={() => {
               setRightView("feedback");
             }}
-            onOpenWorldMap={() => {
-              setRightView("worldmap");
+            onOpenWorldview={() => {
+              setRightView("worldview");
             }}
             onOpenForeshadow={() => {
               setRightView("foreshadow");
             }}
-            worldMapOpen={rightView === "worldmap"}
+            worldviewOpen={rightView === "worldview"}
             foreshadowOpen={rightView === "foreshadow"}
           />
         </aside>
@@ -964,31 +1035,35 @@ export default function WorkbenchPage() {
           onReset={resetPane}
         />
 
-        {charactersOpen ? (
-          <CharacterLibrary novelId={state.selectedNovelId} />
-        ) : (
-          <>
-            <ChatPane />
+        {/* 批注 36.4: ChatPane must stay mounted when switching to characters view,
+            otherwise SSE streams abort and local state (rows, streaming) is lost.
+            Use CSS visibility instead of conditional rendering. */}
+        <div className="chat-area">
+          <ChatPane />
 
-            <Splitter
-              pane="chat"
-              label="对话栏"
-              width={panes.chat}
-              min={CHAT_MIN}
-              max={chatMax(sidebarWidth)}
-              onDragStart={beginDrag}
-              onNudge={nudge}
-              onReset={resetPane}
-            />
-            <div className="right-column">
-              {rightView === "feedback" && <FeedbackPanel novelId={state.selectedNovelId} />}
-              {rightView === "worldmap" && <WorldMapPanel novelId={state.selectedNovelId} />}
-              {rightView === "foreshadow" && <ForeshadowWall />}
-              {rightView === "files" && <FileEditorPane />}
-              {rightView === "editor" && <EditorPane />}
-            </div>
-          </>
-        )}
+          <Splitter
+            pane="chat"
+            label="对话栏"
+            width={panes.chat}
+            min={CHAT_MIN}
+            max={chatMax(sidebarWidth)}
+            onDragStart={beginDrag}
+            onNudge={nudge}
+            onReset={resetPane}
+          />
+          <div className="right-column">
+            {rightView === "feedback" && <FeedbackPanel novelId={state.selectedNovelId} />}
+            {rightView === "worldmap" && <WorldMapPanel novelId={state.selectedNovelId} />}
+            {rightView === "worldview" && (
+              <WorldviewPanel novelId={state.selectedNovelId} path={metas.find((meta) => meta.kind === "worldview")?.path ?? null} />
+            )}
+            {rightView === "foreshadow" && <ForeshadowWall />}
+            {rightView === "files" && <FileEditorPane />}
+            {rightView === "editor" && <EditorPane />}
+            {rightView === "characters" && <CharacterLibrary novelId={state.selectedNovelId} />}
+            {rightView === "workflow" && <ContextWorkflowPanel />}
+          </div>
+        </div>
       </main>
 
       {/* 批注 19: the bar said the chapter name a second time and announced that

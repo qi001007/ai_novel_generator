@@ -21,6 +21,10 @@ class Novel(SQLModel, table=True):
     # Spine / cover colour the owner picks from the palette. Empty means "use the
     # workbench accent", so an unset novel is not a different-looking book.
     cover_color: str = ""
+    revision: int = 1
+    status: str = "draft"
+    pinned: bool = False
+    archived: bool = False
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -43,6 +47,12 @@ class PlanningBlueprint(SQLModel, table=True):
     core_conflicts: str = ""
     themes: str = ""
     constraints: str = ""
+    # Author-defined Markdown sections (for example `## 核心意象`) are persisted
+    # in document order so the projection can round-trip without a second schema.
+    custom_sections: list[dict[str, str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -110,6 +120,12 @@ class ChapterBrief(SQLModel, table=True):
         sa_column=Column(JSON, nullable=False),
     )
     status: str = "draft"
+    # The brief's standard sections remain indexed above; this list carries any
+    # additional `##` sections the author adds to the Markdown document.
+    custom_sections: list[dict[str, str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -156,6 +172,11 @@ class Setting(SQLModel, table=True):
     current_state: str = ""
     is_confirmed: bool = False
     source_chapter: int | None = None
+    # Author-defined sub-sections inside each worldview record.
+    custom_sections: list[dict[str, str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -185,6 +206,11 @@ class Character(SQLModel, table=True):
     current_status: str = ""
     expected_start_chapter: int | None = None
     expected_end_chapter: int | None = None
+    # Open-ended Markdown sections such as 特殊能力, preserved in source order.
+    custom_sections: list[dict[str, str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -218,6 +244,11 @@ class Foreshadow(SQLModel, table=True):
     expected_payoff_chapter: int | None = None
     payoff_chapter: int | None = None
     status: str = "open"
+    # Author-defined sub-sections inside each foreshadow record.
+    custom_sections: list[dict[str, str]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
     created_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
@@ -276,6 +307,10 @@ class PlotFeedback(SQLModel, table=True):
         sa_column=Column(DateTime(timezone=True), nullable=True),
     )
     created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
@@ -391,3 +426,302 @@ class AppConfig(SQLModel, table=True):
         default_factory=utc_now,
         sa_column=Column(DateTime(timezone=True), nullable=False),
     )
+
+
+class ContextWorkflow(SQLModel, table=True):
+    """A saved, validated context assembly plan and its visual graph."""
+
+    __tablename__ = "context_workflow"
+    __table_args__ = (UniqueConstraint("scope_key", "name"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    # Internal scope key lets a book-specific preset reuse a global preset name while
+    # keeping names unique inside one scope.
+    scope_key: str = Field(index=True)
+    novel_id: int | None = Field(default=None, foreign_key="novel.id", index=True)
+    # A workflow has one stable contract. Generation returns candidate prose;
+    # review returns structured findings. Published definitions cannot switch it.
+    purpose: str = Field(default="generation", index=True)
+    is_default: bool = False
+    revision: int = 1
+    policy: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    graph: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    created_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+    updated_at: datetime = Field(
+        default_factory=utc_now,
+        sa_column=Column(DateTime(timezone=True), nullable=False),
+    )
+
+
+class WorkflowBinding(SQLModel, table=True):
+    """The one active workflow for a novel and purpose."""
+
+    __tablename__ = "workflow_binding"
+    __table_args__ = (UniqueConstraint("novel_id", "purpose"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    purpose: str = Field(index=True)
+    workflow_id: int = Field(foreign_key="context_workflow.id", index=True)
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class OutlineNode(SQLModel, table=True):
+    """A single ordered node in the book -> volume -> chapter tree."""
+
+    __tablename__ = "outline_node"
+    __table_args__ = (UniqueConstraint("novel_id", "parent_id", "position"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    parent_id: int | None = Field(default=None, foreign_key="outline_node.id", index=True)
+    kind: str = Field(index=True)
+    title: str
+    position: int = Field(default=0, index=True)
+    status: str = "draft"
+    revision: int = 1
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class Document(SQLModel, table=True):
+    """Canonical Markdown owned by the database and addressed by a stable path."""
+
+    __tablename__ = "document"
+    __table_args__ = (UniqueConstraint("novel_id", "path"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    outline_node_id: int | None = Field(default=None, foreign_key="outline_node.id", index=True)
+    kind: str = Field(index=True)
+    path: str = Field(index=True)
+    title: str = ""
+    content: str = ""
+    status: str = "draft"
+    revision: int = 1
+    source: str = "user"
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class KnowledgeEntry(SQLModel, table=True):
+    """Characters, world rules, locations and organisations share one lifecycle."""
+
+    __tablename__ = "knowledge_entry"
+    __table_args__ = (UniqueConstraint("novel_id", "kind", "name"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    kind: str = Field(index=True)
+    name: str = Field(index=True)
+    content: str = ""
+    data: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    status: str = "draft"
+    revision: int = 1
+    source: str = "user"
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class Fact(SQLModel, table=True):
+    """Only approved facts are eligible for stable generation context."""
+
+    __tablename__ = "fact"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    subject: str = Field(index=True)
+    predicate: str
+    value: str
+    status: str = "draft"
+    revision: int = 1
+    source_ref: str = ""
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class Revision(SQLModel, table=True):
+    __tablename__ = "revision"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    asset_type: str = Field(index=True)
+    asset_id: int = Field(index=True)
+    revision: int
+    snapshot: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    actor: str = "user"
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class Operation(SQLModel, table=True):
+    """Auditable, idempotent mutation with enough data for a bounded undo."""
+
+    __tablename__ = "operation"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int | None = Field(default=None, foreign_key="novel.id", index=True)
+    command: str = Field(index=True)
+    idempotency_key: str = Field(unique=True, index=True)
+    actor: str = "user"
+    risk: str = "low"
+    status: str = "completed"
+    target_type: str = ""
+    target_id: int | None = Field(default=None, index=True)
+    before: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    after: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    result: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    undo_kind: str = "none"
+    undone_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class WorkflowVersion(SQLModel, table=True):
+    __tablename__ = "workflow_version"
+    __table_args__ = (UniqueConstraint("workflow_id", "version"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    workflow_id: int = Field(foreign_key="context_workflow.id", index=True)
+    version: int
+    purpose: str = Field(default="generation", index=True)
+    definition_revision: int = 1
+    graph: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    source_json: str = ""
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class WorkflowRun(SQLModel, table=True):
+    __tablename__ = "workflow_run"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int | None = Field(default=None, foreign_key="novel.id", index=True)
+    workflow_id: int = Field(foreign_key="context_workflow.id", index=True)
+    workflow_version_id: int = Field(foreign_key="workflow_version.id", index=True)
+    status: str = Field(default="queued", index=True)
+    input: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    output: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    error: str = ""
+    token_input: int = 0
+    token_output: int = 0
+    paused_node_id: str = ""
+    started_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    ended_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class NodeRun(SQLModel, table=True):
+    __tablename__ = "node_run"
+
+    id: int | None = Field(default=None, primary_key=True)
+    workflow_run_id: int = Field(foreign_key="workflow_run.id", index=True)
+    node_id: str = Field(index=True)
+    node_type: str
+    status: str = "queued"
+    input: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    output: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    error: str = ""
+    retry_count: int = 0
+    token_input: int = 0
+    token_output: int = 0
+    started_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+    ended_at: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True), nullable=True))
+
+
+class Conversation(SQLModel, table=True):
+    __tablename__ = "conversation"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    title: str = "新对话"
+    status: str = "active"
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class AgentRun(SQLModel, table=True):
+    """One durable natural-language request to the platform operator."""
+
+    __tablename__ = "agent_run"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int | None = Field(default=None, foreign_key="novel.id", index=True)
+    status: str = Field(default="running", index=True)
+    request: str
+    response: str = ""
+    error: str = ""
+    model: str = ""
+    token_input: int = 0
+    token_output: int = 0
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class ToolCall(SQLModel, table=True):
+    __tablename__ = "tool_call"
+
+    id: int | None = Field(default=None, primary_key=True)
+    agent_run_id: int | None = Field(default=None, foreign_key="agent_run.id", index=True)
+    novel_id: int | None = Field(default=None, foreign_key="novel.id", index=True)
+    conversation_id: int | None = Field(default=None, foreign_key="conversation.id", index=True)
+    operation_id: int | None = Field(default=None, foreign_key="operation.id")
+    tool_name: str = Field(index=True)
+    arguments: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    result: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    status: str = "completed"
+    approval_state: str = "not_required"
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class MapProject(SQLModel, table=True):
+    __tablename__ = "map_project"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    name: str
+    status: str = "draft"
+    revision: int = 1
+    settings: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class MapTile(SQLModel, table=True):
+    __tablename__ = "map_tile"
+    __table_args__ = (UniqueConstraint("map_project_id", "x", "y", "revision"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    map_project_id: int = Field(foreign_key="map_project.id", index=True)
+    x: int = Field(index=True)
+    y: int = Field(index=True)
+    revision: int = 1
+    status: str = "draft"
+    image_path: str = ""
+    prompt: str = ""
+    seed: int | None = None
+    provider: str = ""
+    metadata_json: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+
+
+class GenerationJob(SQLModel, table=True):
+    __tablename__ = "generation_job"
+
+    id: int | None = Field(default=None, primary_key=True)
+    novel_id: int = Field(foreign_key="novel.id", index=True)
+    kind: str = Field(index=True)
+    status: str = Field(default="queued", index=True)
+    payload: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    result: dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    error: str = ""
+    created_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))
+    updated_at: datetime = Field(default_factory=utc_now, sa_column=Column(DateTime(timezone=True), nullable=False))

@@ -9,7 +9,7 @@ from sqlmodel import Field, Session, SQLModel, select
 from sqlalchemy.engine import Engine
 
 from app.db import get_session
-from app.models import ChatMessage
+from app.models import AgentRun, ChatMessage
 from app.routers.planning import get_novel_or_404
 from app.services.chat import (
     ChatDomainError,
@@ -25,6 +25,7 @@ from app.services.chat import (
 )
 from app.services.agent import AgentConfig, ToolRegistry, resolve_config
 from app.services.agent_tools import build_registry
+from app.services.agent_run_log import create_run, fail_run, finish_run, persist_step
 from app.services.context import collect_items
 from app import sse
 from app.services.documents import character_path_reader, current_text_reader
@@ -133,16 +134,69 @@ def _event_stream(
     session_factory: Callable[[], Session],
     registry: ToolRegistry | None = None,
     config: AgentConfig | None = None,
+    agent_run_id: int | None = None,
 ) -> Iterator[str]:
     # The request-scoped session is already closed by the time this runs,
     # so the generator owns a session of its own for persisting the reply.
+    terminal = False
+    if agent_run_id is not None:
+        yield sse.encode("agent_run", {"id": agent_run_id, "status": "running"})
+
+    def audit_step(step) -> dict[str, Any]:
+        if agent_run_id is None:
+            return {}
+        with session_factory() as audit_session:
+            run = audit_session.get(AgentRun, agent_run_id)
+            if run is None:
+                return {}
+            call = persist_step(audit_session, run, step)
+            return {
+                "agent_run_id": agent_run_id,
+                "tool_call": call.model_dump(mode="json"),
+            }
+
     try:
-        for event, payload in stream_turn(llm, turn, session_factory, registry=registry, config=config):
+        for event, payload in stream_turn(
+            llm,
+            turn,
+            session_factory,
+            registry=registry,
+            config=config,
+            tool_auditor=audit_step,
+        ):
+            if agent_run_id is not None and event == "done":
+                message = payload["message"]
+                with session_factory() as audit_session:
+                    run = audit_session.get(AgentRun, agent_run_id)
+                    if run is not None:
+                        finish_run(
+                            audit_session,
+                            run,
+                            response=message["content"],
+                            model=message["model"],
+                            token_input=message["token_input"],
+                            token_output=message["token_output"],
+                        )
+                terminal = True
+            elif agent_run_id is not None and event == "error":
+                with session_factory() as audit_session:
+                    run = audit_session.get(AgentRun, agent_run_id)
+                    if run is not None:
+                        fail_run(audit_session, run, payload.get("message", "对话失败"))
+                terminal = True
             yield sse.encode(event, payload)
     except ChatDomainError as cause:
+        terminal = True
         yield sse.encode("error", {"message": cause.detail, "partial": ""})
     except Exception as cause:  # keep the stream well-formed for the client
+        terminal = True
         yield sse.encode("error", {"message": f"chat stream failed: {cause}", "partial": ""})
+    finally:
+        if agent_run_id is not None and not terminal:
+            with session_factory() as audit_session:
+                run = audit_session.get(AgentRun, agent_run_id)
+                if run is not None:
+                    fail_run(audit_session, run, "响应中断")
     yield sse.encode("end", {})
 
 
@@ -276,8 +330,16 @@ def stream_chat_reply(
     # Resolved here, not inside the generator: the request session is gone by the time
     # the stream runs, and the owner's ceilings come from that store.
     config = resolve_config(session)
+    agent_run = create_run(session, novel_id=novel_id, request=payload.content)
     return StreamingResponse(
-        _event_stream(llm, turn, lambda: Session(bind), registry=registry, config=config),
+        _event_stream(
+            llm,
+            turn,
+            lambda: Session(bind),
+            registry=registry,
+            config=config,
+            agent_run_id=agent_run.id,
+        ),
         media_type="text/event-stream",
         headers=sse.HEADERS,
     )

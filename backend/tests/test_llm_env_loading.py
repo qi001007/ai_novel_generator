@@ -12,6 +12,7 @@ def test_settings_load_local_env_file(tmp_path: Path, monkeypatch) -> None:
             "NOVEL_LLM_API_BASE_URL=https://llm.example.com/v1",
             "NOVEL_LLM_API_KEY=file-key",
             "NOVEL_LLM_DRAFT_MODEL=file-draft",
+            "NOVEL_LLM_IMAGE_MODEL=file-image",
         ]),
         encoding="utf-8",
     )
@@ -21,6 +22,7 @@ def test_settings_load_local_env_file(tmp_path: Path, monkeypatch) -> None:
         "NOVEL_LLM_API_BASE_URL",
         "NOVEL_LLM_API_KEY",
         "NOVEL_LLM_DRAFT_MODEL",
+        "NOVEL_LLM_IMAGE_MODEL",
     ]:
         monkeypatch.delenv(name, raising=False)
 
@@ -30,3 +32,4 @@ def test_settings_load_local_env_file(tmp_path: Path, monkeypatch) -> None:
     assert settings.api_base_url == "https://llm.example.com/v1"
     assert settings.api_key == "file-key"
     assert settings.models["draft"] == "file-draft"
+    assert settings.models["image"] == "file-image"

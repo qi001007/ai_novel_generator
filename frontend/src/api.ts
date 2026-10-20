@@ -13,10 +13,14 @@ import type {
   NovelUpdatePayload,
   StreamChatPayload,
   GenerationStreamEvent,
+  ContextWorkflow,
+  WorkflowRun,
 } from "./types";
 
 /** 后端带 code 的失败会长这样：`{"detail": {"code": "...", "message": "..."}}`。 */
 export type ApiFailure = Error & { status?: number; code?: string };
+
+type OperationResult<T> = { id: number; result: T };
 
 /** 四处「拿 detail、抛 Error」收成一个主人：状态码与机器码都不许在路上丢掉。 */
 function apiFailure(body: unknown, status: number, fallback: string): ApiFailure {
@@ -133,7 +137,29 @@ export const api = {
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
   del: async <T,>(path: string): Promise<T> => request<T>(path, { method: "DELETE" }),
 
+  listWorkflows: (novelId?: number | null) =>
+    api.get<ContextWorkflow[]>(`/api/workflows${novelId ? `?novel_id=${novelId}` : ""}`),
+  executeCommand: <T,>(name: string, payload: Record<string, unknown>, idempotencyKey: string, approved = false) =>
+    api.post<OperationResult<T>>(`/api/commands/${name}/execute`, {
+      payload,
+      idempotency_key: idempotencyKey,
+      actor: "ui",
+      approved,
+    }),
+  validateWorkflow: (id: number) => api.post<{ valid: boolean; purpose: "generation" | "review"; node_count: number; edge_count: number }>(`/api/workflows/${id}/validate`),
+  runWorkflow: (workflowId: number, novelId: number | null, input: Record<string, unknown>) =>
+    api.post<WorkflowRun>("/api/workflow-runs", { workflow_id: workflowId, novel_id: novelId, input }),
+  resumeWorkflow: (runId: number, decision: "approved" | "rejected", comment = "") =>
+    api.post<WorkflowRun>(`/api/workflow-runs/${runId}/resume`, { decision, comment }),
+
   // EventSource cannot POST, so the SSE body is decoded by hand here.
+  getAgentRun: (runId: number) => api.get<import("./types").AgentRun>(`/api/agent/runs/${runId}`),
+  resumeAgentRun: (runId: number, toolCallId: number, decision: "approved" | "rejected") =>
+    api.post<import("./types").AgentRun>(`/api/agent/runs/${runId}/resume`, {
+      tool_call_id: toolCallId,
+      decision,
+    }),
+
   streamChat: async (
     novelId: number,
     body: StreamChatPayload,
@@ -196,12 +222,13 @@ export const api = {
    *  用 blob 而不是直接把 <a href> 指过去，是为了让 404/409 能显示成人话。 */
   exportProse: async (
     novelId: number,
-    params: { scope: "book" | "chapter"; chapterNumber?: number; format: "txt" | "md" },
+    params: { scope: "book" | "chapter"; chapterNumber?: number; format: "txt" | "md"; allowPartial?: boolean },
   ): Promise<string> => {
     const query = new URLSearchParams({ scope: params.scope, format: params.format });
     if (params.chapterNumber !== undefined) {
       query.set("chapter_number", String(params.chapterNumber));
     }
+    if (params.allowPartial) query.set("allow_partial", "true");
     const response = await fetch(`/api/novels/${novelId}/export?${query.toString()}`);
     if (!response.ok) {
       throw apiFailure(await response.json().catch(() => null), response.status, `导出失败（${response.status}）`);

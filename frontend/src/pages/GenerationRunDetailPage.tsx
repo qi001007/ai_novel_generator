@@ -28,7 +28,7 @@ type DetailTab = "context" | "output" | "check" | "review";
 const TABS: Array<{ id: DetailTab; label: string }> = [
   { id: "context", label: "注入上下文" },
   { id: "output", label: "模型输出" },
-  { id: "check", label: "机械校验" },
+  { id: "check", label: "错别字检查" },
   { id: "review", label: "审稿记录" },
 ];
 
@@ -69,10 +69,13 @@ function ManifestSection({
     "这次调用发生在原文摘录上线之前，没有留下当时的内容。重新生成一次即可看到";
   // 只在截断状态下量溢出＜展开后 clientHeight 等于 scrollHeight，
   // 那时再算会把「收起」按钮自己消灭掉。
+  // 用 requestAnimationFrame 确保 CSS clamp 布局完成后再测量（批注 37.1）。
   useEffect(() => {
     if (open) return;
     const el = bodyRef.current;
-    if (el) setOverflowing(el.scrollHeight - el.clientHeight > 4);
+    if (!el) return;
+    const measure = () => setOverflowing(el.scrollHeight - el.clientHeight > 4);
+    requestAnimationFrame(measure);
   }, [text, open]);
   return (
     <section className={`manifest-section ${block.injected ? "" : "dropped"}`}>
@@ -454,7 +457,7 @@ export default function GenerationRunDetailPage() {
             {tab === "check" && machineCheck && (
               <div className="run-check">
                 <header>
-                  <strong>{machineCheck.passed ? "机械校验通过" : "机械校验未通过"}</strong>
+                  <strong>{machineCheck.passed ? "错别字检查通过" : "错别字检查未通过"}</strong>
                   <span className="tabular">{machineCheck.word_count} 字</span>
                 </header>
                 {machineCheck.issues.length ? (

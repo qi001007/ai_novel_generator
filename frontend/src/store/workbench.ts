@@ -18,6 +18,13 @@ import type {
  * prose page and the file editor read it, so they cannot overwrite each other. */
 export const chapterDraftPath = (chapter: Chapter) => draftPath(chapter.chapter_number);
 
+export const LAST_OPENED_NOVEL_KEY = "novel-workbench-last-opened";
+
+function lastOpenedNovelId(novels: Novel[]): number | null {
+  const value = Number(localStorage.getItem(LAST_OPENED_NOVEL_KEY));
+  return Number.isFinite(value) && novels.some((novel) => novel.id === value) ? value : null;
+}
+
 /** 「这一章到底有没有 D 层简报」唯一的一把尺子：章节自己的 brief_id → 同号的简报 →
  *  当前选中的那份。/generate 要先补简报还是直接写正文（批注 35.29c）问的就是这个问题，
  *  它和 generateDraft 必须读同一个判断，否则一个说没有、另一个照样开写。 */
@@ -57,6 +64,7 @@ function hydrateChapterDraft(chapter: Chapter) {
 
 export type HealthState = "loading" | "ok" | "error";
 export type WorkspaceTab = "write" | "plan" | "feedback";
+export type WorkflowResourceAction = "rename" | "default" | "duplicate" | "delete";
 
 type WorkbenchState = {
   tab: WorkspaceTab;
@@ -86,6 +94,15 @@ type WorkbenchState = {
   startChatConversation: () => Promise<void>;
   /** 中栏现在显示哪一条线程；null = 让后端按「当前线程」答（28.8 那套语义）。 */
   chatConversation: number | null;
+  /** Workflow 资源树与右侧画布共享的唯一 UI 选择；工作流数据仍由后端读取。 */
+  selectedWorkflowId: number | null;
+  workflowRefreshEpoch: number;
+  workflowCreateEpoch: number;
+  workflowCommand: { action: WorkflowResourceAction; workflowId: number; nonce: number } | null;
+  selectWorkflow: (workflowId: number) => void;
+  requestNewWorkflow: () => void;
+  requestWorkflowCommand: (action: WorkflowResourceAction, workflowId: number) => void;
+  notifyWorkflowChanged: (workflowId: number) => void;
   /** 左栏「对话」那一页的列表（第二十九批批注 6）。 */
   conversations: ChatConversation[];
   openConversation: (conversationId: number) => void;
@@ -111,7 +128,7 @@ type WorkbenchState = {
   generateDraft: () => Promise<void>;
   saveChapter: () => Promise<void>;
   runMachineCheck: () => Promise<void>;
-  reviewChapter: (decision: "accept" | "reject") => Promise<void>;
+  reviewChapter: (decision: "accept" | "reject", comments?: string) => Promise<void>;
   runAiReview: () => Promise<void>;
   extractChapterFacts: () => Promise<void>;
   loadChapterRecords: () => Promise<void>;
@@ -147,7 +164,30 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   createError: null,
   chatEpoch: 0,
   chatConversation: null,
+  selectedWorkflowId: null,
+  workflowRefreshEpoch: 0,
+  workflowCreateEpoch: 0,
+  workflowCommand: null,
   conversations: [],
+
+  selectWorkflow(workflowId) {
+    set({ selectedWorkflowId: workflowId });
+  },
+
+  requestNewWorkflow() {
+    set({ workflowCreateEpoch: get().workflowCreateEpoch + 1 });
+  },
+
+  requestWorkflowCommand(action, workflowId) {
+    set({
+      selectedWorkflowId: workflowId,
+      workflowCommand: { action, workflowId, nonce: (get().workflowCommand?.nonce ?? 0) + 1 },
+    });
+  },
+
+  notifyWorkflowChanged(workflowId) {
+    set({ selectedWorkflowId: workflowId, workflowRefreshEpoch: get().workflowRefreshEpoch + 1 });
+  },
 
   async renameChapter(chapterNumber, title) {
     const novelId = get().selectedNovelId;
@@ -258,7 +298,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       // that already picked a book during that gap must not be overwritten by the
       // first novel in the list. That clobber made /novels/5 briefly load novel 1.
       const now = get();
-      const selected = now.selectedNovelId ?? novels[0]?.id ?? null;
+      const selected = now.selectedNovelId ?? lastOpenedNovelId(novels) ?? novels[0]?.id ?? null;
       set({ novels, health: "ok", selectedNovelId: selected });
       if (selected !== null && selected !== now.selectedNovelId) {
         await get().selectNovel(selected);
@@ -322,6 +362,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       chapterTabs: [],
       // 线程号是**每本书各自**的号，带着上一本的选中过去会把中栏指到不存在的线程上
       chatConversation: null,
+      selectedWorkflowId: null,
+      workflowCommand: null,
       conversations: [],
     });
     // The draft buffers live in the file store now, and a path like
@@ -343,6 +385,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
         selectedChapterId: first?.id ?? null,
         chapterTabs: first ? [first.id] : [],
       });
+      localStorage.setItem(LAST_OPENED_NOVEL_KEY, String(novelId));
       // The first chapter is chosen by assignment during load, so it never passes
       // through selectChapter - its buffer has to be seeded here or the editor
       // opens onto an empty page.
@@ -556,19 +599,21 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     set({ busy: true, error: null });
     try {
       const brief = briefs.find((item) => item.id === chapter.brief_id);
+      const entry = useFiles.getState().entries[chapterDraftPath(chapter)];
+      const content = entry ? draftBody(entry.draft, chapter.chapter_number) : chapter.content;
       const result = await api.post<MachineCheckResult>(
         `/api/novels/${selectedNovelId}/chapters/${chapter.id}/machine-check`,
-        { required_facts: brief?.required_facts ?? [] },
+        { content, required_facts: brief?.required_facts ?? [] },
       );
       set({ machineCheck: result });
     } catch (cause) {
-      set({ error: cause instanceof Error ? cause.message : "机械校验失败" });
+      set({ error: cause instanceof Error ? cause.message : "错别字检查失败" });
     } finally {
       set({ busy: false });
     }
   },
 
-  async reviewChapter(decision) {
+  async reviewChapter(decision, comments = "") {
     const { selectedNovelId, selectedChapterId, busy } = get();
     if (!selectedNovelId || !selectedChapterId || busy) return;
 
@@ -576,7 +621,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     try {
       await api.post(
         `/api/novels/${selectedNovelId}/chapters/${selectedChapterId}/final-review`,
-        { decision, comments: "" },
+        { decision, comments },
       );
       const chapters = await api.get<Chapter[]>(`/api/novels/${selectedNovelId}/chapters`);
       set({ chapters, recordVersion: get().recordVersion + 1 });

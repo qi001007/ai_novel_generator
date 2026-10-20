@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import PreferencesPage from "./PreferencesPage";
+import { ToastProvider } from "../components/ui";
 
 const config = {
   provider: "openai_compatible",
@@ -29,7 +30,10 @@ const config = {
   routes: { draft: "default", review: "default", summary: "default", chat: "default", image: "default" },
   tasks: ["draft", "review", "summary", "chat", "image"],
   // 35.9：一轮规划请求实测 32955 token，出厂上限必须盖得住它，且两个数主人能改
-  agent: { max_steps: 6, max_tokens: 60000, default_max_steps: 6, default_max_tokens: 60000 },
+  agent: { max_steps: 20, max_tokens: 60000, default_max_steps: 20, default_max_tokens: 60000 },
+  catalogs: {
+    default: { models: ["qwen3.6-flash", "qwen3.8-flash"], fetched_at: "2026-10-20T01:00:00Z" },
+  },
 };
 
 function stubFetch(calls: { method: string; url: string; body: unknown }[]) {
@@ -47,6 +51,13 @@ function stubFetch(calls: { method: string; url: string; body: unknown }[]) {
       if (url.endsWith("/api/config/llm/test")) {
         return Promise.resolve(ok({ ok: true, detail: "连接正常（HTTP 200）" }));
       }
+      if (url.includes("/api/config/llm/models?")) {
+        return Promise.resolve(ok({
+          provider_id: "default",
+          models: ["qwen3.6-flash", "qwen3.8-flash"],
+          detail: "已获取 2 个模型，未发起生成请求",
+        }));
+      }
       return Promise.resolve(ok(config));
     }),
   );
@@ -63,7 +74,7 @@ describe("PreferencesPage", () => {
     stubFetch(calls);
     render(
       <MemoryRouter>
-        <PreferencesPage />
+        <ToastProvider><PreferencesPage /></ToastProvider>
       </MemoryRouter>,
     );
 
@@ -76,7 +87,7 @@ describe("PreferencesPage", () => {
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://gateway.example/v1",
     );
-    expect((screen.getByLabelText("正文生成模型") as HTMLInputElement).value).toBe("Model-A");
+    expect(screen.getByRole("button", { name: "正文生成模型" }).textContent).toContain("Model-A");
   });
 
   it("sends what the owner typed and leaves the key alone when the box is blank", async () => {
@@ -102,7 +113,7 @@ describe("PreferencesPage", () => {
       api_base_url: "https://other.example/v1",
       api_key: "",
       timeout: 120,
-      agent: { max_steps: 6, max_tokens: 60000 },
+      agent: { max_steps: 20, max_tokens: 60000 },
       models: config.models,
       providers: [],
       routes: config.routes,
@@ -118,9 +129,9 @@ describe("PreferencesPage", () => {
       </MemoryRouter>,
     );
 
-    const steps = (await screen.findByLabelText("对话 Agent 轮数上限")) as HTMLInputElement;
+    const steps = (await screen.findByLabelText("对话 Agent 内部步骤上限")) as HTMLInputElement;
     const tokens = (screen.getByLabelText("对话 Agent token 上限")) as HTMLInputElement;
-    expect(steps.value).toBe("6");
+    expect(steps.value).toBe("20");
     expect(tokens.value).toBe("60000");
 
     await user.clear(steps);
@@ -136,6 +147,25 @@ describe("PreferencesPage", () => {
         max_tokens: 120000,
       });
     });
+  });
+
+  it("loads, expands and selects from the searchable provider model catalog", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+
+    const model = await screen.findByRole("button", { name: "正文生成模型" });
+    expect(model.textContent).toContain("Model-A");
+    await user.click(screen.getByRole("button", { name: "获取模型列表" }));
+    expect(await screen.findByText("已获取 2 个模型，未发起生成请求")).toBeTruthy();
+    await user.click(model);
+    await user.type(screen.getByRole("searchbox", { name: "正文生成模型搜索" }), "3.6");
+    await user.click(screen.getByRole("option", { name: /qwen3\.6-flash/ }));
+    expect(model.textContent).toContain("qwen3.6-flash");
   });
 
   /* 第十九批批注 2: 「正文用 A 家、审稿用 B 家」must be expressible from the page, not
@@ -158,11 +188,12 @@ describe("PreferencesPage", () => {
     );
     await user.type(screen.getByLabelText("供应商 1 API Key"), "key-b");
 
-    const route = await screen.findByLabelText("AI 审稿使用的供应商");
-    await user.selectOptions(route, "p1");
-    expect((route as HTMLSelectElement).value).toBe("p1");
+    const route = await screen.findByRole("button", { name: "AI 审稿使用的供应商" });
+    await user.click(route);
+    await user.click(screen.getByRole("option", { name: "B 家" }));
+    expect(route.textContent).toContain("B 家");
     // the other tasks stay on the default gateway - routing is per task, not global
-    expect((screen.getByLabelText("正文生成使用的供应商") as HTMLSelectElement).value).toBe("default");
+    expect(screen.getByRole("button", { name: "正文生成使用的供应商" }).textContent).toContain("默认");
 
     await user.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => {
@@ -174,19 +205,17 @@ describe("PreferencesPage", () => {
     });
   });
 
-  it("sends the image slot as a task with a provider of its own", async () => {
+  it("shows image generation as a configured provider task", async () => {
     stubFetch(calls);
     render(
       <MemoryRouter>
         <PreferencesPage />
       </MemoryRouter>,
     );
-    const image = await screen.findByLabelText("生图（未启用）使用的供应商");
-    expect((image as HTMLSelectElement).value).toBe("default");
-    const model = screen.getByLabelText("生图（未启用）模型") as HTMLInputElement;
-    expect(model.value).toBe("");
-    // reserved, not wired: the row says so instead of hiding or faking a control
-    expect(model.placeholder).toBe("未启用");
+    const image = await screen.findByRole("button", { name: "生图使用的供应商" });
+    expect(image.textContent).toContain("默认");
+    const model = screen.getByRole("button", { name: "生图模型" });
+    expect(model.textContent).toContain("需独立生图 Provider / 模型 ID");
   });
 
   /* 第二十五批批注 5：撤销入口。三种恢复语义是他逐条给的，
@@ -399,7 +428,7 @@ describe("PreferencesPage", () => {
     stubFetch(calls);
     render(
       <MemoryRouter>
-        <PreferencesPage />
+        <ToastProvider><PreferencesPage /></ToastProvider>
       </MemoryRouter>,
     );
 
@@ -424,6 +453,7 @@ describe("PreferencesPage", () => {
     );
     const nav = await screen.findByRole("tablist", { name: "设置项" });
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["模型接入", "外观", "导出与恢复"]);
+    expect(screen.queryByRole("tab", { name: "上下文工作流" })).toBeNull();
     // only the selected group is on screen
     expect(await screen.findByLabelText("API Key")).toBeTruthy();
     expect(screen.queryByRole("radio", { name: "浅色" })).toBeNull();

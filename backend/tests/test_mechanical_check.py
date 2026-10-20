@@ -51,3 +51,22 @@ def test_mechanical_check_passes_valid_chapter(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json()["passed"] is True
     assert response.json()["issues"] == []
+
+
+def test_typo_check_uses_unsaved_buffer_and_returns_a_preview(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "缓冲检查"}).json()["id"]
+    chapter = create_chapter(client, novel_id, content="数据库正文没有错。")
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chapters/{chapter['id']}/machine-check",
+        json={"content": "他因该回去。。然后的的确停下了。"},
+    )
+
+    assert response.status_code == 200
+    issues = response.json()["issues"]
+    assert [(item["quote"], item["replacement"]) for item in issues] == [
+        ("因该", "应该"),
+        ("。。", "。"),
+        ("的的", "的"),
+    ]
+    assert response.json()["word_count"] == len("他因该回去。。然后的的确停下了。")

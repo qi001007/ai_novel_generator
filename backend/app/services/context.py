@@ -17,6 +17,7 @@ from app.models import (
     ChapterBrief,
     ChapterSummary,
     Character,
+    ContextWorkflow,
     Foreshadow,
     Novel,
     PlanningBlueprint,
@@ -162,6 +163,10 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
             ("A 全书蓝图 · 核心冲突", blueprint.core_conflicts),
             ("A 全书蓝图 · 主题", blueprint.themes),
             ("A 全书蓝图 · 约束", blueprint.constraints),
+            *(
+                (f"A 全书蓝图 · {section['label']}", section.get("content", ""))
+                for section in (blueprint.custom_sections or [])
+            ),
         )
         for label, value in segments:
             if value.strip():
@@ -174,11 +179,15 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
                     )
                 )
 
-    for entry in session.exec(
-        select(TocEntry)
-        .where(TocEntry.novel_id == novel_id, TocEntry.is_active == True)  # noqa: E712
-        .order_by(TocEntry.chapter_number)
-    ).all():
+    # 先收集目录，供弧层引用对应章节标题（批注 37.2）。
+    toc_entries = list(
+        session.exec(
+            select(TocEntry)
+            .where(TocEntry.novel_id == novel_id, TocEntry.is_active == True)  # noqa: E712
+            .order_by(TocEntry.chapter_number)
+        ).all()
+    )
+    for entry in toc_entries:
         detail = "；".join(
             part
             for part in (
@@ -201,6 +210,13 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
         .where(ArcPlan.novel_id == novel_id)
         .order_by(ArcPlan.start_chapter)
     ).all():
+        # 弧文本包含：弧自身信息 + 该弧范围内的章节标题列表（批注 37.2）。
+        arc_toc = [
+            f"第{e.chapter_number}章 {e.title or '未命名'}"
+            for e in toc_entries
+            if arc.start_chapter <= e.chapter_number <= arc.end_chapter
+        ]
+        arc_toc_text = "；".join(arc_toc) if arc_toc else "（无对应章节）"
         items.append(
             ContextItem(
                 kind="arc",
@@ -214,6 +230,7 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
                             f"冲突：{arc.conflict}" if arc.conflict else "",
                             f"收束：{arc.resolution}" if arc.resolution else "",
                             f"状态：{arc.status}",
+                            f"涵盖章节：{arc_toc_text}",
                         )
                         if part
                     )
@@ -244,6 +261,11 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
                             f"必要事实：{'、'.join(brief.required_facts)}"
                             if brief.required_facts
                             else "",
+                            *(
+                                f"{section['label']}：{section.get('content', '')}"
+                                for section in (brief.custom_sections or [])
+                                if section.get("content", "").strip()
+                            ),
                         )
                         if part
                     )
@@ -266,6 +288,11 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
                             setting.content,
                             f"当前状态：{setting.current_state}" if setting.current_state else "",
                             "已确认" if setting.is_confirmed else "待确认",
+                            *(
+                                f"{section['label']}：{section.get('content', '')}"
+                                for section in (setting.custom_sections or [])
+                                if section.get("content", "").strip()
+                            ),
                         )
                         if part
                     )
@@ -296,6 +323,11 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
                             else "",
                             f"现状：{character.current_status}" if character.current_status else "",
                             f"关系：{relations}" if relations else "",
+                            *(
+                                f"{section['label']}：{section.get('content', '')}"
+                                for section in (character.custom_sections or [])
+                                if section.get("content", "").strip()
+                            ),
                         )
                         if part
                     )
@@ -318,6 +350,12 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
                     f"埋于第 {fs.planted_chapter} 章；"
                     + (f"预计第 {payoff} 章回收；" if payoff else "回收章未定；")
                     + f"状态：{fs.status}；{fs.content}"
+                    + "；"
+                    + "；".join(
+                        f"{section['label']}：{section.get('content', '')}"
+                        for section in (fs.custom_sections or [])
+                        if section.get("content", "").strip()
+                    )
                 ),
             )
         )
@@ -656,12 +694,14 @@ class WritingContext:
     # 简报点名、人物库里没有精确同名卡的名字。它们变不成 block（无卡可注），
     # 所以要在清单上单独占一行，否则这个名字就静默消失了（批注 30.7 第一条）。
     missing_characters: list[str] = field(default_factory=list)
+    workflow: dict[str, Any] | None = None
 
     def manifest(self) -> dict[str, Any]:
         return {
             "budget": self.budget,
             "used": self.used,
             "missing_characters": self.missing_characters,
+            **({"workflow": self.workflow} if self.workflow else {}),
             "blocks": [
                 *[block.as_manifest(i) for i, block in enumerate(self.selected, start=1)],
                 *[block.as_manifest() for block in self.dropped],
@@ -749,6 +789,69 @@ def _previous_chapter(
     )
 
 
+def _default_workflow(session: Session, novel_id: int) -> ContextWorkflow | None:
+    """Prefer a book preset, then fall back to the global default preset."""
+    row = session.exec(
+        select(ContextWorkflow)
+        .where(ContextWorkflow.novel_id == novel_id, ContextWorkflow.is_default == True)  # noqa: E712
+        .order_by(ContextWorkflow.id.desc())
+    ).first()
+    if row is not None:
+        return row
+    return session.exec(
+        select(ContextWorkflow)
+        .where(ContextWorkflow.novel_id.is_(None), ContextWorkflow.is_default == True)  # noqa: E712
+        .order_by(ContextWorkflow.id.desc())
+    ).first()
+
+
+def _workflow_items(
+    pool: list[ContextItem],
+    policy: dict[str, Any],
+    *,
+    chapter_number: int,
+    brief: ChapterBrief | None,
+) -> tuple[list[ContextItem], list[str]]:
+    """Apply the persisted, source-level policy to the single collected pool."""
+    modules = {module.get("kind"): module for module in policy.get("modules", []) if module.get("enabled", True)}
+    cast = {name.strip() for name in (brief.characters if brief else []) if name.strip()}
+    missing = sorted(cast - {item.label.removeprefix("人物 · ") for item in pool if item.kind == "character"})
+    selected: list[ContextItem] = []
+    for item in pool:
+        number = _label_chapter_number(item.label)
+        source_kind = {
+            "novel": "author_instructions",
+            "setting": "worldview",
+            "brief": "briefs",
+            "chapter": "drafts",
+        }.get(item.kind, item.kind)
+        module = modules.get(source_kind)
+        if module is None:
+            continue
+        if item.kind == "toc" and number is not None:
+            if number < chapter_number - module.get("before", 0) or number > chapter_number + module.get("after", 0):
+                continue
+        elif item.kind == "arc":
+            match = re.search(r"（(\d+)-(\d+)）", item.label)
+            if match and (int(match.group(2)) < chapter_number - module.get("before", 0) or int(match.group(1)) > chapter_number + module.get("after", 0)):
+                continue
+        elif item.kind == "brief":
+            # D 简报语义是「当前章 + 前 N 章」；未来简报不提供连续性，也不应被旧
+            # policy 中遗留的 after 值带入提示词。
+            if number is None or not (chapter_number - module.get("before", 0) <= number <= chapter_number):
+                continue
+        elif item.kind == "character" and module.get("selection", "all") == "brief_mentions" and item.label.removeprefix("人物 · ") not in cast:
+            continue
+        elif item.kind == "chapter":
+            if number is None or number >= chapter_number or number < chapter_number - module.get("before", 0):
+                continue
+            tail = module.get("tail_chars")
+            if tail:
+                item = replace(item, text=item.text[-tail:], label=f"正文尾部 · 第 {number} 章")
+        selected.append(item)
+    return selected, missing if "characters" in modules and modules["characters"].get("selection") == "brief_mentions" else []
+
+
 def build_writing_context(
     session: Session,
     novel_id: int,
@@ -804,33 +907,42 @@ def build_writing_context(
             return TIER_CORE if _grams(item.label) & brief_grams else TIER_FILL
         return TIER_FILL
 
+    workflow = _default_workflow(session, novel_id)
     pool = collect_items(session, novel_id)
-    filtered: list[ContextItem] = []
-    for item in pool:
-        number = _label_chapter_number(item.label)
-        if item.kind == "chapter":
-            continue
-        if item.kind == "toc" and (number is None or abs(number - chapter_number) > TOC_NEIGHBOURHOOD):
-            continue
-        if item.kind == "arc":
-            match = re.search(r"（(\d+)-(\d+)）", item.label)
-            if match is None:
+    if workflow is not None:
+        pool, missing_characters = _workflow_items(
+            pool, workflow.policy, chapter_number=chapter_number, brief=brief
+        )
+        budget = int(workflow.policy.get("budget", budget))
+    else:
+        filtered: list[ContextItem] = []
+        for item in pool:
+            number = _label_chapter_number(item.label)
+            if item.kind == "chapter":
                 continue
-            start, end = int(match.group(1)), int(match.group(2))
-            if end < chapter_number - ARC_NEIGHBOURHOOD or start > chapter_number + ARC_NEIGHBOURHOOD:
+            if item.kind == "toc" and (number is None or abs(number - chapter_number) > TOC_NEIGHBOURHOOD):
                 continue
-        filtered.append(item)
-    pool = filtered
-    previous = _previous_chapter(session, novel_id, chapter_number)
-    if previous is not None:
-        pool.append(previous)
+            if item.kind == "arc":
+                match = re.search(r"（(\d+)-(\d+)）", item.label)
+                if match is None:
+                    continue
+                start, end = int(match.group(1)), int(match.group(2))
+                if end < chapter_number - ARC_NEIGHBOURHOOD or start > chapter_number + ARC_NEIGHBOURHOOD:
+                    continue
+            filtered.append(item)
+        pool = filtered
+        previous = _previous_chapter(session, novel_id, chapter_number)
+        if previous is not None:
+            pool.append(previous)
 
     blocks = [ContextBlock(item, tier_of(item)) for item in pool]
     blocks.sort(key=lambda block: (block.tier, WRITING_KIND_ORDER.get(block.item.kind, 99), block.item.label))
 
-    # An empty field is not an injection. A blank D-brief used to land in the manifest as
-    # 「必注入 · 0 字」, which made a chapter with no planning at all look healthy. Filtering
-    # here rather than per collector so every current and future kind is covered (D-06).
+    # An empty field is not an injection. All empties are filtered out of `blocks`
+    # so they don't affect budget trimming, but core empties (e.g. a blank D-brief
+    # for the target chapter) must stay visible in the manifest's dropped list so
+    # the author sees "必注入档内容为空" instead of a healthy-looking chapter with
+    # no planning at all (批注 37.3).
     empties = [block for block in blocks if not block.item.text.strip()]
     blocks = [block for block in blocks if block.item.text.strip()]
     for block in empties:
@@ -846,6 +958,11 @@ def build_writing_context(
         selected=trimmed.selected,
         dropped=[*trimmed.dropped, *empties],
         missing_characters=missing_characters,
+        workflow=(
+            {"id": workflow.id, "name": workflow.name}
+            if workflow is not None
+            else None
+        ),
     )
 
 

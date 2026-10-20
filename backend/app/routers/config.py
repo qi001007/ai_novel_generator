@@ -1,5 +1,7 @@
 """Read and write the LLM connection settings the workbench exposes in /settings."""
 import json
+import os
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -29,6 +31,7 @@ router = APIRouter(prefix="/config", tags=["config"])
 
 # What the UI shows instead of a secret. Echoing this back means "leave it alone".
 MASK = "****"
+MODEL_CATALOGS_KEY = "llm.model_catalogs"
 
 
 def _store(session: Session, key: str, value: str) -> None:
@@ -83,6 +86,11 @@ class AgentBudgetIn(SQLModel):
     max_tokens: int | None = None
 
 
+class CachedModelCatalog(SQLModel):
+    models: list[str]
+    fetched_at: str
+
+
 class LlmConfigOut(SQLModel):
     provider: str
     api_base_url: str
@@ -95,6 +103,7 @@ class LlmConfigOut(SQLModel):
     routes: dict[str, str]
     tasks: list[str]
     agent: AgentBudgetOut
+    catalogs: dict[str, CachedModelCatalog]
 
 
 class LlmConfigIn(SQLModel):
@@ -117,6 +126,28 @@ class LlmTestResult(SQLModel):
     detail: str
 
 
+class LlmModelsOut(SQLModel):
+    provider_id: str
+    models: list[str]
+    detail: str
+    fetched_at: str
+
+
+def _catalogs(session: Session) -> dict[str, CachedModelCatalog]:
+    row = session.get(AppConfig, MODEL_CATALOGS_KEY)
+    if row is None:
+        return {}
+    try:
+        raw = json.loads(row.value)
+        return {
+            str(provider_id): CachedModelCatalog.model_validate(value)
+            for provider_id, value in raw.items()
+            if isinstance(value, dict)
+        }
+    except (ValueError, TypeError):
+        return {}
+
+
 def _provider_out(item, providers: list) -> LlmProviderOut:
     return LlmProviderOut(
         id=item.id,
@@ -126,6 +157,33 @@ def _provider_out(item, providers: list) -> LlmProviderOut:
         api_key_masked=_mask(item.api_key),
         api_key_set=bool(item.api_key),
         is_default=item.id == DEFAULT_PROVIDER_ID,
+    )
+
+
+def _models_response(item) -> httpx.Response:
+    """Read the provider catalog without running a billable completion."""
+    scheme = urlparse(item.api_base_url).scheme.lower()
+    proxy = os.environ.get("HTTPS_PROXY" if scheme == "https" else "HTTP_PROXY")
+    if proxy and urlparse(proxy).scheme not in {"http", "https"}:
+        proxy = None
+    with httpx.Client(proxy=proxy, trust_env=False, timeout=15.0) as client:
+        return client.get(
+            item.api_base_url.rstrip("/") + "/models",
+            headers={"Authorization": "Bearer " + item.api_key},
+        )
+
+
+def _model_ids(response: httpx.Response) -> list[str]:
+    try:
+        rows = response.json().get("data", [])
+    except (ValueError, AttributeError):
+        return []
+    return sorted(
+        {
+            str(row.get("id", "")).strip()
+            for row in rows
+            if isinstance(row, dict) and str(row.get("id", "")).strip()
+        }
     )
 
 
@@ -151,6 +209,7 @@ def read_llm_config(session: Session = Depends(get_session)) -> LlmConfigOut:
             default_max_steps=DEFAULT_MAX_STEPS,
             default_max_tokens=DEFAULT_MAX_TOKENS,
         ),
+        catalogs=_catalogs(session),
     )
 
 
@@ -196,7 +255,7 @@ def _write_agent_budget(session: Session, payload: AgentBudgetIn) -> None:
     value that silently comes back as the default.
     """
     for key, label, value, limits in (
-        (MAX_STEPS_KEY, "轮数", payload.max_steps, MAX_STEPS_LIMITS),
+        (MAX_STEPS_KEY, "内部步骤", payload.max_steps, MAX_STEPS_LIMITS),
         (MAX_TOKENS_KEY, "token", payload.max_tokens, MAX_TOKENS_LIMITS),
     ):
         if value is None:
@@ -289,13 +348,48 @@ def test_llm_config(
     if not item.api_base_url or not item.api_key:
         return LlmTestResult(ok=False, detail=f"供应商「{item.name}」缺少 Base URL 或 API Key，无法测试")
     try:
-        response = httpx.get(
-            item.api_base_url.rstrip("/") + "/models",
-            headers={"Authorization": "Bearer " + item.api_key},
-            timeout=15.0,
-        )
-    except httpx.HTTPError as cause:
+        response = _models_response(item)
+    except (httpx.HTTPError, ValueError) as cause:
         return LlmTestResult(ok=False, detail=f"「{item.name}」连不上：" + type(cause).__name__)
     if response.status_code >= 400:
         return LlmTestResult(ok=False, detail=f"「{item.name}」网关返回 HTTP {response.status_code}")
     return LlmTestResult(ok=True, detail=f"「{item.name}」连接正常（HTTP {response.status_code}）")
+
+
+@router.get("/llm/models", response_model=LlmModelsOut)
+def list_llm_models(
+    provider_id: str = DEFAULT_PROVIDER_ID,
+    session: Session = Depends(get_session),
+) -> LlmModelsOut:
+    """Return the provider's live model IDs without making a generation request."""
+    item = next((row for row in resolve_routing(session).providers if row.id == provider_id), None)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"没有这个供应商：{provider_id}")
+    if not item.api_base_url or not item.api_key:
+        raise HTTPException(status_code=422, detail=f"供应商「{item.name}」缺少 Base URL 或 API Key")
+    try:
+        response = _models_response(item)
+    except (httpx.HTTPError, ValueError) as cause:
+        raise HTTPException(
+            status_code=502,
+            detail=f"「{item.name}」模型列表读取失败：{type(cause).__name__}",
+        ) from cause
+    if response.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail=f"「{item.name}」模型网关返回 HTTP {response.status_code}",
+        )
+    models = _model_ids(response)
+    if not models:
+        raise HTTPException(status_code=502, detail=f"「{item.name}」没有返回可选模型")
+    fetched_at = utc_now().isoformat()
+    catalogs = {key: value.model_dump(mode="json") for key, value in _catalogs(session).items()}
+    catalogs[provider_id] = {"models": models, "fetched_at": fetched_at}
+    _store(session, MODEL_CATALOGS_KEY, json.dumps(catalogs, ensure_ascii=False))
+    session.commit()
+    return LlmModelsOut(
+        provider_id=provider_id,
+        models=models,
+        detail=f"已获取 {len(models)} 个模型，未发起生成请求",
+        fetched_at=fetched_at,
+    )

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   Brain,
+  Check,
   ChevronDown,
   Wrench,
   CornerDownLeft,
@@ -24,11 +25,13 @@ import MarkdownText from "./MarkdownText";
 import { compressRefs } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, stripProposalFences, traceActions } from "./chatTrace";
 import ProposalCard from "./ProposalCard";
-import { briefPath, draftChapter, useFiles } from "../store/files";
+import { briefPath, draftChapter, draftDocument, useFiles } from "../store/files";
 import type { ChatContextItem, ChatMode, ChatStreamEvent, Chapter, FileProposal, ChatAttachment, StoredChatMessage } from "../types";
 import { findBriefForChapter, useWorkbench } from "../store/workbench";
 import {
   applyStreamEvent,
+  applyAgentRunState,
+  approvalFromStep,
   attachProposal,
   patchAgent as patchRows,
   patchCommand as patchCommandRows,
@@ -41,7 +44,7 @@ import { modeLabel } from "../labels";
 const commands = [
   { name: "/generate", args: "<章节序号>", desc: "生成该章正文；不写序号就是当前选中章" },
   { name: "/review", args: "", desc: "AI 七维自检当前章节" },
-  { name: "/check", args: "", desc: "机械校验（字数/必要事实）" },
+  { name: "/check", args: "", desc: "错别字检查" },
   { name: "/summary", args: "", desc: "章摘要与事实落库" },
   { name: "/save", args: "", desc: "保存当前正文" },
   { name: "/plan", args: "A|B|C|D", desc: "切计划模式并盘点该层规划" },
@@ -116,6 +119,8 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
       ];
     }
     if (row.role === "user") return [{ kind: "user", id: row.id, text: row.content }];
+    const restoredApprovals = (row.steps ?? []).map(approvalFromStep).filter((item) => item !== null);
+    const restoredRunId = (row.steps ?? []).find((step) => step.agent_run_id)?.agent_run_id;
     return [
       {
         kind: "agent",
@@ -136,6 +141,8 @@ function fromHistory(rows: StoredChatMessage[]): Row[] {
           reads: (row.steps ?? []).map(toolLine),
           mode: row.mode,
           reasoning: row.reasoning,
+          agentRunId: restoredRunId,
+          approvals: restoredApprovals,
         },
       },
     ];
@@ -204,6 +211,12 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [attachError, setAttachError] = useState<string | null>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // A chapter proposal is previewed in the same file buffer as the prose page. The
+  // tracker is only a concurrency guard: it is never a second source of document text.
+  const draftStreams = useRef(new Map<string, { text: string; diverged: boolean }>());
+  // 批注 36.4 补充：流式输出时自动滚到底部，但用户手动上翻时应停止自动滚动，
+  // 直到用户滚回底部才恢复。stuckToBottom 标记是否跟随最新内容。
+  const [stuckToBottom, setStuckToBottom] = useState(true);
 
   /* 批注 35.29c（D-57）：缺 D 层简报的那一章不再被推回去自己补——主人要的是「你要自己明白，
      要按顺序先生成一遍简章，然后再去生成正文」。briefHandoff 记的是「哪一条 /generate 正在
@@ -240,22 +253,15 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     streaming ||
     rows.some((row) => row.kind === "command" && row.status === "running");
 
-  // 批注 35.28：那两颗不再是开关，所以「哪一侧亮」不能再看本地 mode——它只是这一句
-  // 发出去时的起点，跑起来会由那句话改判（D-41）。唯一的出处是最近一答实际用的模式，
-  // 也就是答案行那颗「按「X」」读的同一条数据。还没有一答时才是本地值。
-  const shownMode =
-    rows
-      .filter((row): row is AgentRow => row.kind === "agent" && Boolean(row.meta.mode))
-      .at(-1)?.meta.mode ?? mode;
-
   useEffect(() => {
+    if (!stuckToBottom) return;
     const node = scrollRef.current;
     if (node && typeof node.scrollTo === "function") {
       node.scrollTo({ top: node.scrollHeight });
     } else if (node) {
       node.scrollTop = node.scrollHeight;
     }
-  }, [rows]);
+  }, [rows, stuckToBottom]);
 
   useEffect(() => {
     if (!running) return;
@@ -297,7 +303,14 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       .get<StoredChatMessage[]>(`/api/novels/${selectedNovelId}/chat/messages${thread}`)
       .then(async (history) => {
         if (cancelled) return;
-        setRows(fromHistory(history));
+        const restoredRows = fromHistory(history);
+        setRows(restoredRows);
+        for (const restored of restoredRows) {
+          if (restored.kind !== "agent" || !restored.meta.agentRunId) continue;
+          void api.getAgentRun(restored.meta.agentRunId).then((run) => {
+            if (!cancelled) setRows((current) => applyAgentRunState(current, restored.id, run));
+          }).catch(() => undefined);
+        }
         // The server keeps the fence in the stored reply, so a reload puts
         // every still-unapplied review card back on its own message.
         for (const row of history) {
@@ -403,7 +416,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   async function offerFromStream(
     rowId: number,
     data: { path: string; text: string; valid: boolean; error: string | null },
-    opts?: { restore?: boolean; autoLand?: boolean },
+    opts?: { restore?: boolean; autoLand?: boolean; writeMode?: boolean },
   ) {
     if (!selectedNovelId) return;
     let baseText = "";
@@ -441,13 +454,33 @@ export default function ChatPane({ className = "" }: { className?: string }) {
        批注 35.29c（D-57）又开了一道**很窄**的口子：autoLand 只由 /generate 的补简报接力在
        这一轮里加上，名单里只有那一章的 brief.md 这一个路径，一轮过去就收回。其余 D 层简报
        的卡一张不少——那道口子不是按路径类型开的，是按「这一轮系统自己刚要去补的那一份」开的。 */
+    const draftPathNumber = draftChapter(proposal.path);
+    const draftStream = draftStreams.current.get(proposal.path);
+    const localDraft = useFiles.getState().entries[proposal.path]?.draft;
+    const draftPreviewUntouched =
+      !draftStream ||
+      (!draftStream.diverged && (localDraft ?? "") === draftStream.text);
     if (
       proposal.valid &&
       !opts?.restore &&
-      (draftChapter(proposal.path) !== null || opts?.autoLand === true)
+      opts?.writeMode === true &&
+      (draftPathNumber !== null || proposal.path === "arcs.md" || opts?.autoLand === true) &&
+      // If the author typed while the preview was arriving, leave the proposal on
+      // the review card. The sole PUT remains available through an explicit click.
+      draftPreviewUntouched
     ) {
       offerFile(proposal);
       if (await useFiles.getState().applyProposal(proposal.path)) {
+        // 批注 36.4 补充：正文提案自动应用后，切到编辑器让主人看到内容出现，
+        // 而不是留在对话页以为「写完了突然刷出来」。
+        const chapterNumber = draftChapter(proposal.path);
+        if (chapterNumber !== null) {
+          const chapter = useWorkbench.getState().chapters.find((item) => item.chapter_number === chapterNumber);
+          if (chapter) {
+            useWorkbench.getState().selectChapter(chapter.id);
+            useWorkbench.getState().openChapterTab(chapter.id);
+          }
+        }
         // 补简报那一份自己重读两源：右栏那格重读挂在文件页签上，而 /generate 跑的时候
         // 主人多半在正文页，不重读简报永远不「出现」，接力就静默停在半路（35.29c）。
         if (opts?.autoLand === true) await useWorkbench.getState().reloadChapterList();
@@ -464,24 +497,65 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     setApplyingPath(null);
   }
 
-  function applyEvent(id: number, event: ChatStreamEvent) {
+  function applyDraftPreview(data: { path: string; text: string }) {
+    // The backend intentionally emits only chapter draft paths. Keep this check at
+    // the UI boundary as a defense-in-depth guard against a malformed event.
+    if (draftChapter(data.path) === null) return;
+    const state = useFiles.getState();
+    const entry = state.entries[data.path];
+    let tracker = draftStreams.current.get(data.path);
+    if (!tracker) {
+      const existing = entry?.draft ?? "";
+      tracker = {
+        text: existing,
+        diverged: Boolean(entry?.doc && existing !== entry.doc.text),
+      };
+      draftStreams.current.set(data.path, tracker);
+    }
+    const current = useFiles.getState().entries[data.path]?.draft ?? "";
+    if (!tracker.diverged && current !== tracker.text) tracker.diverged = true;
+    if (tracker.diverged) return;
+    const chapterNumber = draftChapter(data.path);
+    const preview =
+      chapterNumber !== null && data.text.trimStart().startsWith("# ")
+        ? data.text
+        : chapterNumber !== null
+          ? draftDocument(chapterNumber, data.text)
+          : data.text;
+    useFiles.getState().setDraft(data.path, preview);
+    tracker.text = preview;
+  }
+
+  function applyEvent(id: number, event: ChatStreamEvent, turnMode: ChatMode) {
     // 规则在 chatRows.ts（纯函数）。三个副作用留在外面：放进 setRows 的更新函数里，
     // StrictMode 会把它们跑两遍（本项目 2026-09-03 记过的同一形状）。
     setRows((prev) => applyStreamEvent(prev, id, event));
+    if (event.event === "draft") applyDraftPreview(event.data);
     if (event.event === "proposal")
       void offerFromStream(
         id,
         event.data,
-        autoLand.current.has(event.data.path) ? { autoLand: true } : undefined,
+        turnMode === "write" && autoLand.current.has(event.data.path) ? { autoLand: true, writeMode: true } : { writeMode: turnMode === "write" },
       );
     if (event.event === "context") void refreshConversations();
     if (event.event === "reasoning") setThinkingOpen(id);
+  }
+
+  async function decideAgentApproval(
+    rowId: number,
+    runId: number,
+    toolCallId: number,
+    decision: "approved" | "rejected",
+  ) {
+    const run = await api.resumeAgentRun(runId, toolCallId, decision);
+    setRows((current) => applyAgentRunState(current, rowId, run));
   }
 
   async function ask(question: string, replaceId?: number, suppressUser = false) {
     const text = question.trim();
     if (!text || !selectedNovelId || running) return;
     const agentId = replaceId ?? nextId++;
+    const turnMode = mode;
 
     if (replaceId === undefined && !suppressUser) {
       appendMessage({ kind: "user", id: nextId++, text });
@@ -509,14 +583,14 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         selectedNovelId,
         {
           content: text,
-          mode,
+          mode: turnMode,
           // 现取不取闭包：/generate 5 那一条在同一趟里先把选中章换过去再发这一句，
           // 渲染闭包里还是旧的那一章，注入的资料会跟着错（批注 35.29c）。
           chapter_id: useWorkbench.getState().selectedChapterId,
           model: selectedModel,
           attachments: files.length ? files : undefined,
         },
-        (event) => applyEvent(agentId, event),
+        (event) => applyEvent(agentId, event, turnMode),
         controller.signal,
       );
       // Cleared only once the turn actually went out. The old bug was the other way
@@ -690,7 +764,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
         status: "done",
         runId: snapshot.lastGenerationRunId ?? undefined,
         chapterId: chapter.id,
-        detail: `第 ${chapter.chapter_number} 章《${chapter.title || "未命名"}》· ${chapter.word_count} 字 · 机械校验 ${
+        detail: `第 ${chapter.chapter_number} 章《${chapter.title || "未命名"}》· ${chapter.word_count} 字 · 错别字检查 ${
           snapshot.machineCheck?.passed ? "通过" : "未通过"
         }`,
       });
@@ -892,7 +966,16 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           里填 API 密钥，保存后即刻生效，不用重启后端
         </div>
       )}
-      <div className="chat-messages" ref={scrollRef}>
+      <div
+        className="chat-messages"
+        ref={scrollRef}
+        onScroll={(event) => {
+          const node = event.currentTarget;
+          const threshold = 50;
+          const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < threshold;
+          setStuckToBottom(atBottom);
+        }}
+      >
         {(rows.length ? rows : [{
           kind: "agent" as const,
           id: 0,
@@ -1069,6 +1152,39 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                       />
                     ) : null,
                   )}
+                  {(row.meta.approvals ?? []).map((approval) => {
+                    const diff = approval.preview.diff as Record<string, unknown> | undefined;
+                    return (
+                      <section className="agent-approval" key={approval.toolCallId} aria-label="高风险操作确认">
+                        <header>
+                          <code>{approval.command}</code>
+                          <span>{approval.state === "pending" ? "等待确认" : approval.state === "approved" ? "已批准" : "已拒绝"}</span>
+                        </header>
+                        <pre>{JSON.stringify(diff ?? approval.preview, null, 2)}</pre>
+                        {approval.state === "pending" ? (
+                          <footer>
+                            <button
+                              type="button"
+                              aria-label="拒绝高风险操作"
+                              title="拒绝"
+                              onClick={() => void decideAgentApproval(row.id, approval.agentRunId, approval.toolCallId, "rejected")}
+                            >
+                              <X size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              className="approve"
+                              aria-label="批准高风险操作"
+                              title="批准并执行"
+                              onClick={() => void decideAgentApproval(row.id, approval.agentRunId, approval.toolCallId, "approved")}
+                            >
+                              <Check size={14} />
+                            </button>
+                          </footer>
+                        ) : null}
+                      </section>
+                    );
+                  })}
                   {row.status === "error" ? (
                     <div className="chat-error">
                       <span>{row.error}</span>
@@ -1284,13 +1400,26 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 后者是这条批注判据要能在 DOM 上量到的那个属性。要回硬交互得先立新决定推翻 D-41。 */}
             <div
               className="mode-switch"
+              role="radiogroup"
               aria-label="对话模式"
-              title="点亮的是最近一答实际用的模式；这一轮跑哪个，由你这句话定"
+              title="计划模式只读；写作模式允许自动写入章节正文与补齐简报"
             >
-              <button type="button" disabled aria-disabled={true} className={shownMode === "plan" ? "selected" : ""}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "plan"}
+                className={mode === "plan" ? "selected" : ""}
+                onClick={() => setMode("plan")}
+              >
                 {modeLabel("plan")}
               </button>
-              <button type="button" disabled aria-disabled={true} className={shownMode === "write" ? "selected" : ""}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={mode === "write"}
+                className={mode === "write" ? "selected" : ""}
+                onClick={() => setMode("write")}
+              >
                 {modeLabel("write")}
               </button>
             </div>

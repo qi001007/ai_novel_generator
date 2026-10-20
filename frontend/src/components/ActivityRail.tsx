@@ -1,11 +1,13 @@
-import { FolderTree, MessagesSquare, Warehouse } from "lucide-react";
+import { BookOpen, Library, Map, MessagesSquare, Workflow } from "lucide-react";
 
-export type RailPage = "plan" | "library" | "chat";
+export type RailPage = "plan" | "library" | "map" | "workflow" | "chat";
 
-const PAGES: { key: RailPage; label: string; icon: typeof FolderTree }[] = [
-  { key: "plan", label: "规划与章节", icon: FolderTree },
-  { key: "library", label: "设定库", icon: Warehouse },
-  { key: "chat", label: "对话", icon: MessagesSquare },
+const PAGES: { key: RailPage; label: string; icon: typeof BookOpen }[] = [
+  { key: "plan", label: "文章结构", icon: BookOpen },
+  { key: "library", label: "设定库", icon: Library },
+  { key: "map", label: "地图库", icon: Map },
+  { key: "workflow", label: "Workflow", icon: Workflow },
+  { key: "chat", label: "对话记录", icon: MessagesSquare },
 ];
 
 /**

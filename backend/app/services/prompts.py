@@ -38,6 +38,42 @@ def build_review_user_prompt(chapter: Chapter) -> str:
 每维分数为 0-100；evidence 中的每条内容必须逐字来自正文。
 字段：
 decision、comments、scores、evidence
+    """
+
+
+def build_review_context_prompt(chapter: Chapter, snapshot: dict) -> str:
+    """Audit the exact material that was available when this draft was written."""
+    return f"""请先只审计本次生成实际注入的上下文，不要审正文。
+
+章号：第 {chapter.chapter_number} 章
+生成时上下文快照（不可补读当前数据库）：
+{snapshot}
+
+检查快照是否缺少必要信息、互相冲突或存在无法执行的约束。
+严格输出 JSON：decision、comments、conflicts、missing、references。
+decision 只能是 passed、needs_revision；references 是描述快照来源的数组。
+"""
+
+
+def build_review_body_prompt(chapter: Chapter, snapshot: dict, context_audit: dict) -> str:
+    """Audit prose only after the snapshot has passed the first phase."""
+    return f"""请根据已确认的上下文快照审计正文，不要改写正文。
+
+章号：第 {chapter.chapter_number} 章
+已确认上下文快照：
+{snapshot}
+
+第一阶段上下文审计：
+{context_audit}
+
+正文：
+{chapter.content}
+
+严格输出 JSON 对象，不要 Markdown 解释。
+每维分数为 0-100；evidence 中的每条内容必须逐字来自正文。
+字段：decision、comments、scores、evidence、suggestions。
+suggestions 只放可供作者手动采用的对象数组：quote（正文中唯一且逐字存在的片段）、
+replacement（建议替换文本）、comment（理由）。没有安全的唯一锚点就不要给建议。
 """
 
 

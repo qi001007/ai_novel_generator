@@ -16,6 +16,8 @@ import { Pencil, X } from "lucide-react";
 
 export type LongFieldKey = "identity" | "goals" | "behavior_constraints" | "current_status";
 
+export type CustomSection = { label: string; content: string };
+
 export type CharacterForm = {
   id: number | null;
   name: string;
@@ -27,6 +29,7 @@ export type CharacterForm = {
   current_status: string;
   expected_start_chapter: number | null;
   expected_end_chapter: number | null;
+  custom_sections: CustomSection[];
 };
 
 export const emptyForm: CharacterForm = {
@@ -40,6 +43,7 @@ export const emptyForm: CharacterForm = {
   current_status: "",
   expected_start_chapter: null,
   expected_end_chapter: null,
+  custom_sections: [],
 };
 
 export const LEVEL_LABELS: Record<string, string> = {
@@ -107,6 +111,11 @@ export function formFromCharacterDoc(text: string): CharacterForm {
     return digits ? Number(digits[1]) : null;
   };
 
+  const KNOWN_SECTIONS = new Set(["身份", "目标", "行为约束", "当前状态"]);
+  const custom_sections: CustomSection[] = Object.entries(sections)
+    .filter(([label]) => !KNOWN_SECTIONS.has(label))
+    .map(([label, content]) => ({ label, content }));
+
   return {
     ...emptyForm,
     name: fields["姓名"] ?? "",
@@ -117,6 +126,7 @@ export function formFromCharacterDoc(text: string): CharacterForm {
     goals: sections["目标"] ?? "",
     behavior_constraints: sections["行为约束"] ?? "",
     current_status: sections["当前状态"] ?? "",
+    custom_sections,
   };
 }
 
@@ -126,8 +136,8 @@ function setBullet(text: string, label: string, value: string): string {
 }
 
 /** The document is the projection the server renders, so the card edits that text in
- *  place instead of deriving a second format. Anything the writer does not recognise
- *  comes back as a structure error, which is the point.
+ *  place instead of deriving a second format. Custom Markdown sections stay in the
+ *  same source buffer and are rendered as additional card fields by the shared reader.
  *  The four long sections are deliberately not written from here: a snapshot saved
  *  after someone edited the file would overwrite their work with stale text, so long
  *  fields belong to the source editor (帧 26). */
@@ -149,6 +159,7 @@ type Props = {
   onPickPortrait: (file: File) => void;
   onRemovePortrait: () => void;
   onEditLongField: (field: LongFieldKey) => void;
+  onEditCustomSection?: (label: string) => void;
   busy?: boolean;
   error?: string | null;
   /** Dialog chrome only - the inline card has no title and no close box. */
@@ -166,6 +177,7 @@ export default function CharacterFormCard({
   onPickPortrait,
   onRemovePortrait,
   onEditLongField,
+  onEditCustomSection,
   busy = false,
   error = null,
   title,
@@ -268,8 +280,10 @@ export default function CharacterFormCard({
             return (
               <div className="long-field" key={item.key}>
                 <span className="long-field-label">{item.label}</span>
-                <div className="long-field-box">
-                  <p className={field ? "long-field-text" : "long-field-text blank"}>{field || "—"}</p>
+                <div className="long-field-row">
+                  <div className="long-field-box">
+                    <p className={field ? "long-field-text" : "long-field-text blank"}>{field || "—"}</p>
+                  </div>
                   <button
                     type="button"
                     className="long-field-edit"
@@ -288,6 +302,34 @@ export default function CharacterFormCard({
               </div>
             );
           })}
+          {value.custom_sections.map((section) => (
+            <div className="long-field" key={section.label}>
+              <span className="long-field-label">{section.label}</span>
+              <div className="long-field-row">
+                <div className="long-field-box">
+                  <p className={section.content ? "long-field-text" : "long-field-text blank"}>
+                    {section.content || "—"}
+                  </p>
+                </div>
+                {onEditCustomSection ? (
+                  <button
+                    type="button"
+                    className="long-field-edit"
+                    aria-label={`在文件中编辑${section.label}`}
+                    title={
+                      value.id === null
+                        ? "先保存人物，再在文件中编辑"
+                        : `在源码里定位到「${section.label}」`
+                    }
+                    disabled={value.id === null}
+                    onClick={() => onEditCustomSection(section.label)}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
       <footer>

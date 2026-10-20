@@ -25,7 +25,7 @@ export const UI_FONTS = [
 ] as const;
 
 export const PROSE_FONTS = [
-  { key: "default", label: "默认（思源宋体）" },
+  { key: "default", label: "默认（工作台黑体）" },
   { key: "georgia", label: "Georgia（英文衬线优先）" },
   { key: "times", label: "Times New Roman" },
   { key: "simsun", label: "宋体 SimSun" },
@@ -76,7 +76,7 @@ export const APPEARANCE_DEFAULTS: Appearance = {
   proseFont: "default",
   codeFont: "default",
   uiSize: UI_SIZE_DEFAULT,
-  proseSize: 17,
+  proseSize: 18,
 };
 
 const KEY = "appearance";
@@ -141,7 +141,9 @@ export function readAppearance(): Appearance {
     ),
     codeFont: oneOf(raw.codeFont, CODE_FONT_KEYS, APPEARANCE_DEFAULTS.codeFont),
     uiSize: oneSize(raw.uiSize, UI_SIZE_DEFAULT, UI_SIZE),
-    proseSize: oneSize(raw.proseSize, APPEARANCE_DEFAULTS.proseSize, PROSE_SIZE),
+    // 17px was the old shipped default. The owner explicitly raised the baseline;
+    // migrate that exact legacy value while preserving every other manual choice.
+    proseSize: oneSize(raw.proseSize === 17 ? 18 : raw.proseSize, APPEARANCE_DEFAULTS.proseSize, PROSE_SIZE),
   };
 }
 

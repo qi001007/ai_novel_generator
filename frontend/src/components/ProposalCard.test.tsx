@@ -50,17 +50,20 @@ describe("ProposalCard", () => {
   it("opens the whole diff and closes it again", () => {
     renderCard();
 
-    expect(document.querySelectorAll(".proposal-line")).toHaveLength(8);
+    expect(document.querySelectorAll(".proposal-line")).toHaveLength(TOTAL_ROWS);
+    expect(document.querySelector(".proposal-diff-folded")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: `展开全部 ${TOTAL_ROWS} 行改动` }));
 
     expect(document.querySelectorAll(".proposal-line")).toHaveLength(TOTAL_ROWS);
+    expect(document.querySelector(".proposal-diff-folded")).toBeNull();
     const collapse = screen.getByRole("button", { name: "收起" });
     expect(collapse.getAttribute("aria-expanded")).toBe("true");
 
     // 批注 1: the control used to call setShowAll(true) and then disappear, so this
     // second click is the whole complaint - the card was stuck open.
     fireEvent.click(collapse);
-    expect(document.querySelectorAll(".proposal-line")).toHaveLength(8);
+    expect(document.querySelectorAll(".proposal-line")).toHaveLength(TOTAL_ROWS);
+    expect(document.querySelector(".proposal-diff-folded")).toBeTruthy();
     expect(screen.getByRole("button", { name: `展开全部 ${TOTAL_ROWS} 行改动` })).toBeTruthy();
   });
 
@@ -71,7 +74,7 @@ describe("ProposalCard", () => {
     fireEvent.click(screen.getByRole("button", { name: `展开全部 ${TOTAL_ROWS} 行改动` }));
     expect(document.querySelectorAll(".proposal-line")).toHaveLength(TOTAL_ROWS);
     fireEvent.click(screen.getByRole("button", { name: "收起" }));
-    expect(document.querySelectorAll(".proposal-line")).toHaveLength(8);
+    expect(document.querySelectorAll(".proposal-line")).toHaveLength(TOTAL_ROWS);
   });
 
   it("pins the fold control above the rows it folds (35.3)", () => {

@@ -1,5 +1,33 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-10-20：新增作品默认双 Workflow、唯一用途绑定及旧库 review/model 回填迁移测试；全量后端门禁更新为 444 passed。
+
+- 2026-10-19：新增 Workflow 删除行为门禁：未确认拒绝、批准删除、默认项接替、撤销恢复，以及已有发布历史时禁止删除。
+
+- 2026-10-19：统一命令回归覆盖 Workflow 新建、保存、重命名、默认切换、发布、幂等、旧 revision 冲突及逐步撤销；迁移测试校验 revision 列。
+- 2026-10-19：平台 MCP 浏览器契约补站内跳转、真实右键与 CDP 文本输入测试；Workflow context 节点新增真实构造上下文的运行回归；全量后端 `437 passed`。
+
+- 2026-10-19：新增 Workflow 真实模型节点回归，验证节点调用统一供应商路由、传递任务/模型/温度并把模型输出与 Token 汇总写入运行详情。
+
+- 2026-10-19：平台 MCP 契约更新为 15 项工具，覆盖同会话逐动作交互＋测量审计、元素比例点击、真实滚轮动作和精确 CSS 视口，以及只由调用方 CSS selectors 组成的测量表达式；定向 9 项通过。
+
+- 2026-10-19：平台 MCP 的拖拽白名单补回程终点与越界拒绝测试，用于真实验证“不松鼠标越界关闭后反拉恢复”。
+
+- 2026-10-19：补 `/models` 非生成目录测试，并把 Agent 默认 20 / 上限 64、停止文案和运行时配置断言统一到“内部步骤”；全量后端 431 项通过。
+
+- 2026-10-19：平台 MCP 门禁测试新增标准输入隔离与超时诊断守卫，防止测试进程占住 MCP stdio 会话。
+
+- 2026-10-19：新增工作台中栏 Agent 审计回归：流式请求创建 AgentRun，高风险 ToolCall 与真实 preview 随历史恢复，批准后只产生一次 Operation。
+- 2026-10-19：平台 MCP 契约覆盖 14 项工具，并验证页面交互仅接受 click/input/scroll、拒绝任意 evaluate 动作。
+- 2026-10-18：新增平台 MCP 验收：12 项控制面、低 Token 工作区摘要、危险写入确认、路径隔离与固定门禁白名单。
+- 2026-10-18：新增平台 Agent Run 验收：空书架创建作品、运行读回、高风险暂停、批准与拒绝零写入。
+
+- 2026-10-18 · 新增纯净重建命令目录回归：公共 Schema、单事务回滚、幂等、乐观并发、高风险审批与撤销。
+
+- 2026-09-15 · 补开放 Markdown 小节回归：蓝图、简报、人物统一 PUT/刷新/数据库投影，typed Agent proposal，迁移双向 upgrade/downgrade。
+
+- 2026-09-14 · 批次 36.1／36.2：SearXNG 原始 URL 回归与主人选择模式不被关键词覆写的后端回归均通过。
+
 - 2026-09-11 · 批次 35.34（D-59）：新增 `test_chat_command.py`（**7 例**，全套 **405 passed**，35.34 前 398）。① `test_a_command_row_is_persisted_with_role_command`：`/generate 1` 跑完，`GET /chat/messages` 里有一行 `role=="command"` 且 `command_state` 含 `command:"/generate"`。② `test_running_status_is_never_persisted`：流式中途读库，command 行**不存在**（`running` 只在内存）。③ `test_settled_content_overwrites_the_same_run_id`：同一 `run_id` 结算后 `content` 是结算文案、`command_state.status` 是 `"done"` 或 `"error"`，行数不增长（upsert 不破例）。④ `test_command_rows_are_excluded_from_model_context`：构造一段含 `command` 行的历史，`_history_messages` 输出里 `role=="command"` 计数 **0**。⑤ `test_a_second_run_for_the_same_chapter_upserts`：连续两次 `/generate 1`，command 行只有最新那一份。⑥ `test_downgrade_drops_the_column`：`downgrade` 后 `command_state` 列不存在，再 `upgrade` 回来。⑦ `test_command_state_default_is_empty_dict`：旧行（迁移前插入）`command_state` 读回 `{}`。
 
 - 2026-09-11 · 批次 30.7 第一条：`test_writing_context.py` **+34/−0**，三条新用例接在 `test_cast_character_is_core_and_bystander_is_fill` 之后，既有用例一条未删，全套 **400 passed**（35.29a 结案时 397）。按 TDD 先写用例再写实现——落笔时 `WritingContext` 还没有这个字段，三条都取不到值。① `test_brief_named_character_without_a_card_is_reported`：简报点名「林渊」（有卡）＋「白衣人」（无卡）→ `ctx.missing_characters == ["白衣人"]`，且 `manifest()` 里同键同值——后半句钉的是「**进了落库的那一份**」，只钉内存里的字段等于没钉，主人看到的是历史 run 的清单。② `test_fully_matched_cast_adds_nothing_to_the_manifest`：全命中 → 空表。这条是防「为了看得见而什么都报」的**反向**用例，它必须对 ① 那种变异不敏感（下面实测正是如此），否则它就在替实现背书。③ `test_terminal_report_names_the_unmatched_cast`：先量全命中那份报告里「未命中人物」**不出现**（不许多出一行空话），再把简报改成有未命中，重算后 `未命中人物：白衣人` 必须在。两半都在同一条用例里，是因为「多打一行」和「少打一行」是同一个病的两面。 **反向变异（D-33）实测**：把 `build_writing_context` 里那行差集临时换成 `missing_characters = []` → ①红在 `test_writing_context.py:181`、③红在 `:204`（报告里那句随之消失），②**照绿**——它量的是「不多报」，本来就不该被「少报」的变异打死，这是设计而非漏网；还原后本文件 **21 passed**，`git diff --numstat` 回到 **+19/−5** 与探针串 `grep -c` 归零，两处一起证明变异没在树里留渣。**没有**为这条改提示词：注入内容归 collector 一家（D-04），模型侧看到的仍是它本来就看得到的那些卡。
@@ -22,7 +50,8 @@
 
 - 2026-09-10 · 批次 35.5（D-47）：`test_character_files.py` 新增 2 例（该文件本轮 `git diff --numstat` **+65/−0**，既有断言一条未删），全套 **377 passed**（35.2 结案时 375）。① `test_the_invented_characters_alias_resolves_to_the_create_template`：判据首句的形状——模型自己拼出来的三个写法 `settings/characters.md` / `characters.md` / `settings/characters` 逐个 GET 都 **200** 且 `path` 归一到 `settings/characters/new.md`，再经这条别名 PUT 一次建出苏黎、回报的是**数字档案路径**（真源在 D-02：号由书分配）。反向闸一并钉住：`settings/characters/9999.md` 仍 404。② `test_an_applied_character_create_fence_is_not_offered_again`：主人踩到的第二次点击——同一份建卡围栏在人物已落库后重抽，卡的 `path` 必须改指他的档案且 `text` 与档上文件一致（前端据此 `baseText === text` 收卡）；把「目标」改掉再抽仍是合法卡、PUT 200、`goals` 真的更新，别名折叠没把编辑类写入一起挡掉。
 
-- 2026-09-10 · 批次 35.2（D-44）：`test_documents.py` 新增 2 例（`git diff --numstat` 本轮该文件 +78/−0，既有断言一条未删），全套 **375 passed**（35.1 结案时 373）。① `test_two_arcs_appended_in_one_proposal_do_not_land_on_the_same_key`：主人那条 B 层围栏自己改道出来的 C 层卡实测死在这一步——`弧 N` 是行的全局自增 id，而 `_resolve_ids` 按「本书最大 id + 1」猜号，本书 id 落后于全局时猜出的号会撞上本次提案刚插入的那一行。先往另一本书塞一条弧把全局计数抬高，再一份「重写两条 + `弧 ?` 追加两条」的围栏，断言 200、`## 弧 ` 为 4、101 与 141 两个起始章都在。② `test_a_range_heading_in_the_b_layer_becomes_an_appliable_c_layer_card`：判据原句的形状——`## 第 44-60 章 弧 3：门钥之谜` 与 `## 第 61-120 章 弧 9-13：永恒的相对` 经 `extract_proposals` 从 B 层围栏抽走，断言两张卡都 `valid`、toc 侧不再有区间标题而 42/43 两条记录一寸未动、arcs 侧标题里的 `弧 3：` 与跨号 `弧 9-13：` 前缀整段去掉、起止章取自标题区间，两张卡各 PUT 一次都 200。**第二轮**是主人真机踩到的那一步：以落库后的 `toc.md`/`arcs.md` 作当前档把同一份围栏再抽一次，arcs 那张卡的 `text` 必须与档上文件一字不差（前端据此 `baseText === text` 收卡）、第二次 PUT 仍 200、`## 弧 ` 计数不增长——旧代码在这里是 9 条变 16 条。夹具与 35.1 那 4 例保持原样。
+- 2026-10-19：新增百炼兼容单张生图请求/响应、安全错误脱敏、image 环境变量、连接测试代理隔离与 MCP 常驻启动回归；定向 29 项通过。
+- 2026-09-10 · 批次 35.2（D-44）：`test_documents.py` 新增 2 例（`git diff --numstat` 本轮该文件 +78/−0，既有断言一条未删），全套 **375 passed**（35.1 结案时 373）。① `test_two_arcs_appended_in_one_proposal_do_not_land_on_the_same_key`：主人那条 B 层围栏自己改道出来的 C 层卡实测死在这一步——`弧 N` 是行的全局自增 id，而 `_resolve_ids` 按「本书最大 id + 1」猜号，本书 id 落后于全局时猜出的号会撞上本次提案刚插入的那一行。先往另一本书塞一条弧把全局计数抬高，再一份「重写两条 + `弧 ?` 追加两条」的围栏，断言 200、`## 弧 ` 为 4、101 与 141 两个起始章都在。② `test_a_range_heading_in_the_b_layer_becomes_an_appliable_c_layer card`：判据原句的形状——`## 第 44-60 章 弧 3：门钥之谜` 与 `## 第 61-120 章 弧 9-13：永恒的相对` 经 `extract_proposals` 从 B 层围栏抽走，断言两张卡都 `valid`、toc 侧不再有区间标题而 42/43 两条记录一寸未动、arcs 侧标题里的 `弧 3：` 与跨号 `弧 9-13：` 前缀整段去掉、起止章取自标题区间，两张卡各 PUT 一次都 200。**第二轮**是主人真机踩到的那一步：以落库后的 `toc.md`/`arcs.md` 作当前档把同一份围栏再抽一次，arcs 那张卡的 `text` 必须与档上文件一字不差（前端据此收卡）、第二次 PUT 仍 200、`## 弧 ` 计数不增长——旧代码在这里是 9 条变 16 条。夹具与 35.1 那 4 例保持原样。
 
 - 2026-09-10 · 批次 35.1（D-43）：`test_documents.py` 新增 4 例与一个共用夹具 `_two_arc_novel`——不用 `seed_novel`，因为它那条弧的 `冲突`/`收束` 是空串，「省略不等于清空」就没有可断言的值；改为自己建一本书、两条弧各带不同的六个字段。① `test_a_regenerated_arc_book_inherits_the_bullets_the_model_omitted`：判据原句的形状（整本重写、每条只留「目标」），断言 200 且六个字段回到文件原值。② `test_an_appended_arc_no_longer_costs_the_existing_ones_their_inheritance`：主人真机那张红卡的形状（重写两条只改目标 + `弧 ?` 追加一条），断言三条记录、已有两条主键与起止章不动、只有可选字段是系统给的默认值。③ `test_dropping_an_arc_is_still_refused_after_the_inheritance_fix`：反向闸——少一条仍是 422，档上两条一条没少。④ `test_an_applied_arc_fence_does_not_come_back_red_on_reload`：判据末条「刷新后红字 0」，同一份围栏落库后经 `extract_proposals` 重读，卡的 `text` 必须与文件一字不差（前端据此收卡）。既有断言一条未删。全套 373 passed。
 
@@ -44,5 +73,10 @@
 - 2026-09-09 · 更新写作上下文回归：锁定 B/C ±20、上一章简报与完整正文、其他章节正文排除及世界观相关性。
 - 2026-09-09 · 更新测试目录说明；文档不再保存固定测试总数。
 - 2026-09-08 · 增加双引擎契约、网关工具调用分片、预算/用量与工具失败测试。
+- 2026-09-15 · U-01：补对话 draft 围栏分片预览回归，断言增量快照先于 proposal/done 且数据库正文仍未提前写入。
 - 2026-09-07 · 增加目录治理、章号重排、恢复范围、对话线程与 reasoning 测试。
 - 2026-09-03 · 增加文件写口、投影语法和统一上下文回归。
+- 2026-09-15 · 新增 `test_workflows.py`：CRUD/默认作用域、非法字段与非法边、缺失作品和重名校验。
+- 2026-09-16 · 写作上下文增加默认工作流实质注入、正文尾部截取和无默认工作流回归测试。
+- 2026-09-16：补世界观与伏笔自定义小节的记录内 round-trip 测试；相关 66 条文档/上下文测试通过。
+- 2026-09-16 · U-05：`test_reviews.py` 先钉 suggestion 结构被旧 schema 拒绝，再覆盖唯一正文 quote 的上下文锚点及作者更新 replacement/status 的 PATCH；定向 7 条通过。

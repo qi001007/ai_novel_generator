@@ -34,6 +34,14 @@ function stubFetch() {
             style_constraints: "",
             cover_image: "",
           },
+          {
+            id: 2,
+            title: "第二部作品",
+            description: "",
+            target_chapters: 0,
+            style_constraints: "",
+            cover_image: "",
+          },
         ]);
       }
       if (url.includes("/llm/status")) {
@@ -82,7 +90,26 @@ function stubFetch() {
             layer: "设定",
             label: "沈曜 档案",
           },
+          {
+            path: "settings/worldview.md",
+            kind: "worldview",
+            layer: "设定",
+            label: "世界观",
+          },
         ]);
+      }
+      if (url.endsWith("/api/novels/1/settings")) {
+        return json([{
+          id: 12,
+          name: "星渊世界",
+          category: "规则",
+          content: "碑文只在雪夜显现",
+          current_state: "",
+          is_confirmed: true,
+          source_chapter: 42,
+          updated_at: "2026-10-20T01:00:00Z",
+          custom_sections: [],
+        }]);
       }
       if (url.includes("/files/settings/characters/1.md")) {
         return json({
@@ -93,6 +120,17 @@ function stubFetch() {
           text: "# 沈曜（设定库 · 人物）\n\n## 身份\n观星少年\n",
           ai_fields: ["identity"],
           revision: "e20b3a6e5af8",
+        });
+      }
+      if (url.includes("/files/settings/worldview.md")) {
+        return json({
+          path: "settings/worldview.md",
+          kind: "worldview",
+          layer: "设定",
+          label: "世界观",
+          text: "# 星渊世界\n\n## 规则\n\n碑文只在雪夜显现\n",
+          ai_fields: ["setting"],
+          revision: "worldview-1",
         });
       }
       if (url.includes("/files/blueprint.md")) {
@@ -141,6 +179,17 @@ describe("workbench layout", () => {
     localStorage.clear();
     useFiles.getState().reset();
     vi.unstubAllGlobals();
+  });
+
+  it("uses a themed project menu and switches through the existing store action", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+    const switcher = screen.getByRole("button", { name: "切换作品" });
+    expect(switcher.getAttribute("aria-expanded")).toBe("false");
+    await user.click(switcher);
+    const menu = screen.getByRole("menu", { name: "作品列表" });
+    await user.click(within(menu).getByRole("menuitem", { name: "第二部作品" }));
+    await waitFor(() => expect(useWorkbench.getState().selectedNovelId).toBe(2));
   });
 
   /* 第二十六批批注 6：树里那个「删除」他点了三轮，今天真的能删。
@@ -453,7 +502,7 @@ describe("workbench layout", () => {
     // 站内去 /settings 再回来，或者干脆 F5：这一页整个重挂
     const second = await openWorkbench();
     await waitFor(() => expect(document.querySelector(".file-editor")).toBeTruthy());
-    expect(document.querySelector(".editor-body textarea")).toBeNull();
+    expect(document.querySelector(".editor-cm .cm-editor")).toBeNull();
     expect(screen.getByRole("tab", { name: /blueprint/ })).toBeTruthy();
     expect(JSON.parse(localStorage.getItem("workbench.stage") ?? "{}")["1"]).toMatchObject({
       view: "files",
@@ -476,7 +525,7 @@ describe("workbench layout", () => {
     );
     await openWorkbench("/novels/1?chapter=70");
     // ?chapter= 说的是「给我看正文面」，它大于上次离开时的那一面
-    await waitFor(() => expect(document.querySelector(".editor-body textarea")).toBeTruthy());
+    await waitFor(() => expect(document.querySelector(".editor-cm .cm-editor")).toBeTruthy());
     expect(document.querySelector(".file-editor")).toBeNull();
   });
 
@@ -576,7 +625,7 @@ describe("workbench layout", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     // and the surface really is the source, so the label is not lying about the future
     expect(document.querySelector(".file-cm .cm-editor")).toBeTruthy();
-    expect(document.querySelector(".editor-body textarea")).toBeNull();
+    expect(document.querySelector(".editor-cm .cm-editor")).toBeNull();
   });
 
   it("gives a closed column back from the same boundary, and not from the same direction", async () => {
@@ -670,8 +719,26 @@ describe("workbench layout", () => {
 
     await user.click(file);
     await waitFor(() => {
-      expect(screen.getByText("settings/characters/1.md")).toBeTruthy();
+      expect(screen.getByRole("button", { name: "打开 settings/characters/1.md" })).toBeTruthy();
     });
     expect(useFiles.getState().active).toBe("settings/characters/1.md");
+  });
+
+  it("opens 世界观 as its own rendered summary instead of the map page", async () => {
+    const user = userEvent.setup();
+    await openWorkbench();
+
+    await user.click(screen.getByRole("button", { name: "世界观" }));
+
+    const panel = await screen.findByRole("region", { name: "世界观资料库" });
+    expect(await within(panel).findByRole("heading", { name: "星渊世界" })).toBeTruthy();
+    const detail = panel.querySelector(".worldview-detail");
+    expect(detail).toBeTruthy();
+    expect(await within(detail as HTMLElement).findByText("碑文只在雪夜显现")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "世界观地图" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "worldview.md" }));
+    await waitFor(() => expect(document.querySelector(".file-editor")).toBeTruthy());
+    expect(useFiles.getState().active).toBe("settings/worldview.md");
   });
 });

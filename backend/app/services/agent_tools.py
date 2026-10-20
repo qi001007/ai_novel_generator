@@ -10,19 +10,29 @@ from __future__ import annotations
 
 import re
 import json
+import os
 import time
+from html import unescape
+from pathlib import Path
 from threading import Lock
 from collections.abc import Callable
 from functools import partial
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 import httpx
+from dotenv import load_dotenv
 from pydantic_ai import RunContext
 from pydantic_ai import Tool as PydanticTool
 from pydantic_ai.exceptions import ToolFailed
-from sqlmodel import Session
+from fastapi import HTTPException
+from pydantic import ValidationError
+from sqlmodel import Session, select
 
-from app.services.agent import Tool, ToolCall, ToolError, ToolRegistry
+from app.application import functions as _registered_functions  # noqa: F401
+from app.core.commands import registry as command_registry
+from app.models import Document, Fact, KnowledgeEntry, Novel, OutlineNode
+from app.services.agent import AgentStep, Tool, ToolCall, ToolError, ToolRegistry, ToolResult
 from app.services.documents import DocumentError, current_text_reader, list_files, read_file
 from app.services.markdown_doc import grammar_text
 from app.services.proposal_actions import ACTIONS, DIAG_PREFIX, run_action
@@ -30,6 +40,15 @@ from app.services.proposal_actions import ACTIONS, DIAG_PREFIX, run_action
 WIKI_ENDPOINT = "https://zh.wikipedia.org/w/api.php"
 WIKIDATA_ENDPOINT = "https://www.wikidata.org/w/api.php"
 WIKI_HEADERS = {"User-Agent": "novel-generator/0.1 (writing research lookup)"}
+SEARCH_DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(SEARCH_DOTENV_PATH)
+BING_ENDPOINT = "https://www.bing.com/search"
+DUCKDUCKGO_ENDPOINT = "https://html.duckduckgo.com/html/"
+BRAVE_ENDPOINT = "https://search.brave.com/search"
+YAHOO_ENDPOINT = "https://search.yahoo.com/search"
+MOJEEK_ENDPOINT = "https://www.mojeek.com/search"
+SEARXNG_ENDPOINT = os.getenv("NOVEL_SEARCH_ENDPOINT", "https://searx.be/search").rstrip("/")
+SEARCH_PROXY = os.getenv("NOVEL_SEARCH_PROXY", "").strip() or None
 SEARCH_RESULTS = 5
 SEARCH_TIMEOUT = 15.0
 SEARCH_ATTEMPTS = 2
@@ -38,6 +57,27 @@ SEARCH_ATTEMPTS = 2
 CurrentText = Callable[[str], str | None]
 
 _TAG = re.compile(r"<[^>]+>")
+_BING_RESULT = re.compile(r'<li[^>]+class="[^"]*b_algo[^"]*"[\s\S]*?<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>[\s\S]*?(?:<p[^>]*>([\s\S]*?)</p>)?', re.I)
+_DUCK_RESULT = re.compile(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)</a>[\s\S]*?<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)</a>', re.I)
+
+
+def _html_results(source: str, html: str) -> list[dict[str, str]]:
+    pattern = _BING_RESULT if source == "Bing" else _DUCK_RESULT
+    results: list[dict[str, str]] = []
+    for raw_url, title, snippet in pattern.findall(html):
+        url = unescape(raw_url)
+        if url.startswith("//"):
+            url = f"https:{url}"
+        parsed = urlparse(url)
+        if source == "DuckDuckGo" and parsed.hostname == "duckduckgo.com" and parsed.path == "/l/":
+            url = parse_qs(parsed.query).get("uddg", [""])[0]
+        # An ad-tracking redirect is not a source the model may cite.
+        if not url.startswith("http") or urlparse(url).hostname in {"www.bing.com", "bing.com"}:
+            continue
+        clean_title = _TAG.sub("", title).strip()
+        if clean_title:
+            results.append({"url": url, "title": clean_title, "content": _TAG.sub("", snippet or "").strip()})
+    return results
 
 
 # --- the five proposal tools ------------------------------------------------
@@ -96,10 +136,48 @@ def _proposal_tools(current: CurrentText | None = None) -> list[Tool]:
 
 def _registry_tools(
     session_factory: Callable[[], Session],
-    novel_id: int,
+    novel_id: int | None,
     search_transport: httpx.BaseTransport | None = None,
 ) -> list[Tool]:
     """`search_transport` exists so a test can answer without touching the network."""
+    def novels() -> str:
+        with session_factory() as session:
+            rows = session.exec(select(Novel).where(Novel.archived == False).order_by(Novel.updated_at.desc())).all()  # noqa: E712
+        return json.dumps(
+            {
+                "status": "success",
+                "summary": f"读取到 {len(rows)} 部作品",
+                "next_actions": ["需要操作已有作品时读取它的 workspace"],
+                "artifacts": {"novels": [row.model_dump(mode="json") for row in rows]},
+            },
+            ensure_ascii=False,
+        )
+
+    def workspace(target_novel_id: int) -> str:
+        with session_factory() as session:
+            novel = session.get(Novel, target_novel_id)
+            if novel is None or novel.archived:
+                raise ToolError("作品不存在或已归档")
+            outline = session.exec(select(OutlineNode).where(OutlineNode.novel_id == target_novel_id, OutlineNode.status != "retired").order_by(OutlineNode.position)).all()
+            documents = session.exec(select(Document).where(Document.novel_id == target_novel_id, Document.status != "retired").order_by(Document.path)).all()
+            knowledge = session.exec(select(KnowledgeEntry).where(KnowledgeEntry.novel_id == target_novel_id, KnowledgeEntry.status != "retired").order_by(KnowledgeEntry.kind, KnowledgeEntry.name)).all()
+            facts = session.exec(select(Fact).where(Fact.novel_id == target_novel_id, Fact.status != "retired").order_by(Fact.id)).all()
+        return json.dumps(
+            {
+                "status": "success",
+                "summary": f"已读取《{novel.title}》工作区",
+                "next_actions": ["根据主人指令选择具体平台函数"],
+                "artifacts": {
+                    "novel": novel.model_dump(mode="json"),
+                    "outline": [row.model_dump(mode="json") for row in outline],
+                    "documents": [row.model_dump(mode="json") for row in documents],
+                    "knowledge": [row.model_dump(mode="json") for row in knowledge],
+                    "facts": [row.model_dump(mode="json") for row in facts],
+                },
+            },
+            ensure_ascii=False,
+        )
+
     def files() -> str:
         """Every planning and setting document this novel has."""
         with session_factory() as session:
@@ -128,20 +206,29 @@ def _registry_tools(
             return current_text_reader(session, novel_id)(path)
 
     def search(query: str) -> str:
-        """Public reference lookup over Wikipedia and Wikidata, without write access."""
+        """Read-only lookup with ordered public-search failover and knowledge-base fallbacks."""
         needle = str(query).strip()
         if not needle:
             raise ToolError("web_search 需要 query")
-        sources = (("中文维基百科", WIKI_ENDPOINT), ("Wikidata", WIKIDATA_ENDPOINT))
+        public_sources = (
+            ("Bing", BING_ENDPOINT), ("DuckDuckGo", DUCKDUCKGO_ENDPOINT),
+            ("Brave", BRAVE_ENDPOINT), ("Yahoo", YAHOO_ENDPOINT), ("Mojeek", MOJEEK_ENDPOINT),
+            ("SearXNG", SEARXNG_ENDPOINT), ("中文维基百科", WIKI_ENDPOINT), ("Wikidata", WIKIDATA_ENDPOINT),
+        )
+        # Tests inject a transport for the old JSON providers; live calls exercise the
+        # public-page fallback chain above without ever reaching the test network.
+        sources = public_sources if search_transport is None else (("SearXNG", SEARXNG_ENDPOINT), ("中文维基百科", WIKI_ENDPOINT), ("Wikidata", WIKIDATA_ENDPOINT))
         entries: list[tuple[str, str, str, str]] = []
         failures: list[str] = []
-        with httpx.Client(timeout=SEARCH_TIMEOUT, headers=WIKI_HEADERS, transport=search_transport) as client:
+        with httpx.Client(timeout=SEARCH_TIMEOUT, headers={**WIKI_HEADERS, "Accept-Language": "zh-CN,zh;q=0.9"}, transport=search_transport, proxy=None if search_transport else SEARCH_PROXY, follow_redirects=True) as client:
             for source, endpoint in sources:
                 response = None
                 cause: Exception | None = None
                 for attempt in range(SEARCH_ATTEMPTS):
                     try:
-                        params = ({
+                        params = ({"q": needle} if source in {"Bing", "DuckDuckGo", "Brave", "Mojeek"} else {"p": needle} if source == "Yahoo" else {
+                            "q": needle, "format": "json", "language": "zh-CN", "categories": "general",
+                        } if source == "SearXNG" else {
                             "action": "query", "list": "search", "srsearch": needle,
                             "srlimit": SEARCH_RESULTS, "srprop": "snippet", "format": "json",
                         } if source == "中文维基百科" else {
@@ -159,9 +246,14 @@ def _registry_tools(
                     failures.append(f"{source}（{type(cause).__name__ if cause else response.status_code}）")
                     continue
                 try:
-                    payload = response.json()
-                    hits = (payload.get("query", {}).get("search", [])
-                            if source == "中文维基百科" else payload.get("search", [])) or []
+                    payload = None if source in {"Bing", "DuckDuckGo", "Brave", "Yahoo", "Mojeek"} else response.json()
+                    hits = (
+                        _html_results(source, response.text) if source in {"Bing", "DuckDuckGo"} else
+                        [] if source in {"Brave", "Yahoo", "Mojeek"} else
+                        payload.get("results", []) if source == "SearXNG" else
+                        payload.get("query", {}).get("search", []) if source == "中文维基百科" else
+                        payload.get("search", [])
+                    ) or []
                 except (TypeError, ValueError):
                     failures.append(f"{source}（响应格式错误）")
                     continue
@@ -169,12 +261,18 @@ def _registry_tools(
                     title = str(hit.get("title") or hit.get("label") or "").strip()
                     if not title:
                         continue
-                    snippet = _TAG.sub("", str(hit.get("snippet") or hit.get("description") or ""))
+                    snippet = _TAG.sub("", str(hit.get("content") or hit.get("snippet") or hit.get("description") or ""))
                     snippet = snippet.replace("&quot;", chr(34)).strip()
                     pageid = hit.get("pageid")
-                    url = (f"https://zh.wikipedia.org/?curid={pageid}" if pageid else
+                    url = (str(hit.get("url") or "") if source in {"Bing", "DuckDuckGo", "SearXNG"} else f"https://zh.wikipedia.org/?curid={pageid}" if pageid else
                            str(hit.get("concepturi") or f"https://www.wikidata.org/wiki/{hit.get('id', '')}"))
+                    if not url:
+                        continue
                     entries.append((title.casefold(), source, title, f"{snippet}\n  {url}"))
+                # A usable source ends the fallthrough chain. The next public page is only
+                # contacted when this one failed or produced no parseable result.
+                if entries and search_transport is None:
+                    break
         unique: list[tuple[str, str, str, str]] = []
         seen_titles: set[str] = set()
         for entry in entries:
@@ -186,12 +284,148 @@ def _registry_tools(
                 raise ToolError(f"联网查证失败：{'；'.join(failures)}")
             suffix = f"（{'; '.join(failures)}）" if failures else ""
             return f"没有查到与「{needle}」相关的公开条目{suffix}。需要主人补充资料。"
-        lines = [f"「{needle}」的公开资料（已合并并去重）："]
+        lines = [f"「{needle}」的公开资料（公共搜索页按 Bing → DuckDuckGo → Brave → Yahoo → Mojeek → SearXNG 的顺序降级，已合并并去重）："]
         lines.extend(f"- [{source}] {title}：{detail}" for _, source, title, detail in unique)
         if failures:
             lines.append(f"\n部分来源不可用：{'；'.join(failures)}。以上结果仍可供参考。")
         return "\n\n".join(lines)
 
+    def function_catalog() -> str:
+        """The same callable catalogue used by page buttons and Workflow nodes."""
+        functions = command_registry.list()
+        return json.dumps({
+            "status": "success",
+            "summary": f"平台当前提供 {len(functions)} 个函数",
+            "next_actions": ["选择最具体的函数；写入前先核对参数 Schema"],
+            "artifacts": {"functions": functions},
+        }, ensure_ascii=False)
+
+    def preview_command(name: str, payload: str) -> str:
+        """Validate one platform command and return its real diff without writing."""
+        try:
+            decoded = json.loads(payload or "{}")
+            if not isinstance(decoded, dict):
+                raise ToolError("payload 必须是 JSON 对象")
+            with session_factory() as session:
+                result = command_registry.preview(session, name.strip(), decoded)
+            return json.dumps({
+                "status": "success",
+                "summary": f"已预览 {name.strip()}，尚未写入",
+                "next_actions": ["低风险操作可执行；高风险操作必须等待主人确认"],
+                "artifacts": {"preview": result},
+                "preview": result,
+            }, ensure_ascii=False)
+        except (ValueError, ValidationError, HTTPException) as cause:
+            detail = getattr(cause, "detail", None) or str(cause)
+            raise ToolError(f"命令预览失败：{detail}") from cause
+
+    def execute_command(name: str, payload: str, idempotency_key: str) -> str:
+        """Execute only low-risk commands; high-risk changes stay deferred for UI approval."""
+        try:
+            decoded = json.loads(payload or "{}")
+            if not isinstance(decoded, dict):
+                raise ToolError("payload 必须是 JSON 对象")
+            with session_factory() as session:
+                preview = command_registry.preview(session, name.strip(), decoded)
+                if preview["requires_confirmation"]:
+                    return json.dumps(
+                        {
+                            "status": "warning",
+                            "state": "confirmation_required",
+                            "summary": f"{name.strip()} 是高风险操作，尚未写入",
+                            "next_actions": ["向主人展示 preview 差异并等待批准或拒绝"],
+                            "artifacts": {},
+                            "command": name.strip(),
+                            "preview": preview,
+                        },
+                        ensure_ascii=False,
+                    )
+                operation = command_registry.execute(
+                    session,
+                    name.strip(),
+                    decoded,
+                    idempotency_key=idempotency_key.strip(),
+                    actor="agent",
+                    approved=False,
+                )
+            return json.dumps(
+                {
+                    "status": "success",
+                    "state": "executed",
+                    "summary": f"已执行 {name.strip()}",
+                    "next_actions": ["读取相关 workspace 确认页面资产已变化"],
+                    "artifacts": {"operation_id": operation.id, "novel_id": operation.novel_id},
+                    "operation": operation.model_dump(mode="json"),
+                },
+                ensure_ascii=False,
+            )
+        except (ValueError, ValidationError, HTTPException) as cause:
+            detail = getattr(cause, "detail", None) or str(cause)
+            raise ToolError(f"命令执行失败：{detail}") from cause
+
+    common_tools = [
+        Tool(
+            name="list_novels",
+            description="列出未归档作品及其 ID；在启动页或目标作品不明确时先调用",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=novels,
+        ),
+        Tool(
+            name="read_workspace",
+            description="按 novel_id 读取新核心中的作品、结构、文档、知识与事实",
+            parameters={
+                "type": "object",
+                "properties": {"target_novel_id": {"type": "integer", "description": "作品 ID"}},
+                "required": ["target_novel_id"],
+            },
+            handler=workspace,
+        ),
+        Tool(
+            name="web_search",
+            description="查平台以外的公开资料，返回标题、摘要和原始 URL；只读，不要用记忆冒充查证",
+            parameters={
+                "type": "object",
+                "properties": {"query": {"type": "string", "description": "检索词"}},
+                "required": ["query"],
+            },
+            handler=search,
+        ),
+        Tool(
+            name="list_platform_functions",
+            description="读取页面、Agent 与 Workflow 共用的平台函数目录，包括参数 Schema、风险、预览和撤销能力",
+            parameters={"type": "object", "properties": {}, "required": []},
+            handler=function_catalog,
+        ),
+        Tool(
+            name="preview_platform_command",
+            description="预览一个平台函数的影响范围与差异，不写入数据；高风险操作必须先调用它",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "函数目录中的命令名，如 document.update"},
+                    "payload": {"type": "string", "description": "命令输入的 JSON 对象字符串"},
+                },
+                "required": ["name", "payload"],
+            },
+            handler=preview_command,
+        ),
+        Tool(
+            name="execute_platform_command",
+            description="通过统一命令处理器执行低风险平台函数并留下 Operation；高风险命令只返回待确认差异",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "函数目录中的命令名"},
+                    "payload": {"type": "string", "description": "命令输入的 JSON 对象字符串"},
+                    "idempotency_key": {"type": "string", "description": "本次意图的唯一幂等键"},
+                },
+                "required": ["name", "payload", "idempotency_key"],
+            },
+            handler=execute_command,
+        ),
+    ]
+    if novel_id is None:
+        return common_tools
     return _proposal_tools(current_text) + [
         Tool(
             name="list_files",
@@ -209,20 +443,14 @@ def _registry_tools(
             },
             handler=read,
         ),
-        Tool(
-            name="web_search",
-            description="查本书以外的公开资料（中文维基百科 + Wikidata），返回标题、摘要和 URL；来源失败会重试，不要用记忆冒充查证",
-            parameters={
-                "type": "object",
-                "properties": {"query": {"type": "string", "description": "检索词"}},
-                "required": ["query"],
-            },
-            handler=search,
-        ),
-    ]
+    ] + common_tools
 
 
-def framework_tools_from_registry(registry: ToolRegistry, timings: dict[str, int]) -> list[PydanticTool]:
+def framework_tools_from_registry(
+    registry: ToolRegistry,
+    timings: dict[str, int],
+    step_sink: list[AgentStep] | None = None,
+) -> list[PydanticTool]:
     """Hand the same registry to the framework instead of writing the tools twice.
 
     The signature is generated because that is the only way the framework gets a schema to
@@ -253,6 +481,7 @@ def framework_tools_from_registry(registry: ToolRegistry, timings: dict[str, int
             name=tool.name,
             seen=seen,
             seen_lock=seen_lock,
+            step_sink=step_sink,
         )
         parameters = "ctx: _RunContext" + ((", " + declared) if declared else "")
         arguments = "ctx" + ((", " + forwarded) if forwarded else "")
@@ -275,19 +504,37 @@ def _invoke_registry_tool(
     name: str,
     seen: set[tuple[str, str]],
     seen_lock: Lock,
+    step_sink: list[AgentStep] | None,
     **arguments: Any,
 ) -> str:
     """One tool call, run through the registry, timed while it ran."""
     started = time.perf_counter()
-    try:
-        signature = (name, json.dumps(arguments, ensure_ascii=False, sort_keys=True))
+    call = ToolCall(name=name, arguments=arguments)
+    signature = (name, json.dumps(arguments, ensure_ascii=False, sort_keys=True))
+    with seen_lock:
+        duplicate = signature in seen
+        seen.add(signature)
+    result = (
+        ToolResult(
+            call=call,
+            content="这份内容本轮已经给过你了，不必再查。请基于已有资料直接回答。",
+            ok=True,
+        )
+        if duplicate
+        else registry.run(call)
+    )
+    elapsed = round((time.perf_counter() - started) * 1000)
+    timings[ctx.tool_call_id] = elapsed
+    if step_sink is not None:
         with seen_lock:
-            if signature in seen:
-                return "这份内容本轮已经给过你了，不必再查。请基于已有资料直接回答。"
-            seen.add(signature)
-        result = registry.run(ToolCall(name=name, arguments=arguments))
-    finally:
-        timings[ctx.tool_call_id] = round((time.perf_counter() - started) * 1000)
+            step_sink.append(
+                AgentStep(
+                    index=len(step_sink) + 1,
+                    call=call,
+                    result=result,
+                    ms=elapsed,
+                )
+            )
     if not result.ok:
         raise ToolFailed(result.content)
     return result.content
@@ -295,7 +542,7 @@ def _invoke_registry_tool(
 
 def build_registry(
     session_factory: Callable[[], Session],
-    novel_id: int,
+    novel_id: int | None,
     *,
     search_transport: httpx.BaseTransport | None = None,
 ) -> ToolRegistry:

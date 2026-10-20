@@ -333,7 +333,12 @@ def validate_structure(path: str, text: str, *, current_text: str | None = None)
     fields = _FIELDS_BY_KIND[kind]
     for (_, record), label in zip(records, labels):
         try:
-            _require_keys(record, fields, label)
+            _require_keys(
+                record,
+                fields,
+                label,
+                allow_custom_sections=kind in {"blueprint", "brief", "character", "foreshadow", "worldview"},
+            )
         except DocumentError as cause:
             return cause.detail
 
@@ -455,8 +460,12 @@ def _ensure_chapter(
 # --- rendering ------------------------------------------------------------
 
 
-def _blueprint_model(bp: PlanningBlueprint | None) -> dict[str, str]:
-    return {name: _block(getattr(bp, name, "") if bp else "") for name in BLUEPRINT_FIELDS}
+def _blueprint_model(bp: PlanningBlueprint | None) -> dict[str, Any]:
+    model: dict[str, Any] = {
+        name: _block(getattr(bp, name, "") if bp else "") for name in BLUEPRINT_FIELDS
+    }
+    model["custom_sections"] = list(getattr(bp, "custom_sections", []) or []) if bp else []
+    return model
 
 
 def _toc_model(rows: list[TocEntry]) -> list[dict[str, Any]]:
@@ -500,6 +509,7 @@ def _brief_model(brief: ChapterBrief | None, chapter_number: int) -> dict[str, A
         "hook": _block(brief.hook if brief else ""),
         "required_facts": list(brief.required_facts) if brief else [],
         "status": brief.status if brief else "draft",
+        "custom_sections": list(getattr(brief, "custom_sections", []) or []) if brief else [],
     }
 
 
@@ -531,6 +541,7 @@ def _foreshadow_model(rows: list[Foreshadow]) -> list[dict[str, Any]]:
             "payoff_chapter": row.payoff_chapter,
             "status": row.status,
             "content": _block(row.content),
+            "custom_sections": list(getattr(row, "custom_sections", []) or []),
         }
         for row in rows
     ]
@@ -546,6 +557,7 @@ def _worldview_model(rows: list[Setting]) -> list[dict[str, Any]]:
             "source_chapter": row.source_chapter,
             "current_state": _block(row.current_state),
             "content": _block(row.content),
+            "custom_sections": list(getattr(row, "custom_sections", []) or []),
         }
         for row in rows
     ]
@@ -564,6 +576,7 @@ def _character_model(row: Character) -> dict[str, Any]:
         "goals": row.goals,
         "behavior_constraints": row.behavior_constraints,
         "current_status": row.current_status,
+        "custom_sections": list(getattr(row, "custom_sections", []) or []),
     }
 
 
@@ -682,11 +695,20 @@ def read_file(session: Session, novel_id: int, path: str) -> FileDoc:
 # --- validation helpers ---------------------------------------------------
 
 
-def _require_keys(mapping: Any, expected: tuple[str, ...], label: str) -> dict[str, Any]:
+def _require_keys(
+    mapping: Any,
+    expected: tuple[str, ...],
+    label: str,
+    *,
+    allow_custom_sections: bool = False,
+) -> dict[str, Any]:
     if not isinstance(mapping, dict):
         raise DocumentError(f"{label} 必须是键值映射")
     missing = [name for name in expected if name not in mapping]
-    extra = [name for name in mapping if name not in expected]
+    allowed = set(expected)
+    if allow_custom_sections:
+        allowed.add("custom_sections")
+    extra = [name for name in mapping if name not in allowed]
     if missing or extra:
         parts = []
         if missing:
@@ -695,6 +717,31 @@ def _require_keys(mapping: Any, expected: tuple[str, ...], label: str) -> dict[s
             parts.append(f"多出 {', '.join(extra)}")
         raise DocumentError(f"{label} 的键名是结构标识，不可增删改名：" + "；".join(parts))
     return mapping
+
+
+def _custom_sections(value: Any, label: str) -> list[dict[str, str]]:
+    """Validate the open Markdown headings before putting them in a JSON column."""
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise DocumentError(f"{label} 的 custom_sections 必须是数组")
+    result: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, section in enumerate(value, start=1):
+        if not isinstance(section, dict):
+            raise DocumentError(f"{label} 的自定义小节第 {index} 项必须是对象")
+        name = section.get("label")
+        content = section.get("content", "")
+        if not isinstance(name, str) or not name.strip():
+            raise DocumentError(f"{label} 的自定义小节第 {index} 项标题不能为空")
+        if not isinstance(content, str):
+            raise DocumentError(f"{label} 的自定义小节「{name}" + "」正文必须是文本")
+        name = name.strip()
+        if name in seen:
+            raise DocumentError(f"{label} 的自定义小节「{name}」不能重复")
+        seen.add(name)
+        result.append({"label": name, "content": content.strip()})
+    return result
 
 
 def _resolve_ids(
@@ -1171,8 +1218,9 @@ def arc_proposal_from_toc_ranges(toc_text: str, current_arcs_text: str | None) -
 def _write_blueprint(
     session: Session, novel_id: int, parsed: Any, *, actor: str, number: int | None
 ) -> list[str]:
-    data = _require_keys(parsed, BLUEPRINT_FIELDS, BLUEPRINT_PATH)
+    data = _require_keys(parsed, BLUEPRINT_FIELDS, BLUEPRINT_PATH, allow_custom_sections=True)
     values = _coerce(data, BLUEPRINT_FIELDS, BLUEPRINT_PATH)
+    values["custom_sections"] = _custom_sections(data.get("custom_sections"), BLUEPRINT_PATH)
 
     bp = active_blueprint(session, novel_id)
     if bp is None:
@@ -1182,9 +1230,11 @@ def _write_blueprint(
 
     before = _blueprint_model(bp)
     changed = (
-        _require_ai_values(BLUEPRINT_AI_FIELDS, before, values, BLUEPRINT_PATH)
+        _require_ai_values(
+            BLUEPRINT_AI_FIELDS + ("custom_sections",), before, values, BLUEPRINT_PATH
+        )
         if actor == ACTOR_AI
-        else [name for name in BLUEPRINT_FIELDS if before[name] != values[name]]
+        else [name for name in (*BLUEPRINT_FIELDS, "custom_sections") if before[name] != values[name]]
     )
     for name in changed:
         setattr(bp, name, values[name])
@@ -1369,8 +1419,9 @@ def _write_brief(
 ) -> list[str]:
     assert number is not None
     label = brief_path(number)
-    data = _require_keys(parsed, BRIEF_FIELDS, label)
+    data = _require_keys(parsed, BRIEF_FIELDS, label, allow_custom_sections=True)
     after = _coerce(data, BRIEF_FIELDS, label)
+    after["custom_sections"] = _custom_sections(data.get("custom_sections"), label)
 
     if after["chapter"] != number:
         raise DocumentError(f"{label} 的 chapter 必须等于文件名里的 {number}；改章号请新建文件")
@@ -1388,9 +1439,9 @@ def _write_brief(
 
     before = _brief_model(brief, number)
     if actor == ACTOR_AI:
-        changed = _require_ai_values(BRIEF_AI_FIELDS, before, after, label)
+        changed = _require_ai_values(BRIEF_AI_FIELDS + ("custom_sections",), before, after, label)
     else:
-        changed = [name for name in BRIEF_FIELDS if before[name] != after[name]]
+        changed = [name for name in (*BRIEF_FIELDS, "custom_sections") if before[name] != after[name]]
 
     for name in changed:
         if name == "chapter":
@@ -1428,6 +1479,10 @@ def _write_draft(
         _require_ai_values(DRAFT_AI_FIELDS, {"content": chapter.content}, {"content": content}, label)
     chapter.content = content
     chapter.word_count = len(content)
+    if changed and chapter.status == "final":
+        chapter.status = "draft"
+        chapter.final_decision = ""
+        chapter.final_comment = ""
     _touch(chapter)
     session.add(chapter)
     return changed
@@ -1447,6 +1502,7 @@ def _write_book(
     rows: list[Any],
     model: list[dict[str, Any]],
     make: Any,
+    allow_custom_sections: bool = False,
 ) -> list[str]:
     """One writer for every keyed book of records.
 
@@ -1458,7 +1514,13 @@ def _write_book(
 
     by_id = {row.id: row for row in rows}
     incoming = [
-        _require_keys(row, fields, f"{path} 第 {i + 1} 条") for i, row in enumerate(parsed)
+        _require_keys(
+            row,
+            fields,
+            f"{path} 第 {i + 1} 条",
+            allow_custom_sections=allow_custom_sections,
+        )
+        for i, row in enumerate(parsed)
     ]
 
     if actor == ACTOR_AI:
@@ -1474,6 +1536,8 @@ def _write_book(
         changed: list[str] = []
         for raw, key in zip(incoming, resolved):
             after = _coerce({**raw, fields[0]: key}, fields, path)
+            if allow_custom_sections:
+                after["custom_sections"] = _custom_sections(raw.get("custom_sections"), path)
             # Same reason as in `_write_arcs`: `?` is a create, never a reference to a
             # row on file, and the guessed number can collide with one this proposal
             # inserted a step earlier because the id column counts across all books.
@@ -1499,6 +1563,8 @@ def _write_book(
     seen: set[int] = set()
     for raw in incoming:
         after = _coerce(raw, fields, path)
+        if allow_custom_sections:
+            after["custom_sections"] = _custom_sections(raw.get("custom_sections"), path)
         key = after[fields[0]]
         if key is not None:
             if key in seen:
@@ -1533,6 +1599,7 @@ def _make_foreshadow(novel_id: int, after: dict[str, Any]) -> Foreshadow:
         title=after["title"] or "未命名伏笔",
         planted_chapter=after["planted_chapter"],
         status=after["status"] or "open",
+        custom_sections=after.get("custom_sections", []),
     )
 
 
@@ -1541,6 +1608,7 @@ def _make_setting(novel_id: int, after: dict[str, Any]) -> Setting:
         novel_id=novel_id,
         name=after["name"] or "未命名设定",
         category=after["category"] or "其他",
+        custom_sections=after.get("custom_sections", []),
     )
 
 
@@ -1553,6 +1621,7 @@ def _write_foreshadow(
         actor=actor, path=FORESHADOW_PATH, label="伏笔", shape="## 伏笔 1 伏笔名",
         fields=FORESHADOW_FIELDS, ai_fields=FORESHADOW_AI_FIELDS,
         rows=rows, model=_foreshadow_model(rows), make=_make_foreshadow,
+        allow_custom_sections=True,
     )
 
 
@@ -1565,6 +1634,7 @@ def _write_worldview(
         actor=actor, path=WORLDVIEW_PATH, label="设定", shape="## 设定 1 设定名",
         fields=WORLDVIEW_FIELDS, ai_fields=WORLDVIEW_AI_FIELDS,
         rows=rows, model=_worldview_model(rows), make=_make_setting,
+        allow_custom_sections=True,
     )
 
 
@@ -1577,8 +1647,9 @@ def _write_character(
     number: int | None,
 ) -> list[str]:
     label = character_path(number) if number is not None else CHARACTER_NEW_PATH
-    data = _require_keys(parsed, CHARACTER_FIELDS, label)
+    data = _require_keys(parsed, CHARACTER_FIELDS, label, allow_custom_sections=True)
     after = _coerce(data, CHARACTER_FIELDS, label)
+    after["custom_sections"] = _custom_sections(data.get("custom_sections"), label)
     name = after["name"].strip()
     if not name:
         raise DocumentError(f"{label} 的「姓名」不能为空", status_code=422)
@@ -1595,10 +1666,14 @@ def _write_character(
         person = Character(novel_id=novel_id, name=name)
         for key in CHARACTER_AI_FIELDS:
             setattr(person, key, after[key])
+        person.custom_sections = after["custom_sections"]
         session.add(person)
         session.flush()
         _touch(person)
-        return list(CHARACTER_FIELDS)
+        changed = list(CHARACTER_FIELDS)
+        if after["custom_sections"]:
+            changed.append("custom_sections")
+        return changed
 
     person = session.get(Character, number)
     if person is None or person.novel_id != novel_id:
@@ -1606,7 +1681,7 @@ def _write_character(
 
     before = _character_model(person)
     if actor == ACTOR_AI:
-        _require_ai_values(CHARACTER_AI_FIELDS, before, after, label)
+        _require_ai_values(CHARACTER_AI_FIELDS + ("custom_sections",), before, after, label)
     changed: list[str] = [key for key, value in after.items() if before[key] != value]
     for key in changed:
         setattr(person, key, after[key])

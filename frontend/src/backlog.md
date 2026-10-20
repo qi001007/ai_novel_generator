@@ -1,5 +1,25 @@
 # frontend/src/ 更改账（最新在上）
 
+- 2026-10-20：完成本批统一控件与三层 token、4/8 秒 Toast、15px/23px Markdown、Workflow 六节点准入和 review/generation 左树；全量前端 359 passed，类型检查与生产构建通过。
+
+- 2026-10-19：V-18 候选修复建立三层前端尺度 token，统一 Workflow 工具栏、属性区、源码按钮与 1px 分界线；世界观独立于地图路由；文件标签保留章节号与类型并横向滚动。真机证据待主人审核。
+
+- 2026-10-19：Workflow 新建/保存/重命名/设默认/发布全部由专用写接口切换到统一命令目录，随请求提交幂等键与当前 revision；UI 不变量锁定该边界。
+- 2026-10-19 · V-17 第三批候选修复完成代码与真机取证：工作流资源管理回到左树，编辑器 Minimap、主题与极限分栏均由项目 MCP 验证；待主人视觉复核后从 UI 待办删项。
+
+- 2026-10-19：V-02 不变量增加 CodeMirror 长跳转的下一帧二次对齐，防止虚拟高度重估让 Minimap 点击落点漂移。
+
+- 2026-10-19：撤销前一版“恢复方形滚动条”的错误决定；编辑区固定使用 VS Code Dark+ 色义，章节正文 18px、`draft.md` 源码 16px、Minimap 88px 且仍是唯一纵向滚动轨道；模型列表和预算语义加入 UI 不变量，全量前端 351 项、类型检查与生产构建通过。
+
+- 2026-10-19：扩展 AgentRun/ToolCall/审批类型与 API；中栏对话不再只有临时工具轨迹，可恢复并继续高风险操作。
+
+- 2026-10-19：正文/Markdown 编辑器恢复 VSCode 式方形滚动条，Minimap 调整为 72px 并强化视口遮罩，默认正文改为工作台无衬线字体；新增 UI 不变量并完成真实浏览器点击、滚动和样式测量。
+- 2026-09-16 · U-05：审稿数据 `evidence` 接收结构化 suggestions，样式与 UI 不变量改为 CodeMirror 正文面；应用/忽略更新 review suggestion，不绕开共享 `draft.md` 缓冲或文件层保存。
+
+- 2026-09-15 · 同步开放 Markdown 小节 API 契约：ChapterBrief/Character 接收可选 `custom_sections`，兼容旧后端响应。
+
+- 2026-09-14 · 批次 36.3-36.8：`CharacterFormCard.tsx` 支持自定义字段（人物卡片不再只限四项固定字段，`## ` 标题的未知段自动渲染为同级区域）；`WorkbenchPage.tsx` 切页时 ChatPane 保持挂载（用 `display:contents` 包裹，切到人物视图时 `hidden` 属性隐藏但组件不卸载，SSE 流不中断）；`ProposalCard.tsx` 折叠态差异预览可滚动（`max-height` + `overflow-y:auto`）；`styles.css` 修复 `.character-doc-overlay` 的 minimap token 引用。门禁：vitest **330 passed / 27 files**，`tsc -b --force` 退出 0。
+
 - 2026-09-11 · 批次 35.34（裁定进 **D-59**）：`types.ts` **+8/−0**——新增 `export type ChatCommand = { command: string; status: "done" | "error"; run_id: string; chapter_id: number | null; }` 与 `ChatStreamEvent` 的 `command` 分支（`event: "command"; data: ChatCommand`），流式事件与落库行共用同一个类型（与 `ChatToolStep` 同族，D-50 那条「一个形状两端各一处主人」的延续）。`uiInvariants.test.ts` **+18/−0**，新增第 **66** 条「the slash command line survives a reload as one settled card, never as a running state」（**65 → 66**，既有用例一条未删）。钉五件事：① `fromHistory` 里有 `case "command"`（历史恢复走得到）；② `chatRows.ts` 里 `export function commandRow` 与 `export function updateCommandRow` 都在（行规则的家不在组件）；③ `ChatPane.tsx` 里 `if (status === "running") return` 在（`running` 不落库的界面侧守卫）；④ `.chat-card.command` 在 `styles.css` 里存在且不带 `animation`（状态卡不入场动画，与 proposal 卡区分）；⑤ `types.ts` 里 `ChatCommand` 的 `status` 只有 `"done" | "error"` 两个值（`"running"` 不许进类型）。**反向变异（D-33）**：摘 `if (status === "running") return` → 2 failed（本条 ＋ `ChatPane.test.tsx` 那条 `running` 守卫用例）；还原后 **330 passed / 27 files**、`tsc -b --force` 退出 0、`npm run build` ✓ 1.68 s。
 
 - 2026-09-11 · 批次 35.17：`uiInvariants.test.ts` **+5/−1**（那 −1 是**搬家**不是删除：总条数仍 **65**，既有用例一条未少）。改的是第 **18** 条「a restored proposal comes back as a card, never as a tab (批次 35.20-35.22)」里钉住 `files.ts` 那一枚 `tabs:` 守卫的源码串——`/tabs:\s*restore \|\| state\.tabs\.includes\(proposal\.path\)/` → `/tabs:\s*restore \|\| !proposal\.valid \|\| state\.tabs\.includes\(proposal\.path\)/`，并在上面写清为什么（被闸门拒过的那一份画不出 diff band、应用那颗永远 `disabled`，它占的那一格只是每次实时流多出来的空白「新建人物」）。**这条与 D-38 同族**：D-38 管「只把合法提案端上桌（卡片）」，本条把同一条道理延伸到标签条这一件东西，不新增判据。**反向变异（D-33）**：摘掉 `!proposal.valid ||` → 本条与 `store/files.test.ts` 那条新用例同时红（**2 failed / 82 passed**），还原后 84 passed。收口门禁：全套 **326 passed / 27 files**、`tsc -b --force` 退出 0、`npm run build` ✓ 1.73 s、命中区审计 `/novels/6` 四类全 0 ＋ srOnly 1、`/novels/7` edge 2（既有）。真机与裁定见 `docs/DECISIONS.md` **D-58**，本体改动记在 `store/backlog.md`。
@@ -14,6 +34,7 @@
 
 - 2026-09-11 · 批次 35.29b（裁定进 **D-56**）：`uiInvariants.test.ts` **+21/−0**，新增第 **61** 条「整章正文直接落进那一章的 draft.md，不再要一次确认」（**60 → 61**，既有用例一条未删）。钉四件事：那颗「确认并生成」的三个部件（`aria-label="确认并生成正文"`／`chat-generate-confirm`／`title="确认当前章节简报并生成正文"`）与 `void runCommand("/generate")` 那个 onClick 都不许回来；`offerFromStream` 里那一句 `if (proposal.valid && !opts?.restore && draftChapter(proposal.path) !== null) {` 与紧跟的 `applyProposal` 落笔必须在（不挂卡、不等点击，仍走唯一那条 `PUT`）；`files.ts` 里 `export const draftChapter` 是章号路径的**唯一**判据；`EditorPane.tsx` 里「通过终审」那颗不撤——确认点搬家，不是消失。**一个坑记下来**：断言不能裸匹配「确认并生成」五个字，组件里那段解释也提到了它，所以钉的是 JSX 属性与类名这些代码形状。**反向变异（D-33）实测**：① 摘 `!opts?.restore` → **2 红**（`ChatPane.test.tsx` 那条恢复守卫 ＋ 本条）；② 摘自动落笔那一行 → **2 红**（那条围栏用例 ＋ 本条）；两次还原后 **312 passed / 26 files**、`tsc -b --force` 退出 0、`npm run build` ✓ 1.71 s。本轮未改 `src/store/files.ts`（`draftChapter` 早已在 `:119`，我一开始重复导出一份，esbuild 直接报「Multiple exports with the same name」，删掉复用）。
 
+- 2026-10-19：模型设置将生图纳入统一供应商路由；`sk-sp-` 文本网关不能直调图片时显示“需独立生图 Provider / 模型 ID”，定向 Preferences 与 UI 不变量 84 项通过。
 - 2026-09-11 · 批次 35.28（裁定进 **D-55**）：`uiInvariants.test.ts` **+21/−0**，新增第 **60** 条「composer 那两颗是状态栏不是开关」（**59 → 60**，既有用例一条未删）。钉四件事：`role="radio"` 在 `ChatPane.tsx` 里归零（`radiogroup` 是随开关一起走的，不许留半套语义）、两颗各带 `aria-disabled={true}`、点亮哪一侧的唯一出处是 `.at(-1)?.meta.mode ?? mode` 且两处 `className={shownMode === …}`（本地 `mode` 不再决定屏幕上哪一侧亮）、样式表里不许再留那条悬停提亮而基础规则显式 `cursor: default`。**两个坑记下来**：① `aria-disabled` 要按 JSX 写法匹配，组件里那段说明也提到了这个名字，裸词匹配会数成 3；② 别用 `rule()` 读 `.mode-switch button`——它取到「第一个 `}`」为止，而那条规则里一段老英文注释带着 `button{min-height:32px}`，声明会被截断，改成从选择器往后按行找。`styles.css` **+4/−3**：删掉「停在未点亮那一侧就提亮」那条规则（不可点的控件不许留着可点的手势），基础规则加 `cursor: default`。**反向变异（D-33）实测**：① 点亮条件换回本地 `mode` → 3 红（本条 `expected 1 to be 2` ＋ `ChatPane.test.tsx` 两条 `expected undefined to be '计划'`）；② 摘掉 `disabled` → 1 红（`expected false to be true`）；两次还原后 `309 passed / 26 files`、`tsc -b --force` 退出 0。
 
 - 2026-09-11 · 批次 35.30（裁定进 **D-53**）：`uiInvariants.test.ts` **+14/−0**，新增第 **59** 条「says how to drive a slash command, not only why it refused」（**58 → 59**，既有用例一条未删）。钉四件事：`commands` 表里 `/generate` 带着 `args: "<章节序号>"`（参数形状只有一个出处，界面上必须看得见）；`chapterByArgument(` 与 `useWorkbench.getState().openChapterTab(picked.id)` 都在（印出来的参数真的把那一章端到前面，不是算出来丢掉）；`workbench.ts` 里那句揉在一起的「请先选择章节；该章还需要一份 D 层简报」**不许回来**，两句拆开的文案各自带着可照抄的下一步（`在左边点一章，或输入 /generate ${` 与 `还没有 D 层简报：`）。**反向变异（D-33）实测**：删掉 `/generate` 分支里的参数处理 → `uiInvariants` 与 `ChatPane.test.tsx`「generates the chapter named by the /generate argument」同红（`2 failed`），装回后 59 全绿；实现前那一次是 5 条同红（2 store ＋ 2 ChatPane ＋ 1 不变量）。
@@ -36,6 +57,11 @@
 
 - 2026-09-10 · 批次 35.9（D-42）：`uiInvariants.test.ts` 新增一条不变量——「对话 Agent 轮数上限 / token 上限」两个框必须在页面上、值由 `data.agent.*` 读回、PUT 体带 `agent`；并反向读 `backend/app/services/agent.py`，把停止文案里指名的分组标题抓出来，逐个断言它真的是设置页的一个 `prefs-group-title`，防止后端说的入口和页面上的分组各说各话。既有断言一条未删。
 - 2026-09-09 · 更新入口、网络边界、语法与大文件风险说明；未改源码。
+- 2026-10-19 · V-02：撤销误加的 CodeMirror 原生纵向滚动条；正文与 Markdown 编辑器恢复为 Minimap 唯一可见滚动轨道，并同步不变量测试。
+- 2026-10-19 · V-05/V-06：启动页主卡优先当前/上次打开作品；顶栏搜索按视口几何居中；删除顶部重复的新建入口，只保留作品列表末尾入口。
+- 2026-10-19 · V-04：用工作台自有主题菜单替换原生作品 `select`，消除深色模式白色弹窗、字体不一致与箭头遮挡，同时复用既有 `selectNovel` 行为。
+- 2026-10-19 · V-03 第一轮：Workflow Studio 改为 IDE 式固定工具栏、满高画布、右侧属性面板与默认折叠的上下文策略；适配全图增加最低可读缩放，避免节点缩成文字噪点。
 - 2026-09-08 · types.ts 接收工具步骤耗时/字符数；grammarParity 防止前端重建语法表。
 - 2026-09-07 · labels.ts、paneLayout.ts 等跨面单件收为各自唯一主人。
+ - 2026-09-14 · 批次 36.2：模式按钮恢复为主人可选的 radio 控件；后端不再按关键词覆写选择，且计划模式不得触发正文或补简报自动落盘。`ChatPane`／样式／交互与不变量测试同步更新。
  - 2026-09-09：补充对话 Agent 的显式生成确认入口，仍走既有章节流式生成接口。

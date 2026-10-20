@@ -5,7 +5,7 @@ from sqlmodel import Session, create_engine
 
 DATABASE_URL = os.getenv(
     "NOVEL_GENERATOR_DATABASE_URL",
-    "sqlite:///./novel_generator.db",
+    os.getenv("DATABASE_URL", "sqlite:///./novel_generator_v2.db"),
 )
 
 

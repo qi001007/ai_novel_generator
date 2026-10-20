@@ -1,5 +1,28 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-10-20：Workflow 用途固定为 generation/review；默认图只含开始、动态上下文、提示词、模型和输出，并从任务路由写入真实供应商与模型配置。
+
+- 2026-10-19：Workflow 默认切换同步递增被替换默认项的 revision，供统一命令冲突校验与完整撤销使用。
+- 2026-10-19：Workflow `model` 节点接入现有多供应商模型路由；保留显式 `mock_output` 供无额度自动测试使用，不再把测试桩当真实模型节点。
+
+- 2026-10-19：Agent 默认内部步骤由 6 提高到 20、可配上限扩至 64；Pydantic AI 的次数与 Token 截止文案统一写成“内部步骤”，避免被理解成只能问若干问题。
+
+- 2026-10-19：新增 `agent_run_log.py` 作为启动页与中栏对话共用的 AgentRun/ToolCall 审计写手；流式工具事件携带命令回执与审批差异，历史消息保存同一份恢复索引。
+
+- 2026-10-18：Agent 工具注册表支持无作品启动、作品列表与新核心 workspace 读取；统一命令回执增加状态、摘要、下一步和资产 ID。
+
+- 2026-10-18 · Agent 生产入口固定为 Pydantic AI；工具注册表新增统一函数目录、命令预览和低风险执行，高风险命令只返回待确认差异。
+
+- 2026-10-18 · 新增不可变 Workflow 执行器与本地 Python Worker：节点记录、暂停恢复、超时、JSON 输出限制及 Python 失败前禁止进入写函数。
+
+- 2026-10-18 · 新增确定性的动态上下文选择器：必选锚点、邻章距离、显式提及、仅已审批事实、预算裁剪和未入选理由。
+
+- 2026-09-16 · 修复真实生成接口的代理初始化：忽略环境中当前依赖未安装的 `ALL_PROXY=socks5h://...`，按模型 Base URL 仅显式采用 HTTP(S) 代理，避免依赖注入阶段抛出原始 `ValueError`；本地模型状态与隔离作品真实生成均已恢复。
+
+- 2026-09-15 · 开放 Markdown 小节：blueprint/brief/character 解析、渲染、统一 PUT 写入与提案编译均允许任意 `##` 小节；自定义标题去重、正文按原顺序落入 JSON 并参与 AI 提案稳定化。
+
+- 2026-09-16 · 两阶段 AI 审计第一版：优先读取本章最近一次 `draft` GenerationRun 的 `input_summary` 作为不可变上下文快照；缺少快照时显式标记 `current_context_fallback`。先执行 `context_audit`，仅通过后才执行 `body_audit`；Review.evidence 保存阶段结果、快照来源和建议，正文不自动修改。兼容旧版单阶段模型响应，新增回归测试验证快照传递与两次调用。
+
 - 2026-09-11 · 批次 30.7 第一条（＝ `WORKSTREAM-PLAN` §3 P0-2 第三条判据里「未命中人物」那半边）：`context.py` **+19/−5**。简报点名、人物库里没有精确同名卡的名字，过去在这条链上**不留任何痕迹**：`collect_items()` 只从库里已有的 `Character` 行取卡，对不上的名字既变不成 block、也不记原因，作者只会看到正文里凭空少一个人。`WritingContext` 新增 `missing_characters: list[str] = field(default_factory=list)`，值就是 `sorted(cast - {已命中卡的名字})` 一个**集合差**，随 `manifest()` 里新那个 `"missing_characters"` 键落进 `generation_run.input_summary`；`injection_report()` 末尾只在有值时多打一行「未命中人物：…（简报点名，人物库无同名卡，本窗未注入）」，全命中时一行都不多打。−5 那几行是把原先挤成一行的 `cast_refs = _chapter_refs([…推导式…])` 拆成 `cast_rows` ＋ 一行调用，好让差集有 `cast_rows` 可用——取卡范围、预算判定、`_chapter_refs` 本身一概未动（D-04：改注入内容只改对应 collector）。**不做任何模糊匹配**：30.7 第二条「人物候选识别」仍按「不先做推测性 NLP」缓着，这一条只把已经算得出的差集说出来。真机（副本库 `307.db`、`NOVEL_LLM_API_KEY=` 空、零额度、主人的库未动）：作品 1 第 42 章 run **41** 清单里 `missing_characters: ['守碑人']`，终端日志第 27 行同句印出，与简报底部那句「出场：沈曜、守碑人」对得上。
 
 
@@ -17,6 +40,7 @@
 - 2026-09-10 · 批次 35.16（口径进 D-39 新增的「配对判定先于 bullet 缺失」）：两个文件，只为把一道判定挪到另一道前面。`markdown_doc.py`（**+21/−0**）新增 `record_keys(kind, text)`——**只读标题**取一份记录列表的主键，正文缺 bullet 也能问出「这条围栏列了哪几条」，`parse` 那条路一个字没动。`documents.py`（**+42/−21**，那 21 行删除整块就是原先内联在 `validate_structure` 里的配对块）把这道问题抽成模块级 `_pairing(kind, current_text, offered)`，`validate_structure` 的 parse 成功分支与 `except DocumentError` 分支**共用同一个 `_pairing`**：少列了档上记录的围栏同时也省了 bullet，从前它先撞 parse 那句「缺少 起始章、结束章、冲突、收束、状态」就 return，更准的结构判定永远读不到（主人作品 6 实测）。`_resolve_ids` 在全仓仍只有 `_pairing` 这一个调用点，D-39 的「判定只有一处／文案只有一处」一寸未动；`_pairing` 对「问不出问题」的四种情形（无 offered、无当前档、无主键的层、标题根本不是记录、当前档读不动）一律返回 `""`，把话交还给能精确回答的那一处。
 
 - 2026-09-10 · 批次 35.6（裁定进 D-48）：`agent_tools.py._compile` 一行语义改动，从 `return text if ok else f"{DIAG_PREFIX}{text}"` 改成拒绝时 `raise ToolError(f"{DIAG_PREFIX}{text}")`。以前拒绝的诊断是**返回值**，`ToolRegistry` 就把这一步记成 `ok=True`，前端 `chatRows.ts:81` 只在 `ok` 为假时才写「未成功」——主人屏幕上是一整列绿步骤加一张没出现的卡，正是判据点名的那种「成功假象」。抛 `ToolError` 后 `agent.py:117` 转成 `ToolResult(ok=False, content=同一句诊断)`：**回给模型的诊断一字未改**，改的是这一步的记账，`_proposal_tools` 那张表与 `_gate` 都没动。「一次有界自修复」因此不需要新代码：模型下一次问就是**下一轮请求**，照旧受 D-42 主人存下的轮/token 上限管；**没有**在 `_compile` 里就地重试，那会造出第二条控制流、绕开预算与停止条件。
+- 2026-10-19：`llm.py` 将 image 纳入环境/供应商路由，新增一次一张的 OpenAI Images 传输与安全错误诊断；百炼 Token Plan 文本鉴权 HTTP 200，`sk-sp-` 直调图片按官方规则实测 400，未宣称出图成功。
 - 2026-09-10 · 批次 35.5（裁定进 D-47）：两处，服务同一件事——**一个路径只折叠一次**。① `documents.py.resolve_path` 首行改成 `normalized = canonical_path(path)[0]`：`canonical_path` 一直是唯一那张别名表，但从前只被 `chat.py` 抽提案的预览调用，工具读与 `PUT` 直接进 `resolve_path`，于是「`settings/characters.md`」在预览里认得、在读写口 404。折叠接进来后各入口同源；真缺的档案仍 404 且文案更准（`characters/9999.md` → 「人物 9999 不存在」）。② 同文件新增 `character_path_reader(session, novel_id)` 返回 `姓名 -> 该人物档案路径`（一本书查一次、带缓存），`chat.py.extract_proposals` 多接一个 `person_path`：一张写着**已在档**人名的「新建人物」围栏经 `existing_character_path` 改指他的档案路径，改道后走 D-43 那条折叠——文本与文件一致就收卡，不再递一张点下去必 409 的绿卡。「同名即同人」的真源仍是 `_write_character` 那个 409，这里只是问同一件事，别处没有第二份名字查询。
 
 - 2026-09-10 · 批次 35.2（裁定进 D-44）：`documents.py` 四处，都服务于一件事——从 B 层改道出来的弧「认档不认块数」。① `_write_arcs` 与 `_write_book`：`弧 ?` / 主键为空的记录从前也去 `by_id` 查一遍，查不到才当新建，于是「`?`」这一条能撞上别的行；改成 `row = None if raw.get("arc") is None else by_id.get(arc_id)`，`?` 永不回查已有行。② `arc_proposal_from_toc_ranges`：上一轮 `rows = _existing_arcs(current) + moved` 无条件把改道出来的记录接到档后面，主人重读同一条 B 层围栏时那两条弧已经在书上，于是 9 条弧变 16 条（这就是 35.2 的红卡第二次 PUT 数字）。改成先按 `(起始章, 结束章)` 建索引，命中就是**编辑**那条弧、没命中才追加；且只有 `title`/`objective` 两个围栏自带的字段能覆盖，空值一律不许把档上的字清掉（D-43 的「省略不等于清空」在改道这条路上同样成立）。③ `_align_arc_history`：删掉 `len(numbered) + len(fresh) == len(existing)` 那步块数算式——「整本重写 + 追加若干条」的形状下这个等式一成立就把 `?` 也算进配额，绑定会在档上乱落。改为先把 `?` 块按确切起止章绑一遍（`bound_fresh`），剩下的编号记录再谈位置，`one_for_one` 在循环外一次算定；被绑住的 `?` 块在重建时把标题头改写回它落到的那条主键（`?` 一路读到 `_resolve_ids` 仍被当成新建，会再落一条）。④ `_ARC_TITLE_PREFIX` 吞掉 `弧 11-30：` 这类跨号前缀，改道出来的标题不再带着章号区间当名字。真机 A/B（同一份围栏、同一份库副本、只换代码）：预修那台 PUT `422 …（arc 7）`、弧数仍是 2；修好那台点击应用 200、`## 弧 ` 由 2 变 9、标题干净（「永恒的相对」）、`toc.md` 章号集合 `[1..10]` 一寸未动、**刷新后那张围栏一张卡都不剩**。结构校验一寸未让：少一条仍然 422。
@@ -52,6 +76,18 @@
 - 2026-09-08 · 新增 agent_model.py、agent_pydantic.py 与框架工具桥；预算和工具成本交由统一契约。
 - 2026-09-07 · renumber.py 集中处理章号引用；storage.py 支持范围快照与整章恢复。
 - 2026-09-03 · context.py 的 collect_items() 收为唯一资料池；documents/markdown_doc 收为唯一投影写手。
+- 2026-09-15 · U-01：对话 Agent 的 `chapters/NNNN/draft.md` 围栏在未闭合时发出只读 `draft` 预览事件；最终提案仍走既有文件写入口。
+- 2026-09-16 · 工作流执行第一片：默认工作流从唯一 `collect_items()` 资料池按模块、章节窗口、人物选择和正文尾长筛选，并把工作流身份写入写作清单；无默认工作流保持旧窗口。
+# 2026-09-14 · 批次 36.1：`web_search` 首接 SearXNG JSON 聚合检索（`NOVEL_SEARCH_ENDPOINT` 可替换实例），保留维基/Wikidata 兜底；返回原始 URL，未增加任何写工具。
+
+- 2026-09-14 · 批次 36.1 补充：免费公网搜索改为 Bing → DuckDuckGo → Brave → Yahoo → Mojeek → SearXNG 的顺序降级，代理从本机 `NOVEL_SEARCH_PROXY` 读取；真实 `httpx` 已通过 7890 取到 Bing 结果。
+
 # 2026-09-09 · web_search 增强（对应 UI-BACKLOG 32.1）
 
 - 聚合中文维基百科与 Wikidata；返回标题、摘要、URL，按标题去重；瞬时上游错误重试一次；全来源无结果时明确提示，全部不可用时返回工具失败；继续保持无写工具与 transport 注入测试。
+- 2026-09-15 · 新增 `workflows.py`：校验作品归属、名称唯一性和同一作用域唯一默认工作流。
+# 变更记录
+
+- 2026-09-16 · U-05：AI 审稿 suggestions 只接受正文中唯一出现的逐字 quote，并在落库时写入前后各 32 字的上下文锚点；更新建议仅修改 review evidence，不改正文，正文替换仍走文件层保存。
+
+- 2026-09-16：世界观与伏笔记录支持条目内 `###` 自定义 Markdown 小节；写回、渲染与上下文收集均保留顺序。

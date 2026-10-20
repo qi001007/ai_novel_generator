@@ -9,7 +9,15 @@
  * 副作用不在这个文件里：提案落库、刷左栏、打开折叠仍归 ChatPane，且必须留在
  * setRows 的更新函数**外面**（放在里面会被 StrictMode 跑两遍）。
  */
-import type { ChatReference, ChatStreamEvent, ChatToolStep, FileProposal } from "../types";
+import type { AgentRun, AgentToolCall, ChatReference, ChatStreamEvent, ChatToolStep, FileProposal } from "../types";
+
+export type AgentApproval = {
+  agentRunId: number;
+  toolCallId: number;
+  command: string;
+  preview: Record<string, any>;
+  state: AgentToolCall["approval_state"];
+};
 
 export type CommandStatus = "running" | "done" | "failed";
 
@@ -30,6 +38,9 @@ export type AgentMeta = {
   mode?: string;
   /** The model's own reasoning, when the model gave any. */
   reasoning?: string;
+  /** Durable platform operation audit; approvals survive a stream and a reload. */
+  agentRunId?: number;
+  approvals?: AgentApproval[];
 };
 
 export type AgentRow = {
@@ -106,6 +117,36 @@ const duration = (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `$
 /** 1234 字说成「1.2k」；三位数以内直接写整数。 */
 const count = (chars: number) => (chars >= 1000 ? `${(chars / 1000).toFixed(1)}k` : `${chars}`);
 
+export function approvalFromStep(step: ChatToolStep): AgentApproval | null {
+  const call = step.tool_call;
+  const preview = step.result?.preview;
+  if (!call || !step.agent_run_id || !preview || typeof preview !== "object") return null;
+  const command = String(step.result?.command ?? call.arguments.name ?? step.name);
+  return {
+    agentRunId: step.agent_run_id,
+    toolCallId: call.id,
+    command,
+    preview: preview as Record<string, any>,
+    state: call.approval_state,
+  };
+}
+
+export function applyAgentRunState(rows: Row[], id: number, run: AgentRun): Row[] {
+  const current = agent(rows, id);
+  if (!current) return rows;
+  const states = new Map(run.tool_calls.map((call) => [call.id, call.approval_state]));
+  return patchAgent(rows, id, {
+    meta: {
+      ...current.meta,
+      agentRunId: run.id,
+      approvals: (current.meta.approvals ?? []).map((approval) => ({
+        ...approval,
+        state: states.get(approval.toolCallId) ?? approval.state,
+      })),
+    },
+  });
+}
+
 /**
  * 一条流事件如何改写行序列。`proposal` 不改行（它由 ChatPane 交给 offerFromStream），
  * 其余每一支都不许丢掉先前到达的事实：工具轨迹、refs、已流出的思考过程。
@@ -113,7 +154,12 @@ const count = (chars: number) => (chars >= 1000 ? `${(chars / 1000).toFixed(1)}k
 export function applyStreamEvent(rows: Row[], id: number, event: ChatStreamEvent): Row[] {
   switch (event.event) {
     case "proposal":
+    case "draft":
       return rows;
+    case "agent_run": {
+      const meta = metaOf(rows, id);
+      return patchAgent(rows, id, { meta: { ...meta, agentRunId: event.data.id } });
+    }
     case "context":
       return patchAgent(rows, id, {
         meta: {
@@ -126,7 +172,15 @@ export function applyStreamEvent(rows: Row[], id: number, event: ChatStreamEvent
       });
     case "tool": {
       const meta = metaOf(rows, id);
-      return patchAgent(rows, id, { meta: { ...meta, reads: [...(meta.reads ?? []), toolLine(event.data)] } });
+      const approval = approvalFromStep(event.data);
+      return patchAgent(rows, id, {
+        meta: {
+          ...meta,
+          agentRunId: event.data.agent_run_id ?? meta.agentRunId,
+          reads: [...(meta.reads ?? []), toolLine(event.data)],
+          approvals: approval ? [...(meta.approvals ?? []), approval] : meta.approvals,
+        },
+      });
     }
     case "reasoning": {
       const meta = metaOf(rows, id);

@@ -16,6 +16,7 @@ class PlotFeedbackCreate(SQLModel):
 
 
 class PlotFeedbackUpdate(SQLModel):
+    content: str | None = None
     impact_levels: list[str] | None = None
     suggestions: dict | None = None
     status: str | None = None
@@ -65,6 +66,7 @@ def update_feedback(
     data = payload.model_dump(exclude_unset=True)
     for field, value in data.items():
         setattr(feedback, field, value)
+    feedback.updated_at = utc_now()
     if data.get("status") == "applied":
         feedback.applied_at = utc_now()
 
@@ -72,3 +74,17 @@ def update_feedback(
     session.commit()
     session.refresh(feedback)
     return feedback
+
+
+@router.delete("/{novel_id}/feedback/{feedback_id}", status_code=204)
+def delete_feedback(
+    novel_id: int,
+    feedback_id: int,
+    session: Session = Depends(get_session),
+) -> None:
+    get_novel_or_404(novel_id, session)
+    feedback = session.get(PlotFeedback, feedback_id)
+    if feedback is None or feedback.novel_id != novel_id:
+        raise HTTPException(status_code=404, detail="Plot feedback not found")
+    session.delete(feedback)
+    session.commit()

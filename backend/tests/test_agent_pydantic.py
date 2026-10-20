@@ -119,15 +119,15 @@ def make_tool() -> ToolRegistry:
     )
 
 
-def test_engine_switch_defaults_to_legacy_and_only_accepts_pydantic(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_engine_is_pydantic_and_ignores_the_retired_switch(monkeypatch: pytest.MonkeyPatch) -> None:
     from app.services.agent import agent_engine
 
     monkeypatch.delenv("NOVEL_AGENT_ENGINE", raising=False)
-    assert agent_engine() == "legacy"
+    assert agent_engine() == "pydantic"
     monkeypatch.setenv("NOVEL_AGENT_ENGINE", "pydantic")
     assert agent_engine() == "pydantic"
     monkeypatch.setenv("NOVEL_AGENT_ENGINE", "surprise")
-    assert agent_engine() == "legacy"
+    assert agent_engine() == "pydantic"
 
 
 def test_gateway_request_hides_a_tool_block_and_turns_it_into_a_framework_call() -> None:
@@ -400,7 +400,7 @@ def test_the_step_cap_raises_instead_of_running_on(engine: str, monkeypatch: pyt
         )
     assert "2" in str(caught.value)
     # 两个引擎同一句话：报出两个上限，再报出在哪儿改（35.9）
-    assert "当前上限 10000 token / 2 轮" in str(caught.value)
+    assert "当前上限 10000 token / 2 个内部步骤" in str(caught.value)
     assert "设置 → 模型接入 → 对话 Agent 预算" in str(caught.value)
     assert len(llm.seen) == 2
 
@@ -419,7 +419,7 @@ def test_the_token_cap_raises_rather_than_shipping_a_cut_answer(engine: str, mon
             config=AgentConfig(max_steps=5, max_tokens=1_000),
         )
     assert "token" in str(caught.value).lower()
-    assert "当前上限 1000 token / 5 轮" in str(caught.value)
+    assert "当前上限 1000 token / 5 个内部步骤" in str(caught.value)
 
 
 def test_framework_runs_two_tool_calls_concurrently(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -566,7 +566,7 @@ def test_the_step_gate_names_the_step_and_the_spend(monkeypatch: pytest.MonkeyPa
             config=AgentConfig(max_steps=2, max_tokens=10_000),
         )
     message = str(caught.value)
-    assert "到了 2 轮上限，第 3 轮仍在要求调用工具" in message
+    assert "到了 2 个内部步骤上限，第 3 个内部步骤仍在要求调用工具" in message
     assert "已花 30 token（输入 20 / 输出 10）" in message
     assert "跑了 2 步工具调用" in message
     assert "step 1:" in message and "step 2:" in message  # 一轮里两次调用不许都叫第 1 步
@@ -585,7 +585,7 @@ def test_the_token_gate_reports_what_it_refused_to_spend(monkeypatch: pytest.Mon
             config=AgentConfig(max_steps=5, max_tokens=1_000),
         )
     message = str(caught.value)
-    assert "第 1 轮回来时已用 1800 token，过了 1000 的上限" in message
+    assert "第 1 个内部步骤回来时已用 1800 token，过了 1000 的上限" in message
     assert "已花 1800 token（输入 900 / 输出 900）" in message
 
 

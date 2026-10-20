@@ -69,6 +69,42 @@ describe("chatRows.applyStreamEvent", () => {
     ]);
   });
 
+  it("高风险工具调用把真实差异挂到所属回答，并保留可恢复的 run id", () => {
+    let list = applyStreamEvent(rows(agent()), 1, {
+      event: "agent_run",
+      data: { id: 42, status: "running" },
+    } as ChatStreamEvent);
+    list = applyStreamEvent(list, 1, {
+      event: "tool",
+      data: {
+        step: 1,
+        name: "execute_platform_command",
+        arguments: { name: "asset.delete" },
+        ok: true,
+        ms: 3,
+        chars: 120,
+        agent_run_id: 42,
+        result: {
+          state: "confirmation_required",
+          command: "asset.delete",
+          preview: { diff: { before: { status: "draft" }, after: { status: "retired" } } },
+        },
+        tool_call: {
+          id: 7,
+          agent_run_id: 42,
+          tool_name: "execute_platform_command",
+          arguments: { name: "asset.delete" },
+          result: {},
+          status: "pending",
+          approval_state: "pending",
+        },
+      },
+    } as ChatStreamEvent);
+    expect(only(list).meta.agentRunId).toBe(42);
+    expect(only(list).meta.approvals).toHaveLength(1);
+    expect(only(list).meta.approvals?.[0].preview.diff.after).toEqual({ status: "retired" });
+  });
+
   it("done 不许抹掉早到的工具轨迹、refs 与 allowed", () => {
     let list = rows(agent());
     list = applyStreamEvent(list, 1, ctx({

@@ -150,6 +150,11 @@ describe("ChatPane", () => {
     useFiles.setState({ novelId: 1 });
     const proposed = draftDocument(1, "意识恢复的瞬间，疼痛也跟着回来了。");
     const writes: { url: string; body: Record<string, unknown> }[] = [];
+    const previewLengths: number[] = [];
+    const stopPreview = useFiles.subscribe((state) => {
+      const length = state.entries["chapters/0001/draft.md"]?.draft.length ?? 0;
+      if (previewLengths[previewLengths.length - 1] !== length) previewLengths.push(length);
+    });
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = input.toString();
       if ((init?.method ?? "GET").toUpperCase() === "PUT") {
@@ -160,6 +165,8 @@ describe("ChatPane", () => {
         return Promise.resolve(sse([
           ["context", { items: [], unknown_mentions: [], mode: "write", temperature: 0.7 }],
           ["delta", { text: `写完了。\n\n${fence}` }],
+          ["draft", { path: "chapters/0001/draft.md", text: "意识恢复的瞬间，" }],
+          ["draft", { path: "chapters/0001/draft.md", text: "意识恢复的瞬间，疼痛也跟着回来了。" }],
           ["proposal", { path: "chapters/0001/draft.md", text: proposed, valid: true, error: null }],
           ["done", { message: stored(`写完了。\n\n${fence}`) }],
           ["end", {}],
@@ -173,6 +180,10 @@ describe("ChatPane", () => {
     await user.type(screen.getByLabelText("对话输入"), "把第 1 章写完整");
     await user.keyboard("{Enter}");
     await waitFor(() => expect(writes.length).toBe(1));
+    stopPreview();
+    const positivePreviews = previewLengths.filter((length) => length > 0);
+    expect(positivePreviews.length).toBeGreaterThanOrEqual(2);
+    expect(positivePreviews[0]).toBeLessThan(positivePreviews[1]);
     expect(writes[0].url).toBe("/api/novels/1/files/chapters/0001/draft.md");
     expect(writes[0].body).toMatchObject({ actor: "ai", text: proposed, base_revision: "r1" });
     // 不挂卡：这张卡的任何一个部件都不许在屏幕上
@@ -333,7 +344,7 @@ describe("ChatPane", () => {
       expect(urls.some((item) => item.includes("/chapters/from-brief/8/stream"))).toBe(true),
     );
     await waitFor(() =>
-      expect(screen.getByText(/第 1 章《第一章》· 8 字 · 机械校验 通过/)).toBeTruthy(),
+      expect(screen.getByText(/第 1 章《第一章》· 8 字 · 错别字检查 通过/)).toBeTruthy(),
     );
   });
 
@@ -459,29 +470,23 @@ describe("ChatPane", () => {
     });
   }
 
-  it("says on the answer which mode the sentence used, and the readout lights that same one", async () => {
+  it("the answer says its own mode without changing the owner-selected mode", async () => {
     await runTurn("plan");
     expect(document.querySelector(".chat-card .chat-mode")?.textContent).toBe("按「计划」");
-    // 批注 35.28（方案 1）：原先这里钉的是「开关仍显示主人拨的那一侧」——两颗各说一套，
-    // 于是「我点了写作却被改成计划」永远看得见、永远改不掉。现在只有一个答案：
-    // 点亮的那一侧就是最近一答实际用的那一侧，与上面那颗标签同源。
-    expect(document.querySelector(".mode-switch button.selected")?.textContent).toBe("计划");
+    expect(document.querySelector(".mode-switch button.selected")?.textContent).toBe("写作");
   });
 
-  it("批注 35.28：那两颗是状态栏，点它不改任何东西", async () => {
+  it("主人能手动切换计划／写作模式，并由该选择决定请求", async () => {
     const user = userEvent.setup();
     await runTurn("plan");
     const readouts = Array.from(
       document.querySelectorAll<HTMLButtonElement>(".mode-switch button"),
     );
     expect(readouts.map((node) => node.textContent)).toEqual(["计划", "写作"]);
-    for (const node of readouts) {
-      // 判据逐条：role 不为 radio、aria-disabled 为真，且真的点不动（disabled 不带入 Tab 序）
-      expect(node.getAttribute("role")).toBeNull();
-      expect(node.getAttribute("aria-disabled")).toBe("true");
-      expect(node.disabled).toBe(true);
-    }
-    await user.click(readouts[1]);
+    expect(readouts.map((node) => node.getAttribute("role"))).toEqual(["radio", "radio"]);
+    expect(readouts[0].getAttribute("aria-checked")).toBe("false");
+    expect(readouts[1].getAttribute("aria-checked")).toBe("true");
+    await user.click(readouts[0]);
     expect(document.querySelector(".mode-switch button.selected")?.textContent).toBe("计划");
   });
 
@@ -1004,7 +1009,7 @@ describe("ChatPane", () => {
      .chat-card.command **0 张**，而它替人做的事全在（简报 1 份、正文 56 字、答案气泡 18 字仍在）
      ——结果留痕、过程不留痕。下面三条钉的是补上的那一半：刷新回来的还是那一张卡、
      卡上的那一句逐字等于结算那一刻屏上的那一句、接力结算两次库里仍只有一行。 */
-  const settledDetail = "第 1 章《第一章》· 56 字 · 机械校验 通过";
+  const settledDetail = "第 1 章《第一章》· 56 字 · 错别字检查 通过";
   const commandMessageRow = {
     id: 21,
     novel_id: 1,
@@ -1172,7 +1177,7 @@ describe("ChatPane", () => {
     // 第二次结算：正文真的写完了，改写的是同一行
     await waitFor(() => expect(posts).toHaveLength(2), { timeout: 4000 });
     expect(posts[1].message_id).toBe(41);
-    expect(posts[1].detail).toBe("第 1 章《第一章》· 8 字 · 机械校验 通过");
+    expect(posts[1].detail).toBe("第 1 章《第一章》· 8 字 · 错别字检查 通过");
     // 屏上仍是一张卡：两次结算改写的是同一行
     expect(document.querySelectorAll(".chat-card.command")).toHaveLength(1);
   });
@@ -1216,5 +1221,128 @@ describe("ChatPane", () => {
     await waitFor(() => {
       expect(screen.getByText(/可用工具 list_files \/ read_file \/ web_search/)).toBeTruthy();
     });
+  });
+
+  it("shows a real high-risk diff and resumes the durable Agent run", async () => {
+    const user = userEvent.setup();
+    const toolCall = {
+      id: 7,
+      agent_run_id: 42,
+      novel_id: 1,
+      operation_id: null,
+      tool_name: "execute_platform_command",
+      arguments: { name: "asset.delete" },
+      result: {},
+      status: "pending",
+      approval_state: "pending" as const,
+    };
+    const resumeBodies: Record<string, unknown>[] = [];
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input.toString();
+      if (url.includes("/chat/stream")) {
+        return Promise.resolve(sse([
+          ["agent_run", { id: 42, status: "running" }],
+          ["context", { items: [], unknown_mentions: [], mode: "plan", temperature: 0.2 }],
+          ["tool", {
+            step: 1,
+            name: "execute_platform_command",
+            arguments: { name: "asset.delete" },
+            ok: true,
+            ms: 3,
+            chars: 120,
+            agent_run_id: 42,
+            result: {
+              state: "confirmation_required",
+              command: "asset.delete",
+              preview: { diff: { before: { status: "draft" }, after: { status: "retired" } } },
+            },
+            tool_call: toolCall,
+          }],
+          ["delta", { text: "需要确认。" }],
+          ["done", { message: stored("需要确认。") }],
+          ["end", {}],
+        ]));
+      }
+      if (url.endsWith("/api/agent/runs/42/resume")) {
+        resumeBodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return json({
+          id: 42,
+          novel_id: 1,
+          status: "completed",
+          request: "删除设定",
+          response: "已执行",
+          error: "",
+          model: "fake",
+          token_input: 1,
+          token_output: 1,
+          tool_calls: [{ ...toolCall, status: "completed", approval_state: "approved" }],
+        });
+      }
+      return json([]);
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    await user.type(screen.getByLabelText("对话输入"), "删除设定");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("region", { name: "高风险操作确认" })).toBeTruthy();
+    expect(screen.getByText(/"retired"/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "批准高风险操作" }));
+    await waitFor(() => expect(resumeBodies).toEqual([{ tool_call_id: 7, decision: "approved" }]));
+    expect(screen.getByText("已批准")).toBeTruthy();
+  });
+
+  it("restores an approval card from chat history and refreshes its durable state", async () => {
+    const pendingCall = {
+      id: 8,
+      agent_run_id: 43,
+      novel_id: 1,
+      operation_id: null,
+      tool_name: "execute_platform_command",
+      arguments: { name: "asset.delete" },
+      result: {},
+      status: "pending",
+      approval_state: "pending" as const,
+    };
+    const approvalStep = {
+      step: 1,
+      name: "execute_platform_command",
+      arguments: { name: "asset.delete" },
+      ok: true,
+      ms: 4,
+      chars: 100,
+      agent_run_id: 43,
+      result: {
+        state: "confirmation_required",
+        command: "asset.delete",
+        preview: { diff: { before: { status: "draft" }, after: { status: "retired" } } },
+      },
+      tool_call: pendingCall,
+    };
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.includes("/chat/messages")) {
+        return json([{ ...assistantMessage, id: 81, content: "等待确认。", steps: [approvalStep] }]);
+      }
+      if (url.endsWith("/api/agent/runs/43")) {
+        return json({
+          id: 43,
+          novel_id: 1,
+          status: "completed",
+          request: "删除设定",
+          response: "已执行",
+          error: "",
+          model: "fake",
+          token_input: 1,
+          token_output: 1,
+          tool_calls: [{ ...pendingCall, status: "completed", approval_state: "approved" }],
+        });
+      }
+      return json([]);
+    }));
+
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    expect(await screen.findByRole("region", { name: "高风险操作确认" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("已批准")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "批准高风险操作" })).toBeNull();
   });
 });

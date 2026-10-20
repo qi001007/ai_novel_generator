@@ -7,7 +7,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.models import (
     ArcPlan,
@@ -15,6 +15,7 @@ from app.models import (
     ChapterBrief,
     ChapterSummary,
     Character,
+    ContextWorkflow,
     Foreshadow,
     Novel,
     PlanningBlueprint,
@@ -31,6 +32,7 @@ from app.services.context import (
     apply_context_budget,
     build_chat_context,
     build_writing_context,
+    collect_items,
     injection_report,
     log_injection,
     parse_context_manifest,
@@ -145,6 +147,33 @@ def _one(ctx, needle):
     hits = [block for block in ctx.selected if needle in block.item.label]
     assert hits, "missing block matching " + needle
     return hits[0]
+
+
+def test_open_markdown_sections_are_available_to_context_collection(session):
+    novel, brief = _book(session)
+    blueprint = session.exec(
+        select(PlanningBlueprint)
+        .where(PlanningBlueprint.novel_id == novel.id)
+        .order_by(PlanningBlueprint.version.desc())
+    ).first()
+    assert blueprint is not None
+    blueprint.custom_sections = [{"label": "创作手记", "content": "让意象保持冷峻。"}]
+    brief.custom_sections = [{"label": "情绪曲线", "content": "由冷转热。"}]
+    character = session.exec(
+        select(Character).where(Character.novel_id == novel.id, Character.name == "林渊")
+    ).first()
+    assert character is not None
+    character.custom_sections = [{"label": "特殊能力", "content": "能听见石头回声。"}]
+    session.add(blueprint)
+    session.add(brief)
+    session.add(character)
+    session.commit()
+
+    items = collect_items(session, novel.id)
+    texts = [item.text for item in items]
+    assert any(item.label.endswith("创作手记") and item.text == "让意象保持冷峻。" for item in items)
+    assert any("情绪曲线：由冷转热" in text for text in texts)
+    assert any("特殊能力：能听见石头回声" in text for text in texts)
 
 
 def test_window_carries_previous_brief_full_body_open_pit_and_cast(session):
@@ -404,3 +433,68 @@ def test_blank_core_blocks_are_reported_missing_not_injected(session):
     assert all(b["chars"] > 0 for b in manifest["blocks"] if b["injected"])
     blank_entries = [b for b in manifest["blocks"] if not b["injected"] and b["chars"] == 0]
     assert blank_entries and all(b["reason"] for b in blank_entries), "空块要带原因出现在未注入区"
+
+
+def test_default_workflow_controls_sources_and_records_identity(session):
+    novel, brief = _book(session)
+    session.add(
+        ContextWorkflow(
+            name="只看当前简报",
+            novel_id=novel.id,
+            scope_key=f"novel:{novel.id}",
+            is_default=True,
+            policy={
+                "version": 1,
+                "budget": 10000,
+                "modules": [
+                    {"id": "blueprint", "kind": "blueprint", "enabled": True},
+                    {"id": "author", "kind": "author_instructions", "enabled": False},
+                    {"id": "toc", "kind": "toc", "enabled": True, "before": 0, "after": 0},
+                    {"id": "briefs", "kind": "briefs", "enabled": True, "before": 0, "after": 0},
+                    {"id": "drafts", "kind": "drafts", "enabled": True, "before": 1, "tail_chars": 8},
+                    {"id": "characters", "kind": "characters", "enabled": True, "selection": "brief_mentions"},
+                    {"id": "worldview", "kind": "worldview", "enabled": False},
+                    {"id": "foreshadow", "kind": "foreshadow", "enabled": False},
+                ],
+            },
+            graph={},
+        )
+    )
+    session.commit()
+    ctx = _window(session, novel, brief)
+    labels = [block.item.label for block in ctx.selected]
+    assert any(label.startswith("A 全书蓝图") for label in labels)
+    assert any(label == "D 简报 · 第 25 章" for label in labels)
+    assert any(label == "正文尾部 · 第 24 章" for label in labels)
+    assert not any(label == "作品信息" for label in labels)
+    assert not any(label.startswith("伏笔") or label.startswith("设定") for label in labels)
+    assert ctx.manifest()["workflow"] == {"id": 1, "name": "只看当前简报"}
+
+
+def test_default_workflow_draft_tail_is_taken_from_end(session):
+    novel, brief = _book(session)
+    session.add(
+        ContextWorkflow(
+            name="短尾正文",
+            novel_id=novel.id,
+            scope_key=f"novel:{novel.id}",
+            is_default=True,
+            policy={"version": 1, "budget": 10000, "modules": [
+                {"id": "drafts", "kind": "drafts", "enabled": True, "before": 1, "tail_chars": 7}
+            ]},
+            graph={},
+        )
+    )
+    session.commit()
+    ctx = _window(session, novel, brief)
+    draft = next(block.item for block in ctx.selected if block.item.kind == "chapter")
+    assert draft.text == "石门在身后合拢。"[-7:]
+    assert "石门" not in draft.text
+
+
+def test_no_default_workflow_keeps_existing_window(session):
+    novel, brief = _book(session)
+    ctx = _window(session, novel, brief)
+    labels = [block.item.label for block in ctx.selected]
+    assert any(label.startswith("上一章正文") for label in labels)
+    assert any(label.startswith("人物 · 路人甲") for label in labels)

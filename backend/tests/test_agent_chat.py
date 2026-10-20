@@ -115,13 +115,14 @@ def test_a_turn_that_needs_nothing_costs_one_request(client: TestClient) -> None
     # 2026-09-10 (UI-BACKLOG 35.7): the five propose_* tools joined this surface when the
     # typed-action compiler landed; the expectation never followed, so the gate ran red.
     assert payload_of(events, "context")["tools"] == [
-        "list_files", "propose_arcs", "propose_blueprint", "propose_chapter_brief",
-        "propose_character", "propose_toc", "read_file", "web_search",
+            "execute_platform_command", "list_files", "list_novels", "list_platform_functions",
+        "preview_platform_command", "propose_arcs", "propose_blueprint",
+            "propose_chapter_brief", "propose_character", "propose_toc", "read_file", "read_workspace", "web_search",
     ]
 
 
 def test_over_budget_is_an_error_and_persists_no_reply(client: TestClient) -> None:
-    fake = use_fake(client, SteppedClient([[TOOL_BLOCK_ARCS]] * 8))
+    fake = use_fake(client, SteppedClient([[TOOL_BLOCK_ARCS]] * 22))
     novel_id = make_novel(client)
     create_arc(client, novel_id, start_chapter=1, end_chapter=30, objective="揭开星渊碑")
 
@@ -133,10 +134,10 @@ def test_over_budget_is_an_error_and_persists_no_reply(client: TestClient) -> No
     names = [name for name, _ in events]
     assert "error" in names
     message = payload_of(events, "error")["message"]
-    # 轮=模型请求，步=工具调用，两个都要说清（判据 31.2）
-    assert "6 轮上限" in message and "步工具调用" in message and "已执行" in message
+    # 内部步骤=模型继续处理的上限，不是主人只能问多少个问题。
+    assert "20 个内部步骤上限" in message and "步工具调用" in message and "已执行" in message
     assert "done" not in names
-    assert len(fake.seen) == 6  # the default ceiling, not eight
+    assert len(fake.seen) == 20  # the shipped ceiling, not however many replies the fake has
     stored = client.get(f"/api/novels/{novel_id}/chat/messages").json()
     assert [row for row in stored if row["role"] == "assistant"] == []
 
@@ -154,8 +155,8 @@ def test_the_ceiling_the_owner_saved_is_the_one_this_turn_runs_on(client: TestCl
         json={"content": "把所有弧重排一遍", "mode": "plan"},
     )
     message = payload_of(parse_sse(response.text), "error")["message"]
-    assert "超过上限 1000（第 2 轮）" in message
-    assert "当前上限 1000 token / 2 轮" in message
+    assert "第 2 个内部步骤回来时已用 1320 token，过了 1000 的上限" in message
+    assert "当前上限 1000 token / 2 个内部步骤" in message
     assert len(fake.seen) == 2
 
 

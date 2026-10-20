@@ -4,6 +4,7 @@ import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { Button, Combobox, useToast } from "../components/ui";
 import { PROVIDER_TASKS } from "../labels";
 import { useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
@@ -54,6 +55,7 @@ type LlmConfig = {
   routes: Record<string, string>;
   tasks: string[];
   agent: AgentBudget;
+  catalogs: Record<string, { models: string[]; fetched_at: string }>;
 };
 
 /** An editable row in the provider list. `api_key` holds only what the owner typed;
@@ -71,6 +73,7 @@ type ProviderDraft = {
 };
 
 type TestResult = { ok: boolean; detail: string };
+type ModelCatalog = { provider_id: string; models: string[]; detail: string; fetched_at: string };
 
 // 第十九批批注 2 的槽位与顺序都在 labels.ts：这张表不再自己定名字。
 const TASKS = PROVIDER_TASKS;
@@ -666,13 +669,16 @@ export default function PreferencesPage() {
   const [agentSteps, setAgentSteps] = useState("");
   const [agentTokens, setAgentTokens] = useState("");
   const [models, setModels] = useState<Record<string, string>>({});
-  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<GroupKey>("llm");
   const [providers, setProviders] = useState<ProviderDraft[]>([]);
   const [routes, setRoutes] = useState<Record<string, string>>({});
-  const [testResults, setTestResults] = useState<Record<string, string>>({});
+  const [modelOptions, setModelOptions] = useState<Record<string, string[]>>({});
+  const [modelNotices, setModelNotices] = useState<Record<string, string>>({});
+  const [modelBusy, setModelBusy] = useState<string | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState<Record<string, boolean>>({});
+  const { pushToast } = useToast();
 
   /* One place that puts a freshly read config into the form, used by the first load and
      by every save - the two used to drift (a save left a removed provider on screen). */
@@ -684,6 +690,8 @@ export default function PreferencesPage() {
     setAgentTokens(String(data.agent.max_tokens));
     setModels(data.models);
     setRoutes(data.routes);
+    setModelOptions(Object.fromEntries(Object.entries(data.catalogs ?? {}).map(([id, value]) => [id, value.models])));
+    setModelNotices(Object.fromEntries(Object.entries(data.catalogs ?? {}).map(([id, value]) => [id, `已缓存 ${value.models.length} 个模型 · ${new Date(value.fetched_at).toLocaleString()}`])));
     setProviders(
       data.providers
         .filter((item) => !item.is_default)
@@ -699,6 +707,27 @@ export default function PreferencesPage() {
           isDefault: false,
         })),
     );
+  }
+
+  function loadModels(providerId: string, name: string) {
+    setModelBusy(providerId);
+    setModelNotices((prev) => ({ ...prev, [providerId]: "正在读取模型列表…" }));
+    return api
+      .get<ModelCatalog>(`/api/config/llm/models?provider_id=${encodeURIComponent(providerId)}`)
+      .then((data) => {
+        if (!Array.isArray(data.models)) throw new Error("模型网关返回格式不正确");
+        setModelOptions((prev) => ({ ...prev, [providerId]: data.models }));
+        setModelNotices((prev) => ({ ...prev, [providerId]: data.detail }));
+        setCatalogOpen((prev) => ({ ...prev, [providerId]: true }));
+        pushToast(data.detail, "success");
+      })
+      .catch((cause: Error) => {
+        setModelNotices((prev) => ({
+          ...prev,
+          [providerId]: `「${name || providerId}」${cause.message}，仍可手工输入模型 ID`,
+        }));
+      })
+      .finally(() => setModelBusy((current) => current === providerId ? null : current));
   }
 
   useEffect(() => {
@@ -719,7 +748,6 @@ export default function PreferencesPage() {
     if (!config) return;
     setBusy(true);
     setError(null);
-    setNotice(null);
     api
       .put<LlmConfig>("/api/config/llm", {
         // these four still describe the 默认 provider
@@ -743,37 +771,30 @@ export default function PreferencesPage() {
       .then((data) => {
         applyConfig(data);
         setApiKey("");
-        setNotice("已保存，后端立即生效，不需要重启");
+        pushToast("设置已保存", "success");
       })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "保存失败"),
-      )
+      .catch((cause: unknown) => pushToast(cause instanceof Error ? cause.message : "保存失败", "error"))
       .finally(() => setBusy(false));
   }
 
   function testProvider(providerId: string, name: string) {
-    setTestResults((prev) => ({ ...prev, [providerId]: "测试中…" }));
     return api
       .post<TestResult>("/api/config/llm/test", { provider_id: providerId })
-      .then((data) => setTestResults((prev) => ({ ...prev, [providerId]: data.detail })))
-      .catch((cause: Error) =>
-        setTestResults((prev) => ({ ...prev, [providerId]: `「${name || providerId}」${cause.message}` })),
-      );
+      .then((data) => {
+        pushToast(data.detail, data.ok ? "success" : "error");
+      })
+      .catch((cause: Error) => pushToast(`「${name || providerId}」${cause.message}`, "error"));
   }
 
   function test() {
     setBusy(true);
     setError(null);
-    setNotice(null);
     api
       .post<TestResult>("/api/config/llm/test", {})
       .then((result) => {
-        setNotice(result.detail);
-        if (!result.ok) setError(result.detail);
+        pushToast(result.detail, result.ok ? "success" : "error");
       })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : "测试失败"),
-      )
+      .catch((cause: unknown) => pushToast(cause instanceof Error ? cause.message : "测试失败", "error"))
       .finally(() => setBusy(false));
   }
 
@@ -826,6 +847,22 @@ export default function PreferencesPage() {
                 aria-label="超时秒数"
               />
             </label>
+            <div className="prefs-model-catalog">
+              <Button compact
+                type="button"
+                onClick={() => void loadModels("default", "默认")}
+                disabled={modelBusy === "default"}
+              >
+                {modelBusy === "default" ? "获取中…" : "获取模型列表"}
+              </Button>
+              <button type="button" className="prefs-catalog-summary" aria-expanded={catalogOpen.default ?? false} onClick={() => setCatalogOpen((current) => ({ ...current, default: !current.default }))}>
+                {modelNotices.default ?? "尚未获取模型目录"}
+              </button>
+            </div>
+            {catalogOpen.default ? <div className="prefs-model-list" aria-label="默认供应商模型列表">
+              {(modelOptions.default ?? []).map((model) => <code key={model}>{model}</code>)}
+              {(modelOptions.default ?? []).length === 0 ? <p>目录为空</p> : null}
+            </div> : null}
             {/* 第十九批批注 2：「同时保存不同的供应商」+「正文/审稿/摘要用不同供应商的不同模型」。
                 供应商是一张列表，任务路由每一行选一个供应商再填模型名；
                 生图只是这张表里多一行任务，不是另一套代码。 */}
@@ -871,6 +908,14 @@ export default function PreferencesPage() {
                   />
                   <button
                     type="button"
+                    className="prefs-provider-models"
+                    onClick={() => void loadModels(item.id, item.name)}
+                    disabled={modelBusy === item.id}
+                  >
+                    {modelBusy === item.id ? "读取中" : "模型"}
+                  </button>
+                  <button
+                    type="button"
                     className="prefs-provider-test"
                     onClick={() => void testProvider(item.id, item.name)}
                     disabled={busy}
@@ -895,7 +940,7 @@ export default function PreferencesPage() {
                   >
                     <X size={12} />
                   </button>
-                  {testResults[item.id] ? <p className="prefs-provider-result">{testResults[item.id]}</p> : null}
+                  {modelNotices[item.id] ? <p className="prefs-provider-result">{modelNotices[item.id]}</p> : null}
                 </div>
               ))}
               <button
@@ -925,36 +970,21 @@ export default function PreferencesPage() {
             <div className="prefs-routes">
               {TASKS.map(([key, label]) => (
                 <div className="prefs-route-row" key={key}>
-                  <span
-                    className="prefs-route-task"
-                    // 未启用不是没做，是这把 key 没有那个权限（D-24 的 401 原文）
-                    title={
-                      key === "image"
-                        ? "这台网关的 key 只允许 LLM 与 Embedding（实测 401）。换一家有生图权限的供应商后，加档案并把这一行路由过去即可"
-                        : undefined
-                    }
-                  >
+                  <span className="prefs-route-task">
                     {label}
                   </span>
-                  <select
-                    className="prefs-route-provider"
+                  <Combobox
                     value={routes[key] ?? "default"}
-                    aria-label={`${label}使用的供应商`}
-                    onChange={(event) => setRoutes({ ...routes, [key]: event.target.value })}
-                  >
-                    <option value="default">默认</option>
-                    {providers.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.name || item.id}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    className="prefs-route-model"
+                    ariaLabel={`${label}使用的供应商`}
+                    options={[{ value: "default", label: "默认" }, ...providers.map((item) => ({ value: item.id, label: item.name || item.id }))]}
+                    onChange={(value) => setRoutes({ ...routes, [key]: value })}
+                  />
+                  <Combobox
                     value={models[key] ?? ""}
-                    placeholder={key === "image" ? "未启用" : ""}
-                    aria-label={label + "模型"}
-                    onChange={(event) => setModels({ ...models, [key]: event.target.value })}
+                    placeholder={key === "image" ? "需独立生图 Provider / 模型 ID" : "模型 ID"}
+                    ariaLabel={label + "模型"}
+                    options={(modelOptions[routes[key] ?? "default"] ?? []).map((model) => ({ value: model, label: model, detail: routes[key] ?? "default" }))}
+                    onChange={(value) => setModels({ ...models, [key]: value })}
                   />
                 </div>
               ))}
@@ -963,14 +993,14 @@ export default function PreferencesPage() {
                 出厂的 30000 卡住的正是这样一轮，所以两个数交给主人在这里定。 */}
             <p className="prefs-group-title">对话 Agent 预算</p>
             <label className="prefs-field prefs-field-narrow">
-              单轮最多几轮
+              每条消息最多内部步骤
               <input
                 type="number"
                 min={1}
-                max={20}
+                max={64}
                 value={agentSteps}
                 onChange={(event) => setAgentSteps(event.target.value)}
-                aria-label="对话 Agent 轮数上限"
+                aria-label="对话 Agent 内部步骤上限"
               />
             </label>
             <label className="prefs-field prefs-field-narrow">
@@ -986,9 +1016,9 @@ export default function PreferencesPage() {
               />
             </label>
             <p className="prefs-muted">
-              默认 {config.agent.default_max_steps} 轮 / {config.agent.default_max_tokens} token
-              是按「读 3 个文件 + 出 1 个提案」的一轮实测给的。到了上限对话会停下并说明用了多少，
-              不会把截断后的内容当成回答交出来。
+              默认 {config.agent.default_max_steps} 个内部步骤 / {config.agent.default_max_tokens} token。
+              这个数限制一条消息里的“调模型→读工具→继续处理”，不限制您能继续问多少个问题。
+              到了上限会明确停止，不会把截断内容当成完整回答。
             </p>
             <p className="prefs-state">
               <span className={config.configured ? "prefs-badge ok" : "prefs-badge warn"}>
@@ -996,7 +1026,6 @@ export default function PreferencesPage() {
               </span>
               <span>服务商 {config.provider}</span>
             </p>
-            {notice ? <p className="prefs-notice">{notice}</p> : null}
             {error ? <p className="prefs-error">{error}</p> : null}
             <div className="prefs-actions">
               <button type="button" onClick={test} disabled={busy}>

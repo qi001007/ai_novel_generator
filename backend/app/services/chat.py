@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -903,6 +904,17 @@ def step_record(step: AgentStep) -> dict[str, Any]:
     }
 
 
+def tool_event_record(step: AgentStep) -> dict[str, Any]:
+    """The visible/audited tool event; chat history stores the same approval payload."""
+    record = step_record(step)
+    try:
+        result = json.loads(step.result.content)
+    except (TypeError, ValueError):
+        result = {"raw": step.result.content}
+    record["result"] = result if isinstance(result, dict) else {"value": result}
+    return record
+
+
 def stream_turn(
     llm: LLMClient,
     turn: ChatTurn,
@@ -910,6 +922,7 @@ def stream_turn(
     *,
     registry: ToolRegistry | None = None,
     config: AgentConfig | None = None,
+    tool_auditor: Callable[[AgentStep], dict[str, Any]] | None = None,
 ) -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (event, payload) for the SSE route:
 
@@ -937,6 +950,7 @@ def stream_turn(
     outcome: Any = None
     reasoning: list[str] = []
     surfaced: set[str] = set()
+    audited_steps: dict[int, dict[str, Any]] = {}
     try:
         for name, payload in stream_agent_turn(
             llm,
@@ -950,11 +964,20 @@ def stream_turn(
         ):
             if name == "delta":
                 yield ("delta", {"text": payload})
+            elif name == "draft":
+                # A draft event is a preview only.  The existing proposal event still
+                # owns validation and the sole PUT /files write path at turn end.
+                yield ("draft", payload)
             elif name == "reasoning":
                 # 边到边给，不等收尾：前端据此在正文第一个字出现之前就把「思考过程」摊开
                 yield ("reasoning", {"text": payload})
             elif name == "tool":
-                yield ("tool", step_record(payload))
+                record = tool_event_record(payload)
+                if tool_auditor is not None:
+                    audit = tool_auditor(payload)
+                    record.update(audit)
+                    audited_steps[payload.index] = audit
+                yield ("tool", record)
                 # 32.4：这一步成了，提案就已经是完整合法的一份——没有道理让主人
                 # 等收尾那句客套话打完字才看到卡。收尾那一次只补这里没见过的。
                 if payload.result.ok and payload.call.name.startswith(PROPOSE_TOOL_PREFIX):
@@ -1001,6 +1024,9 @@ def stream_turn(
             # the pieces are deltas of one stream, so they join with nothing; the
             # agent loop is what inserts a break between steps
             reasoning="".join(reasoning).strip(),
-            steps=[step_record(step) for step in outcome.steps],
+            steps=[
+                {**tool_event_record(step), **audited_steps.get(step.index, {})}
+                for step in outcome.steps
+            ],
         )
     yield ("done", {"message": message.model_dump(mode="json")})

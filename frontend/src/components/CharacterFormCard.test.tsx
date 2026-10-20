@@ -53,6 +53,23 @@ describe("the character document <-> form pair", () => {
     expect(formFromCharacterDoc(DOC).goals).toContain("- 保住左眼最后一点视力。");
   });
 
+  it("reads and renders an author-defined section beside the standard fields", () => {
+    const form = formFromCharacterDoc(`${DOC}## 特殊能力\n能听见石头里的回声。\n`);
+    expect(form.custom_sections).toEqual([{ label: "特殊能力", content: "能听见石头里的回声。" }]);
+    render(
+      <CharacterFormCard
+        value={{ ...form, id: 6 }}
+        onChange={vi.fn()}
+        onSave={vi.fn()}
+        onPickPortrait={vi.fn()}
+        onRemovePortrait={vi.fn()}
+        onEditLongField={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("特殊能力")).toBeTruthy();
+    expect(screen.getByText("能听见石头里的回声。")).toBeTruthy();
+  });
+
   it("writes back only the four bullets and leaves every other byte alone", () => {
     const form = { ...formFromCharacterDoc(DOC), name: "沈砚舟", level: "boss", expected_end_chapter: 30 };
     const written = fillCharacterDoc(DOC, form);

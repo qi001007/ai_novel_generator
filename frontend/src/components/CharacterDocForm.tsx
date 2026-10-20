@@ -109,6 +109,11 @@ export default function CharacterDocForm({ path }: { path: string }) {
         setView(path, true);
         void openFile(path, { field });
       }}
+      onEditCustomSection={() => {
+        // Custom sections are not in the grammar table, so focusField cannot scroll
+        // to them. Open the source view and let the owner find the heading.
+        setView(path, true);
+      }}
       busy={busy}
       error={error}
     />

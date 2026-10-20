@@ -13,7 +13,7 @@ import pytest
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.models import Novel
+from app.models import KnowledgeEntry, Novel, Operation
 from app.services.agent import ToolCall, ToolError
 from app.services.agent_tools import build_registry
 from app.services.chat import PROPOSAL_BLOCK
@@ -44,15 +44,69 @@ def registry_for(session_factory, transport=None):
 # --- the boundary -----------------------------------------------------------
 
 
-def test_the_agent_is_given_no_way_to_write(session_factory) -> None:
+def test_the_agent_writes_only_through_the_canonical_command_tool(session_factory) -> None:
     registry = registry_for(session_factory)
-    # 2026-09-09: the five propose_* tools joined this list. They compile a proposal
-    # fence and are not a write path; the negative assertion below is the boundary.
     assert registry.names() == sorted(
         ["list_files", "read_file", "web_search", "propose_arcs", "propose_blueprint",
-         "propose_chapter_brief", "propose_character", "propose_toc"]
+         "propose_chapter_brief", "propose_character", "propose_toc",
+         "list_novels", "read_workspace", "list_platform_functions",
+         "preview_platform_command", "execute_platform_command"]
     )
-    assert not [name for name in registry.names() if any(word in name for word in ("write", "put", "save", "delete"))]
+    assert "write_file" not in registry.names()
+
+
+def test_low_risk_platform_command_creates_one_operation(session_factory) -> None:
+    registry = registry_for(session_factory)
+    payload = json.dumps(
+        {
+            "novel_id": session_factory.novel_id,
+            "kind": "character",
+            "name": "林渡",
+            "content": "主角",
+            "data": {},
+            "source": "agent",
+        },
+        ensure_ascii=False,
+    )
+    call = ToolCall(
+        name="execute_platform_command",
+        arguments={"name": "knowledge.create", "payload": payload, "idempotency_key": "agent-character-1"},
+    )
+    first = registry.run(call)
+    second = registry.run(call)
+    assert first.ok is True and second.ok is True
+    assert json.loads(first.content)["status"] == "success"
+    assert json.loads(first.content)["state"] == "executed"
+    with session_factory() as session:
+        assert len(session.exec(__import__("sqlmodel").select(KnowledgeEntry)).all()) == 1
+        assert len(session.exec(__import__("sqlmodel").select(Operation)).all()) == 1
+
+
+def test_high_risk_platform_command_returns_diff_without_writing(session_factory) -> None:
+    registry = registry_for(session_factory)
+    with session_factory() as session:
+        row = KnowledgeEntry(novel_id=session_factory.novel_id, kind="world", name="天律", content="不可逆")
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        row_id, revision = row.id, row.revision
+    result = registry.run(
+        ToolCall(
+            name="execute_platform_command",
+            arguments={
+                "name": "asset.delete",
+                "payload": json.dumps({"asset_type": "knowledge", "asset_id": row_id, "base_revision": revision}),
+                "idempotency_key": "agent-delete-1",
+            },
+        )
+    )
+    content = json.loads(result.content)
+    assert content["status"] == "warning"
+    assert content["state"] == "confirmation_required"
+    assert content["preview"]["requires_confirmation"] is True
+    with session_factory() as session:
+        assert session.get(KnowledgeEntry, row_id).status == "draft"
+        assert session.exec(__import__("sqlmodel").select(Operation)).all() == []
 
 
 def test_a_write_call_is_refused_and_changes_nothing(session_factory) -> None:
@@ -95,6 +149,9 @@ def test_list_files_names_the_paths_read_file_accepts(session_factory) -> None:
 
 def wiki_transport(hits):
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "searx.be":
+            assert request.url.params["q"] == "司天监"
+            return httpx.Response(200, json={"results": []})
         if request.url.host == "zh.wikipedia.org":
             assert request.url.params["srsearch"] == "司天监"
             return httpx.Response(200, json={"query": {"search": hits}})
@@ -106,6 +163,8 @@ def wiki_transport(hits):
 
 def test_wikidata_search_uses_entities_api_and_returns_cold_results(session_factory) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "searx.be":
+            return httpx.Response(200, json={"results": []})
         if request.url.host == "zh.wikipedia.org":
             return httpx.Response(200, json={"query": {"search": []}})
         assert request.url.params["action"] == "wbsearchentities"
@@ -134,8 +193,29 @@ def test_search_returns_real_entries_with_their_source(session_factory) -> None:
     assert "wikipedia" in result.content
 
 
+def test_search_returns_generic_web_results_with_original_urls(session_factory) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "searx.be":
+            assert request.url.params["q"] == "绝对之门 小说 主角 能力"
+            return httpx.Response(200, json={"results": [
+                {"title": "绝对之门人物设定", "content": "主角能力与实验编号的资料", "url": "https://example.com/a"},
+                {"title": "绝对之门角色解析", "content": "故事设定与能力梳理", "url": "https://example.org/b"},
+            ]})
+        return httpx.Response(200, json={"query": {"search": []}} if request.url.host == "zh.wikipedia.org" else {"search": []})
+
+    result = registry_for(session_factory, httpx.MockTransport(handler)).run(
+        ToolCall(name="web_search", arguments={"query": "绝对之门 小说 主角 能力"})
+    )
+    assert result.ok is True
+    assert "[SearXNG] 绝对之门人物设定" in result.content
+    assert "https://example.com/a" in result.content
+    assert "https://example.org/b" in result.content
+
+
 def test_search_merges_sources_and_deduplicates_titles(session_factory) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "searx.be":
+            return httpx.Response(200, json={"results": []})
         if "zh.wikipedia.org" in str(request.url):
             return httpx.Response(200, json={"query": {"search": [
                 {"pageid": 11, "title": "司天监", "snippet": "官署名"},
@@ -162,6 +242,8 @@ def test_search_retries_transient_upstream_failure(session_factory) -> None:
         calls += 1
         if calls == 1:
             return httpx.Response(503, text="temporary")
+        if request.url.host == "searx.be":
+            return httpx.Response(200, json={"results": []})
         if request.url.host == "zh.wikipedia.org":
             return httpx.Response(200, json={"query": {"search": [
                 {"pageid": 11, "title": "司天监", "snippet": "官署名"},
@@ -172,7 +254,7 @@ def test_search_retries_transient_upstream_failure(session_factory) -> None:
         ToolCall(name="web_search", arguments={"query": "司天监"})
     )
     assert result.ok is True
-    assert calls == 3  # retry Wikipedia, then query Wikidata
+    assert calls == 4  # retry SearXNG, then query Wikipedia and Wikidata
 
 
 def test_no_hits_says_so_instead_of_leaving_a_hole_for_the_model_to_fill(session_factory) -> None:
@@ -287,7 +369,10 @@ def test_the_five_proposal_tools_are_registered(session_factory, name) -> None:
 
 def test_the_proposal_tools_do_not_reuse_a_write_name(session_factory) -> None:
     registry = registry_for(session_factory)
-    assert registry.names() == sorted(["list_files", "read_file", "web_search"] + PROPOSAL_NAMES)
+    assert registry.names() == sorted([
+        "list_files", "read_file", "web_search", "list_platform_functions",
+        "preview_platform_command", "execute_platform_command", "list_novels", "read_workspace",
+    ] + PROPOSAL_NAMES)
     assert "write_file" not in registry.names()
 
 

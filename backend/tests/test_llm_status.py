@@ -12,6 +12,7 @@ def test_llm_status_reports_provider_and_model_configuration(
     monkeypatch.setenv("NOVEL_LLM_REVIEW_MODEL", "review")
     monkeypatch.setenv("NOVEL_LLM_SUMMARY_MODEL", "")
     monkeypatch.setenv("NOVEL_LLM_CHAT_MODEL", "")
+    monkeypatch.setenv("NOVEL_LLM_IMAGE_MODEL", "")
 
     response = client.get("/api/llm/status")
 
@@ -19,8 +20,7 @@ def test_llm_status_reports_provider_and_model_configuration(
     data = response.json()
     assert data["provider"] == "opencode"
     assert data["configured"] is True
-    # `image` is a real slot now (第十九批批注 2) - reported as unconfigured rather
-    # than hidden, so the settings page can say 「未启用」 instead of inventing a button.
+    # Image is a real provider-routed task and reports its actual configuration state.
     assert data["models"] == {
         "draft": True,
         "review": True,
@@ -41,6 +41,7 @@ def test_llm_status_is_not_configured_without_models(
     monkeypatch.setenv("NOVEL_LLM_REVIEW_MODEL", "")
     monkeypatch.setenv("NOVEL_LLM_SUMMARY_MODEL", "")
     monkeypatch.setenv("NOVEL_LLM_CHAT_MODEL", "")
+    monkeypatch.setenv("NOVEL_LLM_IMAGE_MODEL", "")
 
     response = client.get("/api/llm/status")
 

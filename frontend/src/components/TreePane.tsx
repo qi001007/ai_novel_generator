@@ -16,8 +16,9 @@ import {
 } from "lucide-react";
 import type { RailPage } from "./ActivityRail";
 
+import { api } from "../api";
 import StatusBadge from "./StatusBadge";
-import type { ChatConversation, Chapter, FileMeta } from "../types";
+import type { ChatConversation, Chapter, ContextWorkflow, FileMeta } from "../types";
 import {
   ARCS_PATH,
   BLUEPRINT_PATH,
@@ -28,6 +29,7 @@ import {
   TOC_PATH,
   useFiles,
 } from "../store/files";
+import { useWorkbench } from "../store/workbench";
 
 export type PlanningLayer = "A" | "B" | "C";
 
@@ -35,13 +37,17 @@ export type PlanningLayer = "A" | "B" | "C";
 export type BriefRow = { path: string; chapter: number; hint: string; exists: boolean };
 
 /** What the pointer was on when the context menu opened. */
-type MenuTarget = { kind: "group" } | { kind: "file"; path: string };
+type MenuTarget =
+  | { kind: "group" }
+  | { kind: "file"; path: string }
+  | { kind: "workflow"; id: number; isDefault: boolean; purpose: ContextWorkflow["purpose"] };
 
 type MenuState = { x: number; y: number; target: MenuTarget } | null;
 
 type TreePaneProps = {
   /** 帧 27: the sidebar holds three pages; only one is on screen at a time. */
   page: RailPage;
+  novelId: number | null;
   chapters: Chapter[];
   selectedChapterId: number | null;
   activeFile: string | null;
@@ -79,9 +85,9 @@ type TreePaneProps = {
   exportError: string | null;
   onOpenCharacters: () => void;
   onOpenFeedback: () => void;
-  onOpenWorldMap: () => void;
+  onOpenWorldview: () => void;
   onOpenForeshadow: () => void;
-  worldMapOpen: boolean;
+  worldviewOpen: boolean;
   foreshadowOpen: boolean;
 };
 
@@ -106,10 +112,21 @@ type LibraryGroup = {
 
 const MENU_WIDTH = 232;
 
-const PAGE_TITLES: Record<RailPage, string> = { plan: "规划", library: "设定库", chat: "对话" };
+const PAGE_TITLES: Record<RailPage, string> = {
+  plan: "文章结构",
+  library: "设定库",
+  map: "地图库",
+  workflow: "Workflow",
+  chat: "对话记录",
+};
+
+const MODULE_HINTS: Partial<Record<RailPage, string>> = {
+  map: "地图工程、图块与扩图任务在右侧管理",
+};
 
 export default function TreePane({
   page,
+  novelId,
   chapters,
   selectedChapterId,
   activeFile,
@@ -136,9 +153,9 @@ export default function TreePane({
   exportError,
   onOpenCharacters,
   onOpenFeedback,
-  onOpenWorldMap,
+  onOpenWorldview,
   onOpenForeshadow,
-  worldMapOpen,
+  worldviewOpen,
   foreshadowOpen,
 }: TreePaneProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -159,7 +176,29 @@ export default function TreePane({
   // had open before folding is the state worth returning to.
   const [chapterQuery, setChapterQuery] = useState("");
   const [menu, setMenu] = useState<MenuState>(null);
+  const [workflows, setWorkflows] = useState<ContextWorkflow[]>([]);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const selectedWorkflowId = useWorkbench((state) => state.selectedWorkflowId);
+  const workflowRefreshEpoch = useWorkbench((state) => state.workflowRefreshEpoch);
+  const selectWorkflow = useWorkbench((state) => state.selectWorkflow);
+  const requestNewWorkflow = useWorkbench((state) => state.requestNewWorkflow);
+  const requestWorkflowCommand = useWorkbench((state) => state.requestWorkflowCommand);
+
+  useEffect(() => {
+    if (page !== "workflow") return;
+    let active = true;
+    api.listWorkflows(novelId).then((items) => {
+      if (!active) return;
+      setWorkflows(items);
+      const current = items.some((item) => item.id === selectedWorkflowId)
+        ? selectedWorkflowId
+        : (items.find((item) => item.is_default) ?? items[0])?.id ?? null;
+      if (current !== null && current !== selectedWorkflowId) selectWorkflow(current);
+    }).catch(() => {
+      if (active) setWorkflows([]);
+    });
+    return () => { active = false; };
+  }, [novelId, page, selectWorkflow, selectedWorkflowId, workflowRefreshEpoch]);
 
   const toggle = (key: string) => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   const fileSelected = (path: string) => activeFile === path;
@@ -194,6 +233,7 @@ export default function TreePane({
   };
 
   const menuPath = menu?.target.kind === "file" ? menu.target.path : null;
+  const menuWorkflow = menu?.target.kind === "workflow" ? menu.target : null;
   // 方位由实测高度决定（两处菜单共用同一份算法，见 menuPlacement.ts）
   const placement = useMenuPlacement(menuRef, menu, MENU_WIDTH);
   /* 章节行与它的 draft.md 右键指向同一个目标（路径就是 draft.md），
@@ -228,8 +268,8 @@ export default function TreePane({
       kind: "worldview",
       label: "世界观",
       icon: Globe,
-      open: worldMapOpen,
-      onOpen: onOpenWorldMap,
+      open: worldviewOpen,
+      onOpen: onOpenWorldview,
       fileName: bookName,
     },
     {
@@ -264,7 +304,7 @@ export default function TreePane({
       <header className="tree-page-head">
         <h2 className="tree-page-title">{PAGE_TITLES[page]}</h2>
         <div className="tree-page-actions">
-          {page !== "chat" ? (
+          {page === "plan" || page === "library" ? (
             <button
               type="button"
               className="icon-button"
@@ -299,7 +339,18 @@ export default function TreePane({
               <Plus size={14} />
             </button>
           ) : null}
-          <button
+          {page === "workflow" ? (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="新建工作流"
+              title="新建工作流"
+              onClick={requestNewWorkflow}
+            >
+              <Plus size={14} />
+            </button>
+          ) : null}
+          {(page === "plan" || page === "library") ? <button
             type="button"
             className="icon-button"
             title={collapseLabel}
@@ -325,10 +376,10 @@ export default function TreePane({
             }}
           >
             {anyCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
-          </button>
+          </button> : null}
         </div>
       </header>
-      {searchOpen && page !== "chat" ? (
+      {searchOpen && (page === "plan" || page === "library") ? (
         <label className="tree-search-row">
           <input
             className="tree-search"
@@ -345,6 +396,29 @@ export default function TreePane({
             }}
           />
         </label>
+      ) : null}
+      {MODULE_HINTS[page] ? <p className="tree-module-hint">{MODULE_HINTS[page]}</p> : null}
+      {page === "workflow" ? (
+        <div className="tree-children tree-section-workflows" aria-label="工作流列表">
+          {(["generation", "review"] as const).map((purpose) => <section className="workflow-tree-group" key={purpose}>
+            <h3>{purpose === "generation" ? "正文生成" : "AI 自检"}</h3>
+            {workflows.filter((workflow) => workflow.purpose === purpose).map((workflow) => (
+              <button
+                type="button"
+                key={workflow.id}
+                className={`tree-row workflow-resource ${workflow.id === selectedWorkflowId ? "selected" : ""}`}
+                title={workflow.name}
+                onClick={() => selectWorkflow(workflow.id)}
+                onContextMenu={(event) => openMenu(event, { kind: "workflow", id: workflow.id, isDefault: workflow.is_default, purpose })}
+              >
+                <span className="tree-label">{workflow.name}</span>
+                {workflow.is_default ? <span className="tree-hint">当前</span> : null}
+              </button>
+            ))}
+            {workflows.every((workflow) => workflow.purpose !== purpose) ? <p className="tree-empty">暂无</p> : null}
+          </section>)}
+          {workflows.length === 0 ? <p className="tree-empty">暂无工作流</p> : null}
+        </div>
       ) : null}
       <button
         type="button"
@@ -594,6 +668,29 @@ export default function TreePane({
             maxHeight: placement?.maxHeight,
           }}
         >
+          {menuWorkflow ? <>
+            <button type="button" role="menuitem" className="tree-menu-item" onClick={runMenuAction(() => selectWorkflow(menuWorkflow.id))}><span>打开</span></button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-menu-item"
+              onClick={runMenuAction(() => requestWorkflowCommand("rename", menuWorkflow.id))}
+            >
+              <span>重命名</span>
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="tree-menu-item"
+              disabled={menuWorkflow.isDefault}
+              onClick={runMenuAction(() => requestWorkflowCommand("default", menuWorkflow.id))}
+            >
+              <span>{menuWorkflow.isDefault ? "当前流程" : `设为当前${menuWorkflow.purpose === "generation" ? "正文生成" : "AI 自检"}`}</span>
+            </button>
+            <button type="button" role="menuitem" className="tree-menu-item" onClick={runMenuAction(() => requestWorkflowCommand("duplicate", menuWorkflow.id))}><span>复制</span></button>
+            <div className="tree-menu-sep" />
+            <button type="button" role="menuitem" className="tree-menu-item danger" onClick={runMenuAction(() => requestWorkflowCommand("delete", menuWorkflow.id))}><span>删除</span></button>
+          </> : <>
           <button type="button" role="menuitem" className="tree-menu-item primary" disabled={creatingChapter} onClick={runMenuAction(onCreateChapter)}>
             <span>新建下一章简报</span>
             <kbd>Ctrl+Alt+N</kbd>
@@ -705,6 +802,7 @@ export default function TreePane({
               </button>
             </>
           ) : null}
+          </>}
         </div>
       )}
     </nav>

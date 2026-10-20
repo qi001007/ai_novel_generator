@@ -13,7 +13,7 @@ vi.mock("../api", () => ({
 
 import { api } from "../api";
 import { draftBody, draftDocument, isDirty, useFiles } from "./files";
-import { useWorkbench } from "./workbench";
+import { LAST_OPENED_NOVEL_KEY, useWorkbench } from "./workbench";
 import type { Chapter, ChapterBrief, FileDoc, GenerationRun, MachineCheckResult } from "../types";
 
 const chapter: Chapter = {
@@ -79,6 +79,7 @@ const draftBodyOf = () => draftBody(buffer().draft, 42);
 describe("workbench chapter writes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     useWorkbench.setState({
       selectedNovelId: 1,
       selectedChapterId: 8,
@@ -207,6 +208,7 @@ describe("workbench novel selection", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     useWorkbench.setState({
       novels: [],
       selectedNovelId: null,
@@ -218,6 +220,22 @@ describe("workbench novel selection", () => {
       reviews: [],
       error: null,
     });
+  });
+
+  it("restores the last opened novel before falling back to the first row", async () => {
+    localStorage.setItem(LAST_OPENED_NOVEL_KEY, "5");
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === "/api/health" || path === "/api/llm/status") return Promise.resolve({ status: "ok" });
+      if (path === "/api/novels") return Promise.resolve([novel(1), novel(5)]);
+      if (path === "/api/novels/5/chapters") return Promise.resolve([]);
+      if (path === "/api/novels/5/planning/briefs") return Promise.resolve([]);
+      return Promise.resolve([]);
+    }) as never;
+
+    await useWorkbench.getState().init();
+
+    expect(useWorkbench.getState().selectedNovelId).toBe(5);
+    expect(localStorage.getItem(LAST_OPENED_NOVEL_KEY)).toBe("5");
   });
 
   it("keeps the book the route asked for when init resolves later", async () => {

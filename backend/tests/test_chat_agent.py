@@ -300,7 +300,7 @@ def test_stream_emits_context_delta_and_done(client: TestClient) -> None:
 
     events = parse_sse(response.text)
     names = [name for name, _ in events]
-    assert names[0] == "context"
+    assert names[:2] == ["agent_run", "context"]
     assert names.count("delta") == 3
     assert names[-2:] == ["done", "end"]
     assert "".join(p["text"] for name, p in events if name == "delta") == "你好呀"
@@ -450,7 +450,7 @@ def test_stream_reports_error_event(client: TestClient) -> None:
     )
 
     events = parse_sse(response.text)
-    assert [name for name, _ in events] == ["context", "error", "end"]
+    assert [name for name, _ in events] == ["agent_run", "context", "error", "end"]
     assert payload_of(events, "error")["message"] == "上游超时"
     assert client.get(f"/api/novels/{novel_id}/generation-runs").json() == []
 
@@ -580,78 +580,54 @@ def test_no_prompt_lets_a_hand_written_fence_stand_in_for_an_action_tool() -> No
 # --- 35.10：意图判定，规划对象不许落进正文生成 ---
 
 INTENT_CASES = [
-    ("给第 3 章写一份简报", "plan"),
-    ("把 B 层目录里第 11 到 30 章补齐", "plan"),
-    # 35.18：主人写层名**不带空格**。库里 msg 52/54/58 三条同形状请求当时落库的
-    # mode 全是 write——层名点不中，模式整个落回开关，正是 D-41 想反过来的一件事。
-    ("重新生成C层", "plan"),
-    ("重新生成 C 层", "plan"),
-    ("重新生成c层", "plan"),
-    ("新增一条剧情弧，讲真相与背叛", "plan"),
-    ("建一个人物卡，叫沈砚", "plan"),
-    ("更新 A 层蓝图里的主题", "plan"),
-    ("settings/characters.md 里给沈砚加一条约束", "plan"),
-    ("按简报把第 3 章的正文写出来", "write"),
-    ("给第 3 章写正文，简报里那条伏笔要收", "write"),
-    ("接着往下写，别停", "write"),
-    # 既没点规划对象也没点成稿：这句话判不出来，照主人拨的开关走。
-    ("这段节奏我觉得不对，你怎么看", None),
-    ("你好", None),
+    "给第 3 章写一份简报",
+    "重新生成C层",
+    "按简报把第 3 章的正文写出来",
+    "这段节奏我觉得不对，你怎么看",
 ]
 
 
 @pytest.mark.parametrize("requested", ["write", "plan"])
-@pytest.mark.parametrize("text,expected", INTENT_CASES)
-def test_intent_table_decides_the_mode_symmetrically(requested, text, expected):
-    """判出来的模式只跟这句话指向哪个对象有关：开关拨到 plan 说「要正文」同样得走写作。
-
-    35.10 的复现是反方向的（write 开关 + 简报请求 → 吐正文），只修一半等于没修。
-    """
+@pytest.mark.parametrize("text", INTENT_CASES)
+def test_owner_selected_mode_is_never_overridden_by_text(requested, text):
+    """计划／写作是主人手动选择的权限，不由关键词偷偷改写。"""
     from app.services.chat import effective_mode
 
-    assert effective_mode(text, requested) == (expected or requested)
+    assert effective_mode(text, requested) == requested
 
 
-def test_a_brief_request_under_the_write_toggle_gets_the_plan_prompt(client: TestClient) -> None:
+def test_a_brief_request_under_the_write_toggle_keeps_the_write_prompt(client: TestClient) -> None:
     fake = use_fake(client, FakeChatClient())
     novel_id = make_novel(client)
 
     client.post(f"/api/novels/{novel_id}/chat", json={"content": "给第 1 章写一份简报", "mode": "write"})
 
     system = fake.calls[0]["messages"][0]["content"]
-    assert "## 本轮模式：计划" in system, system
-    assert "## 本轮模式：写作" not in system, system
-    # 简报是 D 层，走的是提案工具这一路，不是把正文吐在对话里
-    assert "propose_chapter_brief" in system
+    assert "## 本轮模式：写作" in system, system
+    assert "## 本轮模式：计划" not in system, system
 
 
-def test_the_owners_c_layer_phrasing_reaches_the_server_as_plan(client: TestClient) -> None:
-    """35.18：库里 msg 52/54/58 那三条「重新生成C层」当时落库的 mode 全是 write。
-
-    走真 ASGI 应用与假网关，量的不是纯函数返回值，而是服务端真的拼出了哪个模式体、
-    又真的存下了哪个模式——落库那份正是 35.15 那颗答案行标签读的东西。
-    """
+def test_planning_words_keep_the_write_mode_the_owner_selected(client: TestClient) -> None:
     fake = use_fake(client, FakeChatClient())
     novel_id = make_novel(client)
 
     client.post(f"/api/novels/{novel_id}/chat", json={"content": "重新生成C层", "mode": "write"})
 
     system = fake.calls[0]["messages"][0]["content"]
-    assert "## 本轮模式：计划" in system, system
-    assert "禁止输出章节正文" in system, system
+    assert "## 本轮模式：写作" in system, system
     stored = client.get(f"/api/novels/{novel_id}/chat/messages").json()
-    assert {row["role"]: row["mode"] for row in stored} == {"user": "plan", "assistant": "plan"}, stored
+    assert {row["role"]: row["mode"] for row in stored} == {"user": "write", "assistant": "write"}, stored
 
 
-def test_a_prose_request_under_the_plan_toggle_gets_the_write_prompt(client: TestClient) -> None:
+def test_a_prose_request_under_the_plan_toggle_keeps_the_plan_prompt(client: TestClient) -> None:
     fake = use_fake(client, FakeChatClient())
     novel_id = make_novel(client)
 
     client.post(f"/api/novels/{novel_id}/chat", json={"content": "把第 1 章的正文写出来", "mode": "plan"})
 
     system = fake.calls[0]["messages"][0]["content"]
-    assert "## 本轮模式：写作" in system, system
-    assert "禁止输出章节正文" not in system, system
+    assert "## 本轮模式：计划" in system, system
+    assert "禁止输出章节正文" in system, system
 
 
 def test_stream_emits_a_reviewable_file_proposal(client: TestClient) -> None:
@@ -743,6 +719,39 @@ def test_streamed_initial_arc_alias_proposal_with_two_records_is_reviewable_and_
     assert restored["text"] == current
 
 
+def test_tool_named_arc_fence_is_compiled_to_the_canonical_arcs_file(
+    client: TestClient,
+) -> None:
+    """A gateway may expose an attempted tool call as ``@propose_arcs`` markdown."""
+    use_fake(
+        client,
+        FakeChatClient(
+            chunks=[
+                "```markdown\n@propose_arcs\n"
+                '{"arcs":[{"title":"苏醒与逃离","start_chapter":1,"end_chapter":5,'
+                '"objective":"逃出设施","conflict":"实验设施追捕",'
+                '"resolution":"成功脱离","status":"planned"}]}\n```'
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "生成 C 层剧情弧", "mode": "write"},
+    )
+
+    proposal = payload_of(parse_sse(response.text), "proposal")
+    assert proposal["path"] == "arcs.md"
+    assert proposal["valid"] is True, proposal["error"]
+    assert "## 弧 1 苏醒与逃离" in proposal["text"]
+    applied = client.put(
+        f"/api/novels/{novel_id}/files/arcs.md",
+        json={"text": proposal["text"], "actor": "ai"},
+    )
+    assert applied.status_code == 200, applied.text
+
+
 def test_a_streamed_blueprint_fence_applies_to_the_a_layer(client: TestClient) -> None:
     """批注 35.6 第 1 类：A 层也要从「模型输出」量到「库里那行变了」。"""
     use_fake(
@@ -829,6 +838,38 @@ def test_a_streamed_prose_fence_lands_on_the_chapter_it_names(client: TestClient
     saved = chapter()
     assert saved["content"] == prose
     assert saved["word_count"] == len(prose)
+
+
+def test_stream_previews_chapter_draft_before_proposal_fence_closes(client: TestClient) -> None:
+    """A draft fence feeds a preview without creating a second write path."""
+    use_fake(
+        client,
+        FakeChatClient(
+            chunks=[
+                "```markdown @chapters/0001/draft.md\n第一段",
+                "\n第二段\n```",
+            ]
+        ),
+    )
+    novel_id = make_novel(client)
+    create_chapter(client, novel_id, chapter_number=1)
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chat/stream",
+        json={"content": "把第 1 章正文写出来", "mode": "write"},
+    )
+
+    events = parse_sse(response.text)
+    names = [name for name, _ in events]
+    previews = [payload for name, payload in events if name == "draft"]
+    assert [item["path"] for item in previews] == [
+        "chapters/0001/draft.md",
+        "chapters/0001/draft.md",
+    ]
+    assert previews[0]["text"] == "第一段"
+    assert previews[1]["text"] == "第一段\n第二段\n"
+    assert names.index("draft") < names.index("proposal") < names.index("done")
+    assert client.get(f"/api/novels/{novel_id}/chapters").json()[0]["content"] == ""
 
 
 def test_history_carries_the_proposal_back_for_a_reload(client: TestClient) -> None:
@@ -923,8 +964,8 @@ def test_a_proposal_that_renumbers_a_record_is_flagged_before_the_click(client: 
     assert "主键" in proposal["error"]
 
 
-def test_proposal_that_renames_keys_is_flagged(client: TestClient) -> None:
-    """A card the writer must reject is not a card worth an 应用 button."""
+def test_proposal_that_drops_a_required_blueprint_section_is_flagged(client: TestClient) -> None:
+    """Custom headings are open, but the five blueprint sections remain required."""
     use_fake(
         client,
         FakeChatClient(
@@ -949,7 +990,7 @@ def test_proposal_that_renames_keys_is_flagged(client: TestClient) -> None:
     proposal = payload_of(parse_sse(response.text), "proposal")
     assert proposal["valid"] is False
     assert "主线" in proposal["error"]
-    assert "主线一条线" in proposal["error"]
+    assert "缺少 主线" in proposal["error"]
 
     rejected = client.put(
         f"/api/novels/{novel_id}/files/blueprint.md",

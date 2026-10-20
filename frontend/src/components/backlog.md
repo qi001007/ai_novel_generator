@@ -1,5 +1,34 @@
 # frontend/src/components/ 更改账（最新在上）
 
+- 2026-10-20：Workflow 删除缩略图与整图 JSON，只显示六类已实现节点；补齐初始节点尺寸、点击选中属性面板、节点右键操作、全屏与模型组合框，并用真实画布边界计算适配视口，修复节点被推到底边。世界观改为结构化资料库，反馈收口为整书备注，编辑器接通错别字、自检和终审状态。
+
+- 2026-10-19：V-18 候选修复：Workflow 缩略图增加实时视口框，移除整图 JSON 入口但保留节点源码；上下文模块支持多个可拖动非模态窗并记住会话内位置；文件标签改为“章节号 · 类型”且保留完整路径提示。
+
+- 2026-10-19：Workflow 新建、保存、发布及左树的重命名/设默认均调用统一命令；成功响应携带新 revision 并刷新左右两侧同一资源状态。
+- 2026-10-19：V-17 候选修复：Minimap 恢复可见缩略文字和悬停视口；一级栏合并人物/世界入口；Workflow 使用左侧资源树与右键管理、紧凑工具栏、模块浮层、真实图形缩略图和已验证节点白名单。
+
+- 2026-10-19：正文与 Markdown Minimap 改为固定行距的可滚动缩小文档，视口块悬停/拖动才出现并支持滚轮；Workflow 改成实时节点变化、自定义选择器、创建/重命名、全屏画布、节点源码编辑器和可折叠/调高策略区。
+
+- 2026-10-19：Minimap 跳转在下一动画帧按 CodeMirror 更新后的 `scrollHeight` 再对齐一次，修复长文首次跳转时因虚拟布局重估导致中点点击停在约 46% 的偏差；正文与 Markdown 两个编辑器一致。
+
+- 2026-10-19：正文与文件编辑器继续共用一套 Minimap 几何和绘制器；真实页面将轨道扩到 88px，并验证拖动 500px 可同步正文与视口遮罩。
+
+- 2026-10-19：中栏 ChatPane 接入持久化 AgentRun；高风险统一命令显示真实 diff 与批准/拒绝卡，刷新后通过 ToolCall 读回最新审批状态；新增行为测试与 UI 不变量。
+
+- 2026-10-18：删除误加的 `LauncherAgent` 组件；平台测试与操控改由开发侧 MCP 承担。
+
+- 2026-10-18 · 左侧活动栏扩展为文章结构、设定库、人物库、世界库、地图库、Workflow 与对话记录；人物和 Workflow 进入右栏，中间对话保持挂载。
+
+- 2026-10-18 · 新增 Workflow JSON CodeMirror 编辑器与发布/运行前端契约，为画布与源码双向同步提供单一图数据源。
+
+- 2026-09-16 · U-05 首版：正文页迁到 CodeMirror（仍只读写共享 `draft.md` 缓冲），`proseReview.ts` 用真实 mark decoration 标出可定位的 AI 建议；点击打开可编辑的批注侧栏，应用只替换仍匹配上下文锚点的原文并提示 Ctrl+S，失效锚点禁用应用，忽略/应用状态通过 review suggestion PATCH 保存。`EditorPane` 定向 9 条、浏览器重载（1 个 `.cm-editor`、0 个 textarea、控制台错误 0）已验；真实模型建议数据仍待下一轮 AI 自检验收。
+
+- 2026-09-15 · CharacterFormCard/CharacterDocForm 从人物 Markdown 读取并渲染任意自定义 `##` 小节，编辑仍回到同一文件 PUT。
+
+- 2026-09-15 · 当前章调用记录隔离与首次展开反馈：`EditorPane` 在渲染层再次按 `chapter_id` 过滤调用记录，并在展开但尚无异步记录时显示空态列表，避免第一次点击没有可见反馈；新增 `EditorPane.test.tsx` 两条用例覆盖空态即时展开和跨章节记录不串。未提交，待主代理统一验收。
+
+- 2026-09-15 · 批注 11：文件标签栏的源码/渲染切换控件继续固定在滚动区外，并增加不可压缩宽度、覆盖层，长标题或大量标签滚动时按钮仍保持可见可点击；同步 `styles.css` 与 `uiInvariants` 断言。待前端真机长标题点击验收。
+
 - 2026-09-11 · 批次 35.34（裁定进 **D-59**）：`ChatPane.tsx` **+38/−2**、`chatRows.ts` **+22/−0**。① `fromHistory` 新增 `command` 分支：`role==="command"` 的行渲染成 `.chat-card.command`（一张只读状态卡，显示命令名、状态、结算文案），不进 `agentRows`、不进 `reads`。② 流式期间 `subscribe` 里收到 `command` 事件时走 `setRows` 插入一条 `role:"command"` 的行（与既有 `delta`／`tool`／`proposal` 事件同一套更新通道），结算事件来时按 `run_id` 找到同一行覆写 `content` 与 `command_state.status`——`running` 状态只在内存里，**不**触发 `setRows`（守卫在 `ChatPane.tsx:396`，`if (status === "running") return`）。③ `chatRows.ts` 新增 `commandRow()` 纯函数（构造 command 行对象）与 `updateCommandRow()` 纯函数（按 `run_id` 找到行并覆写），组件里不内联这些逻辑（与「keep the row rules out of the component」同族）。**反向变异（D-33）**：M3 摘 `fromHistory` command 分支 → 2 failed（历史恢复用例 ＋ `uiInvariants` 第 66 条）；还原后 **330 passed / 27 files**。
 
 - 2026-09-11 · 批次 35.36（结案行在 `docs/WORKSTREAM-PLAN.md`）：`ForeshadowWall.tsx` **+3/−2**、`WorldMapPanel.tsx` **+2/−1**、`PaintingDetailPanel.tsx` **+3/−2**。四枚「看起来能用、点了不响应」的按钮改成裸 `disabled` ＋ `title="暂未开放"`（照 `BookshelfPage.tsx:742` 既有写法）：伏笔墙「AI 自检」与地图「AI 生成地图」原是 `disabled={!novelId}` 而**根本没有 `onClick`**，绘画详情「下载」「设为参考」连 `disabled` 都没有。**`novelId` 一处删一处留**：伏笔墙里它只为那个假条件存在，摘掉按钮就没人用它了（调用点 `WorkbenchPage.tsx:986` 同步）；世界观地图里下面那颗「查看绘画详情（页面壳）」还在用它拼真路由，留着。本条不建任何被后置的能力。
@@ -46,3 +75,6 @@
 - 2026-09-07 · 对话 reasoning、工具轨迹、人物文档渲染与恢复动作完成并纳入 UI 不变量。
 - 2026-09-05 · 建立提案、标签栏、三栏、焦点和控件图形语言的不可回退断言。
  - 2026-09-09：在 ChatPane 工具栏加入“确认并生成”按钮，复用现有 `/generate` 命令与 `generateDraft` 流程；不新增 Agent 写工具。
+- 2026-09-15：U-01：ChatPane 消费 `draft` SSE，将章节预览写入既有 draft buffer；作者在流中手改时停止自动落盘并保留提案卡。
+- 2026-09-16：新增 `ContextWorkflowPanel`：React Flow 仅作画布，保存的 policy/graph 严格镜像后端 workflow schema。
+- 2026-09-16：补齐 `author_instructions` 来源：默认画布与模块策略新增「作者指令 / 文风约束」，保持后端 kind 原值并默认启用；`uiInvariants` 固定来源节点、模块和 graph source 的对应关系。

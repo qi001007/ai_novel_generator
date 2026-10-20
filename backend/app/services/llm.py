@@ -5,6 +5,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from collections.abc import Iterator
 from typing import Any, Protocol
+from urllib.parse import urlparse
 
 import httpx
 from dotenv import load_dotenv
@@ -50,6 +51,7 @@ class LLMSettings:
                 "review": os.getenv("NOVEL_LLM_REVIEW_MODEL", ""),
                 "summary": os.getenv("NOVEL_LLM_SUMMARY_MODEL", ""),
                 "chat": os.getenv("NOVEL_LLM_CHAT_MODEL", ""),
+                "image": os.getenv("NOVEL_LLM_IMAGE_MODEL", ""),
             },
         )
 
@@ -79,6 +81,14 @@ class LLMResult:
     raw_message: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ImageGenerationResult:
+    model: str
+    urls: list[str]
+    usage: dict[str, Any] = field(default_factory=dict)
+    request_id: str = ""
+
+
 # 生成整章的温度。全仓只许出现这一次：流式调用方与非流式回退都读它，
 # 别在调用点再写一个字面量——两处各写一次，改一处就静默分叉。
 DRAFT_TEMPERATURE = 0.8
@@ -97,6 +107,7 @@ class LLMClient(Protocol):
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
+        max_output_tokens: int | None = None,
     ) -> LLMResult:
         ...
 
@@ -114,6 +125,16 @@ class LLMClient(Protocol):
     ) -> Iterator[Any]:
         ...
 
+    def generate_image(
+        self,
+        prompt: str,
+        *,
+        size: str = "1024x1024",
+        negative_prompt: str | None = None,
+        prompt_extend: bool = True,
+    ) -> ImageGenerationResult:
+        ...
+
 
 class OpenAICompatibleClient:
     def __init__(
@@ -122,6 +143,20 @@ class OpenAICompatibleClient:
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         self.settings = settings
+        # Windows proxy tools often export ALL_PROXY=socks5h://..., but this
+        # installation does not include httpx's optional SOCKS transport. Letting
+        # httpx consume that value makes even a local, unconfigured client fail
+        # during dependency injection. Select only a normal HTTP(S) proxy for the
+        # target scheme and ignore an unsupported ALL_PROXY value.
+        scheme = urlparse(settings.api_base_url).scheme.lower()
+        # A supplied transport is an explicit caller contract (notably the
+        # in-memory transports used by tests), so it must not be bypassed by a
+        # machine proxy.
+        proxy = None if transport is not None else os.environ.get(
+            "HTTPS_PROXY" if scheme == "https" else "HTTP_PROXY"
+        )
+        if proxy and urlparse(proxy).scheme not in {"http", "https"}:
+            proxy = None
         self._client = httpx.Client(
             base_url=settings.api_base_url,
             headers={
@@ -130,6 +165,8 @@ class OpenAICompatibleClient:
             },
             timeout=settings.timeout,
             transport=transport,
+            proxy=proxy,
+            trust_env=False,
         )
 
     def complete(self, task_type: str, system: str, user: str) -> LLMResult:
@@ -151,6 +188,7 @@ class OpenAICompatibleClient:
         model: str | None = None,
         tools: list[dict[str, Any]] | None = None,
         temperature: float | None = None,
+        max_output_tokens: int | None = None,
     ) -> LLMResult:
         resolved = self._resolve_model(task_type, model)
         payload: dict[str, Any] = {
@@ -164,6 +202,8 @@ class OpenAICompatibleClient:
         # answer arriving this way, because this deployment does not use it.
         if tools:
             payload["tools"] = tools
+        if max_output_tokens is not None:
+            payload["max_tokens"] = max_output_tokens
         response = self._client.post("/chat/completions", json=payload)
         if response.status_code >= 400:
             raise LLMError(f"LLM request failed with status {response.status_code}")
@@ -184,6 +224,62 @@ class OpenAICompatibleClient:
             token_output=int(usage.get("completion_tokens", 0)),
             cost_estimate=0.0,
             raw_message=message if isinstance(message, dict) else {},
+        )
+
+    def generate_image(
+        self,
+        prompt: str,
+        *,
+        size: str = "1024x1024",
+        negative_prompt: str | None = None,
+        prompt_extend: bool = True,
+    ) -> ImageGenerationResult:
+        """Generate one billable image through an OpenAI-compatible endpoint."""
+        resolved = self._resolve_model("image")
+        cleaned = prompt.strip()
+        if not cleaned:
+            raise LLMError("Image prompt is empty")
+        payload: dict[str, Any] = {
+            "model": resolved,
+            "prompt": cleaned,
+            "size": size,
+            "n": 1,
+            "prompt_extend": prompt_extend,
+        }
+        if negative_prompt and negative_prompt.strip():
+            payload["negative_prompt"] = negative_prompt.strip()
+        response = self._client.post("/images/generations", json=payload)
+        if response.status_code >= 400:
+            detail = ""
+            try:
+                failure = response.json()
+                if isinstance(failure, dict):
+                    code = str(failure.get("code") or "").strip()
+                    message = str(failure.get("message") or "").strip()
+                    safe = re.sub(r"sk-[A-Za-z0-9._-]+", "sk-***", " ".join(message.split()))
+                    detail = ": " + " · ".join(part for part in (code, safe[:240]) if part)
+            except ValueError:
+                pass
+            request_id = response.headers.get("x-request-id", "")
+            if request_id:
+                detail += f" (request_id={request_id})"
+            raise LLMError(
+                f"Image generation request failed with status {response.status_code}{detail}"
+            )
+        data = response.json()
+        try:
+            rows = data["data"]
+            urls = [row["url"] for row in rows if isinstance(row, dict) and row.get("url")]
+        except (KeyError, TypeError) as cause:
+            raise LLMError("Image generation response has an unexpected shape") from cause
+        if not urls:
+            raise LLMError("Image generation response did not contain an image URL")
+        usage = data.get("usage")
+        return ImageGenerationResult(
+            model=resolved,
+            urls=urls,
+            usage=usage if isinstance(usage, dict) else {},
+            request_id=response.headers.get("x-request-id", ""),
         )
 
     def stream_messages(
@@ -498,6 +594,28 @@ class RoutedLLMClient:
             task_type, messages, model=model, tools=tools, temperature=temperature
         )
 
+    def complete_messages_on(
+        self,
+        provider_id: str,
+        task_type: str,
+        messages: list[dict[str, str]],
+        *,
+        model: str,
+        temperature: float | None = None,
+        max_output_tokens: int | None = None,
+    ) -> LLMResult:
+        """Run a workflow model node against its explicitly saved provider."""
+        client = self._clients.get(provider_id)
+        if client is None:
+            raise LLMUnavailableError(f"LLM provider is not configured: {provider_id}")
+        return client.complete_messages(
+            task_type,
+            messages,
+            model=model,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+        )
+
     def stream_messages(
         self,
         task_type: str,
@@ -520,6 +638,21 @@ class RoutedLLMClient:
             reasoning_out=reasoning_out,
             channels=channels,
             tool_calls_out=tool_calls_out,
+        )
+
+    def generate_image(
+        self,
+        prompt: str,
+        *,
+        size: str = "1024x1024",
+        negative_prompt: str | None = None,
+        prompt_extend: bool = True,
+    ) -> ImageGenerationResult:
+        return self._for("image").generate_image(
+            prompt,
+            size=size,
+            negative_prompt=negative_prompt,
+            prompt_extend=prompt_extend,
         )
 
 

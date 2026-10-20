@@ -1,3 +1,5 @@
+import re
+
 from sqlmodel import Session, select
 
 from app.models import Chapter, ChapterBrief, GenerationRun, Novel
@@ -14,22 +16,56 @@ class ChapterDomainError(Exception):
         self.detail = detail
 
 
+COMMON_TYPOS = {
+    "因该": "应该",
+    "即然": "既然",
+    "既使": "即使",
+    "不径而走": "不胫而走",
+    "按步就班": "按部就班",
+}
+
+
+def _located_issue(kind: str, message: str, content: str, start: int, end: int, replacement: str = "") -> dict:
+    return {
+        "type": kind,
+        "message": message,
+        "quote": content[start:end],
+        "replacement": replacement,
+        "start": start,
+        "end": end,
+    }
+
+
 def machine_check(chapter: Chapter, rules: dict) -> dict:
-    issues: list[dict[str, str]] = []
-    if rules.get("min_word_count") and chapter.word_count < rules["min_word_count"]:
+    content = str(rules.get("content") if rules.get("content") is not None else chapter.content)
+    word_count = len(content)
+    issues: list[dict] = []
+    if rules.get("min_word_count") and word_count < rules["min_word_count"]:
         issues.append({"type": "word_count", "message": f"字数少于下限 {rules['min_word_count']}"})
-    if rules.get("max_word_count") and chapter.word_count > rules["max_word_count"]:
+    if rules.get("max_word_count") and word_count > rules["max_word_count"]:
         issues.append({"type": "word_count", "message": f"字数超过上限 {rules['max_word_count']}"})
     for word in rules.get("forbidden_words", []):
-        if word and word in chapter.content:
-            issues.append({"type": "forbidden_word", "message": f"命中禁用词：{word}"})
+        if word and word in content:
+            start = content.index(word)
+            issues.append(_located_issue("forbidden_word", f"命中禁用词：{word}", content, start, start + len(word)))
     for phrase in rules.get("blacklist", []):
-        if phrase and phrase in chapter.content:
-            issues.append({"type": "blacklist", "message": f"命中黑名单：{phrase}"})
+        if phrase and phrase in content:
+            start = content.index(phrase)
+            issues.append(_located_issue("blacklist", f"命中黑名单：{phrase}", content, start, start + len(phrase)))
     for fact in rules.get("required_facts", []):
-        if fact and fact not in chapter.content:
+        if fact and fact not in content:
             issues.append({"type": "missing_fact", "message": f"缺少必要事实：{fact}"})
-    return {"passed": not issues, "word_count": chapter.word_count, "issues": issues}
+
+    for wrong, replacement in COMMON_TYPOS.items():
+        for match in re.finditer(re.escape(wrong), content):
+            issues.append(_located_issue("typo", f"常见错字：{wrong}", content, match.start(), match.end(), replacement))
+    for match in re.finditer(r"([的了着过地得])\1", content):
+        issues.append(_located_issue("duplicate_word", "疑似重复字", content, match.start(), match.end(), match.group(1)))
+    for match in re.finditer(r"([，。！？；：、])\1+", content):
+        issues.append(_located_issue("duplicate_punctuation", "重复标点", content, match.start(), match.end(), match.group(1)))
+
+    issues.sort(key=lambda issue: (int(issue.get("start", 10**12)), issue["type"]))
+    return {"passed": not issues, "word_count": word_count, "issues": issues}
 
 
 def get_chapter_or_error(session: Session, novel_id: int, chapter_id: int) -> Chapter:

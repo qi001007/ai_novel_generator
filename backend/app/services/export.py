@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from sqlmodel import Session, select
 
-from app.models import Chapter, Novel
+from app.models import Chapter, Novel, Review, Revision
 
 FORMATS = ("txt", "md")
 
@@ -43,21 +43,39 @@ def _heading(chapter: Chapter, fmt: str) -> str:
     return f"# {title}" if fmt == "md" else title
 
 
-def _prose(chapter: Chapter) -> str:
-    content = (chapter.content or "").strip()
-    if not content:
-        raise ExportError(409, f"第 {chapter.chapter_number} 章还没有正文，导出会是空文件")
-    return content
+def _approved_prose(session: Session, chapter: Chapter) -> str | None:
+    latest_decision = session.exec(
+        select(Review)
+        .where(Review.chapter_id == chapter.id, Review.reviewer == "human")
+        .order_by(Review.created_at.desc(), Review.id.desc())
+    ).first()
+    if latest_decision is None or latest_decision.decision == "reject":
+        return None
+    revision = session.exec(
+        select(Revision)
+        .where(Revision.asset_type == "chapter_approved", Revision.asset_id == chapter.id)
+        .order_by(Revision.revision.desc())
+    ).first()
+    if revision is None:
+        return None
+    content = str(revision.snapshot.get("content", "")).strip()
+    return content or None
 
 
-def book_document(session: Session, novel: Novel, fmt: str) -> tuple[str, str]:
-    """Everything that has prose, in chapter order. Empty chapters are skipped."""
+def book_document(session: Session, novel: Novel, fmt: str, allow_partial: bool = False) -> tuple[str, str]:
+    """Export immutable approved revisions; working drafts never leak into a download."""
     if fmt not in FORMATS:
         raise ExportError(400, "format 只支持 txt 或 md")
-    chapters = [chapter for chapter in _ordered_chapters(session, novel.id) if (chapter.content or "").strip()]
+    all_chapters = [chapter for chapter in _ordered_chapters(session, novel.id) if (chapter.content or "").strip()]
+    approved = [(chapter, _approved_prose(session, chapter)) for chapter in all_chapters]
+    missing = [chapter.chapter_number for chapter, content in approved if content is None]
+    if missing and not allow_partial:
+        listed = "、".join(f"第 {number} 章" for number in missing)
+        raise ExportError(409, f"以下章节没有有效终审版本：{listed}")
+    chapters = [(chapter, content) for chapter, content in approved if content is not None]
     if not chapters:
-        raise ExportError(404, "这本书还没有任何正文")
-    blocks = [f"{_heading(chapter, fmt)}\n\n{_prose(chapter)}" for chapter in chapters]
+        raise ExportError(404, "这本书还没有可导出的终审正文")
+    blocks = [f"{_heading(chapter, fmt)}\n\n{content}" for chapter, content in chapters]
     head = f"# {novel.title}\n\n" if fmt == "md" else ""
     text = head + "\n\n\n".join(blocks) + "\n"
     return text, f"{novel.title}_全书.{fmt}"
@@ -72,5 +90,8 @@ def chapter_document(session: Session, novel: Novel, chapter_number: int, fmt: s
     )
     if chapter is None:
         raise ExportError(404, f"第 {chapter_number} 章不存在")
-    text = f"{_heading(chapter, fmt)}\n\n{_prose(chapter)}\n"
+    content = _approved_prose(session, chapter)
+    if content is None:
+        raise ExportError(409, f"第 {chapter_number} 章没有有效终审版本")
+    text = f"{_heading(chapter, fmt)}\n\n{content}\n"
     return text, f"{novel.title}_第{chapter_number:04d}章.{fmt}"

@@ -323,7 +323,18 @@ def test_a_failing_tool_still_loops_and_says_it_failed():
     def boom(path: str) -> str:
         raise ToolError("读不到")
 
-    registry = ToolRegistry([Tool(name="read_file", description="", parameters={}, handler=boom)])
+    registry = ToolRegistry([
+        Tool(
+            name="read_file",
+            description="",
+            parameters={
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+            handler=boom,
+        )
+    ])
     llm = ScriptedLLM([{"content": call_block("read_file", path="x.md")}, {"content": "拿不到，请主人确认。"}])
     outcome = run_agent_turn(llm, [{"role": "user", "content": "q"}], registry)
     assert outcome.steps[0].result.ok is False
@@ -340,7 +351,7 @@ def test_the_step_cap_raises_instead_of_running_on():
             ToolRegistry([make_tool()]),
             config=AgentConfig(max_steps=2, max_tokens=10_000),
         )
-    assert "2 轮" in str(caught.value)  # 轮=模型请求，步=工具调用
+    assert "2 个内部步骤" in str(caught.value)
     assert len(llm.seen) == 2
 
 
@@ -355,7 +366,7 @@ def test_the_token_cap_raises_rather_than_shipping_a_cut_answer():
         )
     assert "token" in str(caught.value)
     # 35.9：拒绝文案要同时报出两个上限和改它的地方，主人不必猜是哪一道闸。
-    assert "当前上限 1000 token / 5 轮" in str(caught.value)
+    assert "当前上限 1000 token / 5 个内部步骤" in str(caught.value)
     assert "设置 → 模型接入 → 对话 Agent 预算" in str(caught.value)
 
 
@@ -404,7 +415,7 @@ def test_the_same_measured_turn_was_cut_off_by_the_old_ceiling():
             ToolRegistry([make_tool()]),
             config=AgentConfig(max_steps=6, max_tokens=30_000),
         )
-    assert "第 6 轮" in str(caught.value)
+    assert "第 6 个内部步骤" in str(caught.value)
 
 
 def test_a_repeated_call_is_answered_without_being_run_twice() -> None:

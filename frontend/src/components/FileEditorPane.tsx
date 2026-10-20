@@ -50,6 +50,12 @@ const LOCKED_FIELDS: Record<string, string[]> = {
   worldview: ["setting"],
 };
 
+export function fileTabLabel(path: string): string {
+  const chapter = /^chapters\/(\d{4})\/(draft|brief)\.md$/.exec(path);
+  if (chapter) return `${chapter[1]} · ${chapter[2]}.md`;
+  return path.split("/").pop() ?? path;
+}
+
 
 /* 第十四批批注 2: this used to be a set with one entry - toc.md - which is why the
    toggle existed nowhere else. Every one of these documents is markdown with a
@@ -94,6 +100,8 @@ export default function FileEditorPane() {
   activeRef.current = active;
   // Offset inside the thumb where the pointer grabbed it; null when not dragging.
   const mmGrabRef = useRef(null as number | null);
+  const mmScrubFrameRef = useRef(null as number | null);
+  const [minimapDragging, setMinimapDragging] = useState(false);
 
   const [scroll, setScroll] = useState<ScrollInfo>({ top: 0, height: 1, lines: 0 });
   const [caretLine, setCaretLine] = useState(1);
@@ -309,7 +317,15 @@ export default function FileEditorPane() {
       toCssPx(mapTop),
       mmGrabRef.current,
     );
-    dom.scrollTop = progress * Math.max(0, dom.scrollHeight - dom.clientHeight);
+    const apply = () => {
+      dom.scrollTop = progress * Math.max(0, dom.scrollHeight - dom.clientHeight);
+    };
+    apply();
+    if (mmScrubFrameRef.current !== null) window.cancelAnimationFrame(mmScrubFrameRef.current);
+    mmScrubFrameRef.current = window.requestAnimationFrame(() => {
+      apply();
+      mmScrubFrameRef.current = null;
+    });
   }
 
   function onMinimapPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -322,6 +338,7 @@ export default function FileEditorPane() {
     mmGrabRef.current = isOnThumb(mmHeight, scroll.height, scrollProgress, offset)
       ? offset - geo.top
       : geo.height / 2;
+    setMinimapDragging(true);
     event.currentTarget.setPointerCapture(event.pointerId);
     scrubTo(event.clientY, rect.top);
   }
@@ -334,9 +351,16 @@ export default function FileEditorPane() {
   function onMinimapPointerEnd(event: React.PointerEvent<HTMLDivElement>) {
     if (mmGrabRef.current === null) return;
     mmGrabRef.current = null;
+    setMinimapDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+  }
+
+  function onMinimapWheel(event: React.WheelEvent<HTMLDivElement>) {
+    if (!view) return;
+    event.preventDefault();
+    view.scrollDOM.scrollTop += event.deltaY;
   }
 
   useLayoutEffect(() => {
@@ -353,7 +377,7 @@ export default function FileEditorPane() {
   useEffect(() => {
     const canvas = minimapCanvasRef.current;
     if (!canvas) return;
-    const width = 56;
+    const width = Math.max(1, canvas.parentElement?.clientWidth ?? 60);
     const height = Math.max(1, mmHeight);
     const dpr = window.devicePixelRatio || 1;
     canvas.width = width * dpr;
@@ -371,6 +395,7 @@ export default function FileEditorPane() {
       document.documentElement.dataset.theme === "dark",
       tokenValue("--ui"),
       tokenValue("--accent"),
+      scrollProgress,
     );
   }, [lines, mmHeight, caretLine, scroll]);
 
@@ -430,8 +455,8 @@ export default function FileEditorPane() {
               role="tab"
               aria-selected={path === active}
             >
-              <button type="button" onClick={() => void open(path)}>
-                <span>{path}</span>
+              <button type="button" title={path} aria-label={`打开 ${path}`} onClick={() => void open(path)}>
+                <span>{fileTabLabel(path)}</span>
               </button>
               {isDirty(item) ? <i className="dirty-dot" aria-label="未保存" /> : null}
               {pending[path] ? <i className="pending-dot" aria-label="有提案待应用" /> : null}
@@ -531,12 +556,19 @@ export default function FileEditorPane() {
           <div ref={setHost} className="file-cm" />
         </div>
         <div
-          className="minimap file-minimap"
-          aria-hidden="true"
+          className={`minimap file-minimap${minimapDragging ? " dragging" : ""}`}
+          role="scrollbar"
+          aria-label="正文缩略栏"
+          aria-orientation="vertical"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(scrollProgress * 100)}
+          tabIndex={0}
           onPointerDown={onMinimapPointerDown}
           onPointerMove={onMinimapPointerMove}
           onPointerUp={onMinimapPointerEnd}
           onPointerCancel={onMinimapPointerEnd}
+          onWheel={onMinimapWheel}
         >
           <canvas ref={minimapCanvasRef} className="minimap-canvas" />
           <i

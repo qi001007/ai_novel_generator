@@ -11,6 +11,10 @@ export type Novel = {
   style_constraints: string;
   cover_image: string;
   cover_color?: string;
+  revision?: number;
+  status?: "draft" | "approved" | "retired" | string;
+  pinned?: boolean;
+  archived?: boolean;
   /* Bookshelf aggregates. Absent on the create/update responses, which return a bare
      novel, so the shelf must render an em dash rather than invent a number. */
   chapter_count?: number;
@@ -36,6 +40,7 @@ export type ChapterBrief = {
   hook: string;
   required_facts: string[];
   status: string;
+  custom_sections?: { label: string; content: string }[];
 };
 
 export type Chapter = {
@@ -54,6 +59,10 @@ export type Chapter = {
 export type MachineCheckIssue = {
   type: string;
   message: string;
+  quote?: string;
+  replacement?: string;
+  start?: number;
+  end?: number;
 };
 
 export type MachineCheckResult = {
@@ -110,7 +119,8 @@ export type Review = {
   decision: string;
   comments: string;
   scores: Record<string, number>;
-  evidence: Record<string, string[]>;
+  /** Dimension quotes plus optional structured, author-actionable suggestions. */
+  evidence: Record<string, unknown>;
   created_at: string;
 };
 
@@ -135,6 +145,7 @@ export type Character = {
   current_status: string;
   expected_start_chapter: number | null;
   expected_end_chapter: number | null;
+  custom_sections?: { label: string; content: string }[];
 };
 
 export type LLMStatus = {
@@ -226,6 +237,35 @@ export type ChatToolStep = {
   ok: boolean;
   ms: number;
   chars: number;
+  /** Structured backend receipt. High-risk commands carry the preview diff here. */
+  result?: Record<string, unknown>;
+  agent_run_id?: number;
+  tool_call?: AgentToolCall;
+};
+
+export type AgentToolCall = {
+  id: number;
+  agent_run_id: number | null;
+  novel_id?: number | null;
+  operation_id?: number | null;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  result: Record<string, unknown>;
+  status: string;
+  approval_state: "pending" | "approved" | "rejected" | "not_required";
+};
+
+export type AgentRun = {
+  id: number;
+  novel_id: number | null;
+  status: string;
+  request: string;
+  response: string;
+  error: string;
+  model: string;
+  token_input: number;
+  token_output: number;
+  tool_calls: AgentToolCall[];
 };
 
 /** 一条斜杠命令最后结算成的那张卡（批注 35.34）。
@@ -293,8 +333,12 @@ export type ChatContextPayload = {
 };
 
 export type ChatStreamEvent =
+  | { event: "agent_run"; data: { id: number; status: string } }
   | { event: "context"; data: ChatContextPayload }
   | { event: "delta"; data: { text: string } }
+  // A chapter proposal is also previewed in the existing draft buffer while its
+  // fence is still open. This never writes the server-side file.
+  | { event: "draft"; data: { path: string; text: string } }
   // 模型的推理，边到边给。它在网关里就是先于 content 的一路，界面上也必须先出现
   // （第二十九批批注 6：以前只有 done 才带 reasoning，于是思考过程永远比正文晚）。
   | { event: "reasoning"; data: { text: string } }
@@ -328,6 +372,21 @@ export type PlotFeedback = {
   status: string;
   applied_at: string | null;
   created_at: string;
+  updated_at: string;
+};
+
+export type WorldviewEntry = {
+  id: number;
+  novel_id: number;
+  category: string;
+  name: string;
+  content: string;
+  current_state: string;
+  is_confirmed: boolean;
+  source_chapter: number | null;
+  custom_sections: { title: string; content: string }[];
+  created_at: string;
+  updated_at: string;
 };
 
 export type FileMeta = { path: string; kind: string; layer: string; label: string };
@@ -351,6 +410,99 @@ export type FileDoc = {
   revision: string;
   /** 这张 kind 的语法表；正文（draft/chapter）没有键行，后端发空对象。 */
   grammar?: ServedGrammar;
+};
+
+export type ContextSourceKind =
+  | "blueprint"
+  | "toc"
+  | "arc"
+  | "briefs"
+  | "drafts"
+  | "characters"
+  | "worldview"
+  | "foreshadow"
+  | "author_instructions";
+
+export type ContextModule = {
+  id: string;
+  kind: ContextSourceKind;
+  enabled: boolean;
+  before: number;
+  after: number;
+  tail_chars: number | null;
+  limit: number | null;
+  selection: "all" | "brief_mentions" | "keyword_match" | "manual";
+  /** C 层的总覆盖窗；只由工作流保存，更新提醒尚未接入章节生成。 */
+  arc_window?: number | null;
+  /** C 层建议更新的进度比例，例如 2/3。 */
+  arc_update_threshold?: "1/2" | "2/3" | "3/4" | null;
+};
+
+export type ContextWorkflowNode = {
+  id: string;
+  type: "start" | "context" | "prompt" | "model" | "condition" | "output";
+  position: { x: number; y: number };
+  source?: ContextSourceKind;
+  label: string;
+  config?: Record<string, unknown>;
+};
+
+export type ContextWorkflowEdge = {
+  source: string;
+  target: string;
+  source_handle?: string;
+  target_handle?: string;
+};
+
+export type ContextWorkflow = {
+  id: number;
+  revision: number;
+  name: string;
+  novel_id: number;
+  purpose: "generation" | "review";
+  is_default: boolean;
+  graph: { version: 1; nodes: ContextWorkflowNode[]; edges: ContextWorkflowEdge[] };
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContextWorkflowPayload = Omit<ContextWorkflow, "id" | "revision" | "created_at" | "updated_at">;
+
+export type WorkflowVersion = {
+  id: number;
+  workflow_id: number;
+  version: number;
+  purpose: "generation" | "review";
+  definition_revision: number;
+  graph: ContextWorkflow["graph"];
+  source_json: string;
+  created_at: string;
+};
+
+export type WorkflowNodeRun = {
+  id: number;
+  node_id: string;
+  node_type: string;
+  status: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  error: string;
+  token_input: number;
+  token_output: number;
+};
+
+export type WorkflowRun = {
+  id: number;
+  workflow_id: number;
+  workflow_version_id: number;
+  status: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  error: string;
+  token_input: number;
+  token_output: number;
+  paused_node_id: string;
+  nodes: WorkflowNodeRun[];
 };
 
 export type FileWriteResult = { path: string; changed: string[]; revision: string };

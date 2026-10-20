@@ -29,7 +29,10 @@ export default function ProposalCard({
   const diff = diffFile(proposal.baseText, proposal.text);
   const rows = diff.lines.filter((row) => row.type !== "same");
   const hidden = Math.max(0, rows.length - MAX_ROWS);
-  const visible = showAll ? rows : rows.slice(0, MAX_ROWS);
+  // Keep every changed line mounted when folded: the fixed-height viewport lets the
+  // owner use the wheel to inspect the rest without first committing to a full-card
+  // expansion. The head control still removes that viewport when needed.
+  const visible = rows;
   const invalidReason = proposal.error || "提案未通过后端校验";
   /* 批注 2 (2026-09-09): an invalid proposal has nothing to write. The PUT came back
      red and the markdown stayed as it was, so pressing 应用 again only re-prints that
@@ -84,11 +87,11 @@ export default function ProposalCard({
       </div>
 
       {proposal.valid ? (
-        <div className="proposal-diff">{changeRows}</div>
+        <div className={`proposal-diff ${showAll ? "" : "proposal-diff-folded"}`}>{changeRows}</div>
       ) : (
         <>
           <p className="proposal-error">{invalidReason}</p>
-          <div className="proposal-diff proposal-invalid-preview">{changeRows}</div>
+          <div className={`proposal-diff proposal-invalid-preview ${showAll ? "" : "proposal-diff-folded"}`}>{changeRows}</div>
         </>
       )}
 

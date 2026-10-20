@@ -48,37 +48,72 @@
   --ui: "Noto Sans SC", "Segoe UI", "Microsoft YaHei", sans-serif;
   /* 正文阅读与编辑的字体（§0.2）。一个 token，两处正文与缩略栏共用；
      [data-prose-font=...] 换的就是它。书架上的书名与印章字是装饰，不跟着走。 */
-  --prose: "Noto Serif SC", "Source Han Serif SC", serif;
+  --prose: "Microsoft YaHei UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   /* 字号（第二十批 20.4）。界面字号不写成 font-size：全站几百条 font-size 是写死的，
      逐条改 em 不现实，而 zoom 正是 VSCode window.zoomLevel 的做法 - 它缩放整棵子树，
      一处生效。跟随指针的浮层与拖拽要按这个因子换算（见 uiZoom()）。 */
   --ui-zoom: 1;
-  --prose-size: 17px;
+  --prose-size: 18px;
+  /* UI 尺度只有这一处拥有具体数值：组件只能消费下面的语义/组件令牌。 */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --size-compact-control: 28px;
+  --size-default-control: 32px;
+  --type-ui-xs: 10px;
+  --type-ui-sm: 12px;
+
+  /* 语义令牌：同一层级的控件共用高度、字级、间距和边界。 */
+  --control-height-compact: var(--size-compact-control);
+  --control-height-default: var(--size-default-control);
+  --control-font-size: var(--type-ui-sm);
+  --control-radius: var(--radius-sm);
+  --control-gap: var(--space-2);
+  --boundary-size: 1px;
+  --resize-hit-size: 7px;
+
+  /* 组件令牌：按钮、输入框和分界线不再在局部重新发明尺寸。 */
+  --button-min-height: var(--control-height-default);
+  --button-padding-block: var(--space-3);
+  --button-padding-inline: var(--space-6);
+  --field-padding-block: 7px;
+  --field-padding-inline: var(--space-5);
+  --toolbar-control-height: var(--control-height-compact);
+  --toolbar-control-padding-inline: var(--space-4);
+  --document-tab-min-width: 9rem;
+  --splitter-line-size: var(--boundary-size);
+  --splitter-hit-size: var(--resize-hit-size);
   /* The minimap is a gutter, not part of the page you read. Anything that centres
-     itself against the editor column has to subtract it, or it sits 28px right of the
+     itself against the editor column has to subtract it, or it sits half a gutter right of the
      text it is standing in for - which is what the owner kept seeing (第十七批批注 2).
      One token, so the gutter and the inset cannot disagree. */
-  --minimap-w: 56px;
-  --editor-gutter: #fafaf9;
-  --editor-active: #fdf3f0;
-  --editor-linenum: #b7b4ae;
-  --editor-comment: #a39f97;
-  /* Document token colours (see cmDoc.ts docHighlight). Light keeps 帧 17. */
-  --tok-key: var(--accent);
-  --tok-string: #a11;
-  --tok-literal: #164;
-  --tok-comment: #940;
-  --tok-meta: #404740;
-  --tok-keyword: #708;
+  --minimap-w: 88px;
+  /* VS Code Light Modern. The editor follows the shell theme as one surface. */
+  --editor-bg: #ffffff;
+  --editor-fg: #1f1f1f;
+  --editor-selection: #add6ff;
+  --editor-gutter: #ffffff;
+  --editor-active: #f2f2f2;
+  --editor-linenum: #6e7681;
+  --editor-comment: #008000;
+  --tok-key: #001080;
+  --tok-string: #a31515;
+  --tok-literal: #0070c1;
+  --tok-comment: #008000;
+  --tok-meta: #616161;
+  --tok-keyword: #0000ff;
   --warn-soft: #fbf3e2;
   --diff-minus: #b03a22;
   --diff-minus-bg: #fdf1ef;
   --diff-plus: #2f7a45;
   --diff-plus-bg: #f0f7f1;
-  --minimap-line: #e4e4e1;
-  --minimap-comment: #d8d5d0;
-  --minimap-active: #e8cfc7;
-  --minimap-thumb-bg: rgb(245 245 243 / 0.45);
+  --minimap-line: #767676;
+  --minimap-comment: #3f7f48;
+  --minimap-active: #c6d7ea;
+  --minimap-thumb-bg: rgb(121 121 121 / 0.24);
   --radius-lg: 10px;
   --radius-md: 8px;
   --radius-sm: 6px;
@@ -121,15 +156,18 @@
   --danger: #f87171;
   --hairline: #3e3e42;
   --mono: "JetBrains Mono", "Cascadia Code", Consolas, monospace;
-  --editor-gutter: #1a1a1c;
-  --editor-active: #2a201e;
-  --editor-linenum: #55534f;
-  --editor-comment: #6b6862;
+  --editor-bg: #1e1e1e;
+  --editor-fg: #d4d4d4;
+  --editor-selection: #264f78;
+  --editor-gutter: #1e1e1e;
+  --editor-active: #2a2d2e;
+  --editor-linenum: #858585;
+  --editor-comment: #6a9955;
   /* Dark follows VSCode Dark+: sky-blue keys, salmon strings, blue literals. */
   --tok-key: #9cdcfe;
   --tok-string: #ce9178;
   --tok-literal: #4fc1ff;
-  --tok-comment: #940;
+  --tok-comment: #6a9955;
   --tok-meta: var(--text-2);
   --tok-keyword: #569cd6;
   --warn-soft: #33290f;
@@ -151,7 +189,7 @@
   --minimap-line: #232427;
   --minimap-comment: #2a2b2e;
   --minimap-active: #4a3129;
-  --minimap-thumb-bg: rgb(255 255 255 / 0.06);
+  --minimap-thumb-bg: rgb(121 121 121 / 0.24);
   --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.4);
   --shadow-lift: 0 4px 12px rgb(0 0 0 / 0.3);
   --chat-bubble: #232428;
@@ -297,8 +335,8 @@ button {
   /* 故意不写 justify-content: center：按钮是 shrink-to-fit 的 inline-flex，图标本来就
      对称居中；而 .tree-label 那类占满一行的按钮一居中，行文字右移 75px（实测）。
      水平方向交给各自的 text-align。 */
-  min-height: 32px;
-  padding: 6px 12px;
+  min-height: var(--button-min-height);
+  padding: var(--button-padding-block) var(--button-padding-inline);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -397,10 +435,10 @@ button:disabled {
 .icon-button {
   display: inline-grid;
   place-items: center;
-  width: 28px;
-  min-width: 28px;
+  width: var(--control-height-compact);
+  min-width: var(--control-height-compact);
   min-height: 0;
-  height: 28px;
+  height: var(--control-height-compact);
   padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
@@ -433,7 +471,7 @@ button:disabled {
 input,
 textarea,
 select {
-  padding: 7px 10px;
+  padding: var(--field-padding-block) var(--field-padding-inline);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
   background: var(--surface);
@@ -459,6 +497,59 @@ select:focus-visible {
   color: var(--text-2);
   white-space: nowrap;
 }
+
+/* Unified controls: business pages compose these classes instead of inventing
+   one-off dimensions. Concrete values live in the three token layers above. */
+.ui-button {
+  justify-content: center;
+  min-height: var(--button-min-height);
+  height: var(--button-min-height);
+  padding: 0 var(--button-padding-inline);
+  border-radius: var(--control-radius);
+  font-size: var(--control-font-size);
+  white-space: nowrap;
+}
+.ui-button.is-compact { min-height: var(--toolbar-control-height); height: var(--toolbar-control-height); padding-inline: var(--toolbar-control-padding-inline); }
+.ui-button.is-primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.ui-button.is-danger { border-color: var(--danger); background: var(--danger); color: var(--on-danger); }
+.ui-icon-button { display: inline-grid; place-items: center; width: var(--toolbar-control-height); min-width: var(--toolbar-control-height); min-height: var(--toolbar-control-height); height: var(--toolbar-control-height); padding: 0; border: 0; background: transparent; color: var(--text-2); }
+.ui-text-field { min-width: 0; min-height: var(--control-height-default); height: var(--control-height-default); padding: 0 var(--field-padding-inline); font-size: var(--control-font-size); }
+.ui-text-area { min-width: 0; padding: var(--control-padding); border: var(--boundary-size) solid var(--border-strong); border-radius: var(--control-radius); color: var(--text-1); background: var(--surface); font: inherit; font-size: var(--control-font-size); line-height: 1.6; }
+.ui-checkbox { display: inline-flex; align-items: center; gap: var(--space-3); min-height: var(--toolbar-control-height); color: var(--text-1); font-size: var(--control-font-size); cursor: pointer; }
+.ui-checkbox input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.ui-checkbox > span { display: inline-grid; place-items: center; width: 16px; height: 16px; border: var(--boundary-size) solid var(--border-strong); border-radius: 3px; background: var(--surface); color: var(--on-accent); }
+.ui-checkbox input:checked + span { border-color: var(--accent); background: var(--accent); }
+.ui-checkbox em { font-style: normal; }
+.ui-checkbox.is-disabled { opacity: .5; cursor: not-allowed; }
+.ui-combobox { position: relative; min-width: 0; }
+.ui-combobox-trigger { width: 100%; justify-content: space-between; min-width: 0; }
+.ui-combobox-trigger > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-popover { position: absolute; z-index: 40; border: var(--boundary-size) solid var(--border-strong); border-radius: var(--control-radius); background: var(--surface-alt); box-shadow: var(--shadow-pop); }
+.ui-dialog-overlay { position: fixed; z-index: 180; inset: 0; display: grid; place-items: center; padding: var(--space-6); background: rgb(0 0 0 / 0.42); }
+.ui-dialog { display: grid; gap: var(--space-5); width: min(420px, calc(100vw - 24px)); padding: var(--space-6); border: var(--boundary-size) solid var(--border-strong); border-radius: var(--radius-md); background: var(--surface); box-shadow: var(--shadow-pop); color: var(--text-1); }
+.ui-dialog > header, .ui-dialog > footer { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.ui-dialog > footer { justify-content: flex-end; }
+.ui-dialog > p { margin: 0; color: var(--text-2); font-size: var(--type-ui-sm); }
+.ui-combobox-popover { top: calc(100% + var(--space-2)); left: 0; right: 0; min-width: 220px; padding: var(--space-3); }
+.ui-combobox-popover .ui-text-field { width: 100%; }
+.ui-combobox-options { display: grid; gap: 1px; max-height: 260px; margin-top: var(--space-3); overflow: auto; }
+.ui-combobox-options button { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; min-height: var(--control-height-default); padding: var(--space-2) var(--space-4); border: 0; background: transparent; text-align: left; }
+.ui-combobox-options button:hover:not(:disabled), .ui-combobox-options button[aria-selected="true"] { background: var(--surface); color: var(--accent-strong); }
+.ui-combobox-options button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-combobox-options button small { grid-column: 1; color: var(--text-2); font-size: var(--type-ui-xs); }
+.ui-combobox-options p { margin: 0; padding: var(--space-5); color: var(--text-2); font-size: var(--control-font-size); }
+.ui-menu { min-width: 180px; padding: var(--space-2); border: var(--boundary-size) solid var(--border-strong); border-radius: var(--control-radius); background: var(--surface-alt); box-shadow: var(--shadow-pop); }
+.ui-toast-region { position: fixed; z-index: 200; right: var(--space-6); bottom: var(--space-6); display: grid; gap: var(--space-3); width: min(360px, calc(100vw - 24px)); pointer-events: none; }
+.ui-toast { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-4); min-height: 42px; padding: var(--space-4) var(--space-5); border: var(--boundary-size) solid var(--border-strong); border-left: 3px solid var(--accent); border-radius: var(--control-radius); background: var(--surface-alt); color: var(--text-1); box-shadow: var(--shadow-pop); font-size: var(--control-font-size); pointer-events: auto; }
+.ui-toast.is-success { border-left-color: var(--success); }
+.ui-toast.is-error { border-left-color: var(--danger); }
+.ui-splitter { position: relative; flex: none; background: transparent; }
+.ui-splitter::after { content: ""; position: absolute; background: var(--border); }
+.ui-splitter.is-horizontal { height: var(--splitter-hit-size); margin-block: calc((var(--splitter-hit-size) - var(--splitter-line-size)) / -2); cursor: row-resize; }
+.ui-splitter.is-horizontal::after { inset: 50% 0 auto; height: var(--splitter-line-size); transform: translateY(-50%); }
+.ui-splitter.is-vertical { width: var(--splitter-hit-size); margin-inline: calc((var(--splitter-hit-size) - var(--splitter-line-size)) / -2); cursor: col-resize; }
+.ui-splitter.is-vertical::after { inset: 0 auto 0 50%; width: var(--splitter-line-size); transform: translateX(-50%); }
+.ui-splitter:hover::after, .ui-splitter:active::after { background: var(--border-strong); }
 
 .badge.warning {
   background: color-mix(in srgb, var(--warning) 14%, var(--surface));
@@ -504,6 +595,91 @@ select:focus-visible {
   text-overflow: ellipsis;
 }
 
+.project-switcher-wrap {
+  position: relative;
+  min-width: 0;
+}
+
+.project-switcher.topbar-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(320px, 38vw);
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  outline: none;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.project-switcher.topbar-title > span,
+.project-switcher-option > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-switcher.topbar-title > svg {
+  flex: none;
+  color: var(--text-2);
+}
+
+.project-switcher.topbar-title:hover,
+.project-switcher.topbar-title:focus-visible {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.project-switcher-menu {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 6px);
+  left: 0;
+  width: min(340px, calc(100vw - 24px));
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 20%, transparent);
+}
+
+.project-switcher-option {
+  width: 100%;
+  min-height: 32px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.project-switcher-option:hover,
+.project-switcher-option:focus-visible {
+  background: var(--surface-2);
+}
+
+.project-switcher-option > svg {
+  color: transparent;
+}
+
+.project-switcher-option > svg.is-current {
+  color: var(--accent);
+}
+
 .model-chip {
   display: inline-flex;
   align-items: center;
@@ -531,21 +707,32 @@ select:focus-visible {
   background: var(--bg);
 }
 
+/* 批注 36.4: ChatPane must stay mounted when switching to characters view so SSE
+   streams and local state survive. The wrapper uses display:contents to stay
+   invisible to the grid — its children remain direct grid items. When hidden,
+   the whole group disappears but the component keeps running. */
+.chat-area {
+  display: contents;
+}
+.chat-area[hidden] {
+  display: none;
+}
+
 /* Column widths and which columns exist come from WorkbenchPage; the hidden set
    is published as a space-separated attribute so the grid tracks and the items
    cannot drift out of step - the tracks are built from the same flag. */
 .workspace[data-hidden-panels~="sidebar"] > .sidebar,
 .workspace[data-hidden-panels~="sidebar"] > .splitter[data-pane="sidebar"],
-.workspace[data-hidden-panels~="chat"] > .chat-pane,
-.workspace[data-hidden-panels~="chat"] > .splitter[data-pane="chat"],
-.workspace[data-hidden-panels~="editor"] > .right-column {
+.workspace[data-hidden-panels~="chat"] .chat-pane,
+.workspace[data-hidden-panels~="chat"] .splitter[data-pane="chat"],
+.workspace[data-hidden-panels~="editor"] .right-column {
   display: none;
 }
 
 /* A splitter only makes sense between two live panels. Measured without this:
    hiding the editor left three tracks but four visible items, so the chat
    splitter fell into an implicit column and hung 1419px past the right edge. */
-.workspace[data-hidden-panels~="editor"] > .splitter[data-pane="chat"] {
+.workspace[data-hidden-panels~="editor"] .splitter[data-pane="chat"] {
   display: none;
 }
 
@@ -738,8 +925,26 @@ select:focus-visible {
 .tree[data-page="chat"] .tree-root-plan,
 .tree[data-page="chat"] .tree-section-plan,
 .tree[data-page="chat"] .tree-root-library,
-.tree[data-page="chat"] .tree-section-library {
+.tree[data-page="chat"] .tree-section-library,
+.tree[data-page="map"] .tree-root-plan,
+.tree[data-page="map"] .tree-section-plan,
+.tree[data-page="map"] .tree-root-library,
+.tree[data-page="map"] .tree-section-library,
+.tree[data-page="workflow"] .tree-root-plan,
+.tree[data-page="workflow"] .tree-section-plan,
+.tree[data-page="workflow"] .tree-root-library,
+.tree[data-page="workflow"] .tree-section-library {
   display: none;
+}
+
+.tree-module-hint {
+  margin: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 11.5px;
+  line-height: 1.6;
 }
 
 /* ---------- 左栏双根树 ---------- */
@@ -857,8 +1062,20 @@ select:focus-visible {
    真机量的：.tree 宽 244 而 scrollWidth 347，页头两枚图标被推到侧栏外，
    命中区审计当场报 2 个 unreachable。两层都要设，少一层照样撑。 */
 .tree-section-conversations,
-.tree-row.conversation {
+.tree-row.conversation,
+.tree-section-workflows,
+.tree-row.workflow-resource {
   min-width: 0;
+}
+
+.tree-section-workflows {
+  padding: 0 4px;
+}
+
+.tree-row.workflow-resource .tree-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tree-divider {
@@ -1560,12 +1777,8 @@ select:focus-visible {
   color: var(--text-2);
   font-size: 12px;
   line-height: 20px;
-  /* 批注 35.28：状态栏，不是开关。 */
-  cursor: default;
+  cursor: pointer;
 }
-
-/* 原来这里有一条规则：鼠标停在未选中那一侧时把灰字提亮——那是「你可以点它」的手势。
-   这两颗不再可点，手势就得跟着撤，否则屏幕上仍然是一片「点了会有事发生」的样子。 */
 
 /* No filled pill: a tinted box on one item and nothing on its neighbour is what
    made the active one look taller. Colour plus an inset underline keeps the box
@@ -1862,6 +2075,7 @@ select:focus-visible {
 /* ---------- 右栏编辑器 ---------- */
 
 .editor-pane {
+  position: relative;
   display: grid;
   /* One bounded column. A grid container's implicit column is auto-sized, which
      means "as wide as the tabs want" - measured 938px inside a 768px column, so
@@ -1912,10 +2126,10 @@ select:focus-visible {
      the same two numbers (第十五批批注 1.2 - "与文件条一致" is about the pair of
      floors and ceilings, not only about the thumb). */
   max-width: 15rem;
-  /* Do not squeeze the label into two lines to make the strip fit; let the
-     strip scroll instead. 第十四批批注 3: it may shrink to the floor, though. */
-  flex: 0 1 auto;
-  min-width: 5.5rem;
+  /* A tab keeps enough width for its identity; extra tabs move the strip instead
+     of compressing every label into the same unreadable prefix. */
+  flex: 0 0 auto;
+  min-width: var(--document-tab-min-width);
   min-height: 30px;
   /* 2px, not 4: the close button grew to 26px and the strip must not grow with it. */
   padding: 2px 12px;
@@ -2041,7 +2255,7 @@ select:focus-visible {
      (see .editor-actions button.primary below) this row measures 32 - the shortest of
      the bars: topbar 48, the two tab strips 38, this 32. */
   padding: 2px 12px;
-  background: var(--bg);
+  background: var(--editor-bg);
   border-bottom: 1px solid var(--border);
 }
 
@@ -2126,7 +2340,7 @@ select:focus-visible {
 .editor-body {
   display: flex;
   min-height: 0;
-  background: var(--bg);
+  background: var(--editor-bg);
 }
 
 .editor-scroll {
@@ -2156,46 +2370,166 @@ select:focus-visible {
   width: var(--minimap-w);
   overflow: hidden;
   cursor: ns-resize;
-  background: var(--bg);
+  background: var(--editor-bg);
   touch-action: none;
 }
 
 .minimap-canvas {
   position: absolute;
   inset: 0;
+  z-index: 0;
+  -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 7px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 7px), transparent 100%);
 }
 
-.editor-body textarea {
-  display: block;
-  width: min(720px, 100%);
+.editor-cm,
+.editor-cm .cm-editor,
+.editor-cm .cm-scroller {
   height: 100%;
+  min-height: 0;
+}
+
+.editor-cm .cm-editor,
+.editor-cm .cm-editor.cm-focused {
+  outline: 0;
+  background: var(--editor-bg);
+  color: var(--editor-fg);
+}
+
+.editor-cm .cm-scroller {
+  width: min(720px, 100%);
   margin: 0 auto;
-  padding: 28px 24px 48px;
-  border: 0;
-  background: transparent;
-  border-radius: 0;
-  resize: none;
-  /* The textarea is the scroller, but its own scrollbar stays hidden: the
-     minimap slider is the single visible control, and it scrolls this element. */
   overflow-y: auto;
   scrollbar-width: none;
-  font-family: var(--prose);
-  font-size: var(--prose-size);
-  /* 17 * 1.9 = 32.3 matches LINE_PX in EditorPane.tsx. */
-  line-height: 1.9;
 }
 
-.editor-body textarea::-webkit-scrollbar {
+.editor-cm .cm-scroller::-webkit-scrollbar {
   display: none;
+}
+
+.editor-cm .cm-content {
+  min-height: 100%;
+  padding: 28px 24px 48px;
+  font-family: var(--prose);
+  font-size: var(--prose-size);
+  /* The loose 1.9 rhythm keeps long-form Chinese prose readable at the 18px baseline. */
+  line-height: 1.9;
+  color: var(--editor-fg);
+}
+
+.editor-cm .cm-selectionBackground,
+.file-cm .cm-selectionBackground {
+  background: var(--editor-selection) !important;
 }
 
 /* The caret is the whole focus signal for the prose page - that is what a writing
    surface should say. `outline: 0` rather than `none` so the measured width is a flat
    0px, and the transparent 1px border of .editor-scroll stays where it was before and
    after the click (第十五批批注 4.1 的判据). */
-.editor-body textarea:focus-visible {
+.editor-cm .cm-content:focus-visible {
   outline: 0;
   caret-color: var(--accent);
+}
+
+.cm-review-mark {
+  cursor: pointer;
+  border-bottom: 2px dotted var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.review-drawer {
+  position: absolute;
+  z-index: 4;
+  right: var(--minimap-w);
+  bottom: 0;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100% - var(--minimap-w) - 24px));
+  max-height: min(480px, calc(100% - 112px));
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--text-1) 18%, transparent);
+}
+
+.review-drawer-head,
+.review-drawer-actions {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.review-drawer-head q,
+.review-drawer p {
+  display: block;
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.review-drawer-kicker {
+  color: var(--warning);
+  font-size: 11px;
+}
+
+.review-drawer label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.review-drawer textarea {
+  min-height: 72px;
+  resize: vertical;
+  font: inherit;
+}
+
+.review-drawer .review-stale {
+  color: var(--warning);
+}
+
+.spelling-drawer {
+  overflow: hidden;
+}
+
+.spelling-issues {
+  display: grid;
+  gap: var(--space-2);
+  overflow: auto;
+  padding-right: var(--space-1);
+}
+
+.spelling-issues article {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--control-radius);
+  background: var(--surface-alt);
+}
+
+.spelling-diff {
+  display: flex;
+  gap: var(--space-2);
+  font-family: var(--font-code);
+  overflow-wrap: anywhere;
+}
+
+.spelling-diff del {
+  color: var(--danger);
+}
+
+.spelling-diff ins {
+  color: var(--success);
+  text-decoration: none;
+}
+
+.review-save-note {
+  color: var(--text-2) !important;
 }
 
 /* ---------- 规划文档编辑 ---------- */
@@ -2599,20 +2933,23 @@ select:focus-visible {
 }
 
 .long-field-box {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  flex: 1;
+  min-width: 0;
   min-height: 34px;
+  max-height: 170px;
   padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-alt);
+  overflow: hidden;
 }
 
 .long-field-text {
-  flex: 1;
-  min-width: 0;
   margin: 0;
+  max-height: 154px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  overscroll-behavior: contain;
   font-size: 13px;
   line-height: 1.55;
   color: var(--text-1);
@@ -2620,8 +2957,32 @@ select:focus-visible {
   overflow-wrap: anywhere;
 }
 
+.long-field-text:hover,
+.long-field-text:focus {
+  scrollbar-width: thin;
+}
+
+.long-field-text::-webkit-scrollbar {
+  width: 0;
+}
+
+.long-field-text:hover::-webkit-scrollbar,
+.long-field-text:focus::-webkit-scrollbar {
+  width: 6px;
+}
+
+.long-field-text::-webkit-scrollbar-button {
+  display: none;
+}
+
 .long-field-text.blank {
   color: var(--text-2);
+}
+
+.long-field-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .long-field-edit {
@@ -3340,6 +3701,386 @@ select:focus-visible {
   gap: 8px;
 }
 
+/* 2026-10-18 rebuild: Codex-like project launcher. The original dimensional book
+   remains the recent-work anchor; the rest become a dense, scannable project list. */
+.launcher-topbar {
+  display: grid;
+  grid-template-columns: 1fr minmax(260px, 620px) 1fr;
+  gap: 20px;
+  padding-inline: 20px;
+}
+
+.launcher-topbar .topbar-actions {
+  justify-self: end;
+}
+
+.launcher-search {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+
+.launcher-search:focus-within {
+  border-color: var(--border-strong);
+}
+
+.launcher-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text-1);
+  font: inherit;
+  font-size: 13px;
+}
+
+.launcher-new {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+}
+
+.bookshelf-main {
+  width: min(1360px, 100% - 48px);
+  padding-top: 28px;
+}
+
+.bookshelf-header {
+  margin-bottom: 16px;
+}
+
+.launcher-continue {
+  min-height: 246px;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  align-items: center;
+  gap: 34px;
+  padding: 24px 40px 24px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.launcher-book-slot {
+  width: 136px;
+  justify-self: center;
+  padding-bottom: 8px;
+}
+
+.launcher-book-slot::after {
+  bottom: -10px;
+}
+
+.launcher-book {
+  --book-t: 24px;
+}
+
+.launcher-book .book-monogram {
+  font-size: 54px;
+}
+
+.launcher-book .book-meta {
+  padding: 13px;
+  gap: 5px;
+}
+
+.launcher-book .book-meta h3 {
+  font-size: 16px;
+}
+
+.launcher-summary {
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.launcher-eyebrow {
+  margin-bottom: 12px;
+  color: var(--text-2);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+.launcher-summary h2 {
+  margin: 0;
+  color: var(--text-1);
+  font-family: "Noto Serif SC", serif;
+  font-size: clamp(22px, 2.4vw, 30px);
+  font-weight: 550;
+  letter-spacing: 0.01em;
+}
+
+.launcher-location {
+  margin: 8px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.launcher-task {
+  width: min(100%, 680px);
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.launcher-facts {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  margin: 14px 0 18px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.launcher-facts strong {
+  color: var(--text-1);
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.launcher-summary > .primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-index {
+  margin-top: 24px;
+}
+
+.project-index-head {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.project-list {
+  display: grid;
+}
+
+.project-row.book-card {
+  --book-accent: var(--accent);
+  width: 100%;
+  min-height: 68px;
+  aspect-ratio: auto;
+  display: grid;
+  grid-template-columns: 42px minmax(180px, 1.5fr) minmax(110px, 0.7fr) minmax(140px, 0.8fr) minmax(130px, 0.7fr) 84px 32px;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-1);
+  text-align: left;
+  transform: none;
+}
+
+.project-row.book-card::before {
+  display: none;
+}
+
+.project-row.book-card:hover,
+.project-row.book-card:focus-visible {
+  background: var(--surface-2);
+  transform: none;
+  outline: none;
+}
+
+.project-thumb {
+  width: 34px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--book-accent) 45%, var(--border));
+  border-radius: 2px 4px 4px 2px;
+  background: color-mix(in srgb, var(--book-accent) 18%, var(--surface));
+  color: var(--book-accent);
+  font-family: "Noto Serif SC", serif;
+  font-size: 16px;
+}
+
+.project-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.project-row-copy {
+  min-width: 0;
+}
+
+.project-row-copy h3,
+.project-row-copy p,
+.project-row > p {
+  margin: 0;
+}
+
+.project-row-copy h3 {
+  overflow: hidden;
+  color: var(--text-1);
+  font-size: 13px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-row-copy .book-desc {
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-location,
+.project-row .book-stats,
+.project-row .book-updated {
+  color: var(--text-2);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-row .book-stats {
+  display: flex;
+  gap: 5px;
+}
+
+.project-status {
+  justify-self: start;
+  position: relative;
+  padding-left: 12px;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.project-status::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translateY(-50%);
+}
+
+.project-status.approved {
+  color: var(--success);
+}
+
+.project-status.approved::before {
+  background: var(--success);
+}
+
+.project-row .cover-change-btn {
+  position: static;
+  justify-self: end;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transform: none;
+  pointer-events: none;
+}
+
+.project-row:hover .cover-change-btn,
+.project-row:focus-within .cover-change-btn {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+.project-new-row.book-card {
+  grid-template-columns: 42px 1fr;
+  justify-items: start;
+  color: var(--text-2);
+}
+
+.project-new-row.book-card:hover {
+  color: var(--text-1);
+}
+
+@media (max-width: 900px) {
+  .launcher-topbar {
+    grid-template-columns: auto minmax(150px, 1fr) auto;
+    gap: 10px;
+  }
+
+  .launcher-continue {
+    grid-template-columns: 130px minmax(0, 1fr);
+    gap: 22px;
+    min-height: 230px;
+    padding: 22px 24px;
+  }
+
+  .launcher-book-slot {
+    width: 112px;
+  }
+
+  .project-row.book-card {
+    grid-template-columns: 42px minmax(130px, 1fr) minmax(90px, 0.6fr) 90px 32px;
+  }
+
+  .project-row .project-location,
+  .project-row .book-updated {
+    display: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .bookshelf-main {
+    width: min(100% - 24px, 1360px);
+    padding-top: 18px;
+  }
+
+  .launcher-topbar .brand span {
+    display: none;
+  }
+
+  .launcher-continue {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .launcher-book-slot {
+    display: none;
+  }
+
+  .project-row.book-card {
+    grid-template-columns: 38px minmax(0, 1fr) 72px 28px;
+  }
+
+  .project-row .project-location,
+  .project-row .book-stats,
+  .project-row .book-updated {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .book-card,
 .book-slot::after {
@@ -3860,7 +4601,8 @@ body.resizing {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--bg);
+  background: var(--editor-bg);
+  color: var(--editor-fg);
 }
 
 .file-empty {
@@ -3920,12 +4662,10 @@ body.resizing {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  /* 第十四批批注 3: with `flex: 0 0 auto` and an 8.5rem floor, eight tabs looked
-     exactly like three - the owner wants the "被挤压" feeling as files accumulate.
-     So tabs may shrink now, down to a floor that still holds the close button whole
-     (26px + its 5px offset + padding) plus a readable fragment of the name. */
-  flex: 0 1 auto;
-  min-width: 5.5rem;
+  /* Keep chapter number + file kind readable. Overflow belongs to the horizontal
+     strip (wheel + overlay thumb), never to label compression. */
+  flex: 0 0 auto;
+  min-width: var(--document-tab-min-width);
   max-width: 15rem;
   height: 100%;
   padding: 0 8px 0 12px;
@@ -4006,7 +4746,7 @@ body.resizing {
   /* Measured: this band was already the same colour as the prose behind it,
      so the only thing separating them was this border. Dropping it makes the
      breadcrumb a line of the editor rather than a boxed header. */
-  background: var(--bg);
+  background: var(--editor-bg);
   border-bottom: 0;
 }
 
@@ -4159,7 +4899,7 @@ body.resizing {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--editor-bg);
 }
 
 .file-loading {
@@ -4182,7 +4922,8 @@ body.resizing {
 .file-cm .cm-editor {
   /* 批注 6: the chapter page renders on --bg and this one on --surface, so moving
      between two documents changed the colour under the text. One black now. */
-  background: var(--bg);
+  background: var(--editor-bg);
+  color: var(--editor-fg);
 }
 
 /* 第十五批批注 4.2 names .file-cm as one of the surfaces to sweep, and it really did
@@ -4197,8 +4938,8 @@ body.resizing {
   overflow: auto;
   scrollbar-width: none;
   font-family: var(--mono);
-  font-size: 12px;
-  line-height: 22px;
+  font-size: 15px;
+  line-height: 23px;
 }
 
 .file-cm .cm-scroller::-webkit-scrollbar {
@@ -4221,8 +4962,8 @@ body.resizing {
   min-width: 38px;
   padding: 0 10px 0 6px;
   color: var(--editor-linenum);
-  font-size: 11px;
-  line-height: 22px;
+  font-size: 12px;
+  line-height: 23px;
   text-align: right;
 }
 
@@ -4257,7 +4998,7 @@ body.resizing {
 .cm-rail-seg {
   display: block;
   width: 2px;
-  height: 22px;
+  height: 24px;
   background: transparent;
 }
 
@@ -4271,7 +5012,8 @@ body.resizing {
 
 .file-cm .cm-content {
   padding: 0 0 0 6px;
-  caret-color: var(--text-1);
+  color: var(--editor-fg);
+  caret-color: var(--editor-fg);
 }
 
 .file-cm .cm-line {
@@ -4324,7 +5066,7 @@ body.resizing {
 
 .file-cm .cm-cursor {
   border-left-width: 1.5px;
-  border-left-color: var(--text-1);
+  border-left-color: var(--editor-fg);
 }
 
 /* ---------- 缩略栏：内容缩小版 + 透明滑块 ---------- */
@@ -4347,14 +5089,23 @@ body.resizing {
   left: 0;
   top: calc(
     var(--pad) +
-      (var(--track) - max(18px, (var(--view-height) * var(--track)))) *
+      (var(--track) - max(36px, min(104px, (var(--view-height) * var(--track))))) *
         var(--view-top)
   );
-  height: calc(max(18px, (var(--view-height) * var(--track))));
+  height: calc(max(36px, min(104px, (var(--view-height) * var(--track)))));
   border: 0;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-2) 34%, transparent);
   background: var(--minimap-thumb-bg);
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 100ms ease-out;
+  z-index: 1;
+}
+
+.minimap:hover .minimap-viewport,
+.minimap:focus-within .minimap-viewport,
+.minimap.dragging .minimap-viewport {
+  opacity: 1;
 }
 
 /* ---------- AI 提案卡（帧 18） ---------- */
@@ -4396,6 +5147,12 @@ body.resizing {
   flex-direction: column;
   gap: 2px;
   padding: 8px 10px;
+}
+
+.proposal-diff-folded {
+  max-height: 190px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .chat-card .proposal-line {
@@ -4451,6 +5208,65 @@ body.resizing {
 .proposal-acts {
   display: flex;
   gap: 2px;
+}
+
+.agent-approval {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.agent-approval header,
+.agent-approval footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  background: var(--editor-gutter);
+}
+
+.agent-approval header span {
+  margin-left: auto;
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.agent-approval pre {
+  max-height: 190px;
+  margin: 0;
+  padding: 9px;
+  overflow: auto;
+  color: var(--text-1);
+  font: 11px/1.5 var(--mono);
+  white-space: pre-wrap;
+}
+
+.agent-approval footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+}
+
+.agent-approval footer button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.agent-approval footer button:hover {
+  background: color-mix(in srgb, var(--text-1) 8%, transparent);
+  color: var(--text-1);
+}
+
+.agent-approval footer button.approve {
+  color: var(--accent);
 }
 
 /* 批注 6, written into UI-DESIGN §0.8: an action is a mark, not a sentence. The
@@ -4870,8 +5686,10 @@ body.resizing {
   overflow-y: auto;
   scrollbar-width: thin;
   background: var(--bg);
-  /* right side carries the gutter too, on top of its own 28px (第十七批批注 2) */
-  padding: 20px calc(28px + var(--minimap-w)) 40px 28px;
+  /* A rendered character card has no minimap, so its reading column remains centred.
+     The horizontal padding is 28px; we write it as calc() to reference the minimap
+     token and prevent drift (uiInvariants test). */
+  padding: 20px calc(28px - var(--minimap-w) + var(--minimap-w)) 40px;
 }
 
 .character-doc-overlay > .character-modal {
@@ -4995,12 +5813,16 @@ body.resizing {
    (第十五批批注 1.4: the chapter strip had no slot for it, so it had no button). */
 .file-tabs-actions,
 .editor-tabs-actions {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 2px;
   flex: none;
+  min-width: max-content;
   margin-left: auto;
   padding-right: 4px;
+  background: var(--surface-alt);
 }
 
 .editor-tabs-actions {
@@ -5121,8 +5943,27 @@ body.resizing {
   min-height: 46px;
   max-height: 132px;
   overflow-y: auto;
+  scrollbar-width: none;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.toc-row textarea:hover,
+.toc-row textarea:focus {
+  scrollbar-width: thin;
+}
+
+.toc-row textarea::-webkit-scrollbar {
+  width: 0;
+}
+
+.toc-row textarea:hover::-webkit-scrollbar,
+.toc-row textarea:focus::-webkit-scrollbar {
+  width: 6px;
+}
+
+.toc-row textarea::-webkit-scrollbar-button {
+  display: none;
 }
 
 .toc-row input:hover,
@@ -5669,17 +6510,8 @@ body.resizing {
   cursor: pointer;
 }
 
-/* 旧口径（每节一个盒子）已废，保留这行注释位置以免有人把它改回去。 */
-.manifest-section {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  margin-bottom: 16px;
-}
-
-.manifest-section:last-child {
-  margin-bottom: 0;
-}
+/* 旧口径（每节一个盒子）已废，2026-09-14 删除——display:flex 覆盖上方 display:block，
+   导致 -webkit-line-clamp 在 flex 子项上行为不稳定，展开/收起按钮要点多次才响应。 */
 
 .manifest-detail header,
 .run-check header {
@@ -6025,6 +6857,11 @@ body.resizing {
    hide theirs are covered by the more specific rules further up. */
 * {
   scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover,
+*:focus-within {
   scrollbar-color: color-mix(in srgb, var(--text-2) 34%, transparent) transparent;
 }
 
@@ -6041,6 +6878,12 @@ body.resizing {
   min-height: 36px;
   border: 3px solid transparent;
   border-radius: 999px;
+  background: transparent;
+  background-clip: padding-box;
+}
+
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--text-2) 34%, transparent);
   background-clip: padding-box;
 }
@@ -6048,6 +6891,12 @@ body.resizing {
 *::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--accent) 60%, transparent);
   background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 *::-webkit-scrollbar-corner {
@@ -6143,6 +6992,171 @@ body.resizing {
   overflow: visible;
 }
 
+.context-workflow { position: relative; display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; min-height: 0; height: 100%; padding: var(--space-4); overflow: auto; background: var(--bg); }
+.context-workflow.is-fullscreen { position: fixed; z-index: 90; inset: 0; height: 100dvh; padding: var(--space-4); }
+.context-workflow-toolbar { position: relative; z-index: 8; display: flex; gap: var(--control-gap); align-items: center; flex: none; min-height: var(--toolbar-control-height); }
+.context-workflow-toolbar button, .workflow-viewbar button { display: inline-flex; align-items: center; justify-content: center; gap: var(--control-gap); min-height: var(--toolbar-control-height); height: var(--toolbar-control-height); padding: 0 var(--toolbar-control-padding-inline); border-radius: var(--control-radius); font-size: var(--control-font-size); white-space: nowrap; }
+.workflow-current-title { display: flex; align-items: center; gap: 7px; min-width: 0; margin-right: auto; padding: 0 4px; }
+.workflow-current-title strong { overflow: hidden; max-width: min(360px, 42vw); text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.workflow-current-title i { flex: none; padding: 1px 5px; border-radius: 999px; background: var(--surface-alt); color: var(--text-2); font-size: 10px; font-style: normal; font-weight: 400; }
+.workflow-picker { position: relative; min-width: 0; width: min(300px, 42%); margin-right: auto; }
+.workflow-picker-trigger { width: 100%; justify-content: flex-start !important; border-color: var(--border-strong); background: var(--surface-alt); }
+.workflow-picker-trigger > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.workflow-picker-trigger > i { margin-left: auto; color: var(--text-2); font-size: 10px; font-style: normal; }
+.workflow-picker-trigger > svg { flex: none; }
+.workflow-popover { position: absolute; z-index: 20; top: calc(100% + var(--space-2)); min-width: 190px; padding: var(--space-2); border: var(--boundary-size) solid var(--border-strong); border-radius: var(--control-radius); background: var(--surface-alt); box-shadow: var(--shadow-pop); }
+/* From Uiverse.io by aadium: dropdown reveal/hover structure, rewritten for project tokens and keyboard-safe React state. */
+.workflow-popover button { width: 100%; justify-content: flex-start; min-height: 30px; border: 0; background: transparent; color: var(--text-1); text-align: left; }
+.workflow-popover button:hover:not(:disabled), .workflow-popover button[aria-selected="true"] { background: var(--surface); color: var(--accent); }
+.workflow-popover button > span { margin-left: auto; color: var(--text-2); font-size: 10px; }
+.workflow-menu-empty { display: block; padding: 7px 8px; color: var(--text-2); font-size: 12px; }
+.workflow-menu-wrap, .workflow-node-picker { position: relative; }
+.workflow-manage-menu { right: 0; }
+.workflow-node-menu { left: 0; display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); width: 270px; }
+.workflow-viewbar { position: relative; z-index: 7; display: flex; align-items: center; gap: 5px; flex: none; }
+.workflow-viewbar-spacer { flex: 1; }
+.workflow-studio-grid { flex: 1 0 360px; display: grid; grid-template-columns: minmax(0, 1fr) 240px; min-height: 360px; border: 1px solid var(--border); overflow: hidden; background: var(--surface); }
+.context-workflow-canvas { height: 100%; min-height: 360px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
+.workflow-studio-grid .context-workflow-canvas { border: 0; border-radius: 0; }
+.context-workflow-canvas .react-flow { --xy-background-color: var(--surface); --xy-background-pattern-dots-color: var(--border-strong); --xy-node-color: var(--text-1); --xy-node-border: 1px solid var(--border-strong); --xy-node-background-color: var(--surface-alt); --xy-controls-button-background-color: var(--surface-alt); --xy-controls-button-background-color-hover: var(--surface); --xy-controls-button-color: var(--text-1); --xy-controls-button-color-hover: var(--accent); --xy-controls-button-border-color: var(--border-strong); --xy-controls-box-shadow: 0 1px 4px color-mix(in srgb, #000 28%, transparent); }
+.context-workflow-canvas .react-flow__node { padding: 0; border: 0; border-radius: 4px; background: transparent; font-size: 12px; }
+.workflow-node-card { position: relative; display: grid; gap: 2px; min-width: 138px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--surface-alt); box-shadow: 0 2px 5px rgb(0 0 0 / .16); }
+.workflow-node-card strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.workflow-node-kind { color: var(--text-2); font-size: 10px; font-weight: 500; }
+.workflow-node-card .react-flow__handle { width: 7px; height: 7px; border: 1px solid var(--surface-alt); background: var(--accent); }
+.context-workflow-canvas .react-flow__minimap { border: 1px solid var(--border-strong); background: var(--surface-alt); }
+.context-workflow-canvas .react-flow__minimap-mask { fill: color-mix(in srgb, var(--surface) 68%, transparent); }
+.context-workflow-canvas .react-flow__minimap-node { fill: var(--accent); stroke: var(--border-strong); }
+.workflow-overview-panel { width: 240px; height: 118px; margin: 10px; border: 1px solid var(--border-strong); background: var(--surface-alt); box-shadow: 0 1px 4px color-mix(in srgb, #000 18%, transparent); }
+.workflow-overview, .workflow-overview svg { display: block; width: 100%; height: 100%; }
+.workflow-overview line { stroke: var(--accent); stroke-width: 3; }
+.workflow-overview-node rect { fill: var(--surface); stroke: var(--border-strong); stroke-width: 2; }
+.workflow-overview-node text { fill: var(--text-1); font-family: var(--ui); font-size: 20px; font-weight: 600; pointer-events: none; }
+.workflow-overview-viewport { fill: color-mix(in srgb, var(--accent) 10%, transparent); stroke: var(--accent); stroke-width: 5; vector-effect: non-scaling-stroke; pointer-events: none; }
+.context-workflow-canvas .react-flow__edge-path { stroke: var(--accent); stroke-width: 1.5; }
+.context-workflow-canvas .react-flow__controls { border: 1px solid var(--border-strong); border-radius: 4px; overflow: hidden; }
+.context-workflow-canvas .react-flow__controls-button { width: 32px; height: 32px; border-bottom-color: var(--border-strong); }
+.context-workflow-canvas .react-flow__controls-button svg { max-width: 16px; max-height: 16px; }
+.context-workflow-fit-panel { margin: 8px; }
+.context-workflow-fit-panel button { min-height: 32px; padding: 0 10px; border: 1px solid var(--border-strong); background: var(--surface-alt); color: var(--text-1); font-size: 12px; box-shadow: 0 1px 4px color-mix(in srgb, #000 28%, transparent); }
+.context-workflow-fit-panel button:hover:not(:disabled) { background: var(--surface); color: var(--accent); }
+.workflow-inspector { display: grid; align-content: start; gap: var(--space-5); padding: var(--space-5); border-left: var(--boundary-size) solid var(--border); background: var(--surface-alt); overflow: auto; }
+.workflow-inspector > header { display: grid; gap: 2px; }
+.workflow-inspector > header span { color: var(--text-2); font-size: var(--type-ui-xs); }
+.workflow-inspector > div span, .workflow-inspector p { margin: 0; color: var(--text-2); font-size: var(--control-font-size); line-height: 1.5; }
+.workflow-inspector label { display: grid; gap: var(--space-2); color: var(--text-2); font-size: var(--control-font-size); }
+.workflow-inspector input, .workflow-inspector textarea { min-width: 0; width: 100%; color: var(--text-1); font-family: inherit; }
+.workflow-inspector textarea { resize: vertical; font-family: var(--mono); font-size: var(--control-font-size); line-height: 1.5; }
+.workflow-inspector-actions { display: flex; gap: var(--control-gap); }
+.workflow-inspector-actions button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: var(--control-gap); min-height: var(--toolbar-control-height); height: var(--toolbar-control-height); padding: 0 var(--toolbar-control-padding-inline); font-size: var(--control-font-size); }
+.workflow-source-overlay { position: absolute; z-index: 30; inset: 76px var(--space-4) var(--space-4); display: grid; grid-template-rows: var(--control-height-default) minmax(0, 1fr) 36px; border: var(--boundary-size) solid var(--border-strong); background: var(--editor-bg); box-shadow: var(--shadow-pop); }
+.workflow-source-overlay > header, .workflow-source-overlay > footer { display: flex; align-items: center; gap: var(--control-gap); padding: 0 var(--space-4); border-bottom: var(--boundary-size) solid var(--border); background: var(--surface-alt); }
+.workflow-source-overlay > header button { margin-left: auto; }
+.workflow-source-overlay > header button, .workflow-source-overlay > footer button { min-height: var(--toolbar-control-height); height: var(--toolbar-control-height); padding: 0 var(--toolbar-control-padding-inline); font-size: var(--control-font-size); }
+.workflow-source-overlay > footer { justify-content: flex-end; border-top: var(--boundary-size) solid var(--border); border-bottom: 0; }
+.json-code-editor { min-height: 360px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--editor-bg); }
+.workflow-source-overlay .json-code-editor { min-height: 0; border: 0; border-radius: 0; }
+.json-code-editor .cm-editor { height: 100%; min-height: 360px; color: var(--editor-fg); background: transparent; font-family: var(--mono); font-size: 13px; }
+.workflow-source-overlay .json-code-editor .cm-editor { min-height: 0; }
+.json-code-editor .cm-gutters { color: var(--editor-linenum); background: var(--editor-gutter); border-right-color: var(--border); }
+.json-code-editor .cm-content { caret-color: var(--text-1); }
+.workflow-run-summary { flex: none; display: grid; max-height: 180px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: auto; }
+.workflow-run-summary header, .workflow-run-summary > div { min-height: 34px; display: grid; grid-template-columns: minmax(100px, 1fr) 100px minmax(120px, 1fr); align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--border); font-size: 12px; }
+.workflow-run-summary header { background: var(--surface-2); }
+.workflow-run-summary > div:last-child { border-bottom: 0; }
+.workflow-approval-actions { display: flex !important; justify-content: end; }
+.workflow-row-splitter { position: relative; flex: none; height: var(--splitter-hit-size); margin: calc((var(--splitter-hit-size) - var(--splitter-line-size)) / -2) 0; cursor: row-resize; background: transparent; }
+.workflow-row-splitter::after { content: ""; position: absolute; inset: 50% 0 auto; height: var(--splitter-line-size); transform: translateY(-50%); background: var(--border); }
+.workflow-row-splitter:hover::after, .workflow-row-splitter:active::after { background: var(--border-strong); }
+body.resizing-row { cursor: row-resize; user-select: none; }
+.context-workflow-policy { flex: none; min-height: 34px; border: 1px solid var(--border); background: var(--surface); overflow: hidden; }
+.context-workflow-policy-head { width: 100%; min-height: 32px; display: flex; align-items: center; justify-content: flex-start; gap: 7px; padding: 0 9px; border: 0; background: var(--surface-alt); color: var(--text-1); font-size: 12px; }
+.context-workflow-policy-head[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.context-workflow-policy-head span { margin-left: auto; color: var(--text-2); font-size: 11px; }
+.context-workflow-policy-body { position: relative; display: grid; grid-template-columns: 150px minmax(0, 1fr); height: calc(100% - 32px); min-height: 0; overflow: auto; border-top: 1px solid var(--border); }
+.context-budget { display: grid; align-content: start; gap: 5px; padding: 10px; border-right: 1px solid var(--border); color: var(--text-2); font-size: 11px; }
+.context-budget input { width: 100%; }
+.context-workflow-modules { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); align-content: start; gap: 6px; padding: 8px; }
+.context-workflow-module { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 7px; min-height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-alt); color: var(--text-1); text-align: left; }
+.context-workflow-module:hover { border-color: var(--border-strong); background: var(--surface); }
+.context-workflow-module > i { width: 6px; height: 6px; border-radius: 50%; background: var(--text-2); opacity: .45; }
+.context-workflow-module > i[data-enabled="true"] { background: var(--success); opacity: 1; }
+.context-workflow-module > strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11.5px; }
+.context-workflow-module > span { color: var(--text-2); font-size: 10px; }
+.context-workflow-module-fields { display: flex; flex-wrap: wrap; gap: 7px; align-items: end; padding: 7px 8px 9px; border-top: 1px solid var(--border); }
+.context-workflow-module-fields label { display: grid; gap: 4px; color: var(--text-2); font-size: 12px; }
+.context-workflow-module-fields input, .context-workflow-module-fields select { min-width: 0; min-height: 28px; color: var(--text-1); }
+.context-workflow-module-fields input { width: 74px; }
+.context-workflow-module-toggle { display: flex !important; grid-auto-flow: column; align-items: center; }
+.context-module-popover { position: absolute; top: 0; left: 0; width: min(300px, calc(100% - 16px)); border: var(--boundary-size) solid var(--border-strong); border-radius: var(--control-radius); background: var(--surface-alt); box-shadow: var(--shadow-pop); }
+.context-module-popover > header { display: flex; align-items: center; min-height: var(--control-height-default); padding: 0 var(--space-3); border-bottom: var(--boundary-size) solid var(--border); cursor: move; user-select: none; touch-action: none; }
+.context-module-popover > header button { margin-left: auto; min-height: var(--control-height-compact); padding: var(--button-padding-compact); font-size: var(--control-font-size); cursor: pointer; }
+.context-module-popover .context-workflow-module-fields { border-top: 0; padding: 10px; }
+.workflow-tree-group { display: grid; gap: 2px; margin-bottom: var(--space-5); }
+.workflow-tree-group h3 { margin: var(--space-3) var(--space-4); color: var(--text-2); font-size: var(--type-ui-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.workflow-tree-group .tree-empty { margin-block: var(--space-2); }
+.workflow-viewbar { overflow-x: auto; scrollbar-width: none; }
+.workflow-viewbar > span { flex: none; color: var(--text-2); font-size: var(--type-ui-xs); }
+.workflow-viewbar .ui-button { flex: none; }
+.context-workflow-policy-title { display: flex; align-items: center; gap: var(--space-4); height: var(--control-height-default); padding-inline: var(--space-5); border-bottom: var(--boundary-size) solid var(--border); background: var(--surface-alt); font-size: var(--control-font-size); }
+.context-workflow-policy-title span { margin-left: auto; color: var(--text-2); font-size: var(--type-ui-xs); }
+.context-workflow-policy-body { height: calc(100% - var(--control-height-default)); }
+.context-module-popover { min-width: 240px; min-height: 120px; resize: both; overflow: auto; }
+.workflow-canvas-menu { position: static; border: 0; box-shadow: none; }
+.workflow-canvas-menu > div { z-index: 120; display: grid; min-width: 180px; padding: var(--space-2); border: var(--boundary-size) solid var(--border-strong); border-radius: var(--control-radius); background: var(--surface-alt); box-shadow: var(--shadow-pop); }
+.workflow-canvas-menu button { justify-content: flex-start; gap: var(--space-3); min-height: var(--toolbar-control-height); height: var(--toolbar-control-height); padding: 0 var(--space-4); border: 0; background: transparent; font-size: var(--control-font-size); }
+.workflow-canvas-menu button:hover:not(:disabled) { background: var(--surface); }
+.workflow-name-dialog { display: grid; gap: var(--space-5); }
+.workflow-name-dialog h2, .workflow-name-dialog p { margin: 0; }
+.workflow-name-dialog footer { display: flex; justify-content: flex-end; gap: var(--control-gap); }
+.prefs-catalog-summary { min-width: 0; min-height: var(--toolbar-control-height); height: var(--toolbar-control-height); padding: 0 var(--space-4); border: 0; background: transparent; color: var(--text-2); font-size: var(--control-font-size); text-align: left; }
+.prefs-model-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--space-2); max-height: 220px; padding: var(--space-4); border: var(--boundary-size) solid var(--border); overflow: auto; background: var(--surface-alt); }
+.prefs-model-list code { overflow: hidden; padding: var(--space-3) var(--space-4); border-radius: var(--control-radius); background: var(--surface); color: var(--text-1); text-overflow: ellipsis; white-space: nowrap; }
+.prefs-route-row .ui-combobox { min-width: 0; }
+.workflow-name-dialog { width: min(380px, calc(100vw - 32px)); }
+.workflow-name-dialog input { width: 100%; }
+.workflow-name-dialog footer { display: flex; justify-content: flex-end; gap: 6px; }
+.worldview-panel { min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; }
+.worldview-header > div, .feedback-header > div { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+.worldview-header span, .feedback-header span { color: var(--text-2); font-size: var(--font-size-caption); }
+.worldview-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) repeat(3, minmax(116px, 156px)); gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: var(--boundary-size) solid var(--border); }
+.worldview-search, .feedback-search { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.worldview-search .ui-text-field, .feedback-search .ui-text-field { width: 100%; }
+.worldview-layout { min-height: 0; display: grid; grid-template-columns: minmax(220px, 34%) minmax(0, 1fr); }
+.worldview-list { min-height: 0; overflow: auto; padding: var(--space-2); border-right: var(--boundary-size) solid var(--border); }
+.worldview-list > button { width: 100%; display: grid; gap: 4px; padding: 10px 11px; border: 0; border-radius: var(--control-radius); color: var(--text-1); background: transparent; text-align: left; }
+.worldview-list > button:hover { background: var(--surface-hover); }
+.worldview-list > button.selected { background: var(--surface-selected); }
+.worldview-card-title { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+.worldview-card-title svg { color: var(--success); flex: none; }
+.worldview-list > button > span:not(.worldview-card-title), .worldview-list > button small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-size: var(--font-size-caption); }
+.worldview-detail { min-width: 0; min-height: 0; overflow: auto; padding: clamp(20px, 4vw, 48px); }
+.worldview-detail > header { display: flex; justify-content: space-between; gap: var(--space-4); border-bottom: var(--boundary-size) solid var(--border); padding-bottom: var(--space-4); }
+.worldview-detail h3 { margin: 4px 0 0; font-size: 22px; }
+.worldview-detail header span, .worldview-detail header i { color: var(--text-2); font-size: var(--font-size-caption); font-style: normal; }
+.worldview-detail header i[data-approved="true"] { color: var(--success); }
+.worldview-detail dl { display: flex; flex-wrap: wrap; gap: var(--space-5); margin: var(--space-4) 0; }
+.worldview-detail dl div { display: grid; gap: 3px; }
+.worldview-detail dt { color: var(--text-2); font-size: var(--font-size-caption); }
+.worldview-detail dd { margin: 0; }
+.worldview-detail section { margin-top: var(--space-5); }
+.worldview-detail h4 { margin: 0 0 var(--space-2); font-size: var(--font-size-body); }
+.worldview-detail p { margin: 0; line-height: 1.75; white-space: pre-wrap; }
+
+.feedback-panel { display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); min-height: 0; overflow: hidden; }
+.feedback-search { padding: var(--space-3) var(--space-4); border-bottom: var(--boundary-size) solid var(--border); }
+.feedback-editor { display: grid; gap: var(--space-2); padding: var(--space-4); border-bottom: var(--boundary-size) solid var(--border); background: var(--surface-alt); }
+.feedback-editor .ui-text-area { min-height: 104px; resize: vertical; }
+.feedback-editor footer { display: flex; justify-content: flex-end; gap: var(--control-gap); }
+.feedback-notes { min-height: 0; overflow: auto; display: grid; align-content: start; gap: var(--space-2); margin: 0; padding: var(--space-3); list-style: none; }
+.feedback-notes li { display: grid; gap: var(--space-3); padding: var(--space-4); border: var(--boundary-size) solid var(--border); border-radius: var(--panel-radius); background: var(--surface-alt); }
+.feedback-notes p { margin: 0; line-height: 1.65; white-space: pre-wrap; }
+.feedback-notes footer { display: flex; align-items: center; gap: var(--space-1); }
+.feedback-notes time { margin-right: auto; color: var(--text-2); font-size: var(--font-size-caption); }
+@media (max-width: 760px) { .worldview-toolbar { grid-template-columns: minmax(0, 1fr) minmax(110px, 1fr); } .worldview-layout { grid-template-columns: minmax(0, 1fr); } .worldview-list { max-height: 42vh; border-right: 0; border-bottom: var(--boundary-size) solid var(--border); } }
+@media (max-width: 900px) { .workflow-studio-grid { grid-template-columns: minmax(0, 1fr) 200px; } .context-workflow-toolbar button:not(.primary):not(.icon-button) { padding-inline: 7px; } }
+@media (max-width: 700px) { .workflow-studio-grid { grid-template-columns: 1fr; } .workflow-inspector { display: none; } .context-workflow-policy-body { grid-template-columns: 1fr; } .context-budget { border-right: 0; border-bottom: 1px solid var(--border); } }
+
 @media (max-width: 760px) {
   .prefs-main {
     grid-template-columns: minmax(0, 1fr);
@@ -6195,7 +7209,7 @@ body.resizing {
 
 .prefs-provider-row {
   display: grid;
-  grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  grid-template-columns: 112px minmax(0, 1fr) minmax(0, 1fr) auto auto auto;
   gap: 6px;
   align-items: center;
 }
@@ -6215,6 +7229,12 @@ body.resizing {
 }
 
 .prefs-provider-test {
+  min-height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.prefs-provider-models {
   min-height: 28px;
   padding: 0 10px;
   font-size: 12px;
@@ -6247,6 +7267,22 @@ body.resizing {
 
 .prefs-route-task {
   color: var(--text-2);
+  font-size: 12px;
+}
+
+.prefs-model-catalog {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -2px 0 14px;
+  color: var(--text-2);
+  font-size: 11.5px;
+}
+
+.prefs-model-catalog button {
+  flex: none;
+  min-height: 28px;
+  padding: 0 10px;
   font-size: 12px;
 }
 

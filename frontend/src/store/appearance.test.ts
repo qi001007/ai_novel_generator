@@ -82,6 +82,13 @@ describe("appearance store", () => {
     expect(clamped.proseSize).toBe(PROSE_SIZE.min);
   });
 
+  it("raises only the old 17px prose default to the new readable baseline", () => {
+    localStorage.setItem("appearance", JSON.stringify({ proseSize: 17 }));
+    expect(readAppearance().proseSize).toBe(18);
+    localStorage.setItem("appearance", JSON.stringify({ proseSize: 16 }));
+    expect(readAppearance().proseSize).toBe(16);
+  });
+
   it("persists a pick and applies it in the same breath", () => {
     useAppearance.getState().pick({ accent: "blue", uiSize: 16 });
     expect(JSON.parse(localStorage.getItem("appearance") ?? "{}")).toMatchObject({

@@ -58,6 +58,41 @@ def test_complete_ai_review_records_result(client: TestClient) -> None:
     assert updated_chapter["status"] == "ai_reviewed"
 
 
+def test_ai_review_suggestion_is_saved_with_a_contextual_anchor(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "批注锚点"}).json()["id"]
+    content = "雨落在旧桥上，沈曜没有回头。"
+    chapter = create_chapter(client, novel_id, content=content)
+    payload = complete_ai_review_payload(content)
+    payload["evidence"]["suggestions"] = [{
+        "quote": "沈曜没有回头。",
+        "replacement": "沈曜仍没有回头。",
+        "comment": "强化人物克制。",
+    }]
+
+    response = client.post(
+        f"/api/novels/{novel_id}/chapters/{chapter['id']}/ai-review",
+        json=payload,
+    )
+
+    assert response.status_code == 201, response.text
+    suggestion = response.json()["evidence"]["suggestions"][0]
+    assert suggestion["quote"] == "沈曜没有回头。"
+    assert suggestion["anchor"] == {
+        "before": "雨落在旧桥上，",
+        "after": "",
+        "occurrence": 0,
+    }
+
+    changed = client.patch(
+        f"/api/novels/{novel_id}/chapters/{chapter['id']}/reviews/{response.json()['id']}/suggestions/0",
+        json={"replacement": "沈曜依然没有回头。", "status": "ignored"},
+    )
+    assert changed.status_code == 200, changed.text
+    stored = changed.json()["evidence"]["suggestions"][0]
+    assert stored["replacement"] == "沈曜依然没有回头。"
+    assert stored["status"] == "ignored"
+
+
 def test_human_review_accepts_chapter(client: TestClient) -> None:
     novel_id = client.post("/api/novels", json={"title": "终审通过"}).json()["id"]
     chapter = create_chapter(client, novel_id, content="正文。")

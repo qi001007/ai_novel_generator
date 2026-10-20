@@ -1,81 +1,47 @@
-# 新会话入口
+# 开发与检查入口
 
-最后核对：2026-09-09。本文件只保存启动、读序和验证入口；工作纪律以根目录 AGENTS.md 为准。
+## 启动
 
-## 1. 开始任务
+```powershell
+cd E:\novel-generator\backend
+python -m alembic upgrade head
+python -m uvicorn app.main:app --port 8000
 
-1. 读 ARCHITECTURE.md §0.5，定位目录。
-2. 读 WORKSTREAM-PLAN.md，确认事项仍在 v1 范围且没有被延期。
-3. 要恢复旧方案时，先查 DECISIONS.md §2/§3 删除区；要理解理由时只读相关 D-xx。
-4. 进入目标目录，先读 description.md；确定动工后再读同层 backlog.md。
-5. 界面事项还要读 UI-BACKLOG.md 对应条目与 UI-DESIGN.md §0.9。
+cd E:\novel-generator\frontend
+npm run dev
+```
 
-不要先全仓扫描，不要把所有 docs 一次注入；上面五步足以把读取范围缩到目标目录。
+前端默认 `http://127.0.0.1:5173/`，后端默认 `http://127.0.0.1:8000/`。先检查端口，避免旧进程掩盖当前代码。后端 `.env` 指向独立新库 `novel_generator_v2.db`，不得改回旧库做重建验收。
 
-## 2. 环境
+## Codex 平台 MCP
 
-- 仓库：E:\novel-generator
-- 后端：Python 3.11、FastAPI、SQLModel、SQLite；必须使用 backend\.venv，不能用 Anaconda base。
-- 前端：React 18.3.1、TypeScript、Vite。
-- 后端端口 8000，前端端口 5173；Vite 把 /api 代理到后端。
-- LLM 运行配置以数据库 app_config 为主，backend\.env 只作种子与兜底；密钥不得打印或提交。
-- NOVEL_AGENT_ENGINE=pydantic 才启用 Pydantic AI，未设置时使用 legacy。
+`tools/novel_platform_mcp/server.py` 提供 15 个工具，覆盖服务状态、作品与工作区读取、OpenAPI 按需发现、统一命令预览/执行/撤销、现有 API 读写、固定质量门禁、真实 Edge 截图、DOM 测量及白名单点击/输入/滚动/滚轮/有界拖拽。`audit_platform_ui` 会在同一会话逐动作返回几何与滚动时间线并保存截图，适合复现交互偏差；不开放任意页面脚本。
 
-## 3. 启动
+开发验收分两条通道：MCP 的无头 Edge 用于可重复测量和截图；需要主人现场观看时，使用 Codex 内置浏览器的可见标签页。两者都只验证页面，产品内 Agent 仍通过后端函数而不是模拟鼠标操作平台。
 
-后端：
+配置变更只会被新开的 Codex 会话加载；当前会话可用 `E:\Anaconda\python.exe tools\novel_platform_mcp\smoke_test.py` 验证 stdio，并用 `client.py <tool> --arguments '<json>'` 通过真实 MCP 协议调用工具。危险或结构性通用 API 写入必须显式传 `confirmed=true`，不得用它绕过统一命令目录的迁移工作。
 
-    cd E:\novel-generator\backend
-    .venv\Scripts\python.exe -m alembic upgrade head
-    $env:NOVEL_CONTEXT_DEBUG = '1'
-    .venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+## 验证
 
-前端：
+```powershell
+cd E:\novel-generator\backend
+python -m pytest
 
-    cd E:\novel-generator\frontend
-    npm.cmd run dev
+cd E:\novel-generator\frontend
+npm test -- --run
+npx tsc -b --force --pretty false
+npm run build
+```
 
-若接口表现与代码不符，先检查 8000 端口是否有旧解释器进程；不要在同一端口叠起第二个后端。
+最新实际汇总见 `WORKSTREAM-PLAN.md`；测试、HTTP 可达、构建成功和真实浏览器验收必须分别报告，不能把固定条数当成长期真源。
 
-## 4. 门禁
+## 接手顺序
 
-后端：
+1. 读 `PRD.md`、`ARCHITECTURE.md`、`WORKSTREAM-PLAN.md`。
+2. 在 `UI-BACKLOG.md` 选择一项，只读目标目录的 `description.md` 与当前 `backlog.md`。
+3. 先补失败验收，再精准实现；页面、Agent 和 Workflow 的写入必须进入统一命令目录。
+4. 完成后更新目标目录 `backlog.md` 与实时进度，删除已完成的 UI 待办。
 
-    cd E:\novel-generator\backend
-    .venv\Scripts\python.exe -m pytest -q
+## 归档边界
 
-本机跑这条会红 5 条，且**不是树的错**：shell 里带着 `ALL_PROXY=`（空值）和 `NO_PROXY` 中的
-`[::1]`，httpx 把空值当成 `all://` 去解析端口，`int(':1]')` 抛 `ValueError`，命中的是
-`test_llm_status`（2）／`test_llm_providers`／`test_draft_generation`／`test_writing_context`。
-2026-09-10 同一条命令实测：带代理 **5 failed / 388 passed**，清掉代理变量 **393 passed**。跑门禁把代理变量摘掉：
-
-    env -u ALL_PROXY -u all_proxy -u HTTP_PROXY -u http_proxy -u HTTPS_PROXY -u https_proxy -u NO_PROXY -u no_proxy .venv\Scripts\python.exe -m pytest -q
-
-前端：
-
-    cd E:\novel-generator\frontend
-    npm run test -- --run
-    npx tsc -b --force --pretty false
-    npm run build
-
-目录说明治理包含在后端测试的 tests/test_folder_docs.py 中。文档不保存固定测试条数；以当前命令退出码和实际汇总为准。
-
-写作环离线冒烟：
-
-    cd E:\novel-generator\backend
-    .venv\Scripts\python.exe scripts\writing_ring_smoke.py
-
-加 --live 才调用真实模型，必须使用隔离作品或临时数据库。对话 Agent 真机冒烟先启动后端，再运行 scripts/smoke_chat_stream.py。
-
-## 5. 界面取证
-
-- 改界面时同批更新 frontend/src/uiInvariants.test.ts，不减少断言。
-- 效果类改动必须用 Edge + CDP 真机截图；通道与脚本限制见 AGENTS.md。
-- 命中区审计要求 small / clipped / unreachable 为 0；屏外或半屏外元素先校验脚本判据，避免假阳性。
-
-## 6. 交付
-
-- 只修改请求涉及的目录；每个改过的目录在 backlog.md 增加一条简短记录。
-- 先跑相关测试，再跑全部门禁；测试绿只能证明既有断言成立，功能仍需真实流程验证。
-- 更新状态只改 WORKSTREAM-PLAN.md；已完成 UI 条目从 UI-BACKLOG.md 删除；理由变化才改 DECISIONS.md。
-- GitHub 操作优先使用 GitHub MCP；是否 commit 或 push 服从当前任务授权。
+文件归档位于 `.scratch/rebuild-archive-2026-10-18/`，旧库 SHA-256 为 `9001A2AE9E54663A856FF362D3D9B69A37B9C0B985664F0BFA84563013F6DC27`。归档分支与 Tag 尚因 `.git` 写权限受限而未创建。

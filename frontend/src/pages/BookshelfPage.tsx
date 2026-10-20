@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent, KeyboardEvent as ReactKeyboardEvent } from "react";
-import { ImagePlus, Settings, Upload, X } from "lucide-react";
+import { ArrowRight, ImagePlus, Plus, Search, Settings, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
@@ -8,6 +8,7 @@ import { tokenValue, uiZoom } from "../store/appearance";
 import { useMenuPlacement } from "../menuPlacement";
 import { useWorkbench } from "../store/workbench";
 import type { Novel, NovelUpdatePayload } from "../types";
+import { Button, Dialog } from "../components/ui";
 
 const STEPS = ["书名与简介", "篇幅与文风", "确认创建"];
 
@@ -148,6 +149,7 @@ type BookVars = CSSProperties & Record<`--${string}`, string | number>;
 
 export default function BookshelfPage() {
   const novels = useWorkbench((state) => state.novels);
+  const selectedNovelId = useWorkbench((state) => state.selectedNovelId);
   const selectNovel = useWorkbench((state) => state.selectNovel);
   const updateNovel = useWorkbench((state) => state.updateNovel);
   const deleteNovel = useWorkbench((state) => state.deleteNovel);
@@ -168,10 +170,12 @@ export default function BookshelfPage() {
   /* 导出是读，不走那条唯一的写通路（D-01）；失败的理由要说得出口。 */
   const [exportError, setExportError] = useState<string | null>(null);
   const [exportNote, setExportNote] = useState<string | null>(null);
+  const [partialExport, setPartialExport] = useState<{ novelId: number; format: "txt" | "md"; message: string } | null>(null);
   const [infoId, setInfoId] = useState<number | null>(null);
   const [infoDraft, setInfoDraft] = useState<BookDraft | null>(null);
   const [infoError, setInfoError] = useState<string | null>(null);
   const [bookMenu, setBookMenu] = useState<BookMenu | null>(null);
+  const [query, setQuery] = useState("");
   const bookMenuRef = useRef<HTMLDivElement | null>(null);
   /* Where the menu came from, so closing it hands the focus back instead of dropping
      the keyboard reader on the top of the page. */
@@ -185,6 +189,16 @@ export default function BookshelfPage() {
      不是我再画一个假色轮。当前色不在预设里时，选中态落在这枚上。 */
   const isCustomCover =
     coverColor !== "" && !COVER_COLORS.some((color) => color.value === coverColor);
+  const needle = query.trim().toLowerCase();
+  const recentNovels = novels.filter((novel) => {
+    const matches = !needle || `${novel.title} ${novel.description ?? ""}`.toLowerCase().includes(needle);
+    return matches && novel.archived !== true;
+  }).sort((left, right) => {
+    const leftStamp = left.last_edited_at ? parseStamp(left.last_edited_at).getTime() : 0;
+    const rightStamp = right.last_edited_at ? parseStamp(right.last_edited_at).getTime() : 0;
+    return rightStamp - leftStamp || right.id - left.id;
+  });
+  const recentNovel = recentNovels.find((novel) => novel.id === selectedNovelId) ?? recentNovels[0] ?? null;
 
   useEffect(() => {
     if (!bookMenu) return;
@@ -241,7 +255,25 @@ export default function BookshelfPage() {
         api.exportProse(novelId, { scope: "book", format }),
       )
       .then(setExportNote)
-      .catch((cause: unknown) => setExportError(cause instanceof Error ? cause.message : "导出失败"));
+      .catch((cause: unknown) => {
+        const message = cause instanceof Error ? cause.message : "导出失败";
+        if ((cause as { status?: number })?.status === 409 && message.includes("没有有效终审版本")) {
+          setPartialExport({ novelId, format, message });
+          return;
+        }
+        setExportError(message);
+      });
+  }
+
+  function confirmPartialExport() {
+    if (!partialExport) return;
+    const { novelId, format } = partialExport;
+    setPartialExport(null);
+    api.runExport(
+      novelId,
+      { scope: "book", format, allow_partial: true },
+      () => api.exportProse(novelId, { scope: "book", format, allowPartial: true }),
+    ).then(setExportNote).catch((cause: unknown) => setExportError(cause instanceof Error ? cause.message : "导出失败"));
   }
 
   const runBookAction = (action: () => void) => () => {
@@ -335,16 +367,151 @@ export default function BookshelfPage() {
     }
   }
 
+  async function openNovel(novel: Novel) {
+    await selectNovel(novel.id);
+    navigate(`/novels/${novel.id}`);
+  }
+
+  function bookCard(novel: Novel, variant: "cover" | "row") {
+    const openFromKeyboard = (event: ReactKeyboardEvent<HTMLElement>) => {
+      if (event.target !== event.currentTarget) return;
+      if (event.key === "Enter") void openNovel(novel);
+      if ((event.key === "F10" && event.shiftKey) || event.key === "ContextMenu") {
+        openBookMenu(event, novel);
+      }
+    };
+    if (variant === "row") {
+      return (
+        <article
+          key={novel.id}
+          className="book-card project-row"
+          data-novel-id={novel.id}
+          tabIndex={0}
+          aria-haspopup="menu"
+          style={novel.cover_color ? ({ "--book-accent": novel.cover_color } as BookVars) : undefined}
+          onKeyDown={openFromKeyboard}
+          onContextMenu={(event) => openBookMenu(event, novel)}
+          onClick={() => void openNovel(novel)}
+        >
+          <span className="project-thumb" aria-hidden={novel.cover_image ? undefined : true}>
+            {novel.cover_image ? <img src={novel.cover_image} alt={`${novel.title} 封面`} /> : novel.title.slice(0, 1)}
+          </span>
+          <div className="project-row-copy">
+            <h3>{novel.title}</h3>
+            <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句"}</p>
+          </div>
+          <p className="project-location">
+            {novel.chapter_count === undefined ? "尚未建立章节" : `第 ${novel.chapter_count} 章`}
+          </p>
+          <p className="book-stats">
+            <span>
+              {novel.chapter_count === undefined
+                ? "—"
+                : `${novel.chapter_count}${novel.target_chapters ? " / " + novel.target_chapters : ""} 章`}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span>{formatWords(novel.total_words)}</span>
+          </p>
+          <p className="book-updated">最近编辑 {relativeTime(novel.last_edited_at)}</p>
+          <span className={`project-status ${novel.status ?? "draft"}`}>
+            {novel.status === "approved" ? "已审定" : "创作中"}
+          </span>
+          <button
+            type="button"
+            className="icon-button cover-change-btn"
+            aria-label={`更换「${novel.title}」封面`}
+            title={`更换「${novel.title}」封面`}
+            onClick={(event) => {
+              event.stopPropagation();
+              openCoverEditor(novel);
+            }}
+          >
+            <ImagePlus size={15} />
+          </button>
+        </article>
+      );
+    }
+    return (
+      <article
+        key={novel.id}
+        className="book-card launcher-book"
+        data-novel-id={novel.id}
+        style={novel.cover_color ? ({ "--book-accent": novel.cover_color } as BookVars) : undefined}
+        tabIndex={0}
+        aria-haspopup="menu"
+        onKeyDown={openFromKeyboard}
+        onContextMenu={(event) => openBookMenu(event, novel)}
+        onClick={() => void openNovel(novel)}
+      >
+        <span className="book-spine" aria-hidden="true" />
+        <span className="book-top" aria-hidden="true" />
+        <span className="book-fore-edge" aria-hidden="true" />
+        <div className="book-face">
+          {novel.cover_image ? (
+            <img className="book-cover-img" src={novel.cover_image} alt={`${novel.title} 封面`} />
+          ) : (
+            <span className="book-monogram" aria-hidden="true">{novel.title.slice(0, 1)}</span>
+          )}
+          <button
+            type="button"
+            className="icon-button cover-change-btn"
+            aria-label={`更换「${novel.title}」封面`}
+            title={`更换「${novel.title}」封面`}
+            onClick={(event) => {
+              event.stopPropagation();
+              openCoverEditor(novel);
+            }}
+          >
+            <ImagePlus size={16} />
+          </button>
+          <div className="book-meta">
+            <h3>{novel.title}</h3>
+            <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句"}</p>
+            {progressPercent(novel) === null ? null : (
+              <div
+                className="book-progress"
+                role="progressbar"
+                aria-valuenow={progressPercent(novel) ?? 0}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={`已完成 ${novel.done_count ?? 0} 章，共 ${novel.target_chapters || novel.chapter_count || 0} 章目标`}
+              >
+                <span style={{ width: `${progressPercent(novel)}%` }} />
+              </div>
+            )}
+            <p className="book-stats">
+              <span>
+                {novel.chapter_count === undefined
+                  ? "—"
+                  : `${novel.chapter_count}${novel.target_chapters ? " / " + novel.target_chapters : ""} 章`}
+              </span>
+              <span aria-hidden="true">·</span>
+              <span>{formatWords(novel.total_words)}</span>
+            </p>
+            <p className="book-updated">最近编辑 {relativeTime(novel.last_edited_at)}</p>
+          </div>
+        </div>
+      </article>
+    );
+  }
+
   return (
     <div className="app-shell">
-      <header className="topbar">
+      <header className="topbar launcher-topbar">
         <div className="brand">
           <strong>墨阁</strong>
-          <span>AI 长篇连载工作台</span>
         </div>
+        <label className="launcher-search">
+          <Search size={15} aria-hidden="true" />
+          <input
+            type="search"
+            value={query}
+            aria-label="搜索作品"
+            placeholder="搜索作品"
+            onChange={(event) => setQuery(event.target.value)}
+          />
+        </label>
         <div className="topbar-actions">
-          {/* D-22②：顶栏的图标钮一律无边框（§0.7 条一）。这两枚是全站仅剩的例外，
-              工作台同一位置的同类控件早就是裸图标。20.1 那次全局居中修复保留不变。 */}
           <button
             type="button"
             className="icon-button"
@@ -354,17 +521,13 @@ export default function BookshelfPage() {
           >
             <Settings size={16} />
           </button>
-          {/* 批注 4: the workbench lost this two rounds ago and this one was left
-              behind. 外观 in settings owns the theme now, from both entry points. */}
         </div>
       </header>
       <main className="bookshelf-main">
         <div className="bookshelf-header">
           <h1>我的作品</h1>
-        {exportError ? <p className="book-info-problem">{exportError}</p> : null}
-        {exportNote ? <p className="export-note">{exportNote}</p> : null}
-          {/* 批注 1: the grid already ends with a 新建作品 card, so a filled button
-              up here said the same thing twice and was the loudest object on the page. */}
+          {exportError ? <p className="book-info-problem">{exportError}</p> : null}
+          {exportNote ? <p className="export-note">{exportNote}</p> : null}
         </div>
         {novels.length === 0 ? (
           <section className="panel empty-state">
@@ -373,100 +536,46 @@ export default function BookshelfPage() {
               新建作品
             </button>
           </section>
-        ) : (
-          <div className="bookshelf-grid">
-            {novels.map((novel) => (
-              <div className="book-slot" key={novel.id}>
-              <article
-                className="book-card"
-                data-novel-id={novel.id}
-                style={novel.cover_color ? ({ "--book-accent": novel.cover_color } as BookVars) : undefined}
-                tabIndex={0}
-                onKeyDown={(event) => {
-                  if (event.target !== event.currentTarget) return;
-                  if (event.key === "Enter") {
-                    void selectNovel(novel.id).then(() => navigate(`/novels/${novel.id}`));
-                  }
-                  // Windows' own convention for "the context menu, but from the keyboard"
-                  if (event.key === "F10" && event.shiftKey) openBookMenu(event, novel);
-                  if (event.key === "ContextMenu") openBookMenu(event, novel);
-                }}
-                onContextMenu={(event) => openBookMenu(event, novel)}
-                aria-haspopup="menu"
-                onClick={async () => {
-                  await selectNovel(novel.id);
-                  navigate(`/novels/${novel.id}`);
-                }}
-              >
-                <span className="book-spine" aria-hidden="true" />
-                <span className="book-top" aria-hidden="true" />
-                <span className="book-fore-edge" aria-hidden="true" />
-                <div className="book-face">
-                  {novel.cover_image ? (
-                    <img
-                      className="book-cover-img"
-                      src={novel.cover_image}
-                      alt={`${novel.title} 封面`}
-                    />
-                  ) : (
-                    <span className="book-monogram" aria-hidden="true">
-                      {novel.title.slice(0, 1)}
-                    </span>
-                  )}
-                  {/* 前几轮点名项：动作收进右键，卡面这一枚改成纯图标（「按钮能用图标
-                      就用图标」）。名字在 aria-label 与 title 里，说清是给哪本书换封面。 */}
-                  <button
-                    type="button"
-                    className="icon-button cover-change-btn"
-                    aria-label={`更换「${novel.title}」封面`}
-                    title={`更换「${novel.title}」封面`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openCoverEditor(novel);
-                    }}
-                  >
-                    <ImagePlus size={16} />
-                  </button>
-                  {/* 批注 24: the whole cover is the target and already navigates. */}
-                  <div className="book-meta">
-                    <h3>{novel.title}</h3>
-                    <p className="book-desc">{novel.description || "还没有简介，去蓝图里写一句"}</p>
-                    {progressPercent(novel) === null ? null : (
-                      <div
-                        className="book-progress"
-                        role="progressbar"
-                        aria-valuenow={progressPercent(novel) ?? 0}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-label={`已完成 ${novel.done_count ?? 0} 章，共 ${novel.target_chapters || novel.chapter_count || 0} 章目标`}
-                      >
-                        <span style={{ width: `${progressPercent(novel)}%` }} />
-                      </div>
-                    )}
-                    <p className="book-stats">
-                      <span>
-                        {novel.chapter_count === undefined
-                          ? "—"
-                          : `${novel.chapter_count}${novel.target_chapters ? " / " + novel.target_chapters : ""} 章`}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>{formatWords(novel.total_words)}</span>
-                    </p>
-                    <p className="book-updated">最近编辑 {relativeTime(novel.last_edited_at)}</p>
-                  </div>
+        ) : recentNovel ? (
+          <>
+            <section className="launcher-continue" aria-label="继续写作">
+              <div className="book-slot launcher-book-slot">{bookCard(recentNovel, "cover")}</div>
+              <div className="launcher-summary">
+                <span className="launcher-eyebrow">继续写作</span>
+                <h2>{recentNovel.title}</h2>
+                <p className="launcher-location">
+                  {recentNovel.chapter_count ? `第 ${recentNovel.chapter_count} 章` : "从作品蓝图开始"}
+                </p>
+                <p className="launcher-task">{recentNovel.description || "继续补全作品蓝图、人物与章节规划"}</p>
+                <div className="launcher-facts">
+                  <strong>{formatWords(recentNovel.total_words)}</strong>
+                  <span>最近编辑 {relativeTime(recentNovel.last_edited_at)}</span>
                 </div>
-              </article>
+                <button type="button" className="primary" onClick={() => void openNovel(recentNovel)}>
+                  继续写作 <ArrowRight size={15} />
+                </button>
               </div>
-            ))}
-            <div className="book-slot">
-              <button type="button" className="book-card book-new-card" onClick={openWizard}>
-                <span className="book-face">
-                  <span className="book-new-plus" aria-hidden="true">+</span>
+            </section>
+
+            <section className="project-index" aria-label="作品列表">
+              <div className="project-index-head">
+                <strong>最近</strong>
+                <span>{recentNovels.length} 部作品</span>
+              </div>
+              <div className="project-list">
+                {recentNovels.map((novel) => bookCard(novel, "row"))}
+                <button type="button" className="book-card book-new-card project-row project-new-row" onClick={openWizard}>
+                  <Plus size={16} aria-hidden="true" />
                   <span className="book-new-label">新建作品</span>
-                </span>
-              </button>
-            </div>
-          </div>
+                </button>
+              </div>
+            </section>
+          </>
+        ) : (
+          <section className="panel empty-state">
+            <h2>没有匹配的作品</h2>
+            <button type="button" onClick={() => setQuery("")}>清除搜索</button>
+          </section>
         )}
       </main>
       {bookMenu ? (
@@ -817,6 +926,13 @@ export default function BookshelfPage() {
           </div>
         </div>
       ) : null}
+      {partialExport ? <Dialog title="部分章节尚未终审" onClose={() => setPartialExport(null)}>
+        <p>{partialExport.message}</p>
+        <footer>
+          <Button compact onClick={() => setPartialExport(null)}>取消</Button>
+          <Button compact tone="primary" onClick={confirmPartialExport}>只导出已有终审版本</Button>
+        </footer>
+      </Dialog> : null}
     </div>
   );
 }

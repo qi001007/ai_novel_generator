@@ -16,6 +16,9 @@ export const MM_PAD = 0;
 
 export type Thumb = { track: number; height: number; top: number };
 
+const MM_THUMB_MIN = 36;
+const MM_THUMB_MAX = 104;
+
 /**
  * Where the slider sits on a map of `mapHeight` pixels. `ratio` is
  * clientHeight / scrollHeight and `progress` is 0..1 down the scrollable range -
@@ -24,7 +27,9 @@ export type Thumb = { track: number; height: number; top: number };
 export function thumbGeometry(mapHeight: number, ratio: number, progress: number): Thumb {
   const track = Math.max(1, mapHeight - MM_PAD * 2);
   const clampedRatio = Math.min(1, Math.max(0, ratio));
-  const height = Math.max(18, Math.min(track, track * clampedRatio));
+  const minHeight = Math.min(track, MM_THUMB_MIN);
+  const maxHeight = Math.min(track, MM_THUMB_MAX);
+  const height = Math.max(minHeight, Math.min(maxHeight, track * clampedRatio));
   const travel = Math.max(0, track - height);
   const clampedProgress = Math.min(1, Math.max(0, progress));
   return { track, height, top: MM_PAD + clampedProgress * travel };
@@ -49,14 +54,15 @@ export function progressFromPointer(
   return Math.min(1, Math.max(0, (offset - MM_PAD) / travel));
 }
 
-/** Row pitch of the picture when the document is short enough to show every line
-    at full size; longer documents compress below it. */
-const MM_PITCH = 5;
+/** VS Code proportional mode keeps a stable row pitch. Long documents scroll
+    inside the minimap instead of being crushed until every line fits at once. */
+const MM_PITCH = 3.5;
+const MM_CONTENT_PAD = 4;
 
 /**
  * One row per source line, drawn as miniature text - the picture the owner can
  * actually read. The two editors each kept their own painter: the chapter one
- * re-wrapped every line into the 56px column, which turned a page of prose into an
+ * re-wrapped every line into the narrow column, which turned a page of prose into an
  * undifferentiated band, and when that band was called a seam it got dimmed to
  * near-invisible and the map stopped saying anything at all. One painter now, so
  * the two maps cannot drift apart again.
@@ -68,31 +74,38 @@ export function paintMinimap(
   dark: boolean,
   family: string,
   accent: string,
+  progress = 0,
 ): void {
-  const track = Math.max(1, height - MM_PAD * 2);
-  const pitch = Math.min(MM_PITCH, track / Math.max(1, lines.length));
-  const fontSize = Math.max(2, Math.min(5, pitch * 0.92));
+  const contentHeight = MM_CONTENT_PAD * 2 + Math.max(1, lines.length) * MM_PITCH;
+  const contentTravel = Math.max(0, contentHeight - height);
+  const scrollOffset = Math.min(1, Math.max(0, progress)) * contentTravel;
+  const first = Math.max(0, Math.floor((scrollOffset - MM_CONTENT_PAD) / MM_PITCH));
+  const last = height <= 1
+    ? lines.length
+    : Math.min(lines.length, Math.ceil((scrollOffset + height) / MM_PITCH) + 1);
+  const fontSize = 3.6;
   ctx.font = `${fontSize}px ${family}`;
   ctx.textBaseline = "top";
-  lines.forEach((text, index) => {
+  for (let index = first; index < last; index += 1) {
+    const text = lines[index] ?? "";
     const body = text.trim();
-    if (!body) return;
+    if (!body) continue;
     const indent = Math.min((text.length - text.trimStart().length) * 0.8, 18);
     ctx.fillStyle = body.startsWith("#")
       ? accent
       : body.startsWith(">")
         ? dark
-          ? "rgba(157,155,150,.35)"
-          : "rgba(115,113,108,.32)"
+          ? "rgba(212,212,212,.58)"
+          : "rgba(70,70,70,.50)"
         : dark
-          ? "rgba(157,155,150,.62)"
-          : "rgba(115,113,108,.58)";
+          ? "rgba(212,212,212,.82)"
+          : "rgba(55,55,55,.76)";
     ctx.fillText(
-      body.slice(0, 46),
+      body.slice(0, 32),
       6 + indent,
-      MM_PAD + index * pitch + Math.max(0, (pitch - fontSize) / 2),
+      MM_CONTENT_PAD + index * MM_PITCH - scrollOffset,
     );
-  });
+  }
 }
 
 /** True when a pointer is on the thumb rather than on bare track. */

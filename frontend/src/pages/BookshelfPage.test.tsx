@@ -41,7 +41,8 @@ function renderShelf() {
 describe("BookshelfPage", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn());
-    useWorkbench.setState({ novels: shelf });
+    localStorage.clear();
+    useWorkbench.setState({ novels: shelf, selectedNovelId: null });
   });
 
   it("shows the totals the backend actually computed", () => {
@@ -77,10 +78,45 @@ describe("BookshelfPage", () => {
   it("ends the grid with a dashed create card and offers settings from the top bar", () => {
     const { container } = renderShelf();
     const cards = container.querySelectorAll(".book-card");
-    expect(cards.length).toBe(3);
+    expect(cards.length).toBe(4);
     expect(cards[cards.length - 1].className).toContain("book-new-card");
+    expect(screen.getAllByRole("button", { name: "新建作品" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "设置" })).toBeTruthy();
   });
+
+  it("keeps the featured novel in the recent list and removes unfinished pin/archive views", () => {
+    const { container } = renderShelf();
+    const rows = [...container.querySelectorAll(".project-row[data-novel-id]")];
+    expect(rows.map((row) => row.getAttribute("data-novel-id"))).toEqual(["4", "2"]);
+    expect(screen.queryByRole("tab", { name: "置顶" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "归档" })).toBeNull();
+  });
+
+  it("sorts the hero and recent rows by the real last-edited timestamp", () => {
+    useWorkbench.setState({
+      novels: [
+        { ...shelf[0], id: 20, title: "恢复的旧书", last_edited_at: "2026-09-07T09:00:00Z" },
+        { ...shelf[1], id: 21, title: "刚创建的新书", last_edited_at: "2026-10-18T12:00:00Z" },
+      ],
+    });
+    const { container } = renderShelf();
+    expect(container.querySelector(".launcher-summary h2")?.textContent).toBe("刚创建的新书");
+    const titles = [...container.querySelectorAll(".project-row[data-novel-id] h3")].map((node) => node.textContent);
+    expect(titles).toEqual(["刚创建的新书", "恢复的旧书"]);
+  });
+
+  it("uses the currently opened novel as the hero even when another empty book is newer", () => {
+    useWorkbench.setState({
+      selectedNovelId: 20,
+      novels: [
+        { ...shelf[0], id: 20, title: "恢复的旧书", last_edited_at: "2026-09-07T09:00:00Z" },
+        { ...shelf[1], id: 21, title: "刚创建的新书", last_edited_at: "2026-10-18T12:00:00Z" },
+      ],
+    });
+    const { container } = renderShelf();
+    expect(container.querySelector(".launcher-summary h2")?.textContent).toBe("恢复的旧书");
+  });
+
   it("saves the spine colour picked from the palette", async () => {
     const user = userEvent.setup();
     const puts: Record<string, unknown>[] = [];

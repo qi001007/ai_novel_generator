@@ -73,8 +73,8 @@ describe("App", () => {
       screen.queryByRole("tab", { name: /第 1 章 未命名/ })?.querySelector(".status-dot"),
     ).toBeNull();
     expect(screen.getByRole("button", { name: "关闭第 1 章" })).toBeTruthy();
-    const textarea = screen.getByLabelText("章节正文") as HTMLTextAreaElement;
-    expect(textarea.value).toBe("旧正文。");
+    const prose = screen.getByLabelText("章节正文");
+    expect(prose.textContent).toBe("旧正文。");
 
     // The records panel is folded on entry (批注 17), so reaching a record is
     // now a two-step contract: open it, then the row and its detail link exist.

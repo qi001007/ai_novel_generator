@@ -6,7 +6,7 @@ owned; OpenAICompatibleClient remains the only HTTP client for model calls.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -61,7 +61,7 @@ def to_wire_messages(messages: list[ModelMessage]) -> list[dict[str, str]]:
         assert isinstance(message, ModelRequest)
         for part in message.parts:
             kind = getattr(part, "part_kind", "")
-            if kind == "system":
+            if kind in {"system", "system-prompt"}:
                 wire.append({"role": "system", "content": part.content})
             elif kind in {"user-prompt", "instruction"}:
                 wire.append({"role": "user", "content": _content_text(getattr(part, "content", ""))})
@@ -128,6 +128,7 @@ class GatewayStreamedResponse(StreamedResponse):
     model_request_parameters: ModelRequestParameters
     model_name_value: str
     temperature: float
+    draft_callback: Callable[[str], None] | None = None
 
     async def _get_event_iterator(self) -> AsyncIterator[ModelResponseStreamEvent]:
         usage: dict[str, Any] = {}
@@ -153,6 +154,8 @@ class GatewayStreamedResponse(StreamedResponse):
                     yield event
             elif kind == "content":
                 content += chunk
+                if self.draft_callback is not None:
+                    self.draft_callback(content)
                 visible, found = parse_call_blocks(content)
                 if found:
                     block_found = True
@@ -218,15 +221,26 @@ class GatewayStreamedResponse(StreamedResponse):
 class GatewayChatModel(Model):
     """Wrap OpenAICompatibleClient without replacing its provider routing."""
 
-    def __init__(self, llm: Any, *, task_type: str = "chat") -> None:
+    def __init__(
+        self,
+        llm: Any,
+        *,
+        task_type: str = "chat",
+        model_override: str | None = None,
+        draft_callback: Callable[[str], None] | None = None,
+    ) -> None:
         self.llm = llm
         self.task_type = task_type
+        self.model_override = model_override
+        self.draft_callback = draft_callback
         # The adapter itself emits ThinkingPart deltas; without this profile the
         # framework treats the bridge as a non-thinking model.
         super().__init__(profile={"supports_thinking": True})
 
     @property
     def model_name(self) -> str:
+        if self.model_override:
+            return self.model_override
         settings = getattr(self.llm, "settings", None)
         return str(getattr(settings, "models", {}).get(self.task_type, "") or "gateway")
 
@@ -283,4 +297,5 @@ class GatewayChatModel(Model):
             model_request_parameters=model_request_parameters,
             model_name_value=self.model_name,
             temperature=float((model_settings or {}).get("temperature", 0.2)),
+            draft_callback=self.draft_callback,
         )

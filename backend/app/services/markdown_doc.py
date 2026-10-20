@@ -123,22 +123,24 @@ _TITLES = {
     "draft": "# 第 {n} 章正文",
 }
 _RULES = {
-    "blueprint": "> 五个小节标题是结构标识：只能改正文，不能改标题、不能增删小节。",
+    "blueprint": "> 预置小节可直接编辑；你也可以按需要新增或删除任意 `##` 小节。",
     "toc": "> 一条一章。`第 N 章` 是主键：不能改号，也不能靠删条目下线章节。",
     "arcs": "> `弧 N` 是主键；起止章号只由主人调整。",
     # 契约写在填它的那一页上（D-22④）：机械校验按字面匹配，
     # 整句当事实填进去，正文一改写就判「缺少必要事实」。
     "brief": (
         "> 文件名章号即主键。这一页是 `/generate` 的输入，也进对话上下文。"
+        "预置小节可直接编辑，也可以按需要新增或删除任意 `##` 小节。"
         "「必要事实」按字面匹配校验，填能逐字找到的关键词，不填整句。"
     ),
     "draft": "> 标题是投影结构；标题下方全部是正文内容。",
-    "character": "> 文件名人物号即主键：改名不换路径。小节标题与字段名是结构标识，不可增删改名。",
+    "character": "> 文件名人物号即主键：改名不换路径。预置小节可直接编辑，也可以按需要新增或删除任意 `##` 小节。",
     "foreshadow": "> `伏笔 N` 是主键：不能改号。埋设与收束章号只由主人调整。",
     "worldview": "> `设定 N` 是主键：不能改号，也不能靠删条目下线设定。",
 }
 
 _HEADING = re.compile(r"^##\s+(.*)$")
+_CUSTOM_HEADING = re.compile(r"^###\s+(.*)$")
 _BULLET = re.compile(r"^-\s+\*\*(.+?)\*\*\s*[：:]\s*(.*)$")
 _SUB_BULLET = re.compile(r"^\s{2,}-\s+(.*)$")
 _TOP_BULLET = re.compile(r"^-\s+(.*)$")
@@ -242,7 +244,7 @@ def grammar_text(kind: str) -> str:
         lines.extend(f"  - **{label}**：值" for _field, label in bullets)
     sections = grammar.get("sections")
     if sections:
-        lines.append("- 正文小节以 `## 标签` 起头，按下列顺序，标题不增不减不改名：")
+        lines.append("- 正文小节以 `## 标签` 起头；下列是预置小节，也可以追加自定义小节：")
         lines.extend(f"  - ## {label}" for _field, label in sections)
     return "\n".join(lines)
 
@@ -307,30 +309,57 @@ def render(kind: str, payload: Any, *, chapter: int | None = None) -> str:
         body = str(payload.get("content", "") if isinstance(payload, dict) else payload)
         return _doc(_preamble(kind, chapter) + body.split("\n"))
     if kind == "blueprint":
-        return _doc(_preamble(kind, chapter) + _section_lines(payload, _BLUEPRINT_SECTIONS))
+        lines = _preamble(kind, chapter) + _section_lines(payload, _BLUEPRINT_SECTIONS)
+        for section in payload.get("custom_sections") or []:
+            lines.append(f"## {section['label']}")
+            body = section.get("content", "").strip()
+            if body:
+                lines.extend(body.split("\n"))
+            lines.append("")
+        return _doc(lines)
     if kind == "brief":
-        return _doc(
+        lines = (
             _preamble(kind, chapter)
             + _bullet_lines(payload, _BRIEF_BULLETS)
             + [""]
             + _section_lines(payload, _BRIEF_SECTIONS)
         )
+        for section in payload.get("custom_sections") or []:
+            lines.append(f"## {section['label']}")
+            body = section.get("content", "").strip()
+            if body:
+                lines.extend(body.split("\n"))
+            lines.append("")
+        return _doc(lines)
     if kind == "character":
         # The title carries the display name, not an id, so the preamble helper
         # (which only formats a chapter number) is bypassed here on purpose.
-        return _doc(
+        lines = (
             [f"# {_text(payload.get('name')) or '未命名人物'}（设定库 · 人物）", "",
              _RULES["character"], ""]
             + _bullet_lines(payload, _CHARACTER_BULLETS)
             + [""]
             + _section_lines(payload, _CHARACTER_SECTIONS)
         )
+        for section in payload.get("custom_sections") or []:
+            lines.append(f"## {section['label']}")
+            body = section.get("content", "").strip()
+            if body:
+                lines.extend(body.split("\n"))
+            lines.append("")
+        return _doc(lines)
     if kind in _RECORD_SPECS:
         record = _RECORD_SPECS[kind]
         lines = _preamble(kind, chapter)
         for row in payload:
             lines.append("## " + record["heading"](row))
             lines.extend(_bullet_lines(row, record["bullets"]))
+            for section in row.get("custom_sections") or []:
+                lines.append(f"### {section['label']}")
+                body = section.get("content", "").strip()
+                if body:
+                    lines.extend(body.split("\n"))
+                lines.append("")
             lines.append("")
         return _doc(lines)
     raise MarkdownError(f"未知的文档层：{kind}")
@@ -423,14 +452,23 @@ def _read_bullets(lines: list[str], spec: tuple[tuple[str, str], ...], label: st
     return found
 
 
-def _read_sections(blocks, spec, label):
+def _read_sections(blocks, spec, label, allow_extra=False):
     by_label = {text: name for name, text in spec}
     found: dict[str, str] = {}
+    custom_sections: list[dict[str, str]] = []
     for heading, body in blocks:
         if heading is None:
             continue
         name = by_label.get(heading)
         if name is None:
+            if allow_extra:
+                if not heading:
+                    raise MarkdownError(f"{label} 的自定义小节标题不能为空")
+                if any(section["label"] == heading for section in custom_sections):
+                    raise MarkdownError(f"{label} 的自定义小节「{heading}」不能重复")
+                # Custom sections (e.g. 特殊能力) are collected separately
+                custom_sections.append({"label": heading, "content": "\n".join(body).strip()})
+                continue
             _fail(label, [], [heading])
         if name in found:
             _fail(label, [], [heading])
@@ -448,7 +486,35 @@ def _read_sections(blocks, spec, label):
         else:
             found[name] = body_text
     _fail(label, [text for name, text in spec if name not in found], [])
+    if allow_extra:
+        return found, custom_sections
     return found
+
+
+def _read_record_body(lines: list[str], spec, label: str) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Read fixed bullets plus ``###`` author sections inside one record."""
+    bullet_lines: list[str] = []
+    custom: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for line in lines:
+        match = _CUSTOM_HEADING.match(line)
+        if match:
+            name = match.group(1).strip()
+            if not name:
+                raise MarkdownError(f"{label} 的自定义小节标题不能为空")
+            if any(section["label"] == name for section in custom):
+                raise MarkdownError(f"{label} 的自定义小节「{name}」不能重复")
+            current = {"label": name, "content": ""}
+            custom.append(current)
+            continue
+        if current is None:
+            bullet_lines.append(line)
+        else:
+            current["content"] += ("\n" if current["content"] else "") + line
+    values = _read_bullets(bullet_lines, spec, label)
+    for section in custom:
+        section["content"] = section["content"].strip()
+    return values, custom
 
 
 def _merge(target: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
@@ -478,15 +544,24 @@ def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
         body = lines[start:]
         return {"content": "\n".join(body).strip()}
     if kind == "blueprint":
-        return _read_sections(blocks, _BLUEPRINT_SECTIONS, "blueprint.md")
+        sections, custom = _read_sections(blocks, _BLUEPRINT_SECTIONS, "blueprint.md", allow_extra=True)
+        if custom:
+            sections["custom_sections"] = custom
+        return sections
     if kind == "brief":
         label = f"briefs/{chapter:04d}.md" if chapter else "单章简报"
         row = _read_bullets(blocks[0][1] or [], _BRIEF_BULLETS, label)
-        _merge(row, _read_sections(blocks[1:], _BRIEF_SECTIONS, label))
+        sections, custom = _read_sections(blocks[1:], _BRIEF_SECTIONS, label, allow_extra=True)
+        _merge(row, sections)
+        if custom:
+            row["custom_sections"] = custom
         return row
     if kind == "character":
         row = _read_bullets(blocks[0][1] or [], _CHARACTER_BULLETS, "人物档案")
-        _merge(row, _read_sections(blocks[1:], _CHARACTER_SECTIONS, "人物档案"))
+        sections, custom = _read_sections(blocks[1:], _CHARACTER_SECTIONS, "人物档案", allow_extra=True)
+        _merge(row, sections)
+        if custom:
+            row["custom_sections"] = custom
         return row
     if kind in _RECORD_SPECS:
         record = _RECORD_SPECS[kind]
@@ -502,7 +577,10 @@ def parse(kind: str, text: str, *, chapter: int | None = None) -> Any:
                 record["key"]: None if head == "?" else int(head),
                 record["title_field"]: tail.strip(),
             }
-            _merge(row, _read_bullets(body, record["bullets"], f"「{heading}」"))
+            values, custom = _read_record_body(body, record["bullets"], f"「{heading}」")
+            _merge(row, values)
+            if custom:
+                row["custom_sections"] = custom
             records.append(row)
         return records
     raise MarkdownError(f"未知的文档层：{kind}")
@@ -545,11 +623,32 @@ def _fold(value: Any) -> Any:
     return "".join(str(value).split())
 
 
+def _merge_custom_sections(current: list, proposed: list) -> list:
+    """Compare custom sections by label; keep current wrapping where content is unchanged."""
+    by_label = {s["label"]: s for s in current}
+    result = []
+    for section in proposed:
+        label = section["label"]
+        if label in by_label and _fold(by_label[label].get("content")) == _fold(section.get("content")):
+            result.append(by_label[label])
+        else:
+            result.append(section)
+    return result
+
+
 def _keep_untouched(current: Any, proposed: Any) -> Any:
     """Take the proposed value only where it really differs from the current one."""
     if isinstance(current, dict) and isinstance(proposed, dict):
         merged = dict(current)
         for key, value in proposed.items():
+            if key == "custom_sections":
+                # Custom sections are open-ended: accept new ones, keep
+                # untouched ones from current to preserve their wrapping.
+                if key not in current:
+                    merged[key] = value
+                else:
+                    merged[key] = _merge_custom_sections(current[key], value)
+                continue
             if key not in current:
                 continue  # 结构键锁死，不接受新增
             if _fold(current[key]) == _fold(value):

@@ -1,5 +1,6 @@
 """The /settings model-access surface: read, write, and never leak the key."""
 import pytest
+import httpx
 from fastapi.testclient import TestClient
 
 
@@ -67,12 +68,82 @@ def test_connection_check_needs_a_key_and_never_calls_a_model(client: TestClient
     assert "缺少" in result["detail"]
 
 
+def test_connection_check_ignores_an_unsupported_all_proxy(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    client.put(
+        "/api/config/llm",
+        json={
+            "api_base_url": "https://gateway.example/v1",
+            "api_key": "test-key",
+            "models": {"chat": "chat-model"},
+        },
+    )
+    monkeypatch.setenv("ALL_PROXY", "socks5h://127.0.0.1:7890")
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/models"
+        return httpx.Response(200, json={"data": []})
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        "app.routers.config.httpx.Client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+
+    result = client.post("/api/config/llm/test").json()
+
+    assert result == {"ok": True, "detail": "「默认」连接正常（HTTP 200）"}
+
+
+def test_model_catalog_lists_live_ids_without_a_generation(
+    client: TestClient,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+    client.put(
+        "/api/config/llm",
+        json={
+            "api_base_url": "https://gateway.example/v1",
+            "api_key": "test-key",
+            "models": {"chat": "qwen-light"},
+        },
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.method == "GET"
+        assert request.url.path == "/v1/models"
+        return httpx.Response(
+            200,
+            json={"data": [{"id": "qwen-light"}, {"id": "qwen-pro"}, {"id": "qwen-light"}]},
+        )
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        "app.routers.config.httpx.Client",
+        lambda **kwargs: real_client(transport=httpx.MockTransport(handler), **kwargs),
+    )
+
+    result = client.get("/api/config/llm/models?provider_id=default")
+
+    assert result.status_code == 200, result.text
+    body = result.json()
+    assert body["fetched_at"]
+    assert {key: value for key, value in body.items() if key != "fetched_at"} == {
+        "provider_id": "default",
+        "models": ["qwen-light", "qwen-pro"],
+        "detail": "已获取 2 个模型，未发起生成请求",
+    }
+
+
 def test_the_agent_budget_ships_at_the_measured_default(client: TestClient) -> None:
-    """35.9：一轮真实规划请求量到 32955 token，默认值得盖得住它。"""
+    """One message may use several model/tool steps; it is not a question count."""
     agent = client.get("/api/config/llm").json()["agent"]
-    assert agent["max_steps"] == 6
+    assert agent["max_steps"] == 20
     assert agent["max_tokens"] == 60_000
-    assert agent["default_max_steps"] == 6
+    assert agent["default_max_steps"] == 20
     assert agent["default_max_tokens"] == 60_000
 
 
@@ -91,13 +162,13 @@ def test_the_owner_can_raise_both_ceilings_and_the_page_reads_them_back(client: 
 def test_a_ceiling_the_loop_could_not_run_on_is_refused(client: TestClient) -> None:
     too_small = client.put("/api/config/llm", json={"agent": {"max_steps": 0}})
     assert too_small.status_code == 422
-    assert "1 到 20" in too_small.text
+    assert "1 到 64" in too_small.text
     too_big = client.put("/api/config/llm", json={"agent": {"max_tokens": 500}})
     assert too_big.status_code == 422
     assert "1000 到 1000000" in too_big.text
     # 被拒的那次不落库，主人看到的还是原来那一档
     agent = client.get("/api/config/llm").json()["agent"]
-    assert agent["max_steps"] == 6 and agent["max_tokens"] == 60_000
+    assert agent["max_steps"] == 20 and agent["max_tokens"] == 60_000
 
 
 def test_a_hand_edited_row_that_is_not_a_number_falls_back(db_engine) -> None:
