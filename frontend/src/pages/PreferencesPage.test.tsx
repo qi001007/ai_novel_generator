@@ -153,6 +153,101 @@ describe("PreferencesPage", () => {
     expect(screen.queryByRole("option", { name: /qwen3.6-flash/ })).toBeNull();
   });
 
+  it("hides both providers' catalog details when collapsed and restores drafts when reopened", async () => {
+    const user = userEvent.setup();
+    const withExtra = {
+      ...config,
+      providers: [
+        ...config.providers,
+        {
+          id: "p1",
+          name: "百炼-mao",
+          provider: "openai_compatible",
+          api_base_url: "https://b.example/v1",
+          api_key_masked: "****4321",
+          api_key_set: true,
+          is_default: false,
+        },
+      ],
+      catalogs: {
+        ...config.catalogs,
+        p1: { models: ["model-a", "model-b"], fetched_at: "2026-10-20T01:00:00Z" },
+      },
+    };
+    stubFetch(calls, withExtra);
+    render(<StrictMode><MemoryRouter><PreferencesPage /></MemoryRouter></StrictMode>);
+
+    await screen.findByRole("button", { name: "编辑供应商 2" });
+    for (const providerNo of [1, 2]) {
+      const card = screen.getByRole("region", { name: providerNo === 1 ? "默认供应商" : "百炼-mao" });
+      expect(within(card).queryByRole("button", { name: /已缓存 2 个模型/ })).toBeNull();
+      expect(within(card).queryByRole("button", { name: /已获取 2 个模型/ })).toBeNull();
+      expect(within(card).queryByLabelText(new RegExp(`${providerNo === 1 ? "默认" : "百炼"}模型列表`))).toBeNull();
+    }
+
+    await user.click(screen.getByRole("button", { name: "编辑供应商 2" }));
+    fireEvent.change(screen.getByLabelText("供应商 2 名称"), { target: { value: "草稿名称" } });
+    fireEvent.change(screen.getByLabelText("供应商 2 超时秒数"), { target: { value: "37" } });
+    fireEvent.change(screen.getByLabelText("供应商 2 API Key"), { target: { value: "fakekey-draft" } });
+    await user.click(screen.getByRole("button", { name: "获取供应商 2 模型列表" }));
+    await screen.findByRole("button", { name: /已获取 2 个模型/ });
+    const card = screen.getByRole("region", { name: "草稿名称" });
+    expect(within(card).getByLabelText("草稿名称模型列表").textContent).toContain("qwen3.6-flash");
+
+    await user.click(screen.getByRole("button", { name: "编辑供应商 2" }));
+    expect(within(card).queryByLabelText("草稿名称模型列表")).toBeNull();
+    expect(within(card).queryByRole("button", { name: /已缓存 2 个模型/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "编辑供应商 2" }));
+    expect((screen.getByLabelText("供应商 2 名称") as HTMLInputElement).value).toBe("草稿名称");
+    expect((screen.getByLabelText("供应商 2 超时秒数") as HTMLInputElement).value).toBe("37");
+    expect((screen.getByLabelText("供应商 2 API Key") as HTMLInputElement).value).toBe("fakekey-draft");
+    expect(screen.getByLabelText("草稿名称模型列表").textContent).toContain("qwen3.6-flash");
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+
+  it("keeps a manually collapsed provider closed when its model request resolves", async () => {
+    const user = userEvent.setup();
+    const withExtra = {
+      ...config,
+      providers: [
+        ...config.providers,
+        { id: "p1", name: "百炼-mao", provider: "openai_compatible", api_base_url: "https://b.example/v1", api_key_masked: "", api_key_set: false, is_default: false },
+      ],
+    };
+    const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    let finishRequest: ((response: Response) => void) | undefined;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
+      if (String(input) === "/api/config/llm/models") return new Promise<Response>((resolve) => { finishRequest = resolve; });
+      if (String(input) === "/api/llm/status") return Promise.resolve(ok({ provider: "openai_compatible", configured: true, models: {}, available_models: [] }));
+      return Promise.resolve(ok(withExtra));
+    }));
+    render(<StrictMode><MemoryRouter><PreferencesPage /></MemoryRouter></StrictMode>);
+
+    await user.click(await screen.findByRole("button", { name: "获取供应商 2 模型列表" }));
+    expect(screen.getByRole("button", { name: "编辑供应商 2" }).getAttribute("aria-expanded")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "编辑供应商 2" }));
+    finishRequest?.(ok({ provider_id: "p1", models: ["model-a"], detail: "目录读取完成" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "编辑供应商 2" }).getAttribute("aria-expanded")).toBe("false"));
+    expect(screen.queryByLabelText("百炼-mao模型列表")).toBeNull();
+  });
+
+  it("keeps model catalog failures visible in the toast", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    const initialFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/config/llm/models") {
+        return Promise.resolve(new Response(JSON.stringify({ detail: "模型目录不可用" }), { status: 503, headers: { "Content-Type": "application/json" } }));
+      }
+      return (initialFetch as typeof fetch)(input, init);
+    }));
+    render(<StrictMode><MemoryRouter><ToastProvider><PreferencesPage /></ToastProvider></MemoryRouter></StrictMode>);
+
+    await user.click(await screen.findByRole("button", { name: "获取供应商 1 模型列表" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/模型目录不可用/);
+  });
+
   it("distinguishes a saved connection from missing task models", async () => {
     stubFetch(calls, { ...config, configured: false, models: { draft: "", review: "", summary: "", chat: "", image: "", image_edit: "" } });
     render(<StrictMode><MemoryRouter><PreferencesPage /></MemoryRouter></StrictMode>);

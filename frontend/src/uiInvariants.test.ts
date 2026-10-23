@@ -702,6 +702,8 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(preferences).not.toMatch(/<select[^>]*prefs-route-provider/);
     expect(preferences).toContain("catalogOpen");
     expect(preferences).toContain("prefs-model-list");
+    expect(preferences).toContain("editing && modelNotices[item.id]");
+    expect(preferences).toContain("editing && catalogOpen[item.id]");
     expect(preferences).toContain("data.detail");
     // a secret is never echoed into a value, only into a placeholder as a mask
     expect(preferences).toContain("api_key: item.api_key,");

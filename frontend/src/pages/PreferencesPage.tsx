@@ -743,6 +743,7 @@ export default function PreferencesPage() {
   function loadModels(providerId: string, name: string) {
     const revision = (catalogRevision.current[providerId] ?? 0) + 1;
     catalogRevision.current[providerId] = revision;
+    setEditingProviders((prev) => prev[providerId] ? prev : { ...prev, [providerId]: true });
     setModelBusy(providerId);
     setModelNotices((prev) => ({ ...prev, [providerId]: "正在读取模型列表…" }));
     return api
@@ -757,10 +758,12 @@ export default function PreferencesPage() {
       })
       .catch((cause: Error) => {
         if (catalogRevision.current[providerId] !== revision) return;
+        const message = `「${name || providerId}」${cause.message}，仍可手工输入模型 ID`;
         setModelNotices((prev) => ({
           ...prev,
-          [providerId]: `「${name || providerId}」${cause.message}，仍可手工输入模型 ID`,
+          [providerId]: message,
         }));
+        pushToast(message, "error");
       })
       .finally(() => setModelBusy((current) => current === providerId ? null : current));
   }
@@ -1021,7 +1024,7 @@ export default function PreferencesPage() {
                         <span>{item.keyMask ? `密钥 ${item.keyMask}` : hasKey ? "新密钥未保存" : "未配置密钥"}</span>
                       </p>
                     )}
-                    {modelNotices[item.id] ? (
+                    {editing && modelNotices[item.id] ? (
                       <button
                         type="button"
                         className="prefs-provider-result prefs-catalog-summary"
@@ -1031,7 +1034,7 @@ export default function PreferencesPage() {
                         {modelNotices[item.id]}
                       </button>
                     ) : null}
-                    {catalogOpen[item.id] ? (
+                    {editing && catalogOpen[item.id] ? (
                       <div className="prefs-model-list" aria-label={`${label}模型列表`}>
                         {(modelOptions[item.id] ?? []).map((model) => <span key={model}>{model}</span>)}
                         {(modelOptions[item.id] ?? []).length === 0 ? <p>目录为空</p> : null}

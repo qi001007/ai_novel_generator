@@ -1,5 +1,7 @@
 # frontend/src/ 更改账（最新在上）
 
+- 2026-10-23 · B-04：`PreferencesPage.tsx` 仅在供应商编辑态渲染目录摘要与条目；发起模型目录请求时展开、请求完成遵循用户最后一次折叠状态；目录错误补 Toast，增加页面与 UI 不变量回归（111 项通过）。
+
 - 2026-10-23 · B-02：`ContextWorkflow.novel_id` 镜像类型允许 global 的 null；`TreePane.test.tsx` 增 StrictMode 下补齐、global 用途不抑制书内补齐、列表刷新/选择保留、模型缺项提示及失败 Toast 回归；`uiInvariants.test.ts` 固定命令与非选中式刷新入口。
 
 - 2026-10-23 · B-01：`uiInvariants.test.ts` 断言 Workflow 树选择会通知工作台切换右侧画布。
