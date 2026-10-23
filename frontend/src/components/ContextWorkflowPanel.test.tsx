@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ContextWorkflowPanel from "./ContextWorkflowPanel";
+import { ToastProvider } from "./ui";
 import { useWorkbench } from "../store/workbench";
 
 type ProbeNode = { id: string; data: { error: string | null } };
@@ -46,7 +47,7 @@ describe("Workflow browser comments", () => {
   beforeEach(() => {
     probe.notifications = 0;
     vi.clearAllMocks();
-    useWorkbench.setState({ selectedNovelId: 1, selectedWorkflowId: null, workflowCommand: null });
+    useWorkbench.setState({ selectedNovelId: 1, selectedWorkflowId: null, workflowRefreshEpoch: 0, workflowCommand: null });
     vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(new Response(
       JSON.stringify(url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []),
       { headers: { "Content-Type": "application/json" } },
@@ -190,5 +191,106 @@ describe("Workflow browser comments", () => {
     await waitFor(() => expect(commands).toHaveLength(1));
     expect(commands[0].url).toContain("/api/commands/workflow.create/execute");
     expect(commands[0].body.payload.purpose).toBe("review");
+  });
+
+  it("B-03 explicitly binds a published workflow and refreshes the selected resource", async () => {
+    const graph = { version: 1 as const, nodes: [
+      { id: "start", type: "start" as const, label: "开始", position: { x: 0, y: 0 }, config: {} },
+      { id: "context", type: "context" as const, label: "动态上下文", position: { x: 200, y: 0 }, config: {} },
+      { id: "prompt", type: "prompt" as const, label: "提示词模板", position: { x: 400, y: 0 }, config: {} },
+      { id: "model", type: "model" as const, label: "模型调用", position: { x: 600, y: 0 }, config: {} },
+      { id: "output", type: "output" as const, label: "输出", position: { x: 800, y: 0 }, config: {} },
+    ], edges: [] };
+    const current = { id: 1, revision: 4, name: "系统 · 正文生成", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 2, graph, created_at: "", updated_at: "" };
+    const target = { ...current, id: 2, revision: 7, name: "备用正文", is_default: false, published_version: 3 };
+    const bound = { ...target, revision: 8, is_default: true };
+    const commands: { url: string; body: { payload: Record<string, unknown> } }[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/commands/")) {
+        commands.push({ url, body: JSON.parse(String(init?.body)) });
+        return Promise.resolve(new Response(JSON.stringify({ id: 10, result: { workflow: bound } }), { headers: { "Content-Type": "application/json" } }));
+      }
+      const items = url.includes("/api/workflows") ? [current, ...(commands.length ? [bound] : [target])] : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : [];
+      return Promise.resolve(new Response(JSON.stringify(items), { headers: { "Content-Type": "application/json" } }));
+    }));
+    useWorkbench.setState({ selectedWorkflowId: 1, workflowRefreshEpoch: 0, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    await screen.findByText("系统 · 正文生成");
+    act(() => { useWorkbench.setState({ selectedWorkflowId: 2, workflowSelectionNonce: 1 }); });
+    await screen.findByText("备用正文");
+    fireEvent.click(screen.getByRole("button", { name: /设为当前正文生成流程/ }));
+    await waitFor(() => expect(commands).toHaveLength(1));
+    expect(commands[0].url).toContain("/api/commands/workflow.set_default/execute");
+    expect(commands[0].body.payload).toMatchObject({ workflow_id: 2, base_revision: 7 });
+    await waitFor(() => expect(useWorkbench.getState().workflowRefreshEpoch).toBe(1));
+    expect(useWorkbench.getState().selectedWorkflowId).toBe(2);
+    expect(await screen.findByText("备用正文")).toBeTruthy();
+  });
+
+  it("B-03 blocks unpublished workflows and explains that publishing is required", async () => {
+    const graph = { version: 1 as const, nodes: [], edges: [] };
+    const workflows = [
+      { id: 1, revision: 1, name: "当前正文", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 1, graph, created_at: "", updated_at: "" },
+      { id: 2, revision: 3, name: "未发布正文", novel_id: 1, purpose: "generation" as const, is_default: false, published_version: null, graph, created_at: "", updated_at: "" },
+    ];
+    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(url.includes("/api/workflows") ? workflows : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    useWorkbench.setState({ selectedWorkflowId: 1, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    act(() => { useWorkbench.setState({ selectedWorkflowId: 2, workflowSelectionNonce: 1 }); });
+    await screen.findByText("未发布正文");
+    const button = await screen.findByRole("button", { name: /先发布再使用正文生成流程/ });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("workflow.set_default"))).toBe(false);
+  });
+
+  it("B-03 preserves an unsaved policy when a right-click bind targets another workflow", async () => {
+    const graph = (purpose: "generation" | "review") => ({ version: 1 as const, nodes: [
+      { id: "start", type: "start" as const, label: "开始", position: { x: 0, y: 0 }, config: {} },
+      { id: "context", type: "context" as const, label: "动态上下文", position: { x: 200, y: 0 }, config: { token_budget: 8000, policy: { version: 1, budget: 60000, modules: [{ id: "blueprint", kind: "blueprint", enabled: true }] } } },
+      { id: "prompt", type: "prompt" as const, label: "提示词模板", position: { x: 400, y: 0 }, config: {} },
+      { id: "model", type: "model" as const, label: "模型调用", position: { x: 600, y: 0 }, config: {} },
+      { id: "output", type: "output" as const, label: "输出", position: { x: 800, y: 0 }, config: {} },
+    ], edges: [], purpose });
+    const generationGraph = graph("generation");
+    const reviewGraph = graph("review");
+    const current = { id: 1, revision: 4, name: "当前正文", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 2, graph: generationGraph, created_at: "", updated_at: "" };
+    const target = { id: 2, revision: 7, name: "当前自检", novel_id: 1, purpose: "review" as const, is_default: true, published_version: 3, graph: reviewGraph, created_at: "", updated_at: "" };
+    const fetchMock = vi.fn((url: string) => {
+      const response = new Response(JSON.stringify(url.includes("/api/workflows") ? [current, target] : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } });
+      return url.includes("/api/workflows")
+        ? new Promise<Response>((resolve) => window.setTimeout(() => resolve(response), 10))
+        : Promise.resolve(response);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    useWorkbench.setState({ selectedWorkflowId: 1, workflowCommand: null });
+    render(<ToastProvider><StrictMode><ContextWorkflowPanel /></StrictMode></ToastProvider>);
+    await screen.findByText("当前正文");
+    fireEvent.change(screen.getByLabelText("预算"), { target: { value: "59999" } });
+    expect((screen.getByLabelText("预算") as HTMLInputElement).value).toBe("59999");
+    await act(async () => {
+      useWorkbench.getState().requestWorkflowCommand("default", 2);
+      await new Promise((resolve) => window.setTimeout(resolve, 25));
+    });
+    expect(await screen.findByText("请先保存当前画布，再切换当前流程")).toBeTruthy();
+    expect((screen.getByLabelText("预算") as HTMLInputElement).value).toBe("59999");
+    expect(useWorkbench.getState().selectedWorkflowId).toBe(1);
+    expect((screen.getByRole("button", { name: "撤销" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("workflow.set_default"))).toBe(false);
+  });
+
+  it("B-03 editing or selecting a workflow does not bind it", async () => {
+    const graph = { version: 1 as const, nodes: [], edges: [] };
+    const current = { id: 1, revision: 1, name: "当前正文", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 1, graph, created_at: "", updated_at: "" };
+    const target = { ...current, id: 2, revision: 2, name: "备用正文", is_default: false };
+    const fetchMock = vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(url.includes("/api/workflows") ? [current, target] : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    useWorkbench.setState({ selectedWorkflowId: 1, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    await screen.findByText("当前正文");
+    act(() => { useWorkbench.setState({ selectedWorkflowId: 2, workflowSelectionNonce: 1 }); });
+    await screen.findByText("备用正文");
+    expect(useWorkbench.getState().selectedWorkflowId).toBe(2);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes("workflow.set_default"))).toBe(false);
   });
 });

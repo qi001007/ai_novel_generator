@@ -196,6 +196,8 @@ export default function ContextWorkflowPanel() {
   const dragStartGraph = useRef<WorkflowGraph | null>(null);
   const clipboard = useRef<{ nodes: ContextWorkflowNode[]; edges: WorkflowGraph["edges"] }>({ nodes: [], edges: [] });
   const commandNonce = useRef(0);
+  const selectedWorkflowIdRef = useRef(selectedWorkflowId);
+  selectedWorkflowIdRef.current = selectedWorkflowId;
   const createEpoch = useRef(workflowCreateEpoch);
   const moduleZ = useRef(20);
 
@@ -276,14 +278,14 @@ export default function ContextWorkflowPanel() {
     if (novelId === null) return;
     const items = (await api.listWorkflows(novelId)).map(asWorkflow).filter((item): item is ContextWorkflow => item !== null);
     setWorkflows(items);
-    const target = items.find((item) => item.id === (preferredId ?? selectedWorkflowId)) ?? items.find((item) => item.is_default) ?? items[0];
+    const target = items.find((item) => item.id === (preferredId ?? selectedWorkflowIdRef.current)) ?? items.find((item) => item.is_default) ?? items[0];
     if (target) {
       pick(target);
       selectWorkflowInTree(target.id);
     } else {
       pick({ id: -1, revision: 0, created_at: "", updated_at: "", ...defaultPayload(novelId, "generation", "正文生成") });
     }
-  }, [novelId, pick, selectWorkflowInTree, selectedWorkflowId]);
+  }, [novelId, pick, selectWorkflowInTree]);
 
   useEffect(() => { void reload().catch((cause: Error) => pushToast(cause.message, "error")); }, [reload, pushToast]);
   useEffect(() => {
@@ -291,11 +293,12 @@ export default function ContextWorkflowPanel() {
   }, []);
   useEffect(() => {
     if (selectedWorkflowId === null || selectedWorkflowId === draft?.id) return;
+    if (workflowCommand?.action === "default" && workflowCommand.workflowId === selectedWorkflowId && hasUnsavedGraph()) return;
     const target = workflows.find((workflow) => workflow.id === selectedWorkflowId);
     if (target) pick(target);
     // Only an explicit tree selection may replace the draft. Reacting to draft.id
     // re-picked the old saved workflow right after "new workflow" opened id -1.
-  }, [pick, selectedWorkflowId, workflowSelectionNonce, workflows]);
+  }, [pick, selectedWorkflowId, workflowCommand, workflowSelectionNonce, workflows]);
   useEffect(() => {
     if (createEpoch.current === workflowCreateEpoch) return;
     createEpoch.current = workflowCreateEpoch;
@@ -308,6 +311,11 @@ export default function ContextWorkflowPanel() {
     commandNonce.current = workflowCommand.nonce;
     const target = workflows.find((workflow) => workflow.id === workflowCommand.workflowId);
     if (!target) return;
+    if (workflowCommand.action === "default" && hasUnsavedGraph()) {
+      pushToast("请先保存当前画布，再切换当前流程", "error");
+      if (draft && selectedWorkflowId !== draft.id) selectWorkflowInTree(draft.id);
+      return;
+    }
     pick(target);
     if (workflowCommand.action === "rename") {
       setNameDraft(target.name);
@@ -315,7 +323,7 @@ export default function ContextWorkflowPanel() {
     } else if (workflowCommand.action === "default") void makeDefault(target);
     else if (workflowCommand.action === "duplicate") void duplicateWorkflow(target);
     else setDeleteTarget(target);
-  }, [pick, workflowCommand, workflows]);
+  }, [draft, pick, selectedWorkflowId, selectWorkflowInTree, workflowCommand, workflows]);
   useEffect(() => { localStorage.setItem("workflow.policyHeight", String(policyHeight)); }, [policyHeight]);
   useEffect(() => {
     if (!connectionError) return;
@@ -499,6 +507,12 @@ export default function ContextWorkflowPanel() {
     commitGraph({ ...draft.graph, edges: [...draft.graph.edges, { source: connection.source, target: connection.target, source_handle: connection.sourceHandle ?? "", target_handle: connection.targetHandle ?? "" }] });
   }
 
+  function hasUnsavedGraph() {
+    if (!draft) return false;
+    const saved = workflows.find((workflow) => workflow.id === draft.id);
+    return !saved || JSON.stringify(draft.graph) !== JSON.stringify(saved.graph);
+  }
+
   async function save() {
     if (!draft || novelId === null) return;
     setBusy(true);
@@ -540,9 +554,13 @@ export default function ContextWorkflowPanel() {
   }
 
   async function makeDefault(target: ContextWorkflow) {
+    if (target.novel_id !== novelId) return pushToast("只能为当前作品切换当前工作流", "error");
+    if (hasUnsavedGraph()) return pushToast("请先保存当前画布，再切换当前流程", "error");
+    const saved = workflows.find((workflow) => workflow.id === target.id);
+    if (!saved?.published_version) return pushToast("请先发布工作流，再设为当前流程", "error");
     setBusy(true);
     try {
-      const operation = await api.executeCommand<{ workflow: ContextWorkflow }>("workflow.set_default", { workflow_id: target.id, base_revision: target.revision }, `workflow-default:${target.id}:${target.revision}:${crypto.randomUUID()}`);
+      const operation = await api.executeCommand<{ workflow: ContextWorkflow }>("workflow.set_default", { workflow_id: saved.id, base_revision: saved.revision }, `workflow-default:${saved.id}:${saved.revision}:${crypto.randomUUID()}`);
       await reload(operation.result.workflow.id);
       notifyWorkflowChanged(operation.result.workflow.id);
       pushToast(`已设为当前${PURPOSE_LABELS[target.purpose]}流程`, "success");
@@ -644,6 +662,13 @@ export default function ContextWorkflowPanel() {
   return <div ref={rootRef} tabIndex={-1} className={`context-workflow${fullscreen ? " is-fullscreen" : ""}`}>
     <header className="context-workflow-toolbar">
       <div className="workflow-current-title"><strong>{draft?.name ?? "未选择工作流"}</strong>{draft ? <i>{PURPOSE_LABELS[draft.purpose]}</i> : null}{draft?.is_default ? <i>当前</i> : null}{draft ? <i>{draft.published_version ? `v${draft.published_version}` : "未发布"}</i> : null}</div>
+      {draft && draft.id >= 0 && !draft.is_default ? <Button
+        compact
+        disabled={busy || !draft.published_version}
+        title={draft.published_version ? `设为当前${PURPOSE_LABELS[draft.purpose]}流程（已发布 v${draft.published_version}）` : `${PURPOSE_LABELS[draft.purpose]}流程尚未发布，发布后才能设为当前`}
+        aria-label={draft.published_version ? `设为当前${PURPOSE_LABELS[draft.purpose]}流程（已发布 v${draft.published_version}）` : `先发布再使用${PURPOSE_LABELS[draft.purpose]}流程`}
+        onClick={() => void makeDefault(draft)}
+      >{draft.published_version ? "设为当前" : "先发布再使用"}</Button> : null}
       <IconButton ref={nodePickerRef} type="button" title="添加节点" aria-label="添加节点" aria-haspopup="menu" aria-expanded={menu?.source === "toolbar"} onClick={(event) => {
         const box = event.currentTarget.getBoundingClientRect();
         setMenu(menu?.source === "toolbar" ? null : { x: box.left, y: box.bottom, source: "toolbar" });

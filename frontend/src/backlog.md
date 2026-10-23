@@ -1,5 +1,7 @@
 # frontend/src/ 更改账（最新在上）
 
+- 2026-10-23 · B-03：`uiInvariants.test.ts` 锁定仅非当前流程显示绑定按钮、未发布禁用并提示发布、绑定前检查未保存画布；组件行为测试覆盖发布门槛、命令 revision/epoch、选择与脏图保护。
+
 - 2026-10-23 · B-04：`PreferencesPage.tsx` 仅在供应商编辑态渲染目录摘要与条目；发起模型目录请求时展开、请求完成遵循用户最后一次折叠状态；目录错误补 Toast，增加页面与 UI 不变量回归（111 项通过）。
 
 - 2026-10-23 · B-02：`ContextWorkflow.novel_id` 镜像类型允许 global 的 null；`TreePane.test.tsx` 增 StrictMode 下补齐、global 用途不抑制书内补齐、列表刷新/选择保留、模型缺项提示及失败 Toast 回归；`uiInvariants.test.ts` 固定命令与非选中式刷新入口。

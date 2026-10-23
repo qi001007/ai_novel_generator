@@ -759,6 +759,11 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(contextWorkflowPanel).toContain('"workflow.publish"');
     expect(contextWorkflowPanel).toContain('"workflow.rename"');
     expect(contextWorkflowPanel).toContain('"workflow.set_default"');
+    expect(contextWorkflowPanel).toContain('&& !draft.is_default ? <Button');
+    expect(contextWorkflowPanel).toContain('disabled={busy || !draft.published_version}');
+    expect(contextWorkflowPanel).toContain('published_version ? `设为当前');
+    expect(contextWorkflowPanel).toContain('function hasUnsavedGraph()');
+    expect(contextWorkflowPanel).toContain('请先保存当前画布，再切换当前流程');
     expect(contextWorkflowPanel).toContain("api.runWorkflow(draft.id, novelId");
     expect(apiSource).toContain("/api/commands/${name}/execute");
     expect(activityRail).not.toContain('label: "人物库"');
