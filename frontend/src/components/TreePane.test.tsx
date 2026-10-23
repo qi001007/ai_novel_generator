@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../api", () => ({
@@ -12,6 +13,7 @@ vi.mock("../api", () => ({
 import { api } from "../api";
 import TreePane from "./TreePane";
 import { useFiles } from "../store/files";
+import type { ContextWorkflow } from "../types";
 
 type TreePaneProps = ComponentProps<typeof TreePane>;
 
@@ -44,6 +46,7 @@ const baseProps = (over: Partial<TreePaneProps> = {}): TreePaneProps => ({
   renumberNeeded: false,
   exportError: null,
   onOpenCharacters: vi.fn(),
+  onOpenWorkflow: vi.fn(),
   onOpenFeedback: vi.fn(),
   onOpenWorldview: vi.fn(),
   onOpenForeshadow: vi.fn(),
@@ -100,5 +103,34 @@ describe("TreePane settings search", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.queryByRole("searchbox", { name: "搜索" })).toBeNull();
     expect(screen.getByRole("button", { name: "搜索" })).toBeTruthy();
+  });
+});
+
+describe("TreePane workflow navigation", () => {
+  it("ignores a workflow list response from the previous book under StrictMode", async () => {
+    let resolveOld!: (items: ContextWorkflow[]) => void;
+    let resolveCurrent!: (items: ContextWorkflow[]) => void;
+    vi.mocked(api.listWorkflows).mockImplementation((novelId) => new Promise<ContextWorkflow[]>((resolve) => {
+      if (novelId === 1) resolveOld = resolve;
+      else resolveCurrent = resolve;
+    }));
+    const oldBook = {
+      id: 101, novel_id: 1, revision: 1, name: "旧书流程", purpose: "generation" as const,
+      is_default: false, graph: { version: 1 as const, nodes: [], edges: [] }, created_at: "", updated_at: "",
+    };
+    const currentBook = {
+      ...oldBook, id: 201, novel_id: 2, name: "当前书流程", is_default: true,
+    };
+    const props = baseProps({ page: "workflow", novelId: 1 });
+    const view = render(<StrictMode><TreePane {...props} /></StrictMode>);
+    await waitFor(() => expect(resolveOld).toBeTypeOf("function"));
+    view.rerender(<StrictMode><TreePane {...props} novelId={2} /></StrictMode>);
+    await waitFor(() => expect(resolveCurrent).toBeTypeOf("function"));
+
+    await act(async () => resolveCurrent([currentBook]));
+    expect(await screen.findByTitle("当前书流程")).toBeTruthy();
+    await act(async () => resolveOld([oldBook]));
+    await waitFor(() => expect(screen.queryByTitle("旧书流程")).toBeNull());
+    expect(screen.getByTitle("当前书流程")).toBeTruthy();
   });
 });

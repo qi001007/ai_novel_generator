@@ -762,6 +762,9 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(activityRail).not.toContain('label: "人物库"');
     expect(activityRail).not.toContain('label: "世界库"');
     expect(treePane).toContain('className="tree-children tree-section-workflows"');
+    expect(treePane).toContain("selectWorkflow(workflow.id);");
+    expect(treePane).toContain("onOpenWorkflow();");
+    expect(workPage).toContain('onOpenWorkflow={() => setRightView("workflow")}');
     expect(treePane).toContain("published_version");
     expect(contextWorkflowPanel).toContain("published_version");
     expect(treePane).toContain('requestWorkflowCommand("rename", menuWorkflow.id)');

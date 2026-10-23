@@ -114,6 +114,7 @@ type TreePaneProps = {
   renumberNeeded: boolean;
   exportError: string | null;
   onOpenCharacters: () => void;
+  onOpenWorkflow: () => void;
   onOpenFeedback: () => void;
   onOpenWorldview: () => void;
   onOpenForeshadow: () => void;
@@ -183,6 +184,7 @@ export default function TreePane({
   renumberNeeded,
   exportError,
   onOpenCharacters,
+  onOpenWorkflow,
   onOpenFeedback,
   onOpenWorldview,
   onOpenForeshadow,
@@ -534,7 +536,10 @@ export default function TreePane({
                     key={workflow.id}
                     className={`tree-row workflow-resource ${workflow.id === selectedWorkflowId ? "selected" : ""}`}
                     title={workflow.name}
-                    onClick={() => selectWorkflow(workflow.id)}
+                    onClick={() => {
+                      selectWorkflow(workflow.id);
+                      onOpenWorkflow();
+                    }}
                     onContextMenu={(event) => openMenu(event, { kind: "workflow", id: workflow.id, isDefault: workflow.is_default, purpose })}
                   >
                     <span className="tree-label">{workflow.name}</span>
@@ -838,7 +843,10 @@ export default function TreePane({
           }}
         >
           {menuWorkflow ? <>
-            <button type="button" role="menuitem" className="tree-menu-item" onClick={runMenuAction(() => selectWorkflow(menuWorkflow.id))}><span>打开</span></button>
+            <button type="button" role="menuitem" className="tree-menu-item" onClick={runMenuAction(() => {
+              selectWorkflow(menuWorkflow.id);
+              onOpenWorkflow();
+            })}><span>打开</span></button>
             <button
               type="button"
               role="menuitem"

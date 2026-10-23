@@ -1,5 +1,6 @@
 # frontend/src/ 更改账（最新在上）
 
+- 2026-10-23 · B-01：`uiInvariants.test.ts` 断言 Workflow 树选择会通知工作台切换右侧画布。
 - 2026-10-23 · G-01/V-19：`types.ts` 补 `WorkflowRun*` 协议；`labels.ts` 加用途标签；`App.tsx` 注册 `/novels/:novelId/chapters/:chapterId/workflow-runs/:runId`；`styles.css` 加运行详情节点样式；`uiInvariants.test.ts` 钉住记录过滤、详情路由、token 合计与排除原因；`App.test.tsx` 补 workflow-runs 空响应。
 - 2026-10-22 · M-01：`types.ts` 为 `MapVersion` 补画布尺寸、父版本与操作；`labels.ts` 增加 `image_edit`（扩图）任务；`styles.css` 加地图画布、网格、四向扩图、选格与编辑弹窗；`uiInvariants` 把扩图任务槽与默认模型钉进不可回退断言。
 - 2026-10-22 · M-02：`types.ts` 加 `ArcPlan`／`MapVersion`／`MapSummary`／`MapDetail`；`styles.css` 加地图列表、生成弹窗、详情页与 `.page-panel-header` 窄屏换行；`uiInvariants.test.ts` 钉住地图库与换行断言。

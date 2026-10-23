@@ -947,6 +947,7 @@ export default function WorkbenchPage() {
               state.openChapterTab(chapterId);
             }}
             onOpenCharacters={() => setRightView("characters")}
+            onOpenWorkflow={() => setRightView("workflow")}
             onOpenFeedback={() => {
               setRightView("feedback");
             }}

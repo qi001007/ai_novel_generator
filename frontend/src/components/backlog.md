@@ -1,5 +1,6 @@
 # frontend/src/components/ 更改账（最新在上）
 
+- 2026-10-23 · B-01：Workflow 左树选中/重复点击及右键「打开」均通知工作台切到画布，仍只编辑选择、不改默认绑定；StrictMode 切书回归与 `uiInvariants.test.ts` 锁定该入口。
 - 2026-10-23 · G-01/V-19：`EditorPane` 的「调用记录」先列该章真实 Workflow 运行行（用途/时间/模型/token/详情），并与旧 `chapterRuns` 并列；无记录时才显示空态。`EditorPane.test.tsx` 覆盖跨章过滤与详情跳转。
 - 2026-10-22 · M-01：新增 `MapCanvas`（适配/缩放/拖拽、格子选择、四向扩图、非对齐说明、4×4 禁用）；`PaintingDetailPanel` 接入网格、单格重绘、扩图/重绘费用弹窗与历史操作标签；定向测试 9 条通过。修 `ContextWorkflowPanel.test.tsx` 的 React Flow 替身缺 `fitView` 导致 25 条未捕获异常，全量恢复退出码 0。
 - 2026-10-22 · M-02：`WorldMapPanel` 接真实列表/空态/入口；新增 `MapGenerateDialog`（StrictMode 下只以落地的提示词回填为已加载）；`PaintingDetailPanel` 生成新版本后选中新草稿而非旧确认版；三组定向测试 9 条。

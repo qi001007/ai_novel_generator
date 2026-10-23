@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -51,6 +52,35 @@ function stubFetch() {
           models: { chat: true },
           available_models: ["MiniMax-M2.5"],
         });
+      }
+      if (url.includes("/api/workflows?novel_id=")) {
+        const novelId = Number(new URL(url, window.location.origin).searchParams.get("novel_id"));
+        return json([
+          {
+            id: novelId * 100 + 1,
+            revision: 1,
+            name: "正文生成",
+            novel_id: novelId,
+            purpose: "generation",
+            is_default: true,
+            published_version: 1,
+            graph: { version: 1, nodes: [], edges: [] },
+            created_at: "",
+            updated_at: "",
+          },
+          {
+            id: novelId * 100 + 2,
+            revision: 1,
+            name: "try001",
+            novel_id: novelId,
+            purpose: "generation",
+            is_default: false,
+            published_version: 1,
+            graph: { version: 1, nodes: [], edges: [] },
+            created_at: "",
+            updated_at: "",
+          },
+        ]);
       }
       if (url.endsWith("/api/novels/1/chapters")) {
         return json([
@@ -179,6 +209,11 @@ describe("workbench layout", () => {
     localStorage.clear();
     useFiles.getState().reset();
     vi.unstubAllGlobals();
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    });
     // The drag tests describe the 1440 design width. Narrow-window fitting is a
     // viewport event with its own case below; jsdom's default 1024 is neither.
     Object.defineProperty(window, "innerWidth", {
@@ -197,6 +232,49 @@ describe("workbench layout", () => {
     const menu = screen.getByRole("menu", { name: "作品列表" });
     await user.click(within(menu).getByRole("menuitem", { name: "第二部作品" }));
     await waitFor(() => expect(useWorkbench.getState().selectedNovelId).toBe(2));
+  });
+
+  it("opens the selected workflow canvas from a restored file view after repeated book switches", async () => {
+    const user = userEvent.setup();
+    localStorage.setItem("workbench.stage", JSON.stringify({
+      "1": { view: "files", rail: "workflow", file: null },
+      "2": { view: "files", rail: "workflow", file: null },
+    }));
+    stubFetch();
+    const result = render(
+      <StrictMode>
+        <MemoryRouter initialEntries={["/novels/1"]}>
+          <App />
+        </MemoryRouter>
+      </StrictMode>,
+    );
+
+    expect(await screen.findByRole("region", { name: "文件编辑器" })).toBeTruthy();
+    for (let turn = 0; turn < 20; turn += 1) {
+      const novelId = turn % 2 === 0 ? 1 : 2;
+      if (useWorkbench.getState().selectedNovelId !== novelId) {
+        await user.click(screen.getByRole("button", { name: "切换作品" }));
+        const menu = screen.getByRole("menu", { name: "作品列表" });
+        await user.click(within(menu).getByRole("menuitem", { name: novelId === 1 ? "拖拽测试" : "第二部作品" }));
+        await waitFor(() => expect(useWorkbench.getState().selectedNovelId).toBe(novelId));
+      }
+      await waitFor(() => expect(screen.getByTitle("正文生成")).toBeTruthy());
+      await waitFor(() => expect(useWorkbench.getState().selectedWorkflowId).toBe(novelId * 100 + 1));
+      const defaultRequestsBefore = vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes("workflow.set_default")).length;
+      await user.click(screen.getByTitle("正文生成"));
+      await waitFor(() => expect(document.querySelector(".context-workflow-canvas")).toBeTruthy());
+      expect(screen.queryByRole("region", { name: "文件编辑器" })).toBeNull();
+      expect(useWorkbench.getState().selectedWorkflowId).toBe(novelId * 100 + 1);
+      expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes("workflow.set_default"))).toHaveLength(defaultRequestsBefore);
+      expect(useWorkbench.getState().novels).toHaveLength(2);
+      expect(screen.getByTitle("正文生成").textContent).toContain("当前 · v1");
+      await user.click(screen.getByTitle("try001"));
+      await waitFor(() => expect(document.querySelector(".context-workflow-canvas")).toBeTruthy());
+      expect(useWorkbench.getState().selectedWorkflowId).toBe(novelId * 100 + 2);
+      expect(screen.getByTitle("try001").textContent).not.toContain("当前 ·");
+    }
+
+    result.unmount();
   });
 
   /* 第二十六批批注 6：树里那个「删除」他点了三轮，今天真的能删。
