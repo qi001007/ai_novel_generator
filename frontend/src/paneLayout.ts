@@ -26,6 +26,11 @@ export const CLOSE_AT = 90;
    a 24px toolbar with every action reporting hit:false (第十五批批注 2.1). So the
    column is either at least this wide or it is away, never a clipped sliver. */
 export const EDITOR_MIN = 160;
+/* U-06: the width at which the prose column still reads as a writing column. The
+   toolbar needs far less than this, but a window narrower than the three panes can
+   only be answered by putting a column away - and when it can, that column is the
+   chat, not the prose. */
+export const EDITOR_USABLE = 320;
 export const CHAT_DEFAULT_RATIO = 0.327; // 470 / 1440
 
 /** 左边的图标导轨宽 44；每条可拖分隔条 1px（两缝合计 2）。以前是算式里的裸数字。 */
@@ -102,6 +107,45 @@ export function editorWidthAt(input: {
     (input.sidebarHidden ? 0 : input.sidebar + SEAM) -
     (input.chatHidden ? 0 : input.chat + SEAM)
   );
+}
+
+export type PaneVisibility = {
+  sidebar: boolean;
+  chat: boolean;
+  editor: boolean;
+};
+
+/**
+ * U-06：窗口不够时，先让聊天列出去，再让树列出去，正文列留在台上。
+ *
+ * 只在窗口尺寸变化（含首次挂载）时问这个问题，不在渲染或拖拽过程中调用——
+ * 手动拖到哪儿是读者的选择，自动布局只回答「这个窗口放不放得下」。
+ * 只向「收起」一个方向走：放大的窗口不会擅自打开读者关掉的栏。
+ * 编辑栏即使让位也不把它藏掉：那会让剩下的每一栏都失去屏幕，窗口再小也该有字看。
+ */
+export function fitHiddenAt(input: {
+  viewport: number;
+  sidebar: number;
+  chat: number;
+  hidden: PaneVisibility;
+}): PaneVisibility {
+  const hidden = { ...input.hidden };
+  if (hidden.editor) return hidden;
+  const width = () =>
+    editorWidthAt({
+      viewport: input.viewport,
+      sidebar: input.sidebar,
+      chat: input.chat,
+      sidebarHidden: hidden.sidebar,
+      chatHidden: hidden.chat,
+    });
+  if (width() >= EDITOR_USABLE) return hidden;
+  if (!hidden.chat) {
+    hidden.chat = true;
+    if (width() >= EDITOR_USABLE) return hidden;
+  }
+  if (!hidden.sidebar) hidden.sidebar = true;
+  return hidden;
 }
 
 /**

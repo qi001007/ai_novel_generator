@@ -5,6 +5,7 @@ vi.mock("../api", () => ({
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
+    executeCommand: vi.fn(),
     readFile: vi.fn(),
     writeFile: vi.fn(),
     streamGeneration: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock("../api", () => ({
 import { api } from "../api";
 import { draftBody, draftDocument, isDirty, useFiles } from "./files";
 import { LAST_OPENED_NOVEL_KEY, useWorkbench } from "./workbench";
-import type { Chapter, ChapterBrief, FileDoc, GenerationRun, MachineCheckResult } from "../types";
+import type { Chapter, ChapterBrief, FileDoc, GenerationCandidate } from "../types";
 
 const chapter: Chapter = {
   id: 8,
@@ -54,22 +55,11 @@ const brief: ChapterBrief = {
   status: "draft",
 };
 
-const run: GenerationRun = {
-  id: 10,
-  chapter_id: 8,
-  task_type: "draft",
-  model: "test-model",
-  prompt_version: "v1",
-  input_summary: "{}",
-  output: "新正文。",
-  token_input: 1,
-  token_output: 2,
-  cost_estimate: 0,
-  status: "completed",
-  created_at: "2026-09-03T00:00:00Z",
+const candidate: GenerationCandidate = {
+  id: 10, novel_id: 1, kind: "draft", status: "completed", error: "",
+  payload: { chapter_id: 8, path: draftDoc.path, base_revision: "draft-1", request: "" },
+  result: { content: "新正文。", workflow_run_id: 3, token_input: 1, token_output: 2 },
 };
-
-const check: MachineCheckResult = { passed: true, word_count: 4, issues: [] };
 
 /* 批注 3.3: the prose page and the file page share one buffer, so "what the prose
    page shows" is a projection of the file entry - read it the same way here. */
@@ -89,6 +79,7 @@ describe("workbench chapter writes", () => {
       selectedBriefId: 999,
       busy: false,
       error: null,
+      generationCandidates: [],
     });
     // 批注 3.3: there is one buffer, and it lives in the file store.
     useFiles.setState({
@@ -121,13 +112,7 @@ describe("workbench chapter writes", () => {
       content: "沈曜推开了石门。",
       word_count: 8,
     });
-    vi.mocked(api.streamGeneration).mockImplementation(async (_novelId, _briefId, onEvent) => {
-      onEvent({ event: "delta", data: { text: "新" } });
-      onEvent({
-        event: "done",
-        data: { chapter: { ...chapter, content: "新正文。", word_count: 4 }, generation_run: run, machine_check: check },
-      });
-    });
+    vi.mocked(api.post).mockResolvedValue(candidate);
   });
 
   it("saves prose through the chapter draft file, not the legacy chapter route", async () => {
@@ -150,21 +135,31 @@ describe("workbench chapter writes", () => {
     expect(useWorkbench.getState().error).toBeNull();
   });
 
-  it("targets the selected chapter's brief, not a stale selected brief id", async () => {
-    // what the server holds once the run has written the chapter
-    vi.mocked(api.readFile).mockResolvedValue({
-      ...draftDoc,
-      text: draftDocument(42, "新正文。"),
-      revision: "draft-2",
-    });
+  it("generates a durable candidate for the selected chapter without replacing saved or unsaved prose", async () => {
     await useWorkbench.getState().generateDraft();
-
-    expect(api.streamGeneration).toHaveBeenCalledWith(1, 2, expect.any(Function));
-    expect(useWorkbench.getState().lastGenerationRunId).toBe(10);
-    // the one buffer, not a copy of it: the run's saved text, re-read from the file
-    expect(draftBodyOf()).toBe("新正文。");
-    expect(useFiles.getState().entries[draftDoc.path].doc?.revision).toBe("draft-2");
+    expect(api.post).toHaveBeenCalledWith("/api/novels/1/chapters/8/generation-candidates", { request: "" });
+    expect(api.streamGeneration).not.toHaveBeenCalled();
+    expect(useWorkbench.getState().generationCandidates).toEqual([candidate]);
+    expect(draftBodyOf()).toBe("沈曜推开了石门。");
+    expect(buffer().doc?.revision).toBe("draft-1");
     expect(useWorkbench.getState().error).toBeNull();
+  });
+
+  it("refuses candidate acceptance while local prose is unsaved", async () => {
+    useWorkbench.setState({ generationCandidates: [candidate] });
+    await useWorkbench.getState().acceptGenerationCandidate(candidate.id);
+    expect(api.writeFile).not.toHaveBeenCalled();
+    expect(useWorkbench.getState().error).toContain("未保存");
+  });
+
+  it("accepts through file PUT with the candidate's original revision", async () => {
+    useWorkbench.setState({ generationCandidates: [candidate] });
+    useFiles.getState().setDraft(draftDoc.path, draftDoc.text);
+    vi.mocked(api.get).mockResolvedValue({ ...chapter, content: "新正文。" });
+    await useWorkbench.getState().acceptGenerationCandidate(candidate.id);
+    expect(api.writeFile).toHaveBeenCalledWith(1, draftDoc.path, expect.stringContaining("新正文。"), {
+      actor: "human", baseRevision: "draft-1", generationJobId: 10,
+    });
   });
 
   // 批注 35.30：原来一句「请先选择章节；该章还需要一份 D 层简报」把两种原因揉成一句，
@@ -267,6 +262,21 @@ describe("workbench novel selection", () => {
     await useWorkbench.getState().loadChapterRecords();
     expect(api.get).not.toHaveBeenCalled();
     expect(useWorkbench.getState().generationRuns).toEqual([]);
+    expect(useWorkbench.getState().workflowRuns).toEqual([]);
+  });
+
+  it("loads workflow runs with the chapter records", async () => {
+    useWorkbench.setState({
+      selectedNovelId: 1,
+      selectedChapterId: 8,
+      chapters: [chapter],
+    });
+    vi.mocked(api.get).mockImplementation(((path: string) =>
+      Promise.resolve(path.endsWith("/workflow-runs") ? [{ id: 9 }] : [])) as never);
+
+    await useWorkbench.getState().loadChapterRecords();
+
+    expect(useWorkbench.getState().workflowRuns).toEqual([{ id: 9 }]);
   });
 
   it("re-reads the tree's two sources without moving the selection (批注 35.4)", async () => {
@@ -442,5 +452,28 @@ describe("workbench new conversation", () => {
 
     expect(api.post).not.toHaveBeenCalled();
     expect(useWorkbench.getState().chatEpoch).toBe(3);
+  });
+});
+
+describe("workbench novel creation", () => {
+  it("creates through novel.create so the default workflows are seeded", async () => {
+    const novel = {
+      id: 12, title: "新书", description: "", target_chapters: 10, style_constraints: "", cover_image: "",
+    };
+    vi.mocked(api.executeCommand).mockResolvedValue({ id: 4, result: { novel } });
+    useWorkbench.setState({ novels: [] });
+
+    const created = await useWorkbench.getState().createNovel({
+      title: "新书", description: "", target_chapters: 10, style_constraints: "",
+    });
+
+    expect(api.executeCommand).toHaveBeenCalledWith(
+      "novel.create",
+      { title: "新书", description: "", target_chapters: 10, style_constraints: "" },
+      expect.stringMatching(/^novel-create:/),
+    );
+    expect(api.post).not.toHaveBeenCalled();
+    expect(created).toEqual(novel);
+    expect(useWorkbench.getState().novels).toEqual([novel]);
   });
 });

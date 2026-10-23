@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,7 +11,7 @@ const config = {
   provider: "openai_compatible",
   api_base_url: "https://gateway.example/v1",
   timeout: 120,
-  models: { draft: "Model-A", review: "Model-A", summary: "", chat: "", image: "" },
+  models: { draft: "Model-A", review: "Model-A", summary: "", chat: "", image: "", image_edit: "" },
   api_key_masked: "****9876",
   api_key_set: true,
   configured: true,
@@ -27,8 +28,8 @@ const config = {
       is_default: true,
     },
   ],
-  routes: { draft: "default", review: "default", summary: "default", chat: "default", image: "default" },
-  tasks: ["draft", "review", "summary", "chat", "image"],
+  routes: { draft: "default", review: "default", summary: "default", chat: "default", image: "default", image_edit: "default" },
+  tasks: ["draft", "review", "summary", "chat", "image", "image_edit"],
   // 35.9：一轮规划请求实测 32955 token，出厂上限必须盖得住它，且两个数主人能改
   agent: { max_steps: 20, max_tokens: 60000, default_max_steps: 20, default_max_tokens: 60000 },
   catalogs: {
@@ -36,7 +37,7 @@ const config = {
   },
 };
 
-function stubFetch(calls: { method: string; url: string; body: unknown }[]) {
+function stubFetch(calls: { method: string; url: string; body: unknown }[], savedConfig = config) {
   const ok = (data: unknown) =>
     new Response(JSON.stringify(data), {
       status: 200,
@@ -48,17 +49,18 @@ function stubFetch(calls: { method: string; url: string; body: unknown }[]) {
       const url = String(input);
       const method = String(init?.method ?? "GET");
       calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : null });
+      if (url === "/api/llm/status") return Promise.resolve(ok({ provider: "openai_compatible", configured: savedConfig.configured, models: {}, available_models: [] }));
       if (url.endsWith("/api/config/llm/test")) {
         return Promise.resolve(ok({ ok: true, detail: "连接正常（HTTP 200）" }));
       }
-      if (url.includes("/api/config/llm/models?")) {
+      if (url === "/api/config/llm/models") {
         return Promise.resolve(ok({
           provider_id: "default",
           models: ["qwen3.6-flash", "qwen3.8-flash"],
           detail: "已获取 2 个模型，未发起生成请求",
         }));
       }
-      return Promise.resolve(ok(config));
+      return Promise.resolve(ok(savedConfig));
     }),
   );
 }
@@ -70,7 +72,25 @@ describe("PreferencesPage", () => {
     calls = [];
   });
 
+  it.each(["获取供应商 1 模型列表", "测试供应商 1 连接"])("uses the current unsaved connection fields for %s", async (action) => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(<StrictMode><MemoryRouter><ToastProvider><PreferencesPage /></ToastProvider></MemoryRouter></StrictMode>);
+    await user.click(await screen.findByRole("button", { name: "编辑供应商 1" }));
+    fireEvent.change(screen.getByLabelText("供应商 1 Base URL"), { target: { value: "https://new.example/v1" } });
+    await user.type(screen.getByLabelText("供应商 1 API Key"), "draft-test-key");
+    fireEvent.change(screen.getByLabelText("供应商 1 超时秒数"), { target: { value: "45" } });
+    await user.click(screen.getByRole("button", { name: action }));
+    const path = action.includes("模型") ? "/api/config/llm/models" : "/api/config/llm/test";
+    await waitFor(() => expect(calls.find((call) => call.url === path && call.method === "POST")?.body).toEqual({
+      provider_id: "default", api_base_url: "https://new.example/v1", api_key: "draft-test-key", timeout: 45,
+    }));
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+    expect((screen.getByLabelText("供应商 1 API Key") as HTMLInputElement).value).toBe("draft-test-key");
+  });
+
   it("shows the model-access form with the key masked, never in full", async () => {
+    const user = userEvent.setup();
     stubFetch(calls);
     render(
       <MemoryRouter>
@@ -78,16 +98,106 @@ describe("PreferencesPage", () => {
       </MemoryRouter>,
     );
 
-    const key = (await screen.findByLabelText("API Key")) as HTMLInputElement;
+    await user.click(await screen.findByRole("button", { name: "编辑供应商 1" }));
+    const key = screen.getByLabelText("供应商 1 API Key") as HTMLInputElement;
     expect(key.type).toBe("password");
     expect(key.value).toBe("");
     // the placeholder may reveal the tail, nothing more
     expect(key.placeholder).toContain("****9876");
     expect(key.placeholder).not.toContain("98769");
-    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("供应商 1 Base URL") as HTMLInputElement).value).toBe(
       "https://gateway.example/v1",
     );
     expect(screen.getByRole("button", { name: "正文生成模型" }).textContent).toContain("Model-A");
+  });
+
+  it.each(["获取供应商 2 模型列表", "测试供应商 2 连接"])("previews a new unsaved provider with its own fields using %s", async (action) => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(<StrictMode><MemoryRouter><ToastProvider><PreferencesPage /></ToastProvider></MemoryRouter></StrictMode>);
+    await screen.findByRole("button", { name: "添加供应商" });
+    await user.click(screen.getByRole("button", { name: "添加供应商" }));
+    fireEvent.change(screen.getByLabelText("供应商 2 Base URL"), { target: { value: "https://b.example/v1" } });
+    fireEvent.change(screen.getByLabelText("供应商 2 API Key"), { target: { value: "provider-b-key" } });
+    await user.click(screen.getByRole("button", { name: action }));
+    const path = action.includes("模型") ? "/api/config/llm/models" : "/api/config/llm/test";
+    await waitFor(() => expect(calls.find((call) => call.url === path)?.body).toEqual({
+      provider_id: "p1", api_base_url: "https://b.example/v1", api_key: "provider-b-key", timeout: null,
+    }));
+    expect(calls.some((call) => call.method === "PUT")).toBe(false);
+  });
+
+  it("leaves empty numeric fields unchanged rather than saving zero", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(<StrictMode><MemoryRouter><PreferencesPage /></MemoryRouter></StrictMode>);
+    await user.click(await screen.findByRole("button", { name: "编辑供应商 1" }));
+    for (const label of ["供应商 1 超时秒数", "对话 Agent 内部步骤上限", "对话 Agent token 上限"]) {
+      await user.clear(screen.getByLabelText(label));
+    }
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await waitFor(() => expect(calls.find((call) => call.method === "PUT")?.body).toMatchObject({
+      timeout: null, agent: { max_steps: null, max_tokens: null },
+    }));
+  });
+
+  it("discards catalog choices when the connection address changes", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    render(<StrictMode><MemoryRouter><PreferencesPage /></MemoryRouter></StrictMode>);
+    await user.click(await screen.findByRole("button", { name: "编辑供应商 1" }));
+    expect(screen.getByRole("button", { name: /已缓存 2 个模型/ })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("供应商 1 Base URL"), { target: { value: "https://other.example/v1" } });
+    expect(screen.queryByRole("button", { name: /已缓存 2 个模型/ })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "正文生成模型" }));
+    expect(screen.queryByRole("option", { name: /qwen3.6-flash/ })).toBeNull();
+  });
+
+  it("distinguishes a saved connection from missing task models", async () => {
+    stubFetch(calls, { ...config, configured: false, models: { draft: "", review: "", summary: "", chat: "", image: "", image_edit: "" } });
+    render(<StrictMode><MemoryRouter><PreferencesPage /></MemoryRouter></StrictMode>);
+    expect(await screen.findByText("已保存连接，待选择模型")).toBeTruthy();
+  });
+
+  it("names the missing key when a routed task has a model but no key", async () => {
+    stubFetch(calls, {
+      ...config,
+      configured: false,
+      providers: [
+        ...config.providers,
+        {
+          id: "p1",
+          name: "百炼标准",
+          provider: "openai_compatible",
+          api_base_url: "https://standard.example/v1",
+          api_key_masked: "",
+          api_key_set: false,
+          is_default: false,
+        },
+      ],
+      routes: { ...config.routes, review: "p1" },
+    });
+    render(<StrictMode><MemoryRouter><PreferencesPage /></MemoryRouter></StrictMode>);
+    expect(await screen.findByText("有任务缺少密钥")).toBeTruthy();
+    expect(screen.queryByText("已配置")).toBeNull();
+  });
+
+  it("keeps typed credentials when saving fails", async () => {
+    const user = userEvent.setup();
+    stubFetch(calls);
+    const initialFetch = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") return Promise.resolve(new Response(JSON.stringify({ detail: "保存失败，请重试" }), {
+        status: 500, headers: { "Content-Type": "application/json" },
+      }));
+      return initialFetch(input, init);
+    }));
+    render(<StrictMode><MemoryRouter><ToastProvider><PreferencesPage /></ToastProvider></MemoryRouter></StrictMode>);
+    await user.click(await screen.findByRole("button", { name: "编辑供应商 1" }));
+    await user.type(screen.getByLabelText("供应商 1 API Key"), "unsaved-retry-key");
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    expect(await screen.findByText("保存失败，请重试")).toBeTruthy();
+    expect((screen.getByLabelText("供应商 1 API Key") as HTMLInputElement).value).toBe("unsaved-retry-key");
   });
 
   it("sends what the owner typed and leaves the key alone when the box is blank", async () => {
@@ -99,13 +209,14 @@ describe("PreferencesPage", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByLabelText("API Key");
-    await user.clear(screen.getByLabelText("Base URL"));
-    await user.type(screen.getByLabelText("Base URL"), "https://other.example/v1");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(await screen.findByRole("button", { name: "编辑供应商 1" }));
+    await user.clear(screen.getByLabelText("供应商 1 Base URL"));
+    await user.type(screen.getByLabelText("供应商 1 Base URL"), "https://other.example/v1");
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
 
     await waitFor(() => {
       expect(calls.filter((call) => call.method === "PUT").length).toBe(1);
+      expect(calls.some((call) => call.url === "/api/llm/status")).toBe(true);
     });
     const put = calls.find((call) => call.method === "PUT");
     expect(put?.url).toBe("/api/config/llm");
@@ -138,7 +249,7 @@ describe("PreferencesPage", () => {
     await user.type(steps, "9");
     await user.clear(tokens);
     await user.type(tokens, "120000");
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
 
     await waitFor(() => {
       const put = calls.find((call) => call.method === "PUT");
@@ -160,7 +271,7 @@ describe("PreferencesPage", () => {
 
     const model = await screen.findByRole("button", { name: "正文生成模型" });
     expect(model.textContent).toContain("Model-A");
-    await user.click(screen.getByRole("button", { name: "获取模型列表" }));
+    await user.click(screen.getByRole("button", { name: "获取供应商 1 模型列表" }));
     expect(await screen.findByText("已获取 2 个模型，未发起生成请求")).toBeTruthy();
     await user.click(model);
     await user.type(screen.getByRole("searchbox", { name: "正文生成模型搜索" }), "3.6");
@@ -179,14 +290,14 @@ describe("PreferencesPage", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByLabelText("API Key");
+    await screen.findByRole("button", { name: "添加供应商" });
     await user.click(screen.getByRole("button", { name: "添加供应商" }));
-    await user.type(screen.getByLabelText("供应商 1 名称"), "B 家");
+    await user.type(screen.getByLabelText("供应商 2 名称"), "B 家");
     await user.type(
-      screen.getByLabelText("供应商 1 Base URL"),
+      screen.getByLabelText("供应商 2 Base URL"),
       "https://b.example/v1",
     );
-    await user.type(screen.getByLabelText("供应商 1 API Key"), "key-b");
+    await user.type(screen.getByLabelText("供应商 2 API Key"), "key-b");
 
     const route = await screen.findByRole("button", { name: "AI 审稿使用的供应商" });
     await user.click(route);
@@ -195,7 +306,7 @@ describe("PreferencesPage", () => {
     // the other tasks stay on the default gateway - routing is per task, not global
     expect(screen.getByRole("button", { name: "正文生成使用的供应商" }).textContent).toContain("默认");
 
-    await user.click(screen.getByRole("button", { name: "保存" }));
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
     await waitFor(() => {
       const put = calls.filter((call) => call.method === "PUT").pop();
       expect(put?.body).toMatchObject({
@@ -203,6 +314,131 @@ describe("PreferencesPage", () => {
         routes: { review: "p1", draft: "default" },
       });
     });
+  });
+
+  /* V-20（2026-10-22）：默认供应商不能再是「顶上一套表单」、其余是「另一行」。
+     判据是三件事：① 条数 = 后端 providers 条数（含默认）；② 默认行没有删除；
+     ③ 列表里每一行长得一样。 */
+  it("keeps every provider in one list and the default cannot be deleted", async () => {
+    const withExtra = {
+      ...config,
+      providers: [
+        ...config.providers,
+        {
+          id: "p1",
+          name: "B 家",
+          provider: "openai_compatible",
+          api_base_url: "https://b.example/v1",
+          api_key_masked: "****1111",
+          api_key_set: true,
+          is_default: false,
+        },
+      ],
+      routes: { ...config.routes, review: "p1" },
+    };
+    stubFetch(calls, withExtra);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+
+    const list = await screen.findByLabelText("供应商列表");
+    expect(list.querySelectorAll(".prefs-provider-card")).toHaveLength(2);
+    // 默认行就是列表的第一行，不是列表外面另起的一套
+    expect(within(list).getByRole("region", { name: "默认供应商" })).toBeTruthy();
+    expect(within(list).getByRole("region", { name: "B 家" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "删除供应商 1" })).toBeNull();
+    expect(screen.getByRole("button", { name: "删除供应商 2" })).toBeTruthy();
+  });
+
+  it("sends a deleted provider's tasks back to the default", async () => {
+    const user = userEvent.setup();
+    const withExtra = {
+      ...config,
+      providers: [
+        ...config.providers,
+        {
+          id: "p1",
+          name: "B 家",
+          provider: "openai_compatible",
+          api_base_url: "https://b.example/v1",
+          api_key_masked: "****1111",
+          api_key_set: true,
+          is_default: false,
+        },
+      ],
+      routes: { ...config.routes, review: "p1" },
+    };
+    stubFetch(calls, withExtra);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole("button", { name: "AI 审稿使用的供应商" });
+    await user.click(screen.getByRole("button", { name: "删除供应商 2" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "AI 审稿使用的供应商" }).textContent).toContain("默认");
+    });
+    expect(screen.queryByRole("region", { name: "B 家" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+    await waitFor(() => {
+      const put = calls.filter((call) => call.method === "PUT").pop();
+      expect(put?.body).toMatchObject({ providers: [], routes: { review: "default" } });
+    });
+  });
+
+  it("shows the save in place: fresh mask and a timestamp", async () => {
+    const user = userEvent.setup();
+    const saved = {
+      ...config,
+      api_base_url: "https://new.example/v1",
+      providers: [
+        {
+          ...config.providers[0],
+          api_base_url: "https://new.example/v1",
+          api_key_masked: "****2222",
+        },
+      ],
+    };
+    const ok = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { "Content-Type": "application/json" } });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = String(init?.method ?? "GET");
+        calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : null });
+        if (url === "/api/llm/status") {
+          return Promise.resolve(ok({ provider: "openai_compatible", configured: true, models: {}, available_models: [] }));
+        }
+        if (url === "/api/config/llm/models") {
+          return Promise.resolve(ok({ provider_id: "default", models: [], detail: "" }));
+        }
+        if (method === "PUT") return Promise.resolve(ok(saved));
+        return Promise.resolve(ok(config));
+      }),
+    );
+    render(
+      <MemoryRouter>
+        <ToastProvider><PreferencesPage /></ToastProvider>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("密钥 ****9876")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "编辑供应商 1" }));
+    await user.type(screen.getByLabelText("供应商 1 API Key"), "brand-new-key");
+    await user.click(screen.getByRole("button", { name: "保存设置" }));
+
+    const put = calls.find((call) => call.method === "PUT");
+    expect(put?.body).toMatchObject({ api_key: "brand-new-key" });
+    // 保存后整行立刻说清新掩码；保存条交代到秒，而不是只闪一下
+    expect(await screen.findByText("密钥 ****2222")).toBeTruthy();
+    expect(await screen.findByText(/^已保存 \d{2}:\d{2}:\d{2}$/)).toBeTruthy();
+    expect(screen.queryByLabelText("供应商 1 API Key")).toBeNull();
   });
 
   it("shows image generation as a configured provider task", async () => {
@@ -216,6 +452,19 @@ describe("PreferencesPage", () => {
     expect(image.textContent).toContain("默认");
     const model = screen.getByRole("button", { name: "生图模型" });
     expect(model.textContent).toContain("需独立生图 Provider / 模型 ID");
+  });
+
+  it("gives masked expansion its own task row with the default edit model", async () => {
+    stubFetch(calls);
+    render(
+      <MemoryRouter>
+        <PreferencesPage />
+      </MemoryRouter>,
+    );
+    const provider = await screen.findByRole("button", { name: "扩图使用的供应商" });
+    expect(provider.textContent).toContain("默认");
+    const model = screen.getByRole("button", { name: "扩图模型" });
+    expect(model.textContent).toContain("wanx2.1-imageedit");
   });
 
   /* 第二十五批批注 5：撤销入口。三种恢复语义是他逐条给的，
@@ -432,8 +681,8 @@ describe("PreferencesPage", () => {
       </MemoryRouter>,
     );
 
-    await screen.findByLabelText("API Key");
-    await user.click(screen.getByRole("button", { name: "测试连接" }));
+    await screen.findByRole("button", { name: "测试供应商 1 连接" });
+    await user.click(screen.getByRole("button", { name: "测试供应商 1 连接" }));
 
     await waitFor(() => {
       expect(calls.some((call) => call.url.endsWith("/api/config/llm/test"))).toBe(true);
@@ -455,12 +704,12 @@ describe("PreferencesPage", () => {
     expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["模型接入", "外观", "导出与恢复"]);
     expect(screen.queryByRole("tab", { name: "上下文工作流" })).toBeNull();
     // only the selected group is on screen
-    expect(await screen.findByLabelText("API Key")).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "默认供应商" })).toBeTruthy();
     expect(screen.queryByRole("radio", { name: "浅色" })).toBeNull();
 
     await user.click(screen.getByRole("tab", { name: "外观" }));
     expect(await screen.findByRole("radio", { name: "浅色" })).toBeTruthy();
-    expect(screen.queryByLabelText("API Key")).toBeNull();
+    expect(screen.queryByRole("region", { name: "默认供应商" })).toBeNull();
 
     // the group name is stated once, not in the list and again as a panel heading
     expect(nav.ownerDocument.querySelectorAll(`[aria-labelledby="prefs-tab-appearance"]`)).toHaveLength(1);

@@ -1,20 +1,35 @@
 import { useEffect } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 import BookshelfPage from "./pages/BookshelfPage";
 import PreferencesPage from "./pages/PreferencesPage";
 import WorkbenchPage from "./pages/WorkbenchPage";
+import ConversationDetailPage from "./pages/ConversationDetailPage";
 import GenerationRunDetailPage from "./pages/GenerationRunDetailPage";
+import WorkflowRunDetailPage from "./pages/WorkflowRunDetailPage";
 import PaintingDetailPanel from "./components/PaintingDetailPanel";
 import { useAppearance } from "./store/appearance";
 import { useWorkbench } from "./store/workbench";
 
 export default function App() {
   const init = useWorkbench((state) => state.init);
+  const refreshLlmStatus = useWorkbench((state) => state.refreshLlmStatus);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     init();
   }, []);
+
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") void refreshLlmStatus(); };
+    refresh();
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, [pathname, refreshLlmStatus]);
 
   // 系统 is a live choice: when the machine flips to dark, the app flips with it,
   // without the reader going back to settings.
@@ -38,6 +53,14 @@ export default function App() {
       <Route
         path="/novels/:novelId/chapters/:chapterId/runs/:runId"
         element={<GenerationRunDetailPage />}
+      />
+      <Route
+        path="/novels/:novelId/chapters/:chapterId/workflow-runs/:runId"
+        element={<WorkflowRunDetailPage />}
+      />
+      <Route
+        path="/novels/:novelId/conversations/:conversationId"
+        element={<ConversationDetailPage />}
       />
       <Route
         path="/novels/:novelId/artworks/:artworkId"

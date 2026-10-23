@@ -1,5 +1,6 @@
 # backend/app/ 更改账（最新在上）
 
+- 2026-10-22 · M-02：`models.py` 新增 `MapProject` 与 `MapTile`（版本存为 `(x=0,y=0,revision)`，tile 带图片相对路径、提示词、provider 与元数据）；`main.py` 挂载 `maps.router`。
 - 2026-10-19：`ContextWorkflow` 增加 revision；重命名与默认切换开始使用统一命令的乐观锁与审计记录。
 - 2026-10-18 · 建立纯净重建核心：统一命令目录、事件流、工作区聚合接口及带修订/审批/撤销/运行审计的领域模型；默认数据库切换为 `novel_generator_v2.db`，旧库不自动读取。
 

@@ -20,14 +20,17 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 
 const css = readFileSync("src/styles.css", "utf8");
-import treePane from "./components/TreePane.tsx?raw";
+import treePaneRaw from "./components/TreePane.tsx?raw";
+const treePane = treePaneRaw.replace(/\r\n/g, "\n");
 import chatPane from "./components/ChatPane.tsx?raw";
 import editorPane from "./components/EditorPane.tsx?raw";
 import workbenchStore from "./store/workbench.ts?raw";
-import fileEditor from "./components/FileEditorPane.tsx?raw";
+import fileEditorRaw from "./components/FileEditorPane.tsx?raw";
+const fileEditor = fileEditorRaw.replace(/\r\n/g, "\n");
 import layout from "./pages/WorkbenchPage.tsx?raw";
 import filesStore from "./store/files.ts?raw";
-import characterFormCard from "./components/CharacterFormCard.tsx?raw";
+import characterFormCardRaw from "./components/CharacterFormCard.tsx?raw";
+const characterFormCard = characterFormCardRaw.replace(/\r\n/g, "\n");
 import characterDocForm from "./components/CharacterDocForm.tsx?raw";
 import proposalCard from "./components/ProposalCard.tsx?raw";
 import chatTypes from "./types.ts?raw";
@@ -36,7 +39,11 @@ import viewToggle from "./components/ViewToggle.tsx?raw";
 import characterLibrary from "./components/CharacterLibrary.tsx?raw";
 import foreshadowWall from "./components/ForeshadowWall.tsx?raw";
 import worldMapPanel from "./components/WorldMapPanel.tsx?raw";
+import paintingDetailPanel from "./components/PaintingDetailPanel.tsx?raw";
+import mapGenerateDialog from "./components/MapGenerateDialog.tsx?raw";
 import runDetailPage from "./pages/GenerationRunDetailPage.tsx?raw";
+import workflowRunDetail from "./pages/WorkflowRunDetailPage.tsx?raw";
+import conversationDetailPage from "./pages/ConversationDetailPage.tsx?raw";
 import preferences from "./pages/PreferencesPage.tsx?raw";
 import appearanceStore from "./store/appearance.ts?raw";
 import appSource from "./App.tsx?raw";
@@ -80,6 +87,35 @@ function rule(sel: string): string {
 }
 
 describe("settled UI decisions must not regress", () => {
+  it("F-05 canvas controls share one clipped theme surface and the shared IconButton", () => {
+    expect(contextWorkflowPanel).toContain('role="group" aria-label="画布视图"');
+    expect(contextWorkflowPanel).not.toContain("<Controls");
+    expect(rule(".workflow-canvas-controls > div")).toContain("overflow: hidden");
+    expect(rule(".workflow-canvas-controls > div")).toContain("background: var(--surface-alt)");
+    expect(rule(".workflow-canvas-controls .ui-icon-button")).toContain("border-radius: 0");
+    expect(rule(".workflow-canvas-controls .ui-icon-button")).toContain("box-shadow: none");
+  });
+  it("F-03 Markdown text and line numbers consume the shared smaller source scale", () => {
+    expect(css).toContain("--source-font-size: 13px;");
+    expect(css).toContain("--source-line-height: 20px;");
+    expect(rule(".file-cm .cm-scroller")).toContain("font-size: var(--source-font-size)");
+    expect(rule(".file-cm .cm-scroller")).toContain("line-height: var(--source-line-height)");
+    expect(rule(".file-cm .cm-lineNumbers .cm-gutterElement")).toContain("line-height: var(--source-line-height)");
+  });
+  it("F-01 model catalogs use shared UI typography and scroll without shrinking rows", () => {
+    expect(rule(".prefs-model-list")).toContain("grid-auto-rows: minmax(min-content, auto)");
+    expect(rule(".prefs-model-list")).toContain("align-content: start");
+    expect(rule(".prefs-model-list > span")).toContain("font-family: var(--ui)");
+    expect(rule(".prefs-model-list > span")).toContain("font-size: var(--control-font-size)");
+    expect(rule(".prefs-model-list > span")).toContain("min-height: var(--control-height-default)");
+    expect(rule(".prefs-model-list > span")).toContain("overflow-wrap: anywhere");
+  });
+  it("F-02 configuration notices can close and refresh after settings are saved", () => {
+    expect(chatPane).toContain('aria-label="关闭配置提示"');
+    expect(chatPane).toContain("!configNoticeDismissed");
+    expect(preferences).toContain("useWorkbench.getState().refreshLlmStatus()");
+    expect(workbenchStore).toContain('api.get<LLMStatus>("/api/llm/status")');
+  });
   it("the two tab strips never show a scrollbar that costs layout (第十轮批注6 / 第十二批批注3)", () => {
     // 第十四批: the strip is now the frame and the scroller is inside it, so the
     // no-bar rule lives on the scroller. Checked there rather than dropped.
@@ -144,6 +180,10 @@ describe("settled UI decisions must not regress", () => {
     expect(paneLayoutSource).toContain("const EDITOR_MIN = 160");
     expect(paneLayoutSource).toContain("min(pane === \"sidebar\" ? SIDEBAR_MIN : CHAT_MIN, max)");
     expect(paneLayoutSource).toContain("viewport - RAIL_WIDTH - sidebar - SEAM_WIDTH - EDITOR_MIN");
+    // U-06: 「窗口不够时先收谁」也只有这一份答案，组件只负责在尺寸变化时问一次。
+    expect(paneLayoutSource).toContain("const EDITOR_USABLE = 320");
+    expect(paneLayoutSource).toContain("export function fitHiddenAt");
+    expect(layout).not.toContain("const EDITOR_USABLE");
     expect(layout).not.toContain("const EDITOR_MIN");
     // and the actions stay reachable by wrapping instead of being pushed out
     // 输入框的高度上限只有一个主人：夹它的 JS 常量。CSS 里再写一份就是第二个答案。
@@ -621,21 +661,42 @@ const componentSources = import.meta.glob("./**/*.tsx", {
   it("providers are a list and every task routes to one of them (第十九批批注 2)", () => {
     // 「我现在可能会同时保存不同的供应商…正文/审稿/章摘要用不同供应商的不同模型」.
     // Before this the data model could not express it: one gateway, one model name per
-    // task. The guard is that the page still offers one flat provider (the legacy shape)
-    // AND a list, and that no task is missing from the routing table.
-    expect(preferences).toContain("prefs-provider-row");
+    // task. The guard is that every provider sits in one list and no task is missing
+    // from the routing table.
+    // V-20 (2026-10-22): the default is no longer a separate form on top. One list,
+    // one card shape; the second "其他供应商" format must not come back.
+    expect(preferences).toContain("prefs-provider-list");
+    expect(preferences).toContain("prefs-provider-card");
+    expect(preferences).not.toContain("prefs-provider-row");
+    expect(preferences).not.toContain("其他供应商");
     expect(preferences).toContain("prefs-routes");
     expect(preferences).toContain('routes,');
     expect(preferences).toContain("nextProviderId");
     // 表搬到了 labels.ts（候选 5）：断言跟着搬，**条数一条不减**。
-    for (const task of ["draft", "review", "summary", "chat", "image"]) {
+    for (const task of ["draft", "review", "summary", "chat", "image", "image_edit"]) {
       expect(labelsSource).toContain(`["${task}",`);
     }
     // image generation is routed through the same provider/model table, not a disabled stub
     expect(labelsSource).toContain('["image", TASK_LABELS.image]');
     expect(labelsSource).not.toContain("image}（未启用）");
-    expect(preferences).toContain('key === "image" ? "需独立生图 Provider / 模型 ID" : "模型 ID"');
-    expect(preferences).toContain("/api/config/llm/models?provider_id=");
+    expect(preferences).toContain('key === "image" ? "需独立生图 Provider / 模型 ID"');
+    // M-01：扩图是独立任务槽，默认走遮罩编辑模型，提示语不能退回通用「模型 ID」。
+    expect(preferences).toContain('"wanx2.1-imageedit（默认遮罩编辑模型）"');
+    // S-01 (2026-10-21): probes must carry the current form instead of reading only saved settings.
+    expect(preferences).toContain('.post<ModelCatalog>("/api/config/llm/models", connectionDraft(providerId))');
+    expect(preferences).toContain('.post<TestResult>("/api/config/llm/test", connectionDraft(providerId))');
+    // S-01: each row probes with its own fields; the page-level default-only test button is gone.
+    expect(preferences).not.toContain('connectionDraft("default")');
+    // V-20: every row carries the same three actions, and the default row has no delete.
+    expect(preferences).toContain('aria-label={`编辑供应商 ${index + 1}`}');
+    expect(preferences).toContain('aria-label={`测试供应商 ${index + 1} 连接`}');
+    expect(preferences).toContain('aria-label={`获取供应商 ${index + 1} 模型列表`}');
+    expect(preferences).toMatch(/\{!item\.isDefault \? \(\s*<button[\s\S]{0,200}删除供应商/);
+    // V-20: saving says whether it happened - sticky bar + timestamped saved state.
+    expect(preferences).toContain("prefs-savebar");
+    expect(preferences).toContain("有未保存的修改");
+    expect(preferences).toMatch(/已保存 \$\{lastSavedAt\}/);
+    expect(preferences).toContain("已保存连接，待选择模型");
     expect(preferences).toContain("<Combobox");
     expect(preferences).not.toContain("<datalist");
     expect(preferences).not.toMatch(/<select[^>]*prefs-route-provider/);
@@ -656,11 +717,26 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(contextWorkflowPanel).toContain("onNodeDragStop");
     expect(contextWorkflowPanel).toContain("onNodeClick={(_event, node) => setSelectedNodeIds([node.id])}");
     expect(contextWorkflowPanel).toContain("onNodeContextMenu");
+    expect(contextWorkflowPanel).toContain('aria-label="添加节点"');
+    expect(contextWorkflowPanel).toContain('role="menuitem"');
+    expect(contextWorkflowPanel).not.toContain('className="workflow-viewbar"');
+    // F-06: a fresh callback triggers React Flow's selection effect on every render.
+    expect(contextWorkflowPanel).toContain("onSelectionChange={onSelectionChange}");
+    expect(contextWorkflowPanel).toContain("const onSelectionChange = useCallback(");
+    expect(contextWorkflowPanel).toContain("current.every((id, index) => id === ids[index])");
     expect(contextWorkflowPanel).toContain("initialWidth: WORKFLOW_NODE_SIZE.width");
     expect(contextWorkflowPanel).toContain("initialHeight: WORKFLOW_NODE_SIZE.height");
     expect(contextWorkflowPanel).toContain("function fitWorkflowView(duration = 0)");
     expect(contextWorkflowPanel).toContain("flow.setViewport({");
     expect(contextWorkflowPanel).toContain("onConnect={connect}");
+    expect(contextWorkflowPanel).toContain("function connectionRejection(");
+    expect(contextWorkflowPanel).toContain("开始节点没有输入端口");
+    expect(contextWorkflowPanel).toContain("这条连线会形成环路");
+    expect(contextWorkflowPanel).toContain("输出节点没有输出端口");
+    expect(contextWorkflowPanel).toContain('className="workflow-node-error"');
+    expect(contextWorkflowPanel).toContain("deleteKeyCode={null}");
+    expect(contextWorkflowPanel).toContain("active === document.body");
+    expect(rule(".workflow-node-error")).toContain("position: absolute");
     expect(contextWorkflowPanel).toContain("copyNodes();");
     expect(contextWorkflowPanel).toContain("deleteNodes();");
     expect(contextWorkflowPanel).toContain('aria-label={fullscreen ? "退出全屏" : "全屏"}');
@@ -686,6 +762,8 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(activityRail).not.toContain('label: "人物库"');
     expect(activityRail).not.toContain('label: "世界库"');
     expect(treePane).toContain('className="tree-children tree-section-workflows"');
+    expect(treePane).toContain("published_version");
+    expect(contextWorkflowPanel).toContain("published_version");
     expect(treePane).toContain('requestWorkflowCommand("rename", menuWorkflow.id)');
     expect(treePane).toContain('requestWorkflowCommand("default", menuWorkflow.id)');
     expect(treePane).toContain('requestWorkflowCommand("duplicate", menuWorkflow.id)');
@@ -695,7 +773,8 @@ const componentSources = import.meta.glob("./**/*.tsx", {
 
   it("each workflow owns its movable context policy and uses shared sizing tokens", () => {
     expect(contextWorkflowPanel).toContain('proOptions={{ hideAttribution: true }}');
-    expect(contextWorkflowPanel).toContain('>适配全图</Button>');
+    // F-05: fit belongs to the same three-button group, using the shared IconButton.
+    expect(contextWorkflowPanel).toContain('aria-label="适配全图"');
     expect(contextWorkflowPanel).toContain("fitWorkflowView(180)");
     expect(contextWorkflowPanel).toContain('brief_mentions');
     expect(contextWorkflowPanel).toContain('kind: "author_instructions", label: "作者约束"');
@@ -708,7 +787,8 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(contextWorkflowPanel).not.toContain('<details className="context-workflow-module"');
     expect(css).toContain("--size-compact-control: 28px");
     expect(css).toContain("--toolbar-control-height: var(--control-height-compact)");
-    expect(rule(".context-workflow-toolbar button, .workflow-viewbar button")).toContain("height: var(--toolbar-control-height)");
+    // F-04: creation is now in the existing toolbar, with no second viewbar.
+    expect(rule(".context-workflow-toolbar button")).toContain("height: var(--toolbar-control-height)");
     expect(rule(".workflow-row-splitter")).toContain("height: var(--splitter-hit-size)");
     expect(rule(".workflow-row-splitter::after")).toContain("height: var(--splitter-line-size)");
     expect(rule(".workflow-row-splitter:hover::after, .workflow-row-splitter:active::after")).toContain("background: var(--border-strong)");
@@ -728,6 +808,27 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(worldviewPanel).toContain('void openFile(path)');
   });
 
+  it("地图库读真实工程、生图前必须确认费用（M-02）", () => {
+    // 页面壳与写死的「观星阁全域图」都撤了：列表、详情、版本全部来自后端地图工程。
+    expect(worldMapPanel).toContain('`/api/novels/${novelId}/maps`');
+    expect(worldMapPanel).toContain("MapGenerateDialog");
+    expect(worldMapPanel).not.toContain("页面壳");
+    expect(paintingDetailPanel).toContain('`/api/maps/${mapId}`');
+    expect(paintingDetailPanel).toContain("/confirm");
+    expect(paintingDetailPanel).toContain("versions.map");
+    expect(paintingDetailPanel).not.toContain("观星阁全域图");
+    expect(paintingDetailPanel).not.toContain("生图暂未开放");
+    // 费用闸门在客户端先拦一次，提交体里也必须写明 true；提示词由服务端按 A/C/D 拼。
+    expect(mapGenerateDialog).toContain("确认会产生费用");
+    expect(mapGenerateDialog).toContain("confirm_billing: true");
+    expect(mapGenerateDialog).toContain("/maps/prompt");
+    expect(rule(".map-list")).toContain("display: grid");
+    expect(rule(".map-card")).toContain("cursor: pointer");
+    expect(rule(".painting-image")).toContain("object-fit: contain");
+    // 窄右栏里标题与「AI 生成地图」必须换行，不能把按钮挤出面板。
+    expect(rule(".page-panel-header")).toContain("flex-wrap: wrap");
+  });
+
   it("the agent turn ceilings are on the page and read from the server (批次 35.9)", () => {
     // 「上限有点太低了」的根因不是数字小，是它只在代码里、主人在界面上看不到也改不了。
     // 两个框都必须在，值从服务端来（前端不存第二份默认值）。
@@ -737,7 +838,9 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(preferences).toContain('aria-label="对话 Agent token 上限"');
     expect(preferences).toContain("String(data.agent.max_steps)");
     expect(preferences).toContain("String(data.agent.max_tokens)");
-    expect(preferences).toContain("agent: { max_steps: Number(agentSteps), max_tokens: Number(agentTokens) }");
+    // S-02 (2026-10-21): empty controls preserve saved ceilings instead of submitting zero.
+    expect(preferences).toContain('max_steps: agentSteps.trim() === "" ? null : Number(agentSteps)');
+    expect(preferences).toContain('max_tokens: agentTokens.trim() === "" ? null : Number(agentTokens)');
     // 停止文案指的那个入口必须就是这块面板的名字，不然主人按提示找不到东西
     const agentSource = readFileSync("../backend/app/services/agent.py", "utf8");
     const named = [...agentSource.matchAll(/设置 → 模型接入 → ([^」]+)」/g)].map((m) => m[1]);
@@ -1181,8 +1284,9 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(rule(".editor-cm .cm-content")).toContain("font-size: var(--prose-size)");
     expect(css).toMatch(/--prose-size: 18px;/);
     expect(appearanceStore).toContain("proseSize: 18");
-    expect(rule(".file-cm .cm-scroller")).toContain("font-size: 15px");
-    expect(rule(".file-cm .cm-scroller")).toContain("line-height: 23px");
+    // F-03: the author reduced Markdown to the centrally owned 13px / 20px scale.
+    expect(rule(".file-cm .cm-scroller")).toContain("font-size: var(--source-font-size)");
+    expect(rule(".file-cm .cm-scroller")).toContain("line-height: var(--source-line-height)");
     expect(css).toContain("--editor-bg: #ffffff");
     expect(css).toContain("--editor-fg: #1f1f1f");
     expect(css).toContain("--editor-selection: #add6ff");
@@ -1399,9 +1503,18 @@ const componentSources = import.meta.glob("./**/*.tsx", {
 
   it("调用记录只属于当前章节，并且展开按钮有稳定的目标（批注 9）", () => {
     expect(editorPane).toContain("generationRuns.filter((run) => run.chapter_id === chapter.id)");
+    expect(editorPane).toContain("workflowRuns.filter((run) => Number(run.input.chapter_id) === chapter.id)");
     expect(editorPane).toContain('id="editor-records"');
     expect(editorPane).toContain('aria-controls="editor-records"');
     expect(editorPane).toContain("这一章还没有调用记录");
+    // 记录行必须指到统一运行详情；节点、上下文、Token 与写入 Operation 都从同一份运行读。
+    expect(editorPane).toContain("/workflow-runs/${run.id}");
+    expect(appSource).toContain(
+      'path="/novels/:novelId/chapters/:chapterId/workflow-runs/:runId"',
+    );
+    expect(workflowRunDetail).toContain("模型节点合计 = 运行总计");
+    expect(workflowRunDetail).toContain("未注入（原因）");
+    expect(workflowRunDetail).toContain("run.accept_operation");
   });
 
   /* 批注 35.29c（D-57，2026-09-11）：主人原话「用户经常容易忘记生成简章，所以你要自己明白，
@@ -1426,7 +1539,8 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     // 同一份「第 N 章《T》· X 字 · 机械校验 Y」不许再在组件里写第二遍
     expect(chatPane).toContain("await settleGenerate(id, errorBefore);");
     expect(chatPane).toContain("await settleGenerate(handoff.commandId, errorBefore);");
-    expect(chatPane.match(/错别字检查 \$/g) ?? []).toHaveLength(1);
+    // B-02 落实现行 D-15：两条路径结算同一份候选，不能再宣称已写稿或已做机械检查。
+    expect(chatPane.match(/章候选已生成/g) ?? []).toHaveLength(1);
   });
 
   /* 批注 35.34（2026-09-11）：斜杠命令那张卡原先只活在组件本地的 rows 里，真机
@@ -1470,12 +1584,49 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(bookshelf).not.toContain('"archived"');
   });
 
+  it("B-02 生成只展示可恢复的候选，接受仍走有版本保护的唯一文件写口", () => {
+    expect(editorPane).toContain('title="候选正文"');
+    expect(editorPane).toContain("接受候选");
+    expect(editorPane).toContain("generation-candidate-preview");
+    expect(workbenchStore).toContain("generation-candidates");
+    expect(workbenchStore).toContain("generationJobId: candidate.id");
+    expect(workbenchStore).not.toContain("await api.streamGeneration(");
+    expect(css).toContain(".generation-candidate-preview {");
+    expect(css).toContain("max-height: 50vh;");
+  });
+
   it("中栏 Agent 的高风险操作展示真实差异并走持久化审批", () => {
     expect(chatPane).toContain('aria-label="高风险操作确认"');
     expect(chatPane).toContain('aria-label="批准高风险操作"');
     expect(chatPane).toContain('aria-label="拒绝高风险操作"');
     expect(chatPane).toContain("api.resumeAgentRun(runId, toolCallId, decision)");
     expect(chatPane).toContain("JSON.stringify(diff ?? approval.preview, null, 2)");
+  });
+
+  it("对话详情入口默认隐去，悬停或键盘聚焦才显示", () => {
+    // 主人 2026-10-22 复核：入口找得到就行，常显不好看，回到 hover 显现。
+    expect(rule(".tree-row.conversation .ui-icon-button")).toContain("visibility: hidden");
+    expect(rule(".tree-row.conversation:hover .ui-icon-button")).toContain("visibility: visible");
+    expect(css).toContain(".tree-row.conversation:focus-within .ui-icon-button");
+  });
+
+  it("对话详情只有一列并居中，长消息摘要留在行内、全文进浮窗", () => {
+    // 2026-10-22 批注：右边空着、整段回答摊开、没有搜索；复核批注：行间太挤、色调差不大，
+    // 全文必须另开窗口，不能在列表里直接展开。
+    expect(rule(".conversation-detail-page .run-detail-body")).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(rule(".conversation-detail-page .run-kpis")).toContain("margin-inline: auto");
+    expect(rule(".conversation-detail-page .run-kpis")).toContain("1040px");
+    expect(conversationDetailPage).toContain("conversation-search-bar");
+    expect(conversationDetailPage).toContain("const PREVIEW_LIMIT = 280;");
+    expect(conversationDetailPage).toContain("查看全文");
+    expect(conversationDetailPage).toContain("FloatingWindow");
+    expect(conversationDetailPage).not.toContain("expandedIds");
+    expect(conversationDetailPage).not.toContain("展开全部");
+    expect(rule(".conversation-detail-list")).toContain("gap: calc(var(--space-6) * 1.5)");
+    expect(rule(".conversation-detail-message")).toContain("border-left: 3px solid var(--border-strong)");
+    expect(rule(".conversation-detail-message.is-user")).toContain("border-left-color: var(--accent)");
+    expect(rule(".conversation-detail-message.is-command")).toContain("border-left-color: var(--warning)");
+    expect(css).toContain(".conversation-detail-full {");
   });
 
 });

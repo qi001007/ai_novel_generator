@@ -393,7 +393,7 @@ export default function FileEditorPane() {
       lines,
       height,
       document.documentElement.dataset.theme === "dark",
-      tokenValue("--ui"),
+      tokenValue("--mono"),
       tokenValue("--accent"),
       scrollProgress,
     );

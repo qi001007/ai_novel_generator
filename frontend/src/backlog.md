@@ -1,5 +1,12 @@
 # frontend/src/ 更改账（最新在上）
 
+- 2026-10-23 · G-01/V-19：`types.ts` 补 `WorkflowRun*` 协议；`labels.ts` 加用途标签；`App.tsx` 注册 `/novels/:novelId/chapters/:chapterId/workflow-runs/:runId`；`styles.css` 加运行详情节点样式；`uiInvariants.test.ts` 钉住记录过滤、详情路由、token 合计与排除原因；`App.test.tsx` 补 workflow-runs 空响应。
+- 2026-10-22 · M-01：`types.ts` 为 `MapVersion` 补画布尺寸、父版本与操作；`labels.ts` 增加 `image_edit`（扩图）任务；`styles.css` 加地图画布、网格、四向扩图、选格与编辑弹窗；`uiInvariants` 把扩图任务槽与默认模型钉进不可回退断言。
+- 2026-10-22 · M-02：`types.ts` 加 `ArcPlan`／`MapVersion`／`MapSummary`／`MapDetail`；`styles.css` 加地图列表、生成弹窗、详情页与 `.page-panel-header` 窄屏换行；`uiInvariants.test.ts` 钉住地图库与换行断言。
+- 2026-10-21 · B-02：补候选协议和文件接受参数、共享候选预览样式与行高令牌；UI 不变量按 D-15 改为只生成候选，保留一次结算与切书保护，增加页面接口回归；全量 382 passed。
+
+- 2026-10-21 · F-01～F-06：App 在路由、窗口焦点与可见性恢复后更新模型状态；源码收为 13px / 20px 令牌，模型目录和画布控件复用全局尺度；更新 UI 不变量与恢复事件回归，保留既有 App 集成用例。
+
 - 2026-10-20：完成本批统一控件与三层 token、4/8 秒 Toast、15px/23px Markdown、Workflow 六节点准入和 review/generation 左树；全量前端 359 passed，类型检查与生产构建通过。
 
 - 2026-10-19：V-18 候选修复建立三层前端尺度 token，统一 Workflow 工具栏、属性区、源码按钮与 1px 分界线；世界观独立于地图路由；文件标签保留章节号与类型并横向滚动。真机证据待主人审核。
@@ -65,3 +72,8 @@
 - 2026-09-07 · labels.ts、paneLayout.ts 等跨面单件收为各自唯一主人。
  - 2026-09-14 · 批次 36.2：模式按钮恢复为主人可选的 radio 控件；后端不再按关键词覆写选择，且计划模式不得触发正文或补简报自动落盘。`ChatPane`／样式／交互与不变量测试同步更新。
  - 2026-09-09：补充对话 Agent 的显式生成确认入口，仍走既有章节流式生成接口。
+- 2026-10-21 · S-01/S-02：更新设置输入探测及空数字语义的不可回退断言；三个源码读取归一化 CRLF，保留既有断言约束，Windows 全量前端 367 项通过。
+- 2026-10-22 · C-01：`styles.css` 对话详情消息行距改为 18px、卡内 10/12px，用户/AI/命令三种角色加左色条与底色；新增 `.conversation-role`、`.conversation-message-actions`、`.conversation-detail-full`，摘要保留空行分段；窗口内容沿用浮窗内部滚动。
+- 2026-10-22 · V-20：`styles.css` 新增统一供应商卡片与常驻保存条样式（`.prefs-provider-list(-head)`、`.prefs-provider-card`、`.prefs-provider-actions`、`.prefs-provider-form`、`.prefs-savebar`，≤520px 表单单列）；`uiInvariants.test.ts` 断言从 `prefs-provider-row` 迁到 `prefs-provider-list/card`，钉住默认行无删除、每行独立探测与保存条文案。
+- 2026-10-22 · V-19：`styles.css` 新增 `.workflow-node-card[data-error="true"]` 危险色边框与 `.workflow-node-error` 绝对定位气泡（CSS 偏移 `calc(100% + 6px)`，真机实测与节点底边间隙 4px、最大 220px、11px/1.5）；`uiInvariants.test.ts` 钉住三类非法连线原因文案、`role="alert"` 位置样式与 `active === document.body` 的键位守卫，防止“删除后 Ctrl+Z 失效”回退。
+- 2026-10-23 · 审查收口：`paneLayout.ts` 新增 `EDITOR_USABLE=320` 与 `fitHiddenAt()`（先隐对话栏、再隐结构栏、编辑器不自动收起）；`paneLayout.test.ts` 补 5 条窄窗判据，`uiInvariants.test.ts` 钉住常量只在 `paneLayout.ts` 定义；`types.ts` 增加 `published_version`；`styles.css` 新增 `.record-reject` 与 `.record-reject-reason`。前端 36 文件 / 423 passed。

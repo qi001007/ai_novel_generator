@@ -1,12 +1,16 @@
 from datetime import datetime
 import re
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import SQLModel, Session, select
 
+from app.core.commands import registry as command_registry
 from app.db import get_session
+from app.services import maps as maps_service
 from app.services import storage
 from app.models import (
+    AgentRun,
     ArcPlan,
     Chapter,
     ChapterBrief,
@@ -15,14 +19,26 @@ from app.models import (
     CharacterAppearance,
     ChatMessage,
     ContextWorkflow,
+    Document,
+    Fact,
     Foreshadow,
+    GenerationJob,
     GenerationRun,
+    KnowledgeEntry,
+    NodeRun,
     Novel,
+    Operation,
+    OutlineNode,
     PlanningBlueprint,
     PlotFeedback,
     Review,
+    Revision,
     Setting,
     TocEntry,
+    ToolCall,
+    WorkflowBinding,
+    WorkflowRun,
+    WorkflowVersion,
     utc_now,
 )
 
@@ -35,6 +51,18 @@ router = APIRouter(prefix="/novels", tags=["novels"])
 # app_config 故意不在这里 - 它是全局偏好，不属于任何一本书。
 # 为什么是物理删除、为什么界面上要输书名确认：见 DECISIONS D-23。
 NOVEL_SCOPED_MODELS = (
+    ToolCall,
+    AgentRun,
+    WorkflowRun,
+    WorkflowBinding,
+    ContextWorkflow,
+    GenerationJob,
+    Operation,
+    Revision,
+    Fact,
+    KnowledgeEntry,
+    Document,
+    OutlineNode,
     CharacterAppearance,
     ChapterSummary,
     Review,
@@ -49,7 +77,6 @@ NOVEL_SCOPED_MODELS = (
     ArcPlan,
     TocEntry,
     PlanningBlueprint,
-    ContextWorkflow,
 )
 
 
@@ -133,10 +160,26 @@ def create_novel(
     if existing is not None:
         raise HTTPException(status_code=409, detail="A novel with this title already exists")
 
-    novel = Novel.model_validate(payload)
-    session.add(novel)
-    session.commit()
-    session.refresh(novel)
+    # Page, Agent and Workflow all create novels through the same command so the
+    # two default workflows and their published versions are never missing.
+    data = payload.model_dump()
+    cover_color = data.pop("cover_color", "")
+    operation = command_registry.execute(
+        session,
+        "novel.create",
+        data,
+        idempotency_key=f"legacy-novel-create:{uuid.uuid4()}",
+        actor="ui",
+        approved=False,
+    )
+    novel = session.get(Novel, operation.target_id)
+    if novel is None:
+        raise HTTPException(status_code=500, detail="Novel creation lost its result")
+    if cover_color:
+        novel.cover_color = cover_color
+        session.add(novel)
+        session.commit()
+        session.refresh(novel)
     return novel
 
 
@@ -192,6 +235,26 @@ def delete_novel(novel_id: int, session: Session = Depends(get_session)) -> None
     # 内存库（测试）没有文件可复制，snapshot 直接返回 None，不影响这条路径本身。
     storage.snapshot(session, novel_id, novel.title, reason="book")
 
+    workflow_ids = [
+        row.id for row in session.exec(
+            select(ContextWorkflow).where(ContextWorkflow.novel_id == novel_id)
+        ).all()
+    ]
+    run_ids = [
+        row.id for row in session.exec(
+            select(WorkflowRun).where(WorkflowRun.novel_id == novel_id)
+        ).all()
+    ]
+    if run_ids:
+        for row in session.exec(select(NodeRun).where(NodeRun.workflow_run_id.in_(run_ids))).all():
+            session.delete(row)
+    if workflow_ids:
+        for row in session.exec(select(WorkflowVersion).where(WorkflowVersion.workflow_id.in_(workflow_ids))).all():
+            session.delete(row)
+    # MapTile 没有 novel_id，只能顺着 map_project 找；图片目录也要在这一步一起清。
+    maps_service.delete_novel_maps(session, novel_id)
+    session.flush()
+
     for model in NOVEL_SCOPED_MODELS:
         for row in session.exec(
             select(model).where(model.novel_id == novel_id)
@@ -199,3 +262,4 @@ def delete_novel(novel_id: int, session: Session = Depends(get_session)) -> None
             session.delete(row)
     session.delete(novel)
     session.commit()
+    maps_service.remove_novel_assets(session, novel_id)

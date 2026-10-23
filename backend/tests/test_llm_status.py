@@ -27,6 +27,7 @@ def test_llm_status_reports_provider_and_model_configuration(
         "summary": False,
         "chat": False,
         "image": False,
+        "image_edit": False,
     }
 
 
@@ -54,4 +55,5 @@ def test_llm_status_is_not_configured_without_models(
         "summary": False,
         "chat": False,
         "image": False,
+        "image_edit": False,
     }

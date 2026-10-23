@@ -605,3 +605,26 @@ def test_a_model_that_only_fails_at_tools_still_stops_at_the_step_gate(
             config=AgentConfig(max_steps=2, max_tokens=10_000),
         )
     assert len(llm.seen) == 2
+
+
+def test_native_tool_calls_on_the_assistant_message_reach_the_framework() -> None:
+    """The gateway puts tool_calls inside the message; passing the message as the array
+    made every native call disappear and the model look like it answered with nothing."""
+    from app.services.agent_model import _response_parts
+
+    parts, calls = _response_parts(
+        "",
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "list_files", "arguments": "{}"},
+                }
+            ],
+        },
+    )
+    assert [call.name for call in calls] == ["list_files"]
+    assert any(getattr(part, "tool_name", None) == "list_files" for part in parts)

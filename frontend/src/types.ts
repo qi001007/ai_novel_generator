@@ -43,6 +43,57 @@ export type ChapterBrief = {
   custom_sections?: { label: string; content: string }[];
 };
 
+export type ArcPlan = {
+  id: number;
+  novel_id: number;
+  title: string;
+  start_chapter: number;
+  end_chapter: number;
+  objective: string;
+  conflict: string;
+  resolution: string;
+  status: string;
+  planned_chapters: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MapVersion = {
+  revision: number;
+  status: "draft" | "confirmed" | "superseded" | string;
+  prompt: string;
+  model: string;
+  size: string;
+  request_id: string;
+  image_url: string;
+  created_at: string;
+  width?: number;
+  height?: number;
+  cols?: number;
+  rows?: number;
+  cell?: number;
+  parent_revision?: number | null;
+  operation?: {
+    kind?: string;
+    edge?: string;
+    cell?: [number, number];
+  };
+};
+
+export type MapSummary = {
+  id: number;
+  novel_id: number;
+  name: string;
+  status: "draft" | "ready" | string;
+  revision: number;
+  active_revision: number | null;
+  preview_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MapDetail = MapSummary & { versions: MapVersion[] };
+
 export type Chapter = {
   id: number;
   novel_id: number;
@@ -375,6 +426,20 @@ export type PlotFeedback = {
   updated_at: string;
 };
 
+export type ForeshadowEntry = {
+  id: number;
+  novel_id: number;
+  title: string;
+  content: string;
+  planted_chapter: number;
+  expected_payoff_chapter: number | null;
+  payoff_chapter: number | null;
+  status: string;
+  custom_sections: { title: string; content: string }[];
+  created_at: string;
+  updated_at: string;
+};
+
 export type WorldviewEntry = {
   id: number;
   novel_id: number;
@@ -436,6 +501,8 @@ export type ContextModule = {
   arc_window?: number | null;
   /** C 层建议更新的进度比例，例如 2/3。 */
   arc_update_threshold?: "1/2" | "2/3" | "3/4" | null;
+  /** 每完成 N 章提醒更新一次 C 层；1 表示每章都更。 */
+  arc_update_every?: number | null;
 };
 
 export type ContextWorkflowNode = {
@@ -461,6 +528,7 @@ export type ContextWorkflow = {
   novel_id: number;
   purpose: "generation" | "review";
   is_default: boolean;
+  published_version?: number | null;
   graph: { version: 1; nodes: ContextWorkflowNode[]; edges: ContextWorkflowEdge[] };
   created_at: string;
   updated_at: string;
@@ -489,6 +557,8 @@ export type WorkflowNodeRun = {
   error: string;
   token_input: number;
   token_output: number;
+  started_at?: string | null;
+  ended_at?: string | null;
 };
 
 export type WorkflowRun = {
@@ -505,7 +575,84 @@ export type WorkflowRun = {
   nodes: WorkflowNodeRun[];
 };
 
+/** 一次接受候选落下的那条唯一写操作（`generation.accept`）。 */
+export type WorkflowAcceptOperation = {
+  id: number;
+  command: string;
+  actor: string;
+  created_at: string;
+  target_id: number;
+  path: string;
+  revision: string;
+};
+
+export type WorkflowReviewLink = { id: number; decision: string; reviewer: string };
+
+/** 章节记录列表的一行：运行本身 + 它落下的候选／审核／写操作。 */
+export type WorkflowRunSummary = {
+  id: number;
+  novel_id: number | null;
+  workflow_id: number;
+  workflow_version_id: number;
+  status: string;
+  input: Record<string, unknown>;
+  error: string;
+  token_input: number;
+  token_output: number;
+  paused_node_id: string;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+  workflow_name: string;
+  workflow_version: number | null;
+  purpose: string;
+  node_count: number;
+  model: string;
+  job: { id: number; status: string } | null;
+  review: WorkflowReviewLink | null;
+  accept_operation: WorkflowAcceptOperation | null;
+};
+
+/** 统一运行详情：节点、上下文、Token、结果与写入 Operation 都在这一份里。 */
+export type WorkflowRunDetail = {
+  id: number;
+  novel_id: number | null;
+  workflow_id: number;
+  workflow_version_id: number;
+  status: string;
+  input: Record<string, unknown>;
+  output: Record<string, unknown>;
+  error: string;
+  token_input: number;
+  token_output: number;
+  paused_node_id: string;
+  started_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+  nodes: WorkflowNodeRun[];
+  workflow: { id: number; name: string; purpose: string };
+  version: { id: number; version: number | null; purpose: string };
+  chapter: { id: number; chapter_number: number; title: string } | null;
+  job: { id: number; status: string } | null;
+  reviews: Array<WorkflowReviewLink & {
+    comments: string;
+    evidence: Record<string, unknown>;
+    created_at: string;
+  }>;
+  accept_operation: WorkflowAcceptOperation | null;
+};
+
 export type FileWriteResult = { path: string; changed: string[]; revision: string };
+
+export type GenerationCandidate = {
+  id: number;
+  novel_id: number;
+  kind: string;
+  status: string;
+  error: string;
+  payload: { chapter_id: number; path: string; base_revision: string; request: string };
+  result: { content: string; workflow_run_id: number; token_input: number; token_output: number; operation_id?: number };
+};
 
 // A ```markdown @path block the agent offered. It is a proposal, never a write:
 // only the human clicking "应用" sends it, with actor=ai.

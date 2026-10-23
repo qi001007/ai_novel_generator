@@ -31,11 +31,14 @@ from sqlmodel import Session, select
 
 from app.application import functions as _registered_functions  # noqa: F401
 from app.core.commands import registry as command_registry
-from app.models import Document, Fact, KnowledgeEntry, Novel, OutlineNode
+from app.models import Chapter, Document, Fact, KnowledgeEntry, Novel, OutlineNode, Review
 from app.services.agent import AgentStep, Tool, ToolCall, ToolError, ToolRegistry, ToolResult
+from app.services.chapters import ChapterDomainError
 from app.services.documents import DocumentError, current_text_reader, list_files, read_file
+from app.services.generation import generate_candidate
 from app.services.markdown_doc import grammar_text
 from app.services.proposal_actions import ACTIONS, DIAG_PREFIX, run_action
+from app.services.reviews import build_remediation_report, run_review_workflow
 
 WIKI_ENDPOINT = "https://zh.wikipedia.org/w/api.php"
 WIKIDATA_ENDPOINT = "https://www.wikidata.org/w/api.php"
@@ -138,6 +141,7 @@ def _registry_tools(
     session_factory: Callable[[], Session],
     novel_id: int | None,
     search_transport: httpx.BaseTransport | None = None,
+    current_chapter_id: int | None = None,
 ) -> list[Tool]:
     """`search_transport` exists so a test can answer without touching the network."""
     def novels() -> str:
@@ -174,6 +178,109 @@ def _registry_tools(
                     "knowledge": [row.model_dump(mode="json") for row in knowledge],
                     "facts": [row.model_dump(mode="json") for row in facts],
                 },
+            },
+            ensure_ascii=False,
+        )
+
+    def chapter_row(session: Session, chapter_id: int | None, chapter_number: int | None) -> Chapter:
+        if chapter_id is None and chapter_number is None:
+            chapter_id = current_chapter_id
+        if chapter_id is not None:
+            row = session.get(Chapter, chapter_id)
+        elif chapter_number is not None:
+            row = session.exec(
+                select(Chapter).where(
+                    Chapter.novel_id == novel_id,
+                    Chapter.chapter_number == chapter_number,
+                )
+            ).first()
+        else:
+            raise ToolError("需要 chapter_id 或 chapter_number")
+        if row is None or row.novel_id != novel_id:
+            raise ToolError("这一章不存在，先用 read_workspace 确认章节")
+        return row
+
+    def generate_chapter(
+        chapter_id: int | None = None,
+        chapter_number: int | None = None,
+        request: str = "",
+    ) -> str:
+        """用当前已发布的正文生成流程产出一份候选，不直接覆盖工作稿。"""
+        with session_factory() as session:
+            chapter = chapter_row(session, chapter_id, chapter_number)
+            job = generate_candidate(session, chapter, str(request or "").strip())
+            chapter_id_value = chapter.id
+            chapter_number_value = chapter.chapter_number
+            job_id = job.id
+            job_status = job.status
+            job_error = job.error
+            content = job.result.get("content", "")
+            token_input = job.result.get("token_input", 0)
+            token_output = job.result.get("token_output", 0)
+        return json.dumps(
+            {
+                "status": job_status,
+                "summary": (
+                    f"第 {chapter_number_value} 章候选已生成，共 {len(content)} 字，等待主人接受"
+                    if job_status == "completed"
+                    else f"生成失败：{job_error}"
+                ),
+                "artifacts": {
+                    "candidate_id": job_id,
+                    "chapter_id": chapter_id_value,
+                    "chapter_number": chapter_number_value,
+                    "token_input": token_input,
+                    "token_output": token_output,
+                    "content": content,
+                },
+            },
+            ensure_ascii=False,
+        )
+
+    def review_chapter(chapter_id: int | None = None, chapter_number: int | None = None) -> str:
+        """运行当前 AI 自检流程，返回结构化问题并落一份审稿记录。"""
+        with session_factory() as session:
+            chapter = chapter_row(session, chapter_id, chapter_number)
+            try:
+                review = run_review_workflow(session, novel_id, chapter)
+            except ChapterDomainError as cause:
+                raise ToolError(f"AI 自检失败：{cause.detail}") from cause
+            chapter_number_value = chapter.chapter_number
+            review_id = review.id
+            decision = review.decision
+            suggestions = review.evidence.get("suggestions") or []
+        return json.dumps(
+            {
+                "status": "success",
+                "summary": f"第 {chapter_number_value} 章质检完成：{len(suggestions)} 个问题（review #{review_id}）",
+                "artifacts": {
+                    "review_id": review_id,
+                    "decision": decision,
+                    "issues": suggestions,
+                    "next_actions": ["需要整改清单时调用 remediation_report"],
+                },
+            },
+            ensure_ascii=False,
+        )
+
+    def remediation_report(chapter_id: int | None = None, chapter_number: int | None = None) -> str:
+        """把该章最近一次 AI 质检结果整理成可保存的 Markdown 整改报告。"""
+        with session_factory() as session:
+            chapter = chapter_row(session, chapter_id, chapter_number)
+            review = session.exec(
+                select(Review).where(
+                    Review.novel_id == novel_id,
+                    Review.chapter_id == chapter.id,
+                ).order_by(Review.id.desc())
+            ).first()
+            if review is None:
+                raise ToolError("这一章还没有质检记录，先运行 AI 自检")
+            markdown, filename = build_remediation_report(review, chapter)
+        return json.dumps(
+            {
+                "status": "success",
+                "summary": f"已生成整改报告 {filename}",
+                "artifacts": {"filename": filename, "markdown": markdown},
             },
             ensure_ascii=False,
         )
@@ -443,6 +550,46 @@ def _registry_tools(
             },
             handler=read,
         ),
+        Tool(
+            name="generate_chapter",
+            description="用当前已发布的正文生成流程为指定章生成候选正文；只产候选，不覆盖工作稿",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "chapter_id": {"type": "integer", "description": "章节 ID；留空即当前打开章节，不要再追问"},
+                    "chapter_number": {"type": "integer", "description": "章节序号，二选一"},
+                    "request": {"type": "string", "description": "本次写作要求，可留空"},
+                },
+                "required": [],
+            },
+            handler=generate_chapter,
+        ),
+        Tool(
+            name="review_chapter",
+            description="运行当前 AI 自检流程，返回该章的结构化问题并保存审稿记录",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "chapter_id": {"type": "integer", "description": "章节 ID；留空即当前打开章节，不要再追问"},
+                    "chapter_number": {"type": "integer", "description": "章节序号，二选一"},
+                },
+                "required": [],
+            },
+            handler=review_chapter,
+        ),
+        Tool(
+            name="remediation_report",
+            description="把该章最近一次 AI 质检结果整理成 Markdown 整改报告",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "chapter_id": {"type": "integer", "description": "章节 ID；留空即当前打开章节，不要再追问"},
+                    "chapter_number": {"type": "integer", "description": "章节序号，二选一"},
+                },
+                "required": [],
+            },
+            handler=remediation_report,
+        ),
     ] + common_tools
 
 
@@ -545,5 +692,8 @@ def build_registry(
     novel_id: int | None,
     *,
     search_transport: httpx.BaseTransport | None = None,
+    current_chapter_id: int | None = None,
 ) -> ToolRegistry:
-    return ToolRegistry(_registry_tools(session_factory, novel_id, search_transport))
+    return ToolRegistry(
+        _registry_tools(session_factory, novel_id, search_transport, current_chapter_id)
+    )

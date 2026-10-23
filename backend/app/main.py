@@ -15,9 +15,12 @@ from app.routers import (
     documents,
     export,
     feedback,
+    foreshadows,
     generation_runs,
     images,
+    knowledge,
     llm,
+    maps,
     novels,
     planning,
     reviews,
@@ -37,9 +40,12 @@ app.include_router(feedback.router, prefix="/api")
 app.include_router(reviews.router, prefix="/api")
 app.include_router(generation_runs.router, prefix="/api")
 app.include_router(images.router, prefix="/api")
+app.include_router(maps.router, prefix="/api")
 app.include_router(llm.router, prefix="/api")
 app.include_router(settings.router, prefix="/api")
 app.include_router(characters.router, prefix="/api")
+app.include_router(knowledge.router, prefix="/api")
+app.include_router(foreshadows.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(export.router, prefix="/api")

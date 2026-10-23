@@ -284,7 +284,9 @@ def create_chat_reply(
 ) -> ChatMessage:
     novel = get_novel_or_404(novel_id, session)
     bind: Engine = session.get_bind()
-    registry = build_registry(lambda: Session(bind), novel_id)
+    registry = build_registry(
+        lambda: Session(bind), novel_id, current_chapter_id=payload.chapter_id
+    )
     try:
         turn = prepare_turn(
             session,
@@ -312,7 +314,9 @@ def stream_chat_reply(
     bind: Engine = session.get_bind()
     # Tools open their own sessions: a tool result can land after the request
     # session that resolved the turn has already gone.
-    registry = build_registry(lambda: Session(bind), novel_id)
+    registry = build_registry(
+        lambda: Session(bind), novel_id, current_chapter_id=payload.chapter_id
+    )
     try:
         turn = prepare_turn(
             session,

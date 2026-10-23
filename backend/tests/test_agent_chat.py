@@ -115,9 +115,10 @@ def test_a_turn_that_needs_nothing_costs_one_request(client: TestClient) -> None
     # 2026-09-10 (UI-BACKLOG 35.7): the five propose_* tools joined this surface when the
     # typed-action compiler landed; the expectation never followed, so the gate ran red.
     assert payload_of(events, "context")["tools"] == [
-            "execute_platform_command", "list_files", "list_novels", "list_platform_functions",
-        "preview_platform_command", "propose_arcs", "propose_blueprint",
-            "propose_chapter_brief", "propose_character", "propose_toc", "read_file", "read_workspace", "web_search",
+            "execute_platform_command", "generate_chapter", "list_files", "list_novels",
+            "list_platform_functions", "preview_platform_command", "propose_arcs", "propose_blueprint",
+            "propose_chapter_brief", "propose_character", "propose_toc", "read_file", "read_workspace",
+            "remediation_report", "review_chapter", "web_search",
     ]
 
 

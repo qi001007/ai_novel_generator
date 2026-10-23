@@ -5,7 +5,7 @@ from typing import Any
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlmodel import Session
+from sqlmodel import Session, func, select
 
 from app.application.workflow_schema import (
     WorkflowGraph,
@@ -14,7 +14,7 @@ from app.application.workflow_schema import (
 )
 from app.core.commands import registry as command_registry
 from app.db import get_session
-from app.models import ContextWorkflow
+from app.models import ContextWorkflow, WorkflowVersion
 from app.services.workflows import ensure_scope, list_for_scope
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
@@ -23,14 +23,18 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 class WorkflowOut(WorkflowPayload):
     id: int
     revision: int
+    published_version: int | None = None
     created_at: datetime
     updated_at: datetime
 
     @classmethod
-    def from_row(cls, row: ContextWorkflow) -> "WorkflowOut":
+    def from_row(
+        cls, row: ContextWorkflow, published_version: int | None = None,
+    ) -> "WorkflowOut":
         return cls(
             id=row.id,
             revision=row.revision,
+            published_version=published_version,
             name=row.name,
             novel_id=row.novel_id,
             purpose=row.purpose,
@@ -41,11 +45,20 @@ class WorkflowOut(WorkflowPayload):
         )
 
 
+def _published_version(session: Session, workflow_id: int) -> int | None:
+    latest = session.exec(
+        select(func.max(WorkflowVersion.version)).where(
+            WorkflowVersion.workflow_id == workflow_id
+        )
+    ).one()
+    return int(latest) if latest is not None else None
+
+
 def _saved_workflow(session: Session, workflow_id: int | None) -> WorkflowOut:
     row = session.get(ContextWorkflow, workflow_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Workflow not found")
-    return WorkflowOut.from_row(row)
+    return WorkflowOut.from_row(row, _published_version(session, row.id))
 
 
 @router.get("", response_model=list[WorkflowOut])
@@ -54,7 +67,20 @@ def list_workflows(
     session: Session = Depends(get_session),
 ) -> list[WorkflowOut]:
     ensure_scope(session, novel_id)
-    return [WorkflowOut.from_row(row) for row in list_for_scope(session, novel_id)]
+    rows = list_for_scope(session, novel_id)
+    versions: dict[int, int] = {}
+    if rows:
+        versions = {
+            workflow_id: int(version)
+            for workflow_id, version in session.exec(
+                select(WorkflowVersion.workflow_id, func.max(WorkflowVersion.version))
+                .where(WorkflowVersion.workflow_id.in_([row.id for row in rows]))
+                .group_by(WorkflowVersion.workflow_id)
+            ).all()
+        }
+    return [
+        WorkflowOut.from_row(row, versions.get(row.id)) for row in rows
+    ]
 
 
 @router.post("", response_model=WorkflowOut, status_code=201)

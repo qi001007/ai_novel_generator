@@ -31,6 +31,7 @@ class ContextModule(BaseModel):
     selection: Literal["all", "brief_mentions", "keyword_match", "manual"] = "all"
     arc_window: int | None = Field(default=None, ge=1, le=1000)
     arc_update_threshold: Literal["1/2", "2/3", "3/4"] | None = None
+    arc_update_every: int | None = Field(default=None, ge=1, le=100)
 
 
 class ContextPolicy(BaseModel):
@@ -68,6 +69,10 @@ class WorkflowNode(BaseModel):
     def validate_known_config(self) -> "WorkflowNode":
         if self.type == "context":
             ContextPolicy.model_validate(self.config.get("policy"))
+            if "token_budget" in self.config:
+                value = self.config["token_budget"]
+                if not isinstance(value, int) or isinstance(value, bool) or not 100 <= value <= 1_000_000:
+                    raise ValueError("context token_budget must be between 100 and 1000000")
         elif self.type == "prompt":
             if not isinstance(self.config.get("template", ""), str):
                 raise ValueError("prompt template must be text")
@@ -84,6 +89,14 @@ class WorkflowNode(BaseModel):
                 value = self.config["max_output_tokens"]
                 if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 1_000_000:
                     raise ValueError("model max_output_tokens must be a positive integer")
+        elif self.type == "output":
+            minimum = self.config.get("min_chars", 0)
+            maximum = self.config.get("max_chars", 0)
+            for label, value in (("min_chars", minimum), ("max_chars", maximum)):
+                if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 1_000_000:
+                    raise ValueError(f"output {label} must be a non-negative integer")
+            if maximum and minimum > maximum:
+                raise ValueError("output min_chars cannot exceed max_chars")
         elif self.type == "condition":
             branches = self.config.get("branches")
             if not isinstance(branches, list) or not branches:

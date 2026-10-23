@@ -49,6 +49,7 @@ def test_the_agent_writes_only_through_the_canonical_command_tool(session_factor
     assert registry.names() == sorted(
         ["list_files", "read_file", "web_search", "propose_arcs", "propose_blueprint",
          "propose_chapter_brief", "propose_character", "propose_toc",
+         "generate_chapter", "review_chapter", "remediation_report",
          "list_novels", "read_workspace", "list_platform_functions",
          "preview_platform_command", "execute_platform_command"]
     )
@@ -372,6 +373,7 @@ def test_the_proposal_tools_do_not_reuse_a_write_name(session_factory) -> None:
     assert registry.names() == sorted([
         "list_files", "read_file", "web_search", "list_platform_functions",
         "preview_platform_command", "execute_platform_command", "list_novels", "read_workspace",
+        "generate_chapter", "review_chapter", "remediation_report",
     ] + PROPOSAL_NAMES)
     assert "write_file" not in registry.names()
 

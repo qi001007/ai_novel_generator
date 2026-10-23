@@ -11,6 +11,7 @@ import {
   Download,
   FileText,
   Search,
+  ArrowDown,
   Gauge,
   Paperclip,
   RotateCcw,
@@ -21,6 +22,7 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { Button, IconButton } from "./ui";
 import MarkdownText from "./MarkdownText";
 import { compressRefs } from "../contextLayers";
 import { ACTION_LABELS, reasoningParagraphs, splitTrace, stripProposalFences, traceActions } from "./chatTrace";
@@ -175,12 +177,17 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const navigate = useNavigate();
   const selectedNovelId = useWorkbench((s) => s.selectedNovelId);
   const llmStatus = useWorkbench((s) => s.llmStatus);
+  const [configNoticeDismissed, setConfigNoticeDismissed] = useState(false);
+  useEffect(() => {
+    if (llmStatus?.configured) setConfigNoticeDismissed(false);
+  }, [llmStatus?.configured]);
   const busy = useWorkbench((s) => s.busy);
   const setTab = useWorkbench((s) => s.setTab);
   const chatEpoch = useWorkbench((s) => s.chatEpoch);
   // 中栏看的是哪一条线程。null 交给后端答「当前线程」（28.8 那套语义）；
   // 从左边列表点进来时是一个号（第二十九批批注 6）。
   const chatConversation = useWorkbench((s) => s.chatConversation);
+  const conversations = useWorkbench((s) => s.conversations);
   const refreshConversations = useWorkbench((s) => s.refreshConversations);
   const [rows, setRows] = useState<Row[]>([]);
   const [input, setInput] = useState("");
@@ -200,6 +207,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   const [candidates, setCandidates] = useState<ChatContextItem[]>([]);
   const [elapsed, setElapsed] = useState(0);
   const [applyingPath, setApplyingPath] = useState<string | null>(null);
+  const [appliedProposals, setAppliedProposals] = useState<Record<string, FileProposal & { landedPath: string }>>({});
 
   const pendingFiles = useFiles((store) => store.pending);
   const offerFile = useFiles((store) => store.offer);
@@ -217,6 +225,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
   // 批注 36.4 补充：流式输出时自动滚到底部，但用户手动上翻时应停止自动滚动，
   // 直到用户滚回底部才恢复。stuckToBottom 标记是否跟随最新内容。
   const [stuckToBottom, setStuckToBottom] = useState(true);
+  const [railHover, setRailHover] = useState<number | null>(null);
 
   /* 批注 35.29c（D-57）：缺 D 层简报的那一章不再被推回去自己补——主人要的是「你要自己明白，
      要按顺序先生成一遍简章，然后再去生成正文」。briefHandoff 记的是「哪一条 /generate 正在
@@ -471,6 +480,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     ) {
       offerFile(proposal);
       if (await useFiles.getState().applyProposal(proposal.path)) {
+        markApplied(proposal, useFiles.getState().lastAppliedPath ?? proposal.path);
         // 批注 36.4 补充：正文提案自动应用后，切到编辑器让主人看到内容出现，
         // 而不是留在对话页以为「写完了突然刷出来」。
         const chapterNumber = draftChapter(proposal.path);
@@ -491,10 +501,16 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     offerFile(proposal, opts);
   }
 
-  async function applyProposal(path: string) {
+  function markApplied(proposal: FileProposal, landedPath: string) {
+    setAppliedProposals((prev) => ({ ...prev, [`${proposal.path}:${proposal.id}`]: { ...proposal, landedPath } }));
+  }
+
+  async function applyProposal(path: string, proposal?: FileProposal) {
+    const snapshot = proposal ?? useFiles.getState().pending[path];
     setApplyingPath(path);
-    await useFiles.getState().applyProposal(path);
+    const applied = await useFiles.getState().applyProposal(path);
     setApplyingPath(null);
+    if (applied && snapshot) markApplied(snapshot, useFiles.getState().lastAppliedPath ?? path);
   }
 
   function applyDraftPreview(data: { path: string; text: string }) {
@@ -762,11 +778,8 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     } else if (chapter) {
       patchCommand(id, {
         status: "done",
-        runId: snapshot.lastGenerationRunId ?? undefined,
         chapterId: chapter.id,
-        detail: `第 ${chapter.chapter_number} 章《${chapter.title || "未命名"}》· ${chapter.word_count} 字 · 错别字检查 ${
-          snapshot.machineCheck?.passed ? "通过" : "未通过"
-        }`,
+        detail: `第 ${chapter.chapter_number} 章候选已生成，工作稿未改动；请在正文工具栏“查看候选”中审核并接受`,
       });
     } else {
       patchCommand(id, { status: "failed", detail: "未找到可生成的简报，先在 B 目录或 D 简报里建一章" });
@@ -916,6 +929,18 @@ export default function ChatPane({ className = "" }: { className?: string }) {
       void runCommand(text);
       return;
     }
+    /* The gateway models this app runs on do not return native tool calls, so an
+       imperative sentence would otherwise come back as an empty reply. Route the
+       two production commands by intent and keep the same audited pipeline. */
+    if (/(质\s*检|自\s*检|审\s*稿)/.test(text)) {
+      void runCommand("/review");
+      return;
+    }
+    if (/(生成|续写|写)(一下|一段|这一章|本章|正文|第\s*\d+\s*章)/.test(text)) {
+      const chapter = /第\s*(\d+)\s*章/.exec(text);
+      void runCommand(chapter ? `/generate ${chapter[1]}` : "/generate");
+      return;
+    }
     void ask(text);
   }
 
@@ -947,6 +972,15 @@ export default function ChatPane({ className = "" }: { className?: string }) {
     URL.revokeObjectURL(url);
   }
 
+  const userRows = rows.filter((row) => row.kind === "user");
+  const dockHeight = Math.min(DOCK_MAX_HEIGHT, DOCK_BASE_HEIGHT + typingGrow);
+  const currentConversationId =
+    chatConversation ??
+    conversations.find((item) => item.is_current)?.conversation_id ??
+    null;
+  // The rail has an absolute height ceiling. More questions compress the hit
+  // bands instead of growing the rail off the pane; bands never overlap.
+  const railHit = Math.max(1, Math.min(16, Math.floor(248 / Math.max(1, userRows.length))));
   const slashHints = input.startsWith("/") && !busy;
   const [typedName] = input.trim().split(/\s+/);
   const matched = commands.filter((item) => item.name.startsWith(typedName));
@@ -954,16 +988,14 @@ export default function ChatPane({ className = "" }: { className?: string }) {
 
   return (
     <section className={`chat-pane ${className}`} aria-label="AI 对话">
-      {llmStatus && !llmStatus.configured && (
-        /* 第九批遗留：这句话一直在教主人做一件错事。D-16 之后配置的真源是 app_config
-           表、入口在 /settings，`get_llm_client` 每次请求都重新解析，所以既不用改 .env
-           也不用重启后端 - 照旧话去做，改完还是不生效，只会白折腾一次。 */
-        <div className="chat-notice">
-          LLM 未配置：到
+      {llmStatus && !llmStatus.configured && !configNoticeDismissed && (
+        <div className="chat-notice" role="status">
+          <span>模型接入未完成，请在
           <button type="button" className="chat-notice-action" onClick={() => navigate("/settings")}>
             设置
           </button>
-          里填 API 密钥，保存后即刻生效，不用重启后端
+          中检查连接与任务模型</span>
+          <IconButton type="button" aria-label="关闭配置提示" title="关闭配置提示" onClick={() => setConfigNoticeDismissed(true)}><X size={13} /></IconButton>
         </div>
       )}
       <div
@@ -990,7 +1022,7 @@ export default function ChatPane({ className = "" }: { className?: string }) {
               /* 批注: no avatars - the owner said to lay this out like Codex, which
                  names the speaker in a line of text instead. Yours is the one on the
                  right, so it needs no face to tell you who said it. */
-              <div key={row.id} className="chat-row user">
+              <div key={row.id} className="chat-row user" data-chat-row={row.id}>
                 <div className="chat-bubble">{row.text}</div>
               </div>
             );
@@ -1140,18 +1172,30 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                   ) : (
                     <p>正在思考…</p>
                   )}
-                  {(row.proposals ?? []).map((item) =>
-                    pendingFiles[item.path]?.id === item.id ? (
-                      <ProposalCard
+                  {(row.proposals ?? []).map((item) => {
+                    if (pendingFiles[item.path]?.id === item.id) {
+                      return <ProposalCard
                         key={`${item.path}:${item.id}`}
                         proposal={item}
                         applying={applyingPath === item.path}
                         onOpen={() => void openFile(item.path)}
-                        onApply={() => void applyProposal(item.path)}
+                        onApply={() => void applyProposal(item.path, item)}
                         onDiscard={() => discardFile(item.path)}
-                      />
-                    ) : null,
-                  )}
+                      />;
+                    }
+                    const applied = appliedProposals[`${item.path}:${item.id}`];
+                    if (!applied) return null;
+                    const heading = /^#\s+(.+)$/m.exec(item.text)?.[1] ?? item.path;
+                    const title = heading.replace(/（[^）]*）\s*$/, "").trim();
+                    return <section className="proposal-applied" key={`${item.path}:${item.id}`} aria-label="已应用提案">
+                      <header><strong>已应用</strong><code>{applied.landedPath}</code></header>
+                      <p>{title}</p>
+                      <footer>
+                        <span>原回答保留，只改了目标片段</span>
+                        <Button compact onClick={() => void openFile(applied.landedPath)}>查看文件</Button>
+                      </footer>
+                    </section>;
+                  })}
                   {(row.meta.approvals ?? []).map((approval) => {
                     const diff = approval.preview.diff as Record<string, unknown> | undefined;
                     return (
@@ -1311,7 +1355,47 @@ export default function ChatPane({ className = "" }: { className?: string }) {
           );
         })}
       </div>
-      <div className="chat-dock" style={{ height: Math.min(DOCK_MAX_HEIGHT, DOCK_BASE_HEIGHT + typingGrow) }}>
+      {userRows.length > 1 ? <nav className="chat-question-rail" aria-label="问题导航">
+        {userRows.map((row, index) => (
+          <button
+            key={row.id}
+            type="button"
+            aria-label={`跳到第 ${index + 1} 个问题`}
+            title={row.text.slice(0, 60)}
+            style={{
+              flex: `0 0 ${railHit}px`,
+              height: railHit,
+              minHeight: railHit,
+              maxHeight: railHit,
+              opacity: railHover === null ? 0.5 : railHover === index ? 1 : Math.max(0.28, 1 - Math.abs(index - railHover) * 0.18),
+              transform: `scaleX(${railHover === null ? 1 : Math.max(0.45, 1 - Math.abs(index - railHover) * 0.12)})`,
+            }}
+            onMouseEnter={() => setRailHover(index)}
+            onMouseLeave={() => setRailHover(null)}
+            onFocus={() => setRailHover(index)}
+            onBlur={() => setRailHover(null)}
+            onClick={() => {
+              const node = scrollRef.current?.querySelector<HTMLElement>(`[data-chat-row="${row.id}"]`);
+              node?.scrollIntoView({ block: "start", behavior: "smooth" });
+            }}
+          />
+        ))}
+      </nav> : null}
+      {!stuckToBottom ? <button
+        type="button"
+        className="chat-scroll-bottom"
+        aria-label="回到底部"
+        title="回到底部"
+        style={{ bottom: dockHeight + 12 }}
+        onClick={() => {
+          const node = scrollRef.current;
+          node?.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+          setStuckToBottom(true);
+        }}
+      >
+        <ArrowDown size={14} />
+      </button> : null}
+      <div className="chat-dock" style={{ height: dockHeight }}>
         {showMentions ? (
           <ul className="chat-hints mentions" role="listbox" aria-label="引用资料">
             {candidates.length ? (
@@ -1451,6 +1535,18 @@ export default function ChatPane({ className = "" }: { className?: string }) {
                 /generate。撤掉：它守的那条路本来就逐字流式（workbench.ts 里每个 delta 直接
                 setDraft 进正文页缓冲），这道确认从没挡住任何东西；主人要的确认是定稿入库，
                 不是「要不要把正文放进渲染页」。发起生成只剩 /generate 这一条命令。 */}
+            <Button
+              compact
+              disabled={!currentConversationId || !selectedNovelId}
+              title="查看这条对话的 token、模型与工具步骤"
+              onClick={() => {
+                if (selectedNovelId && currentConversationId) {
+                  navigate(`/novels/${selectedNovelId}/conversations/${currentConversationId}`);
+                }
+              }}
+            >
+              对话详情
+            </Button>
             <span className="spacer" />
             <div className="model-menu-wrap" ref={modelMenuRef}>
               <button

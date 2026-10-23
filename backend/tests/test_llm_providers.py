@@ -33,6 +33,25 @@ def test_a_legacy_install_still_reads_as_one_default_provider(client: TestClient
     assert all(value == "default" for value in data["routes"].values())
     # the reserved image slot is reported, not hidden
     assert "image" in data["tasks"] and "image" in data["models"]
+    assert data["routes"]["image_edit"] == "default"
+
+
+def test_image_edit_follows_the_image_route_until_it_has_its_own(
+    client: TestClient, db_engine
+) -> None:
+    _put(
+        client,
+        {
+            "providers": [
+                {"id": "b", "name": "B 家", "api_base_url": "https://b.example/v1"}
+            ],
+            "routes": {"image": "b"},
+        },
+    )
+    with Session(db_engine) as session:
+        routing = resolve_routing(session)
+        assert routing.settings_for("image_edit").api_base_url == "https://b.example/v1"
+        assert routing.models["image_edit"] == ""
 
 
 def test_two_providers_route_different_tasks(client: TestClient, db_engine) -> None:
@@ -138,6 +157,40 @@ def test_the_connection_test_targets_one_named_provider(client: TestClient) -> N
     missing = client.post("/api/config/llm/test", json={"provider_id": "ghost"}).json()
     assert missing["ok"] is False
     assert "ghost" in missing["detail"]
+
+
+def test_a_named_task_routed_to_a_keyless_provider_is_not_configured(client: TestClient) -> None:
+    data = _put(
+        client,
+        {
+            "api_base_url": "https://default.example/v1",
+            "api_key": "default-key-1111",
+            "models": {"draft": "Model-A", "review": "Model-A"},
+            "providers": [{"id": "b", "name": "B 家", "api_base_url": "https://b.example/v1"}],
+            "routes": {"draft": "default", "review": "b"},
+        },
+    )
+    # draft can run on the keyed default; review cannot run on keyless B. The default
+    # key must not be borrowed for another gateway, so the deployment is not configured.
+    assert data["configured"] is False
+    assert client.get("/api/config/llm").json()["configured"] is False
+    assert client.get("/api/llm/status").json()["configured"] is False
+
+    _put(
+        client,
+        {
+            "providers": [
+                {
+                    "id": "b",
+                    "name": "B 家",
+                    "api_base_url": "https://b.example/v1",
+                    "api_key": "b-key-2222",
+                }
+            ]
+        },
+    )
+    assert client.get("/api/config/llm").json()["configured"] is True
+    assert client.get("/api/llm/status").json()["configured"] is True
 
 
 def test_removing_every_extra_provider_leaves_the_default_working(client: TestClient, db_engine) -> None:

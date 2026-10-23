@@ -26,7 +26,9 @@ FastAPI、SQLModel、Alembic 与 SQLite 继续组成单体应用。新模型避�
 | 新核心模型 | `backend/app/models.py`、`backend/alembic/versions/` |
 | Workspace / SSE / 上下文 | `backend/app/routers/workspace.py`、`events.py`、`context.py` |
 | Agent 单一路径 | `backend/app/services/agent.py`、`agent_pydantic.py`、`agent_tools.py`、`agent_run_log.py`、`frontend/src/components/ChatPane.tsx` |
-| Workflow DSL 与运行 | `backend/app/application/workflow_schema.py`、`backend/app/services/workflows.py`、`workflow_engine.py`、`python_worker.py`、`backend/app/routers/workflows.py` |
+| Workflow DSL 与运行 | `backend/app/application/workflow_schema.py`、`backend/app/services/workflows.py`、`workflow_engine.py`、`python_worker.py`、`backend/app/routers/workflows.py`、`backend/app/routers/workflow_runs.py` |
+| 正文候选与接受 | `backend/app/services/generation.py`、`backend/app/routers/generation_runs.py`；接受仍经 `documents.py` 的文件 PUT 适配层 |
+| 章节调用记录与运行详情 | `frontend/src/components/EditorPane.tsx`、`frontend/src/pages/WorkflowRunDetailPage.tsx`、`frontend/src/store/workbench.ts` |
 | 启动页与工作台 | `frontend/src/pages/BookshelfPage.tsx`、`WorkbenchPage.tsx` |
 | Workflow Studio | `frontend/src/components/ContextWorkflowPanel.tsx`、`JsonCodeEditor.tsx` |
 | 前端网络边界 | `frontend/src/api.ts` |
@@ -52,9 +54,11 @@ FastAPI、SQLModel、Alembic 与 SQLite 继续组成单体应用。新模型避�
 
 新核心已与旧路由并存，以保护现有可用前端；旧 documents/context/chat 服务仍有历史职责，禁止继续扩张。尚未迁入统一核心的功能在 `WORKSTREAM-PLAN.md` 和 `UI-BACKLOG.md` 明列，不能称为重建完成。
 
+正文生成现执行当前已发布 WorkflowVersion，并保存 GenerationJob 候选；接受复用唯一文件 PUT，在该旧适配层的单事务中完成 revision 校验、正文/候选状态和 Operation 保存。`generation.accept` 是此处的审计标识，尚未注册为统一命令，也未提供通用撤销，不得据此认为旧写入口已收口。Workflow 动态上下文保留用户输入；自检目标章从 collect_items 资料池取完整正文，超预算拒绝截断。
+
 开发侧 `novel_platform` MCP 只通过本地 HTTP API 操作平台，不直连数据库。统一命令已经覆盖的动作优先走命令；尚未迁移的旧能力通过受限的 `/api/*` 读写工具临时覆盖。页面验收只允许 click/input/scroll/drag 白名单与 DOM 测量，不开放任意脚本。MCP 不属于产品 UI，也不等同于产品内对话 Agent；它验证并驱动产品 Agent 将来要复用的同一函数能力。
 
-模型网关当前默认接入百炼 Token Plan：正文使用 `qwen3.7-plus`，审稿、摘要与对话使用 `qwen3.8-flash`，无计费 `/models` 鉴权已返回 HTTP 200。生图走同一供应商路由和 `/api/images/generations` 传输边界，但 `sk-sp-` Token Plan 密钥经文本 Base URL 直调图片会按官方规则返回 400；正式启用必须新增百炼标准 `sk-` 生图供应商及对应地域/Workspace URL，不能把文本密钥复用成假可用状态。
+模型网关当前默认接入百炼 Token Plan，任务模型以设置接口与发布版本中的实际配置为准；原文固定的 `qwen3.7-plus` / `qwen3.8-flash` 与当前实现不符，已移除。无计费 `/models` 鉴权已返回 HTTP 200。生图走同一供应商路由和 `/api/images/generations` 传输边界，但 `sk-sp-` Token Plan 密钥经文本 Base URL 直调图片会按官方规则返回 400；正式启用必须新增百炼标准 `sk-` 生图供应商及对应地域/Workspace URL，不能把文本密钥复用成假可用状态。
 
 ### 0.6 文档职责
 

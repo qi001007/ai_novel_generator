@@ -1,5 +1,12 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-10-23 · G-01/V-19：新增 `test_chapter_workflow_runs.py` 2 条：列表含 generation/review 与 job/review/accept 关联；详情 5 节点、模型 token 合计等于总计、excluded 含「路人甲」原因、accept actor=human、章名取 TOC「雪夜」。全量业务 504 passed。
+- 2026-10-23 · 配置状态：`test_llm_providers.py` 新增「已命名任务路由到无密钥供应商时 configured=false，补上该供应商自己的密钥后翻 true」；定向 42 passed，全量 501 passed。
+- 2026-10-23 · V-19 阻塞：`test_command_catalog.py` 新增「新建流程不替换已发布系统默认」回归（绑定仍指向旧流程、旧 revision 不变、新记录 `is_default=false`）；定向 11 passed，全量业务 500 passed。
+- 2026-10-22 · M-01：新增 `test_map_canvas.py` 11 条（偏移、遮罩、贴回、尺寸拒绝）、`test_masked_edit.py` 8 条（异步提交一次、轮询、失败脱敏、未配置）；`test_maps.py` 加 8 条扩图/单格重绘/下载重试/非对齐画布；后端业务全量 499 passed。
+- 2026-10-22 · M-02：新增 `test_maps.py` 10 条：假供应商生成/本机回读/版本递增与确认取代/草稿不替换/删除清目录/缺模型与缺费用闸门/路径穿越与丢失文件/本地 HTTP 回归 `NO_PROXY="[::1]"` 下载。
+- 2026-10-21 · B-01/B-02：新增默认 Workflow 输入/完整自检/无效 JSON 回归，以及候选未发布拒绝、生成不写稿、接受幂等、跨作品/路径/内容/版本保护；后端业务 456 passed，MCP 缺依赖仍阻止完整收集。
+
 - 2026-10-20：新增作品默认双 Workflow、唯一用途绑定及旧库 review/model 回填迁移测试；全量后端门禁更新为 444 passed。
 
 - 2026-10-19：新增 Workflow 删除行为门禁：未确认拒绝、批准删除、默认项接替、撤销恢复，以及已有发布历史时禁止删除。
@@ -80,3 +87,6 @@
 - 2026-09-16 · 写作上下文增加默认工作流实质注入、正文尾部截取和无默认工作流回归测试。
 - 2026-09-16：补世界观与伏笔自定义小节的记录内 round-trip 测试；相关 66 条文档/上下文测试通过。
 - 2026-09-16 · U-05：`test_reviews.py` 先钉 suggestion 结构被旧 schema 拒绝，再覆盖唯一正文 quote 的上下文锚点及作者更新 replacement/status 的 PATCH；定向 7 条通过。
+- 2026-10-21 · S-01/S-02：增加未保存/新增供应商、Authorization 与超时、空密钥、错误目录、无效 URL 和缓存归属回归，使用隔离数据库与模拟网关，不读取主人密钥。
+- 2026-10-23 · 审查收口：`test_chapter_workflow_runs.py` 新增正文标题取 TOC 的回归（`正文 · 第 1 章 雪夜`），`test_workflows.py` 新增列表/详情 `published_version` 断言；后端全量 505 passed（仍排除缺 `fastmcp` 的平台 MCP 测试）。
+- 2026-10-23 · V-21：新增 `test_arc_window.py` 4 条（滑动/未来标记/数量封顶/API 生成回读）；另有 agent 对话轨迹测试在全量下偶发一次空轨迹，单跑与全量重跑均绿，待 V-22 排查。

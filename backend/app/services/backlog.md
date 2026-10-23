@@ -1,5 +1,10 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-10-23 · 配置状态按路由：`LLMRouting` 新增 `task_is_configured` 与 `is_configured`——所有已命名任务必须在其实际路由供应商上同时具备 Base URL、密钥、模型名；默认密钥不跨供应商借用。D-22。
+- 2026-10-22 · M-01：新增 `map_canvas.py`（1024 网格、四向偏移、白遮罩、遮罩外逐像素贴回，尺寸不符 502）与 `image_edit.py`（DashScope 异步遮罩编辑，提交一次、轮询/下载可重试、密钥脱敏）；`maps.py` 加扩图/重绘提示词与整幅 draft 版本落库；`llm.py` 增加 `image_edit` 任务槽并默认跟随生图路由。
+- 2026-10-22 · M-02：新增 `maps.py`：提示词按 A 主线 + C 弧 + D 简报拼装；图片下载到数据库同级 `map_assets`，`trust_env=False` + 显式代理绕开本机 `NO_PROXY="[::1]"` 使 httpx 0.27 崩溃；确认版本会取代旧确认版，历史版本仍可读。
+- 2026-10-21 · B-01/B-02：上下文保留写作要求，自检完整注入目标章并严格检查问题 JSON；新增已发布 Workflow 生成持久候选，既有文件 PUT 接受时同事务版本保护、幂等与 Operation 审计，不开第二写通路。
+
 - 2026-10-20：Workflow 用途固定为 generation/review；默认图只含开始、动态上下文、提示词、模型和输出，并从任务路由写入真实供应商与模型配置。
 
 - 2026-10-19：Workflow 默认切换同步递增被替换默认项的 revision，供统一命令冲突校验与完整撤销使用。
@@ -91,3 +96,5 @@
 - 2026-09-16 · U-05：AI 审稿 suggestions 只接受正文中唯一出现的逐字 quote，并在落库时写入前后各 32 字的上下文锚点；更新建议仅修改 review evidence，不改正文，正文替换仍走文件层保存。
 
 - 2026-09-16：世界观与伏笔记录支持条目内 `###` 自定义 Markdown 小节；写回、渲染与上下文收集均保留顺序。
+- 2026-10-23 · C-02：`context.py` 的正文上下文条目改取当前 `TocEntry.title`，不再读 `Chapter.title`，自检 context 的「已注入」标题与页头一致。
+- 2026-10-23 · V-21：`context.py` 的 `_workflow_items()` 真正消费 `arc_window`（按章距筛候选后按距离排序截断），未来弧加「（未来）」并升到附近档；`workflows.py` 默认策略不变，语义见 D-24。

@@ -12,5 +12,8 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["src/test/setup.ts"],
+    // 34 个 jsdom 文件并行时，默认 5s 会误杀本身全绿的用例；真挂死仍会到点失败。
+    testTimeout: 15000,
+    hookTimeout: 15000,
   },
 });

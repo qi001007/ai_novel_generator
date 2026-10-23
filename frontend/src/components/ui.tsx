@@ -9,6 +9,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type InputHTMLAttributes,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type TextareaHTMLAttributes,
 } from "react";
@@ -17,13 +18,23 @@ import { Check, ChevronDown, X } from "lucide-react";
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   tone?: "default" | "primary" | "danger";
   compact?: boolean;
+  loading?: boolean;
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { tone = "default", compact = false, className = "", ...props },
+  { tone = "default", compact = false, loading = false, className = "", children, disabled, ...props },
   ref,
 ) {
-  return <button ref={ref} className={`ui-button ${tone !== "default" ? `is-${tone}` : ""} ${compact ? "is-compact" : ""} ${className}`.trim()} {...props} />;
+  return <button
+    ref={ref}
+    className={`ui-button ${tone !== "default" ? `is-${tone}` : ""} ${compact ? "is-compact" : ""} ${loading ? "is-loading" : ""} ${className}`.trim()}
+    aria-busy={loading || undefined}
+    disabled={disabled || loading}
+    {...props}
+  >
+    {loading ? <span className="ui-spinner" aria-hidden="true" /> : null}
+    {children}
+  </button>;
 });
 
 export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement>>(function IconButton(
@@ -188,6 +199,111 @@ export function Dialog({ title, onClose, children }: { title: string; onClose: (
       {children}
     </section>
   </div>;
+}
+
+/* Non-modal floating window: draggable, resizable, centred on open, and raised
+   above its siblings on any pointer down. Several of these can be open at once. */
+let floatingZ = 1200;
+
+type FloatingFrame = { x: number; y: number; width: number; height: number };
+
+export function FloatingWindow({
+  title,
+  onClose,
+  children,
+  width = 440,
+  height = 420,
+  minWidth = 300,
+  minHeight = 160,
+  fitContent = false,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  width?: number;
+  height?: number;
+  minWidth?: number;
+  minHeight?: number;
+  /** Grow with the content, stop at a max, and let the body scroll instead of
+      leaving a large empty area under a short panel. */
+  fitContent?: boolean;
+}) {
+  const [frame, setFrame] = useState<FloatingFrame>(() => ({
+    x: Math.max(8, Math.round((window.innerWidth - width) / 2)),
+    y: Math.max(8, Math.round((window.innerHeight - height) / 2)),
+    width,
+    height,
+  }));
+  const [z, setZ] = useState(floatingZ);
+  const drag = useRef<{ mode: "move" | "resize"; startX: number; startY: number; frame: FloatingFrame } | null>(null);
+
+  const raise = () => setZ(++floatingZ);
+  const begin = (mode: "move" | "resize") => (event: ReactPointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
+    // A header is a drag handle, but its close button (and any control that may
+    // later live there) must keep its normal click behaviour.
+    if ((event.target as HTMLElement).closest("button,input,textarea,select,a")) return;
+    event.preventDefault();
+    raise();
+    drag.current = { mode, startX: event.clientX, startY: event.clientY, frame };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const move = (event: ReactPointerEvent<HTMLElement>) => {
+    const active = drag.current;
+    if (!active) return;
+    const dx = event.clientX - active.startX;
+    const dy = event.clientY - active.startY;
+    if (active.mode === "move") {
+      setFrame({
+        ...active.frame,
+        x: Math.min(Math.max(0, active.frame.x + dx), Math.max(0, window.innerWidth - 80)),
+        y: Math.min(Math.max(0, active.frame.y + dy), Math.max(0, window.innerHeight - 40)),
+      });
+    } else {
+      setFrame({
+        ...active.frame,
+        width: Math.max(minWidth, active.frame.width + dx),
+        height: Math.max(minHeight, active.frame.height + dy),
+      });
+    }
+  };
+  const end = () => { drag.current = null; };
+
+  return <section
+    className={`ui-floating${fitContent ? " is-fit" : ""}`}
+    role="dialog"
+    aria-label={title}
+    data-floating-window={title}
+    style={{
+      left: frame.x,
+      top: frame.y,
+      width: frame.width,
+      height: fitContent ? "auto" : frame.height,
+      maxHeight: fitContent ? "min(70vh, 560px)" : undefined,
+      zIndex: z,
+    }}
+    onPointerDown={raise}
+  >
+    <header
+      className="ui-floating-head"
+      onPointerDown={begin("move")}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+    >
+      <strong>{title}</strong>
+      <IconButton aria-label="关闭" onClick={onClose}><X size={14} /></IconButton>
+    </header>
+    <div className="ui-floating-body">{children}</div>
+    {fitContent ? null : <i
+      className="ui-floating-resize"
+      aria-hidden="true"
+      onPointerDown={begin("resize")}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+    />}
+  </section>;
 }
 
 export function Splitter({ orientation, label, onPointerDown }: {

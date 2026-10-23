@@ -15,6 +15,127 @@ def test_config_starts_unset(client: TestClient) -> None:
     assert body["api_key_masked"] == ""
 
 
+@pytest.mark.parametrize("path", ["/api/config/llm/test", "/api/config/llm/models"])
+def test_connection_preview_uses_unsaved_fields_without_persisting(client, monkeypatch, path):
+    def models_response(item):
+        assert item.api_base_url == "https://draft.example/v1"
+        assert item.api_key == "draft-test-key"
+        assert item.timeout == 45
+        return httpx.Response(200, json={"data": [{"id": "preview-model"}]})
+
+    monkeypatch.setattr("app.routers.config._models_response", models_response)
+    before = client.get("/api/config/llm").json()
+    result = client.post(path, json={
+        "provider_id": "default", "api_base_url": "https://draft.example/v1/",
+        "api_key": "draft-test-key", "timeout": 45,
+    })
+    assert result.status_code == 200, result.text
+    if path.endswith("/test"):
+        assert result.json()["ok"] is True
+    else:
+        assert result.json()["models"] == ["preview-model"]
+    assert client.get("/api/config/llm").json() == before
+
+
+@pytest.mark.parametrize("path", ["/api/config/llm/test", "/api/config/llm/models"])
+def test_new_provider_can_be_checked_before_it_is_saved(client, monkeypatch, path):
+    def models_response(item):
+        assert item.id == "new-provider"
+        assert item.api_key == "new-provider-key"
+        return httpx.Response(200, json={"data": [{"id": "new-model"}]})
+
+    monkeypatch.setattr("app.routers.config._models_response", models_response)
+    result = client.post(path, json={
+        "provider_id": "new-provider", "api_base_url": "https://new.example/v1",
+        "api_key": "new-provider-key",
+    })
+    assert result.status_code == 200
+    assert result.json().get("ok", True) is True
+    assert len(client.get("/api/config/llm").json()["providers"]) == 1
+
+
+@pytest.mark.parametrize("key", ["", "****1234", None])
+def test_preview_keeps_stored_key_when_the_form_leaves_it_blank(client, monkeypatch, key):
+    client.put("/api/config/llm", json={"api_key": "stored-key-1234"})
+
+    def models_response(item):
+        assert item.api_key == "stored-key-1234"
+        return httpx.Response(200, json={"data": [{"id": "stored-model"}]})
+
+    monkeypatch.setattr("app.routers.config._models_response", models_response)
+    result = client.post("/api/config/llm/models", json={"api_key": key})
+    assert result.status_code == 200
+    assert result.json()["models"] == ["stored-model"]
+
+
+def test_preview_sends_authorization_and_honors_the_connection_timeout(client, monkeypatch):
+    monkeypatch.delenv("HTTPS_PROXY", raising=False)
+
+    def handler(request):
+        assert request.url == "https://gateway.example/v1/models"
+        assert request.headers["Authorization"] == "Bearer typed-key"
+        assert request.extensions["timeout"]["read"] == 42
+        return httpx.Response(200, json={"data": [{"id": "model-a"}]})
+
+    real_client = httpx.Client
+    monkeypatch.setattr("app.routers.config.httpx.Client", lambda **kwargs: real_client(
+        transport=httpx.MockTransport(handler), **kwargs,
+    ))
+    result = client.post("/api/config/llm/models", json={
+        "api_base_url": "https://gateway.example/v1", "api_key": "typed-key", "timeout": 42,
+    })
+    assert result.status_code == 200
+    assert result.json()["models"] == ["model-a"]
+
+
+@pytest.mark.parametrize("body", [{"data": None}, {"data": 5}, {"data": [{"id": None}]}])
+def test_malformed_catalog_is_an_explained_failure_not_a_server_crash(client, monkeypatch, body):
+    monkeypatch.setattr("app.routers.config._models_response", lambda item: httpx.Response(200, json=body))
+    result = client.post("/api/config/llm/models", json={"api_key": "typed-key"})
+    assert result.status_code == 502
+    assert "没有返回可选模型" in result.json()["detail"]
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(200, text="<html>login</html>"),
+    httpx.Response(200, json={"error": "wrong endpoint"}),
+])
+def test_html_success_page_is_not_a_successful_api_connection(client, monkeypatch, response):
+    monkeypatch.setattr("app.routers.config._models_response", lambda item: response)
+    result = client.post("/api/config/llm/test", json={"api_key": "typed-key"}).json()
+    assert result["ok"] is False
+    assert "Base URL" in result["detail"]
+
+
+@pytest.mark.parametrize("changes", [{"api_base_url": "https://other.example/v1"}, {"api_key": "new-key"}])
+def test_changing_a_saved_connection_discards_its_old_model_catalog(client, monkeypatch, changes):
+    client.put("/api/config/llm", json={"api_key": "old-key"})
+    monkeypatch.setattr("app.routers.config._models_response", lambda item: httpx.Response(200, json={"data": [{"id": "old-model"}]}))
+    assert client.get("/api/config/llm/models").status_code == 200
+    assert "default" in client.get("/api/config/llm").json()["catalogs"]
+    result = client.put("/api/config/llm", json=changes)
+    assert result.status_code == 200
+    assert "default" not in result.json()["catalogs"]
+
+
+@pytest.mark.parametrize("url", ["https://[", "http://localhost:invalid"])
+def test_malformed_draft_url_is_a_validation_error(client, url):
+    result = client.post("/api/config/llm/models", json={"api_base_url": url, "api_key": "typed-key"})
+    assert result.status_code == 422
+    assert "typed-key" not in result.text
+
+
+def test_form_catalog_refresh_is_cached_only_for_the_saved_connection(client, monkeypatch):
+    client.put("/api/config/llm", json={"api_key": "saved-key"})
+    monkeypatch.setattr("app.routers.config._models_response", lambda item: httpx.Response(200, json={"data": [{"id": "current-model"}]}))
+    result = client.post("/api/config/llm/models", json={"api_key": ""})
+    assert result.status_code == 200
+    saved = client.get("/api/config/llm").json()
+    assert saved["catalogs"]["default"]["models"] == ["current-model"]
+    client.post("/api/config/llm/models", json={"api_base_url": "https://other.example/v1"})
+    assert client.get("/api/config/llm").json() == saved
+
+
 def test_saving_a_key_returns_only_a_mask(client: TestClient) -> None:
     saved = client.put(
         "/api/config/llm",

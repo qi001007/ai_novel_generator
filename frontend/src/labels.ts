@@ -15,6 +15,13 @@ export const TASK_LABELS: Record<string, string> = {
   fact_extract: "事实提取",
   chat: "对话",
   image: "生图",
+  image_edit: "扩图",
+};
+
+/** Workflow 的用途：记录行与运行详情共用这一份。 */
+export const PURPOSE_LABELS: Record<string, string> = {
+  generation: "正文生成",
+  review: "AI 自检",
 };
 
 export const KIND_LABELS: Record<string, string> = {
@@ -49,6 +56,7 @@ export const PROVIDER_TASKS: Array<readonly [string, string]> = [
   ["summary", TASK_LABELS.summary],
   ["chat", TASK_LABELS.chat],
   ["image", TASK_LABELS.image],
+  ["image_edit", TASK_LABELS.image_edit],
 ];
 
 export const taskLabel = (task: string): string => TASK_LABELS[task] ?? task;

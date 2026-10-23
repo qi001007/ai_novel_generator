@@ -346,10 +346,11 @@ export const api = {
     api.get<FileDoc>(`/api/novels/${novelId}/files/${path}`),
 
   // base_revision is what turns a lost update into a 409 instead of a silent overwrite.
-  writeFile: (novelId: number, path: string, text: string, opts: { actor?: string; baseRevision?: string } = {}) =>
+  writeFile: (novelId: number, path: string, text: string, opts: { actor?: string; baseRevision?: string; generationJobId?: number } = {}) =>
     api.put<FileWriteResult>(`/api/novels/${novelId}/files/${path}`, {
       text,
       actor: opts.actor ?? "human",
       base_revision: opts.baseRevision ?? undefined,
+      generation_job_id: opts.generationJobId,
     }),
 };

@@ -1,5 +1,6 @@
 # backend/ 更改账（最新在上）
 
+- 2026-10-22 · M-01：`pyproject.toml` 增加 `pillow==11.3.0`，用于遮罩外逐像素贴回与底图格式转换；不收窄既有依赖。
 - 2026-09-15 · 新增 `ContextWorkflow` 持久化与 `/api/workflows` CRUD/默认切换 API；policy 与 graph 使用严格 Pydantic 类型及拓扑校验，迁移 `f4c9d2a7b801` 含可逆 downgrade。
 
 - 2026-09-14 · 批注 36.7：修复 C 层弧线提案重复出卡——流式去重改为按路径而非 (路径, 文本) 元组。

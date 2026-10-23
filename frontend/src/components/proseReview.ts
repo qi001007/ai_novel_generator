@@ -30,6 +30,18 @@ function record(value: unknown): UnknownRecord | null {
     : null;
 }
 
+/** A model sometimes answers with an instruction ("建议改为…例如‘…’") instead of
+    the literal replacement. Never paste that instruction into the prose: take the
+    quoted example, or leave it empty so the author writes their own line. */
+export function cleanSuggestionReplacement(value: string): string {
+  const text = value.trim();
+  if (!text) return "";
+  if (!/^建议|建议改为|建议改成|例如|在该句后追加|追加一句|可以考虑/.test(text)) return text;
+  const source = text.includes("例如") ? text.slice(text.indexOf("例如") + 2) : text;
+  const quoted = [...source.matchAll(/[‘'“"]([^’'”"]+)[’'”"]/g)];
+  return quoted.length ? quoted[quoted.length - 1][1].trim() : "";
+}
+
 /** Read only the explicit suggestion payload. Evidence quotes are not suggestions. */
 export function suggestionsFromReviews(reviews: Review[]): ProseSuggestion[] {
   return reviews.flatMap((review) => {
@@ -46,7 +58,7 @@ export function suggestionsFromReviews(reviews: Review[]): ProseSuggestion[] {
         reviewId: review.id,
         index,
         quote: item.quote,
-        replacement: typeof item.replacement === "string" ? item.replacement : "",
+        replacement: typeof item.replacement === "string" ? cleanSuggestionReplacement(item.replacement) : "",
         comment: typeof item.comment === "string" ? item.comment : review.comments,
         status,
         anchor: {

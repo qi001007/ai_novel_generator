@@ -1,11 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import EditorPane from "./EditorPane";
 import { api } from "../api";
 import { draftDocument, useFiles } from "../store/files";
-import type { Chapter } from "../types";
+import type { Chapter, WorkflowRunSummary } from "../types";
 import { useWorkbench } from "../store/workbench";
 
 const emptyChapter = {
@@ -22,6 +22,36 @@ const emptyChapter = {
 };
 let canvasGetContext: PropertyDescriptor | null | undefined = null;
 
+function workflowRun(
+  overrides: Partial<WorkflowRunSummary> & { chapter_id?: number } = {},
+): WorkflowRunSummary {
+  const { chapter_id = 1, ...rest } = overrides;
+  return {
+    id: 1,
+    novel_id: 1,
+    workflow_id: 1,
+    workflow_version_id: 1,
+    status: "completed",
+    input: { chapter_id },
+    error: "",
+    token_input: 0,
+    token_output: 0,
+    paused_node_id: "",
+    started_at: null,
+    ended_at: null,
+    created_at: "2026-10-23T10:00:00",
+    workflow_name: "Workflow",
+    workflow_version: 1,
+    purpose: "generation",
+    node_count: 5,
+    model: "test-model",
+    job: null,
+    review: null,
+    accept_operation: null,
+    ...rest,
+  };
+}
+
 function seed(chapters: Chapter[], content = "") {
   useWorkbench.setState({
     selectedNovelId: 1,
@@ -30,6 +60,8 @@ function seed(chapters: Chapter[], content = "") {
     chapterTabs: chapters.map((item) => item.id),
     briefs: [],
     generationRuns: [],
+    workflowRuns: [],
+    generationCandidates: [],
     reviews: [],
     machineCheck: null,
     error: null,
@@ -73,6 +105,23 @@ function seed(chapters: Chapter[], content = "") {
 }
 
 describe("EditorPane", () => {
+  it("B-02 shows a recoverable candidate without replacing prose and closes preview without accepting", async () => {
+    seed([emptyChapter], emptyChapter.content);
+    useWorkbench.setState({ generationCandidates: [{
+      id: 23, novel_id: 1, kind: "draft", status: "completed", error: "",
+      payload: { chapter_id: 1, path: "chapters/0001/draft.md", base_revision: "r1", request: "" },
+      result: { content: "候选另存的正文。", workflow_run_id: 7, token_input: 24, token_output: 9 },
+    }] });
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "查看候选（1）" }));
+    expect(screen.getByRole("dialog", { name: "候选正文" })).toBeTruthy();
+    expect(screen.getByText("候选另存的正文。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "稍后处理" }));
+    expect(screen.queryByRole("dialog", { name: "候选正文" })).toBeNull();
+    expect(useWorkbench.getState().generationCandidates[0].status).toBe("completed");
+    expect(useWorkbench.getState().chapters[0].content).toBe(emptyChapter.content);
+  });
+
   beforeEach(() => {
     window.localStorage.removeItem("novelgen.editor-bottom");
     seed([]);
@@ -195,12 +244,71 @@ describe("EditorPane", () => {
         { id: 7, chapter_id: 1, task_type: "draft", model: "当前章模型", prompt_version: "v1", input_summary: "", output: "", token_input: 10, token_output: 20, cost_estimate: 0, status: "done", created_at: "2026-09-03T03:16:58" },
         { id: 8, chapter_id: 2, task_type: "draft", model: "其他章模型", prompt_version: "v1", input_summary: "", output: "", token_input: 10, token_output: 20, cost_estimate: 0, status: "done", created_at: "2026-09-03T03:16:59" },
       ],
+      workflowRuns: [
+        workflowRun({ id: 11, chapter_id: 1, purpose: "generation", workflow_name: "当前章 Workflow" }),
+        workflowRun({ id: 12, chapter_id: 2, purpose: "review", workflow_name: "其他章 Workflow" }),
+      ],
     });
     render(<MemoryRouter><EditorPane /></MemoryRouter>);
     fireEvent.click(screen.getByRole("button", { name: "展开调用记录" }));
 
     expect(screen.getByText("当前章模型")).toBeTruthy();
+    expect(screen.getByText("当前章 Workflow")).toBeTruthy();
     expect(screen.queryByText("其他章模型")).toBeNull();
+    expect(screen.queryByText("其他章 Workflow")).toBeNull();
+  });
+
+  it("shows the human rejection reason in the records after a refresh", () => {
+    seed([emptyChapter], emptyChapter.content);
+    useWorkbench.setState({
+      reviews: [{
+        id: 9,
+        chapter_id: 1,
+        reviewer: "human",
+        decision: "reject",
+        comments: "第二段动机不成立",
+        scores: {},
+        evidence: {},
+        created_at: "2026-10-23T10:00:00",
+      }],
+    });
+    render(<MemoryRouter><EditorPane /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "展开调用记录" }));
+
+    expect(screen.getByText("终审打回")).toBeTruthy();
+    expect(screen.getByText("第二段动机不成立")).toBeTruthy();
+    expect(screen.queryByText("这一章还没有调用记录")).toBeNull();
+  });
+
+  it("links a workflow run row to the unified run detail", () => {
+    seed([emptyChapter], emptyChapter.content);
+    useWorkbench.setState({
+      workflowRuns: [
+        workflowRun({
+          id: 77, chapter_id: 1, purpose: "generation", workflow_name: "正文",
+          model: "test-model", token_input: 37, token_output: 12,
+        }),
+      ],
+    });
+    render(
+      <MemoryRouter initialEntries={["/novels/1"]}>
+        <Routes>
+          <Route path="/novels/1" element={<EditorPane />} />
+          <Route
+            path="/novels/1/chapters/1/workflow-runs/77"
+            element={<div>统一运行详情</div>}
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "展开调用记录" }));
+
+    expect(screen.getByText("正文", { selector: "strong" })).toBeTruthy();
+    expect(screen.getByText(/正文生成/)).toBeTruthy();
+    expect(screen.getByText(/37 \/ 12 token/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "详情" }));
+    expect(screen.getByText("统一运行详情")).toBeTruthy();
   });
 
   it("marks a live AI suggestion in the real prose CodeMirror and only applies an intact anchor", async () => {
@@ -242,17 +350,15 @@ describe("EditorPane", () => {
     const mark = document.querySelector(".cm-review-mark") as HTMLElement;
     expect(mark?.textContent).toBe("沈曜没有回头。");
     fireEvent.mouseDown(mark);
-    expect(screen.getByRole("complementary", { name: "审稿批注" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "AI 审稿建议" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "应用这条建议" }));
     expect(useFiles.getState().entries["chapters/0001/draft.md"]?.draft).toContain("沈曜仍没有回头。");
     await waitFor(() => expect(api.patch).toHaveBeenCalledWith(
       "/api/novels/1/chapters/1/reviews/19/suggestions/0",
       { replacement: "沈曜仍没有回头。", status: "applied" },
     ));
-
-    act(() => useWorkbench.getState().setDraftContent("雨落在旧桥上，沈曜回头了。"));
-    expect(screen.getByText("原文已变化，不能强行应用这条建议")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "应用这条建议" }).hasAttribute("disabled")).toBe(true);
+    // One decision ends the panel; it must not sit there looking unanswered.
+    expect(screen.queryByRole("dialog", { name: "AI 审稿建议" })).toBeNull();
   });
 
   /* 第十五批批注 1.4: the pair-toggle used to exist only on the file strip, so the

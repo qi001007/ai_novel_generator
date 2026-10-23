@@ -3,6 +3,8 @@ from sqlmodel import Session, select
 
 from app.models import ContextWorkflow, WorkflowBinding, WorkflowVersion
 from app.services.llm import LLMResult
+from app.services.workflows import default_workflow_graph
+from tests.planning_helpers import create_chapter
 
 
 def _policy(*, budget: int = 60000) -> dict:
@@ -93,6 +95,25 @@ def test_graph_requires_exactly_one_context_and_configured_model_to_publish(clie
     workflow = client.post("/api/workflows", json=_payload(novel_id, "待配置", graph=blank)).json()
     assert client.post(f"/api/workflows/{workflow['id']}/validate").status_code == 422
     assert client.post(f"/api/workflows/{workflow['id']}/publish").status_code == 422
+
+
+def test_workflow_list_exposes_latest_published_version(client: TestClient) -> None:
+    novel_id = _novel(client, "发布状态书")
+    created = client.post("/api/workflows", json=_payload(novel_id, "待发布")).json()
+    assert created["published_version"] is None
+
+    listed = {
+        item["id"]: item for item in client.get(f"/api/workflows?novel_id={novel_id}").json()
+    }
+    assert listed[created["id"]]["published_version"] is None
+
+    assert client.post(f"/api/workflows/{created['id']}/publish").status_code == 201
+    published = client.get(f"/api/workflows/{created['id']}").json()
+    assert published["published_version"] == 1
+    listed = {
+        item["id"]: item for item in client.get(f"/api/workflows?novel_id={novel_id}").json()
+    }
+    assert listed[created["id"]]["published_version"] == 1
 
 
 def test_published_version_freezes_context_policy_and_purpose(client: TestClient, db_engine) -> None:
@@ -196,3 +217,66 @@ def test_context_node_receives_frozen_policy(client: TestClient, monkeypatch) ->
     assert calls[0]["policy"]["budget"] == 32000
     assert calls[0]["chapter_number"] == 3
     assert calls[0]["token_budget"] == 8000
+
+
+def test_default_generation_graph_delivers_request_to_model(client: TestClient, monkeypatch) -> None:
+    messages_seen = []
+
+    class FakeClient:
+        def __init__(self, _routing):
+            pass
+
+        def complete_messages_on(self, _provider, _task, messages, **_kwargs):
+            messages_seen.extend(messages)
+            return LLMResult("雪夜正文", "qwen-test", 17, 9, 0)
+
+    monkeypatch.setattr("app.services.workflow_engine.RoutedLLMClient", FakeClient)
+    novel_id = _novel(client)
+    graph = default_workflow_graph("generation", "default", "qwen-test")
+    workflow = client.post("/api/workflows", json=_payload(novel_id, "完整输入", graph=graph)).json()
+    assert client.post(f"/api/workflows/{workflow['id']}/publish").status_code == 201
+    response = client.post("/api/workflow-runs", json={
+        "workflow_id": workflow["id"], "novel_id": novel_id,
+        "input": {"chapter_number": 3, "request": "写雪夜追逐，结尾留下铜铃"},
+    })
+    assert response.status_code == 201, response.text
+    assert response.json()["status"] == "completed", response.text
+    assert "写雪夜追逐，结尾留下铜铃" in messages_seen[-1]["content"]
+    assert (response.json()["token_input"], response.json()["token_output"]) == (17, 9)
+
+
+def test_default_review_graph_receives_full_target_chapter_and_json_contract(client: TestClient, monkeypatch) -> None:
+    messages_seen = []
+
+    class FakeClient:
+        def __init__(self, _routing):
+            pass
+
+        def complete_messages_on(self, _provider, _task, messages, **_kwargs):
+            messages_seen.extend(messages)
+            return LLMResult('{"issues": []}', "qwen-test", 23, 4, 0)
+
+    monkeypatch.setattr("app.services.workflow_engine.RoutedLLMClient", FakeClient)
+    novel_id = _novel(client)
+    target = "第一句必须被检查。" + "长正文。" * 1100 + "最后一句也必须被检查。"
+    chapter = create_chapter(client, novel_id, chapter_number=3, content=target)
+    graph = default_workflow_graph("review", "default", "qwen-test")
+    workflow = client.post("/api/workflows", json=_payload(novel_id, "正文自检", purpose="review", default=True, graph=graph)).json()
+    assert client.post(f"/api/workflows/{workflow['id']}/publish").status_code == 201
+    response = client.post(f"/api/novels/{novel_id}/chapters/{chapter['id']}/auto-ai-review")
+    assert response.status_code == 201, response.text
+    assert target in messages_seen[-1]["content"]
+    assert "JSON" in messages_seen[0]["content"]
+    assert '"quote"' in messages_seen[0]["content"]
+
+
+def test_review_rejects_unstructured_output_instead_of_reporting_pass(client: TestClient) -> None:
+    novel_id = _novel(client)
+    chapter = create_chapter(client, novel_id, content="这句话必须被检查。")
+    graph = default_workflow_graph("review", "default", "qwen-test")
+    next(node for node in graph["nodes"] if node["type"] == "model")["config"]["mock_output"] = '{"explanation": "模型未遵循格式"}'
+    workflow = client.post("/api/workflows", json=_payload(novel_id, "格式校验", purpose="review", default=True, graph=graph)).json()
+    assert client.post(f"/api/workflows/{workflow['id']}/publish").status_code == 201
+    response = client.post(f"/api/novels/{novel_id}/chapters/{chapter['id']}/auto-ai-review")
+    assert response.status_code == 422, response.text
+    assert client.get(f"/api/novels/{novel_id}/chapters/{chapter['id']}/reviews").json() == []

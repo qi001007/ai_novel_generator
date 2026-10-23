@@ -19,6 +19,7 @@ from app.models import (
     Character,
     ContextWorkflow,
     Foreshadow,
+    KnowledgeEntry,
     Novel,
     PlanningBlueprint,
     PlotFeedback,
@@ -132,7 +133,7 @@ def _grams(text: str) -> set[str]:
     return words | bigrams
 
 
-def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
+def collect_items(session: Session, novel_id: int, *, full_chapters: bool = False) -> list[ContextItem]:
     """Enumerate every context block the agent could cite for one novel."""
     items: list[ContextItem] = []
 
@@ -360,6 +361,37 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
             )
         )
 
+    knowledge_kind = {
+        "character": "character",
+        "foreshadow": "foreshadow",
+        "world": "setting",
+        "location": "setting",
+        "organisation": "setting",
+        "research": "setting",
+    }
+    for entry in session.exec(
+        select(KnowledgeEntry)
+        .where(
+            KnowledgeEntry.novel_id == novel_id,
+            KnowledgeEntry.status == "approved",
+        )
+        .order_by(KnowledgeEntry.kind, KnowledgeEntry.name)
+    ).all():
+        mapped = knowledge_kind.get(entry.kind, "setting")
+        label = (
+            f"人物 · {entry.name}" if mapped == "character"
+            else f"伏笔 · {entry.name}" if mapped == "foreshadow"
+            else f"设定库 · {entry.name}"
+        )
+        items.append(
+            ContextItem(
+                kind=mapped,
+                label=label,
+                ref=f"knowledge:{entry.id}",
+                text=_clip(entry.content),
+            )
+        )
+
     for summary in session.exec(
         select(ChapterSummary)
         .where(ChapterSummary.novel_id == novel_id)
@@ -374,6 +406,15 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
             )
         )
 
+    toc_titles = {
+        entry.chapter_number: entry.title
+        for entry in session.exec(
+            select(TocEntry).where(
+                TocEntry.novel_id == novel_id,
+                TocEntry.is_active == True,  # noqa: E712
+            )
+        ).all()
+    }
     for chapter in session.exec(
         select(Chapter)
         .where(Chapter.novel_id == novel_id)
@@ -381,12 +422,13 @@ def collect_items(session: Session, novel_id: int) -> list[ContextItem]:
     ).all():
         if not chapter.content.strip():
             continue
+        title = toc_titles.get(chapter.chapter_number) or chapter.title or "未命名"
         items.append(
             ContextItem(
                 kind="chapter",
-                label=f"正文 · 第 {chapter.chapter_number} 章 {chapter.title or '未命名'}",
+                label=f"正文 · 第 {chapter.chapter_number} 章 {title}",
                 ref=f"chapter:{chapter.id}",
-                text=_clip(chapter.content),
+                text=chapter.content if full_chapters else _clip(chapter.content),
             )
         )
 
@@ -817,6 +859,7 @@ def _workflow_items(
     cast = {name.strip() for name in (brief.characters if brief else []) if name.strip()}
     missing = sorted(cast - {item.label.removeprefix("人物 · ") for item in pool if item.kind == "character"})
     selected: list[ContextItem] = []
+    arcs: list[tuple[int, int, ContextItem]] = []
     for item in pool:
         number = _label_chapter_number(item.label)
         source_kind = {
@@ -833,8 +876,26 @@ def _workflow_items(
                 continue
         elif item.kind == "arc":
             match = re.search(r"（(\d+)-(\d+)）", item.label)
-            if match and (int(match.group(2)) < chapter_number - module.get("before", 0) or int(match.group(1)) > chapter_number + module.get("after", 0)):
+            if match is None:
                 continue
+            start, end = int(match.group(1)), int(match.group(2))
+            if end < chapter_number - module.get("before", 0) or start > chapter_number + module.get("after", 0):
+                continue
+            distance = (
+                0
+                if start <= chapter_number <= end
+                else chapter_number - end
+                if end < chapter_number
+                else start - chapter_number
+            )
+            arcs.append(
+                (
+                    distance,
+                    start,
+                    replace(item, label=f"{item.label}（未来）") if start > chapter_number else item,
+                )
+            )
+            continue
         elif item.kind == "brief":
             # D 简报语义是「当前章 + 前 N 章」；未来简报不提供连续性，也不应被旧
             # policy 中遗留的 after 值带入提示词。
@@ -849,6 +910,11 @@ def _workflow_items(
             if tail:
                 item = replace(item, text=item.text[-tail:], label=f"正文尾部 · 第 {number} 章")
         selected.append(item)
+    arc_module = modules.get("arc")
+    if arc_module is not None and arc_module.get("arc_window"):
+        arcs.sort(key=lambda row: (row[0], row[1]))
+        arcs = arcs[: int(arc_module["arc_window"])]
+    selected.extend(item for _distance, _start, item in arcs)
     return selected, missing if "characters" in modules and modules["characters"].get("selection") == "brief_mentions" else []
 
 
@@ -899,6 +965,10 @@ def build_writing_context(
             return TIER_CORE
         if item.ref in previous_arcs or item.ref.startswith("chapter_previous:"):
             return TIER_CONTINUITY
+        if item.kind == "arc":
+            match = re.search(r"（(\d+)-(\d+)）", item.label)
+            if match and int(match.group(1)) > chapter_number:
+                return TIER_NEARBY
         if item.kind == "toc" and number is not None and abs(number - chapter_number) <= TOC_NEIGHBOURHOOD:
             return TIER_NEARBY
         if item.kind == "summary" and number is not None and 0 < chapter_number - number <= RECENT_SUMMARY_CHAPTERS:

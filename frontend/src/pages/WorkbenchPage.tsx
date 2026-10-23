@@ -24,6 +24,7 @@ import {
   CHAT_MIN,
   CLOSE_AT,
   EDITOR_MIN,
+  EDITOR_USABLE,
   SIDEBAR_DEFAULT,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
@@ -31,6 +32,7 @@ import {
   chatRoomAt,
   dragValueAt,
   editorWidthAt,
+  fitHiddenAt,
   RAIL_WIDTH,
   clampPaneAt,
 } from "../paneLayout";
@@ -164,7 +166,7 @@ export default function WorkbenchPage() {
   // 批注 14: any of the three columns can be put away, and the choice survives a
   // reload - the layout you settle on is yours, not a default to re-fight.
   const [hidden, setHidden] = useState<Hidden>(readHidden);
-  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+    const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const projectMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedNovel = state.novels.find((item) => item.id === state.selectedNovelId);
 
@@ -361,6 +363,10 @@ export default function WorkbenchPage() {
   }, [panes]);
 
   useEffect(() => {
+    if (skipHiddenPersist.current) {
+      skipHiddenPersist.current = false;
+      return;
+    }
     localStorage.setItem(HIDDEN_STORAGE_KEY, JSON.stringify(hidden));
   }, [hidden]);
 
@@ -406,6 +412,14 @@ export default function WorkbenchPage() {
      frame cannot undo each other. */
   const hiddenRef = useRef(hidden);
   hiddenRef.current = hidden;
+  /* The viewport fit runs from a listener registered once, so it reads the widths
+     through the same kind of ref instead of a closure that goes stale after a drag. */
+  const panesRef = useRef(panes);
+  panesRef.current = panes;
+  /* A pane the viewport put away is not a choice the reader made, so it is neither
+     written back as one nor kept away when the room returns. */
+  const autoHidden = useRef<HiddenKey[]>([]);
+  const skipHiddenPersist = useRef(false);
 
   function setPaneHidden(key: HiddenKey, value: boolean) {
     setHidden((prev) => {
@@ -461,27 +475,63 @@ export default function WorkbenchPage() {
   const sidebarWidth = clampPane("sidebar", panes.sidebar);
   const chatWidth = clampPane("chat", panes.chat, sidebarWidth);
 
-  /* A narrower window does not re-render this component on its own, so the chat
-     pane kept the pixel width it had on a wider screen and the prose column - the
-     only 1fr track - collapsed to whatever was left. That is how the toolbar got to
-     24px with every action reporting hit:false (第十五批批注 2.1). Re-clamp on
-     resize with the same rule a drag applies, and only if the prose column still
-     cannot reach its floor does it go away: a column that does not fit is a column
-     that is not on screen, never a clipped one. Everything is recomputed from the
-     stored widths here rather than read off the last render, whose pixel values
-     belonged to the old window and closed the column for no reason. */
+  /* U-06: a narrower window does not re-render on its own, so the chat pane kept the
+     pixel width it had on a wider screen and the prose column - the only 1fr track -
+     collapsed to 160px at 821 and less below that. Re-clamp on resize (and once on
+     mount, which is the zoomed-in case) and, when the prose column cannot reach its
+     readable floor, put the chat away first and the tree second. This runs only for
+     viewport changes: a manual drag keeps its own direction, and a wider window never
+     reopens a column the reader closed. */
   useEffect(() => {
-    function onResize() {
-      const sidebar = clampPane("sidebar", panes.sidebar);
-      const chat = clampPane("chat", panes.chat, sidebar);
-      if (sidebar !== panes.sidebar || chat !== panes.chat) setPanes({ sidebar, chat });
-      if (hidden.editor || hidden.chat) return;
-      const used = 44 + (hidden.sidebar ? 0 : sidebar + 1) + chat + 1;
-      if (window.innerWidth - used < EDITOR_MIN) setHidden({ ...hidden, editor: true });
+    function fitViewport() {
+      const viewport = window.innerWidth;
+      const stored = panesRef.current;
+      const sidebar = clampPaneAt("sidebar", stored.sidebar, { viewport });
+      const chat = clampPaneAt("chat", stored.chat, { sidebar, viewport });
+      if (sidebar !== stored.sidebar || chat !== stored.chat) {
+        panesRef.current = { sidebar, chat };
+        setPanes({ sidebar, chat });
+      }
+      const current = hiddenRef.current;
+      let base = { ...current };
+      for (const key of autoHidden.current.slice()) {
+        if (!base[key]) {
+          autoHidden.current = autoHidden.current.filter((item) => item !== key);
+          continue;
+        }
+        const candidate = { ...base, [key]: false };
+        const width = editorWidthAt({
+          viewport,
+          sidebar,
+          chat,
+          sidebarHidden: candidate.sidebar,
+          chatHidden: candidate.chat,
+        });
+        if (width >= EDITOR_USABLE) {
+          base = candidate;
+          autoHidden.current = autoHidden.current.filter((item) => item !== key);
+        }
+      }
+      const next = fitHiddenAt({ viewport, sidebar, chat, hidden: base });
+      for (const key of ["sidebar", "chat", "editor"] as HiddenKey[]) {
+        if (next[key] && !base[key] && !autoHidden.current.includes(key)) {
+          autoHidden.current.push(key);
+        }
+      }
+      if (
+        next.sidebar !== current.sidebar ||
+        next.chat !== current.chat ||
+        next.editor !== current.editor
+      ) {
+        skipHiddenPersist.current = true;
+        hiddenRef.current = next;
+        setHidden(next);
+      }
     }
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [panes, hidden]);
+    fitViewport();
+    window.addEventListener("resize", fitViewport);
+    return () => window.removeEventListener("resize", fitViewport);
+  }, []);
 
   // Tracks are built to match what is actually rendered: hidden panels become
   // display:none, and a track left over with no item in it is a dead gap.
@@ -854,6 +904,9 @@ export default function WorkbenchPage() {
               // 批注 36.4 补充：从人物页切回对话时，必须离开 characters 视图让 ChatPane 可见
               if (charactersOpen) setRightView("editor");
             }}
+            onOpenConversationDetail={(conversationId) => {
+              navigate(`/novels/${state.selectedNovelId}/conversations/${conversationId}`);
+            }}
             onRenumber={openRenumber}
             renumberNeeded={renumberNeeded}
             onRenameChapter={(chapterNumber) => {
@@ -1057,7 +1110,9 @@ export default function WorkbenchPage() {
             {rightView === "worldview" && (
               <WorldviewPanel novelId={state.selectedNovelId} path={metas.find((meta) => meta.kind === "worldview")?.path ?? null} />
             )}
-            {rightView === "foreshadow" && <ForeshadowWall />}
+            {rightView === "foreshadow" && (
+              <ForeshadowWall novelId={state.selectedNovelId} path={metas.find((meta) => meta.kind === "foreshadow")?.path ?? null} />
+            )}
             {rightView === "files" && <FileEditorPane />}
             {rightView === "editor" && <EditorPane />}
             {rightView === "characters" && <CharacterLibrary novelId={state.selectedNovelId} />}

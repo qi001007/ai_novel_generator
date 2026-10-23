@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_MIN,
   EDITOR_MIN,
+  EDITOR_USABLE,
   SIDEBAR_MAX,
   SIDEBAR_MIN,
   chatMaxAt,
@@ -16,6 +17,7 @@ import {
   chatRoomAt,
   dragValueAt,
   editorWidthAt,
+  fitHiddenAt,
 } from "./paneLayout";
 
 describe("paneLayout", () => {
@@ -75,6 +77,62 @@ describe("paneLayout", () => {
     expect(chatRoomAt({ ...base, sidebarHidden: true, chatHidden: false })).toBe(1235);
     // 聊天列本来就藏着：它的缝也不该算进去
     expect(chatRoomAt({ ...base, sidebarHidden: false, chatHidden: true })).toBe(935);
+  });
+
+  /* U-06：821px 时聊天列占 315，正文只剩 160；620px 时只剩更窄的一条。自动布局
+     只在窗口尺寸变化时收起栏，先聊天、后树，正文列留在台上。 */
+  it("窄窗先让聊天列出去，正文列保住 320px", () => {
+    expect(EDITOR_USABLE).toBe(320);
+    const hidden = { sidebar: false, chat: false, editor: false };
+    expect(fitHiddenAt({ viewport: 821, sidebar: 300, chat: 315, hidden })).toEqual({
+      sidebar: false,
+      chat: true,
+      editor: false,
+    });
+    expect(editorWidthAt({
+      viewport: 821,
+      sidebar: 300,
+      chat: 315,
+      sidebarHidden: false,
+      chatHidden: true,
+    })).toBe(476);
+  });
+
+  it("620px 时聊天列还不够，树列也收起来；正文列不藏", () => {
+    const hidden = { sidebar: false, chat: false, editor: false };
+    expect(fitHiddenAt({ viewport: 620, sidebar: 300, chat: 114, hidden })).toEqual({
+      sidebar: true,
+      chat: true,
+      editor: false,
+    });
+    expect(editorWidthAt({
+      viewport: 620,
+      sidebar: 300,
+      chat: 114,
+      sidebarHidden: true,
+      chatHidden: true,
+    })).toBe(576);
+  });
+
+  it("宽窗不擅自打开已经收起的栏，已经让位的编辑栏也不再折叠别的栏", () => {
+    const wide = { viewport: 1440, sidebar: 300, chat: 471 };
+    expect(fitHiddenAt({ ...wide, hidden: { sidebar: false, chat: false, editor: false } }))
+      .toEqual({ sidebar: false, chat: false, editor: false });
+    expect(fitHiddenAt({ ...wide, hidden: { sidebar: true, chat: true, editor: false } }))
+      .toEqual({ sidebar: true, chat: true, editor: false });
+    expect(fitHiddenAt({
+      viewport: 500,
+      sidebar: 300,
+      chat: 114,
+      hidden: { sidebar: true, chat: true, editor: true },
+    })).toEqual({ sidebar: true, chat: true, editor: true });
+    // 窗口窄到放不下 320 时也至少留一栏字：编辑栏不因为「不够宽」被自动藏掉
+    expect(fitHiddenAt({
+      viewport: 300,
+      sidebar: 300,
+      chat: 0,
+      hidden: { sidebar: false, chat: false, editor: false },
+    }).editor).toBe(false);
   });
 
 });

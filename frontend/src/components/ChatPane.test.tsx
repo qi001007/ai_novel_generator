@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,12 @@ function stored(content: string) {
   // The done event overwrites the streamed text with the persisted row, so a test
   // that asserts on the answer has to put the same words in both places.
   return { ...assistantMessage, content };
+}
+
+function generatedCandidate(content: string) {
+  return { id: 12, novel_id: 1, kind: "draft", status: "completed", error: "",
+    payload: { chapter_id: 7, path: "chapters/0001/draft.md", base_revision: "r1", request: "" },
+    result: { content, workflow_run_id: 15, token_input: 20, token_output: 10 } };
 }
 
 function json(body: unknown) {
@@ -62,6 +68,7 @@ describe("ChatPane", () => {
     useWorkbench.setState({
       selectedNovelId: 1,
       selectedChapterId: null,
+      generationCandidates: [],
       llmStatus: {
         provider: "openai_compatible",
         configured: true,
@@ -73,6 +80,28 @@ describe("ChatPane", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("F-02 lets the author dismiss an unresolved configuration notice", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => json([])));
+    useWorkbench.setState({ llmStatus: { provider: "openai_compatible", configured: false, models: {}, available_models: [] } });
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    expect(await screen.findByRole("status")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "关闭配置提示" }));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("F-02 removes a resolved notice and allows a later configuration problem to reappear", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => json([])));
+    const missing = { provider: "openai_compatible", configured: false, models: {}, available_models: [] };
+    useWorkbench.setState({ llmStatus: missing });
+    render(<MemoryRouter><ChatPane /></MemoryRouter>);
+    expect(await screen.findByRole("status")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "关闭配置提示" }));
+    await act(async () => { useWorkbench.setState({ llmStatus: { ...missing, configured: true } }); });
+    expect(screen.queryByRole("status")).toBeNull();
+    await act(async () => { useWorkbench.setState({ llmStatus: missing }); });
+    expect(screen.getByRole("status")).toBeTruthy();
   });
 
   /* 批注 35.29b（D-56）：主人裁定「确认」不在「要不要把正文放进渲染页」这一头，而在定稿入库
@@ -88,7 +117,7 @@ describe("ChatPane", () => {
     revision,
   });
 
-  it("批注 35.29b：生成一章不用先点确认，正文随 delta 一个字一个字长进正文页", async () => {
+  it("B-02 / D-15：生成无需前置确认，结果保留为候选而不覆盖工作稿", async () => {
     const user = userEvent.setup();
     const streamed = "意识恢复的瞬间，疼痛也跟着回来了。";
     // 与真机一致：选中作品时文件层 store 就 attach 上了（ChatPaneProposal.test.tsx 同一做法），
@@ -104,14 +133,7 @@ describe("ChatPane", () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = input.toString();
       urls.push(url);
-      if (url.includes("/chapters/from-brief/8/stream")) {
-        return Promise.resolve(sse([
-          ["delta", { text: "意识恢复的" }],
-          ["delta", { text: "瞬间，疼痛也跟着回来了。" }],
-          ["done", { chapter: { id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: streamed, word_count: streamed.length, status: "draft", final_decision: "", final_comment: "" }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: streamed.length, issues: [] } }],
-          ["end", {}],
-        ]));
-      }
+      if (url.includes("/chapters/7/generation-candidates")) return json(generatedCandidate(streamed));
       if (url.includes("/files/chapters/0001/draft.md")) return json(fileDoc(draftDocument(1, streamed), "r2"));
       return Promise.resolve(json([]));
     }));
@@ -122,23 +144,13 @@ describe("ChatPane", () => {
     expect(screen.queryByText("确认并生成")).toBeNull();
     expect(document.querySelector(".chat-generate-confirm")).toBeNull();
 
-    // 判据②：命令本身就是那一次发起，全程零点击；正文页缓冲随 delta 单调变长
-    const growth: number[] = [];
-    const stop = useFiles.subscribe((state) => {
-      const next = state.entries["chapters/0001/draft.md"]?.draft.length ?? 0;
-      if (growth[growth.length - 1] !== next) growth.push(next);
-    });
+    // B-02 落实现行 D-15：候选与工作稿分开；开始生成仍不弹确认。
     await user.type(screen.getByLabelText("对话输入"), "/generate 1");
     await user.keyboard("{Enter}");
-    await waitFor(() => expect(urls.some((url) => url.includes("/chapters/from-brief/8/stream"))).toBe(true));
-    await waitFor(() =>
-      expect(useFiles.getState().entries["chapters/0001/draft.md"]?.draft).toContain(streamed),
-    );
-    stop();
+    await waitFor(() => expect(useWorkbench.getState().generationCandidates[0]?.result.content).toBe(streamed));
     expect(screen.getAllByText("/generate").length).toBeGreaterThan(0);
-    const rising = growth.filter((length) => length > 0);
-    expect(rising.length).toBeGreaterThanOrEqual(2);
-    expect(rising.every((length, index) => index === 0 || length > rising[index - 1])).toBe(true);
+    expect(useWorkbench.getState().chapters[0].content).toBe("");
+    expect(urls.some((url) => url.includes("/chapters/from-brief/"))).toBe(false);
   });
 
   /* 另一路：模型在回答里自己写 `​```markdown @chapters/0001/draft.md`（D-54 立的落点）。
@@ -305,17 +317,7 @@ describe("ChatPane", () => {
           ]),
         );
       }
-      if (url.includes("/chapters/from-brief/8/stream")) {
-        return Promise.resolve(sse([
-          ["delta", { text: "意识恢复的瞬间。" }],
-          ["done", {
-            chapter: { ...chapterOneRow, brief_id: 8, content: "意识恢复的瞬间。", word_count: 8 },
-            generation_run: { id: 12 },
-            machine_check: { passed: true, word_count: 8, issues: [] },
-          }],
-          ["end", {}],
-        ]));
-      }
+      if (url.includes("/chapters/7/generation-candidates")) return json(generatedCandidate("意识恢复的瞬间。"));
       if (url.includes("/files/chapters/0001/brief.md")) return json(briefDocOne);
       if (url.endsWith("/planning/briefs")) return json([briefRowOne]);
       if (url.endsWith("/api/novels/1/chapters")) return json([{ ...chapterOneRow, brief_id: 8 }]);
@@ -341,10 +343,10 @@ describe("ChatPane", () => {
 
     // ③简报真的进了 store，正文这一步才自己接上；结算仍走同一处
     await waitFor(() =>
-      expect(urls.some((item) => item.includes("/chapters/from-brief/8/stream"))).toBe(true),
+      expect(urls.some((item) => item.includes("/chapters/7/generation-candidates"))).toBe(true),
     );
     await waitFor(() =>
-      expect(screen.getByText(/第 1 章《第一章》· 8 字 · 错别字检查 通过/)).toBeTruthy(),
+      expect(screen.getByText(/第 1 章候选已生成/)).toBeTruthy(),
     );
   });
 
@@ -731,9 +733,9 @@ describe("ChatPane", () => {
     });
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json([]))));
     render(<MemoryRouter><ChatPane /></MemoryRouter>);
-    const notice = await screen.findByText(/LLM 未配置/);
+    const notice = await screen.findByRole("status");
     expect(notice.textContent).toContain("设置");
-    expect(notice.textContent).toContain("不用重启后端");
+    expect(notice.textContent).toContain("检查连接与任务模型");
     // the wrong instruction must not come back: editing the file and restarting.
     // (Checked as a phrase - the correct sentence also contains 重启, in 「不用重启后端」.)
     expect(notice.textContent).not.toMatch(/\.env/);
@@ -968,12 +970,7 @@ describe("ChatPane", () => {
     vi.stubGlobal("fetch", vi.fn((input: RequestInfo | URL) => {
       const url = input.toString();
       urls.push(url);
-      if (url.includes("/chapters/from-brief/10/stream")) {
-        return Promise.resolve(sse([
-          ["done", { chapter: { ...chapterTwo, content: "正文", word_count: 2 }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: 2, issues: [] } }],
-          ["end", {}],
-        ]));
-      }
+      if (url.includes("/chapters/9/generation-candidates")) return json({ ...generatedCandidate("正文"), payload: { chapter_id: 9 } });
       return Promise.resolve(json([]));
     }));
 
@@ -981,8 +978,8 @@ describe("ChatPane", () => {
     await user.type(screen.getByLabelText("对话输入"), "/generate 2");
     await user.keyboard("{Enter}");
 
-    await waitFor(() => expect(urls.some((url) => url.includes("/chapters/from-brief/10/stream"))).toBe(true));
-    expect(urls.some((url) => url.includes("/chapters/from-brief/8/stream"))).toBe(false);
+    await waitFor(() => expect(urls.some((url) => url.includes("/chapters/9/generation-candidates"))).toBe(true));
+    expect(urls.some((url) => url.includes("/chapters/7/generation-candidates"))).toBe(false);
     expect(useWorkbench.getState().selectedChapterId).toBe(chapterTwo.id);
   });
 
@@ -1087,13 +1084,7 @@ describe("ChatPane", () => {
         posts.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
         return json({ id: 41 });
       }
-      if (url.includes("/chapters/from-brief/8/stream")) {
-        return Promise.resolve(sse([
-          ["delta", { text: streamed }],
-          ["done", { chapter: { id: 7, novel_id: 1, brief_id: 8, chapter_number: 1, title: "第一章", content: streamed, word_count: streamed.length, status: "draft", final_decision: "", final_comment: "" }, generation_run: { id: 12 }, machine_check: { passed: true, word_count: streamed.length, issues: [] } }],
-          ["end", {}],
-        ]));
-      }
+      if (url.includes("/chapters/7/generation-candidates")) return json(generatedCandidate(streamed));
       if (url.includes("/files/chapters/0001/draft.md")) return json(fileDoc(draftDocument(1, streamed), "r2"));
       return json([]);
     }));
@@ -1110,7 +1101,7 @@ describe("ChatPane", () => {
       message_id: null,
       command: "/generate",
       status: "done",
-      run_id: 12,
+      run_id: null,
       chapter_id: 7,
     });
   });
@@ -1148,17 +1139,7 @@ describe("ChatPane", () => {
           ["end", {}],
         ]));
       }
-      if (url.includes("/chapters/from-brief/8/stream")) {
-        return Promise.resolve(sse([
-          ["delta", { text: "意识恢复的瞬间。" }],
-          ["done", {
-            chapter: { ...chapterOneRow, brief_id: 8, content: "意识恢复的瞬间。", word_count: 8 },
-            generation_run: { id: 12 },
-            machine_check: { passed: true, word_count: 8, issues: [] },
-          }],
-          ["end", {}],
-        ]));
-      }
+      if (url.includes("/chapters/7/generation-candidates")) return json(generatedCandidate("意识恢复的瞬间。"));
       if (url.includes("/files/chapters/0001/brief.md")) return json(briefDocOne);
       if (url.endsWith("/planning/briefs")) return json([briefRowOne]);
       if (url.endsWith("/api/novels/1/chapters")) return json([{ ...chapterOneRow, brief_id: 8 }]);
@@ -1177,7 +1158,7 @@ describe("ChatPane", () => {
     // 第二次结算：正文真的写完了，改写的是同一行
     await waitFor(() => expect(posts).toHaveLength(2), { timeout: 4000 });
     expect(posts[1].message_id).toBe(41);
-    expect(posts[1].detail).toBe("第 1 章《第一章》· 8 字 · 错别字检查 通过");
+    expect(posts[1].detail).toBe("第 1 章候选已生成，工作稿未改动；请在正文工具栏“查看候选”中审核并接受");
     // 屏上仍是一张卡：两次结算改写的是同一行
     expect(document.querySelectorAll(".chat-card.command")).toHaveLength(1);
   });

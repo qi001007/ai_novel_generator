@@ -32,6 +32,7 @@ class FileWriteRequest(SQLModel):
     text: str
     actor: str = "human"
     base_revision: str | None = None
+    generation_job_id: int | None = None
 
 
 class FileWriteResult(SQLModel):
@@ -54,6 +55,16 @@ def list_novel_files(
         FileMetaOut.model_validate(meta, from_attributes=True)
         for meta in documents.list_files(session, novel_id)
     ]
+
+
+@router.get("/{novel_id}/settings-search")
+def search_novel_settings(
+    novel_id: int,
+    q: str = "",
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    get_novel_or_404(novel_id, session)
+    return documents.search_settings(session, novel_id, q)
 
 
 @router.get("/{novel_id}/files/{path:path}", response_model=FileDocOut)
@@ -86,6 +97,7 @@ def write_novel_file(
             payload.text,
             actor=payload.actor,
             base_revision=payload.base_revision,
+            generation_job_id=payload.generation_job_id,
         )
     except DocumentError as cause:
         raise _to_http(cause) from cause

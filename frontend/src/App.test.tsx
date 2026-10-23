@@ -2,10 +2,13 @@ import { StrictMode } from "react";
 import { fireEvent } from "@testing-library/react";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import { useFiles } from "./store/files";
+import { useWorkbench } from "./store/workbench";
+
+afterEach(() => vi.restoreAllMocks());
 
 const novel = { id: 1, title: "测试作品" };
 const chapter = {
@@ -45,7 +48,9 @@ describe("App", () => {
       if (url.endsWith("/api/health")) return response({ status: "ok" });
       if (url.endsWith("/api/novels")) return response([novel]);
       if (url.includes("/planning/briefs")) return response([]);
+      if (url.includes("/generation-candidates")) return response([]);
       if (url.includes("/generation-runs")) return response([generationRun]);
+      if (url.includes("/workflow-runs")) return response([]);
       if (url.includes("/reviews")) return response([review]);
       if (url.includes("/chapters")) return response([chapter]);
       return Promise.reject(new Error(`unexpected url: ${url}`));
@@ -104,7 +109,9 @@ describe("App", () => {
         return response({ passed: true, word_count: 4, issues: [] });
       }
       if (url.includes("/planning/briefs")) return response([]);
+      if (url.includes("/generation-candidates")) return response([]);
       if (url.includes("/generation-runs")) return response([generationRun]);
+      if (url.includes("/workflow-runs")) return response([]);
       if (url.includes("/reviews")) return response([review]);
       if (url.includes("/chapters")) return response([chapter]);
       return Promise.reject(new Error(`unexpected url: ${url}`));
@@ -130,4 +137,19 @@ describe("App", () => {
     });
     expect(document.querySelector(".file-editor")).toBeNull();
   });
+});
+
+it("F-02 refreshes status on return and cleans up listeners under StrictMode", () => {
+  vi.spyOn(useWorkbench.getState(), "init").mockResolvedValue();
+  const refresh = vi.spyOn(useWorkbench.getState(), "refreshLlmStatus").mockResolvedValue();
+  const { unmount } = render(<StrictMode><MemoryRouter><App /></MemoryRouter></StrictMode>);
+  expect(screen.getByRole("heading", { name: "我的作品" })).toBeTruthy();
+  refresh.mockClear();
+  fireEvent.focus(window);
+  expect(refresh).toHaveBeenCalledTimes(1);
+  fireEvent(document, new Event("visibilitychange"));
+  expect(refresh).toHaveBeenCalledTimes(2);
+  unmount();
+  fireEvent.focus(window);
+  expect(refresh).toHaveBeenCalledTimes(2);
 });

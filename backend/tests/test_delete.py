@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
 from app.models import (
+    AgentRun,
     ArcPlan,
     Chapter,
     ChapterBrief,
@@ -17,14 +18,27 @@ from app.models import (
     ChatMessage,
     Character,
     CharacterAppearance,
+    ContextWorkflow,
+    Document,
+    Fact,
     Foreshadow,
+    GenerationJob,
     GenerationRun,
+    KnowledgeEntry,
+    NodeRun,
     Novel,
+    Operation,
+    OutlineNode,
     PlanningBlueprint,
     PlotFeedback,
     Review,
+    Revision,
     Setting,
     TocEntry,
+    ToolCall,
+    WorkflowBinding,
+    WorkflowRun,
+    WorkflowVersion,
 )
 
 # 每一张 novel scoped 的表都要被点到，否则这条测试只是「删了个大概」
@@ -43,6 +57,18 @@ DEPENDENT_MODELS = (
     GenerationRun,
     Review,
     ChatMessage,
+    ToolCall,
+    AgentRun,
+    WorkflowRun,
+    WorkflowBinding,
+    ContextWorkflow,
+    GenerationJob,
+    Operation,
+    Revision,
+    Fact,
+    KnowledgeEntry,
+    Document,
+    OutlineNode,
 )
 
 
@@ -93,6 +119,46 @@ def _seed(session: Session, title: str) -> None:
     )
     session.commit()
 
+    outline = OutlineNode(novel_id=nid, kind="volume", title="第一卷")
+    session.add(outline)
+    session.commit()
+    session.refresh(outline)
+    session.add_all([
+        Document(novel_id=nid, kind="mainline", path="planning/mainline.md", title="文章主链路"),
+        KnowledgeEntry(novel_id=nid, kind="character", name="沈砚舟"),
+        Fact(novel_id=nid, subject="沈砚舟", predicate="身份", value="主角"),
+        Revision(novel_id=nid, asset_type="document", asset_id=1, revision=1),
+        Operation(novel_id=nid, command="seed", idempotency_key=f"seed-{nid}"),
+        GenerationJob(novel_id=nid, kind="draft"),
+    ])
+    session.commit()
+    workflow = ContextWorkflow(
+        name=f"种子流程-{nid}", scope_key=f"novel:{nid}", novel_id=nid, purpose="generation"
+    )
+    session.add(workflow)
+    session.commit()
+    session.refresh(workflow)
+    session.add(WorkflowBinding(novel_id=nid, purpose="generation", workflow_id=workflow.id))
+    version = WorkflowVersion(
+        workflow_id=workflow.id, version=1, purpose="generation", graph={}, source_json="{}"
+    )
+    session.add(version)
+    session.commit()
+    session.refresh(version)
+    run = WorkflowRun(
+        novel_id=nid, workflow_id=workflow.id, workflow_version_id=version.id, input={}
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    session.add(NodeRun(workflow_run_id=run.id, node_id="start", node_type="start"))
+    agent = AgentRun(novel_id=nid, request="你好")
+    session.add(agent)
+    session.commit()
+    session.refresh(agent)
+    session.add(ToolCall(agent_run_id=agent.id, novel_id=nid, tool_name="list_files"))
+    session.commit()
+
 
 def _counts(session: Session, novel_id: int) -> dict[str, int]:
     out = {}
@@ -111,7 +177,23 @@ def test_delete_novel_takes_every_dependent_row_with_it(client: TestClient, db_e
         session.commit()
         session.refresh(alive)
         doomed_id, alive_id = doomed.id, alive.id
-        assert sum(_counts(session, doomed_id).values()) == 14, "种子没铺满 14 张表"
+        assert sum(_counts(session, doomed_id).values()) == 26, "种子没铺满 26 张表"
+        doomed_workflow = session.exec(
+            select(ContextWorkflow).where(ContextWorkflow.novel_id == doomed_id)
+        ).one()
+        version_ids = [
+            row.id for row in session.exec(
+                select(WorkflowVersion).where(WorkflowVersion.workflow_id == doomed_workflow.id)
+            ).all()
+        ]
+        run_rows = session.exec(
+            select(WorkflowRun).where(WorkflowRun.workflow_id == doomed_workflow.id)
+        ).all()
+        node_ids = [
+            row.id for run in run_rows for row in session.exec(
+                select(NodeRun).where(NodeRun.workflow_run_id == run.id)
+            ).all()
+        ]
         session.add(Chapter(novel_id=alive_id, chapter_number=1, content="别人的正文"))
         session.commit()
 
@@ -120,6 +202,8 @@ def test_delete_novel_takes_every_dependent_row_with_it(client: TestClient, db_e
     with Session(db_engine) as session:
         assert session.get(Novel, doomed_id) is None
         assert sum(_counts(session, doomed_id).values()) == 0, "有派生行没跟着删"
+        assert all(session.get(WorkflowVersion, version_id) is None for version_id in version_ids)
+        assert all(session.get(NodeRun, node_id) is None for node_id in node_ids)
         # 删过头的那一半：另一本书一行都不许少
         assert session.get(Novel, alive_id) is not None
         assert len(session.exec(select(Chapter).where(Chapter.novel_id == alive_id)).all()) == 1

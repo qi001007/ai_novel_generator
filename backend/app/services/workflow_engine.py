@@ -67,13 +67,31 @@ def _json_value(text: str) -> Any:
     return json.loads(raw)
 
 
+def _review_payload(value: Any) -> Any:
+    """Unwrap the node-input envelope before reading issues/updates."""
+    for _ in range(5):
+        if isinstance(value, str):
+            value = _json_value(value)
+            continue
+        if isinstance(value, dict) and "text" in value:
+            value = _json_value(str(value["text"]))
+            continue
+        if isinstance(value, dict) and len(value) == 1 and not (
+            {"issues", "setting_updates", "suggestions"} & set(value)
+        ):
+            value = next(iter(value.values()))
+            continue
+        break
+    return value
+
+
 def _review_issues(value: Any) -> list[dict[str, str]]:
     if isinstance(value, str):
         value = _json_value(value)
     if isinstance(value, dict) and "text" in value:
         value = _json_value(str(value["text"]))
     if isinstance(value, dict):
-        value = value.get("issues", value.get("suggestions", []))
+        value = value.get("issues", value.get("suggestions"))
     if not isinstance(value, list):
         raise RuntimeError("Review workflow output must be a JSON issue list")
     issues: list[dict[str, str]] = []
@@ -92,6 +110,37 @@ def _review_issues(value: Any) -> list[dict[str, str]]:
             raise RuntimeError(f"Review issue {index + 1} has no source quote")
         issues.append(normalized)
     return issues
+
+
+def _review_setting_updates(value: Any) -> list[dict[str, Any]]:
+    """Optional drafts the reviewer wants added to the setting library."""
+    if isinstance(value, str):
+        value = _json_value(value)
+    if isinstance(value, dict) and "text" in value:
+        value = _json_value(str(value["text"]))
+    if not isinstance(value, dict):
+        return []
+    raw = value.get("setting_updates")
+    if not isinstance(raw, list):
+        return []
+    allowed = {"character", "worldview", "foreshadow", "setting"}
+    updates: list[dict[str, Any]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        kind = str(item.get("kind") or "").strip().lower()
+        name = str(item.get("name") or "").strip()
+        content = str(item.get("content") or "").strip()
+        if kind not in allowed or not name or not content:
+            continue
+        updates.append({
+            "kind": kind,
+            "name": name,
+            "content": content,
+            "conflict": bool(item.get("conflict")),
+            "conflict_with": str(item.get("conflict_with") or "").strip(),
+        })
+    return updates
 
 
 def _node_input(node_id: str, graph: dict[str, Any], outputs: dict[str, Any]) -> dict[str, Any]:
@@ -149,16 +198,22 @@ def _execute_node(
         if run.novel_id is None:
             raise RuntimeError("Context nodes require a novel")
         policy = dict(config["policy"])
-        return build_context_preview(
+        context = build_context_preview(
             session,
             novel_id=run.novel_id,
             task_type="review" if run.input.get("workflow_purpose") == "review" else "generate",
-            token_budget=max(100, int(policy.get("budget", 60000)) // 4),
+            token_budget=max(100, int(config.get("token_budget") or int(policy.get("budget", 60000)) // 4)),
             outline_node_id=run.input.get("outline_node_id"),
             query=str(run.input.get("query", "")),
             policy=policy,
             chapter_number=int(run.input.get("chapter_number") or 1),
         )
+        return {
+            **context,
+            "input": run.input,
+            "token_input": int(context.get("estimated_tokens", 0)),
+            "token_output": 0,
+        }
     if node_type == "prompt":
         template = str(config.get("template", "{{input}}"))
         return {"text": template.replace("{{input}}", json.dumps(inputs, ensure_ascii=False))}
@@ -179,11 +234,24 @@ def _execute_node(
                 prompt_input = upstream.get("text")
         user_prompt = prompt_input if isinstance(prompt_input, str) else json.dumps(inputs, ensure_ascii=False)
         client = RoutedLLMClient(resolve_routing(session))
+        system = str(config.get("system", "你是小说写作工作流中的正文生成节点。"))
+        if config.get("output_schema") == "review_issues" or run.input.get("workflow_purpose") == "review":
+            system += (
+                '\n只检查本次目标章节，不改写正文。严格输出 JSON 对象：'
+                '{"issues": [{"category": "类别", "severity": "medium", "location": "位置", '
+                '"quote": "正文中唯一且逐字存在的片段", "suggestion": "可直接替换的正文", "reason": "原因"}], '
+                '"setting_updates": [{"kind": "character|worldview|foreshadow", "name": "名称", '
+                '"content": "应补进设定库的完整内容", "conflict": false, "conflict_with": "冲突对象"}]}。'
+                '正文出现新人物、新世界规则或新伏笔时必须给出 setting_updates；'
+                '与既有设定冲突时 conflict=true 并在 conflict_with 写明冲突点；没有则给空数组。'
+                'suggestion 必须是可直接替换正文的成句，禁止写“建议改为…例如…”这类说明。'
+                '不要输出 Markdown 或其它解释。'
+            )
         result = client.complete_messages_on(
             str(config["provider_id"]),
             str(config.get("task_type") or ("review" if run.input.get("workflow_purpose") == "review" else "draft")),
             [
-                {"role": "system", "content": str(config.get("system", "你是小说写作工作流中的正文生成节点。"))},
+                {"role": "system", "content": system},
                 {"role": "user", "content": user_prompt},
             ],
             model=str(config["model_id"]),
@@ -199,9 +267,11 @@ def _execute_node(
     if node_type == "output":
         resolved = _resolve(config.get("value", inputs), run_input=run.input, outputs=outputs)
         if config.get("format") == "review_issues":
-            if isinstance(resolved, dict) and len(resolved) == 1:
-                resolved = next(iter(resolved.values()))
-            return {"issues": _review_issues(resolved)}
+            payload = _review_payload(resolved)
+            return {
+                "issues": _review_issues(payload),
+                "setting_updates": _review_setting_updates(payload),
+            }
         return resolved
     raise RuntimeError(f"Unsupported workflow node type: {node_type}")
 
@@ -241,6 +311,12 @@ def execute_workflow(session: Session, run: WorkflowRun) -> WorkflowRun:
             if node["type"] == "model":
                 record.token_input = int(record.output.get("token_input", 0))
                 record.token_output = int(record.output.get("token_output", 0))
+            elif node["type"] == "context":
+                # Context tokens are an estimate of what this node selected. They
+                # are shown on the node but not added to the run total: the model's
+                # reported input already contains the same text.
+                record.token_input = int(record.output.get("token_input", 0))
+                record.token_output = 0
             session.add(record)
             session.commit()
             outputs[node_id] = record.output
@@ -249,8 +325,8 @@ def execute_workflow(session: Session, run: WorkflowRun) -> WorkflowRun:
         final_ids = output_nodes or [node["id"] for node in graph["nodes"] if not any(edge["source"] == node["id"] for edge in graph["edges"])]
         run.output = {node_id: outputs.get(node_id, {}) for node_id in final_ids}
         node_runs = session.exec(select(NodeRun).where(NodeRun.workflow_run_id == run.id)).all()
-        run.token_input = sum(item.token_input for item in node_runs)
-        run.token_output = sum(item.token_output for item in node_runs)
+        run.token_input = sum(item.token_input for item in node_runs if item.node_type == "model")
+        run.token_output = sum(item.token_output for item in node_runs if item.node_type == "model")
         run.status = "completed"
         run.ended_at = utc_now()
         run.paused_node_id = ""

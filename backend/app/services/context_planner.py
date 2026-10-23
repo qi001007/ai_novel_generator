@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from app.models import Document, Fact, KnowledgeEntry, Novel, OutlineNode
+from app.models import Chapter, Document, Fact, KnowledgeEntry, Novel, OutlineNode
 from app.models import ChapterBrief
 from app.services.context import _workflow_items, collect_items
 
@@ -66,7 +66,7 @@ def build_context_preview(
     # the policy comes from the immutable workflow version, never from a current
     # default row.
     if policy is not None and chapter_number is not None:
-        pool = collect_items(session, novel_id)
+        pool = collect_items(session, novel_id, full_chapters=True)
         brief = session.exec(
             select(ChapterBrief).where(
                 ChapterBrief.novel_id == novel_id,
@@ -79,6 +79,18 @@ def build_context_preview(
             chapter_number=chapter_number,
             brief=brief,
         )
+        # Reviewing requires the complete current draft, even when the author
+        # disables neighbouring drafts or limits their tails in the policy.
+        target_ref = None
+        if task_type == "review":
+            chapter = session.exec(select(Chapter).where(
+                Chapter.novel_id == novel_id, Chapter.chapter_number == chapter_number,
+            )).first()
+            if chapter is not None:
+                target_ref = f"chapter:{chapter.id}"
+                target = next((item for item in pool if item.ref == target_ref), None)
+                if target is not None:
+                    selected_pool = [target, *[item for item in selected_pool if item.ref != target_ref]]
         budget = max(100, int(policy.get("budget", token_budget)))
         selected: list[dict[str, Any]] = []
         excluded: list[dict[str, Any]] = []
@@ -92,6 +104,10 @@ def build_context_preview(
                 continue
             text = item.text
             reason = "命中当前 Workflow 的动态上下文策略"
+            if item.ref == target_ref:
+                reason = "本次自检目标章节，完整正文必选"
+                if estimated > remaining:
+                    raise HTTPException(status_code=422, detail="AI 自检正文超过上下文预算，请提高 Workflow 上下文预算后重试")
             if estimated > remaining:
                 text = text[: remaining * 4]
                 estimated = max(1, (len(text) + 3) // 4)
@@ -102,7 +118,7 @@ def build_context_preview(
                 "title": item.label,
                 "content": text,
                 "reason": reason,
-                "required": item.kind in {"novel", "blueprint", "brief"},
+                "required": item.ref == target_ref or item.kind in {"novel", "blueprint", "brief"},
                 "estimated_tokens": estimated,
             })
             used += estimated

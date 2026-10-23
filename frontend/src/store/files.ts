@@ -186,6 +186,8 @@ type FilesState = {
    * blank the buffer this write just refreshed.
    */
   appliedSeq: number;
+  /** The path the last accepted proposal actually landed on (new.md becomes <id>.md). */
+  lastAppliedPath: string | null;
   metasError: string | null;
   attach: (novelId: number) => Promise<void>;
   open: (path: string, opts?: { jump?: JumpSource | null; field?: string | null }) => Promise<void>;
@@ -246,6 +248,7 @@ export const useFiles = create<FilesState>((set, get) => ({
   focus: null,
   revealSeq: 0,
   appliedSeq: 0,
+  lastAppliedPath: null,
   metasError: null,
 
   async attach(novelId) {
@@ -473,13 +476,14 @@ export const useFiles = create<FilesState>((set, get) => ({
     delete next[path];
     set((state) => {
       if (landed === path) {
-        return { pending: next, appliedSeq: state.appliedSeq + 1 };
+        return { pending: next, appliedSeq: state.appliedSeq + 1, lastAppliedPath: landed };
       }
       const entries = { ...state.entries };
       delete entries[path];
       return {
         pending: next,
         appliedSeq: state.appliedSeq + 1,
+        lastAppliedPath: landed,
         entries,
         tabs: [...new Set(state.tabs.map((tab) => (tab === path ? landed : tab)))],
         active: state.active === path ? landed : state.active,

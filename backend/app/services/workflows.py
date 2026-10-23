@@ -1,5 +1,7 @@
 """Persistence rules and defaults for saved context workflows."""
 
+from copy import deepcopy
+
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
@@ -9,7 +11,7 @@ from app.models import ContextWorkflow, Novel, WorkflowBinding, utc_now
 _DEFAULT_CONTEXT_MODULES = [
     {"id": "blueprint", "kind": "blueprint", "enabled": True, "before": 0, "after": 0, "tail_chars": None, "limit": None, "selection": "all"},
     {"id": "toc", "kind": "toc", "enabled": True, "before": 10, "after": 10, "tail_chars": None, "limit": None, "selection": "all"},
-    {"id": "arc", "kind": "arc", "enabled": True, "before": 10, "after": 10, "tail_chars": None, "limit": None, "selection": "all", "arc_window": 10, "arc_update_threshold": "2/3"},
+    {"id": "arc", "kind": "arc", "enabled": True, "before": 10, "after": 10, "tail_chars": None, "limit": None, "selection": "all", "arc_window": 10, "arc_update_threshold": "2/3", "arc_update_every": 5},
     {"id": "briefs", "kind": "briefs", "enabled": True, "before": 2, "after": 0, "tail_chars": None, "limit": None, "selection": "all"},
     {"id": "drafts", "kind": "drafts", "enabled": True, "before": 2, "after": 0, "tail_chars": 4000, "limit": None, "selection": "all"},
     {"id": "characters", "kind": "characters", "enabled": True, "before": 0, "after": 0, "tail_chars": None, "limit": None, "selection": "brief_mentions"},
@@ -19,16 +21,49 @@ _DEFAULT_CONTEXT_MODULES = [
 ]
 
 
+def _review_context_modules() -> list[dict]:
+    """Review reads more of the setting library and less of the neighbourhood prose."""
+    modules = deepcopy(_DEFAULT_CONTEXT_MODULES)
+    for module in modules:
+        if module["id"] == "toc":
+            module["before"] = 3
+            module["after"] = 3
+        elif module["id"] == "arc":
+            module["before"] = 5
+            module["after"] = 5
+            module["arc_window"] = 20
+        elif module["id"] == "briefs":
+            module["before"] = 1
+        elif module["id"] == "drafts":
+            module["before"] = 1
+            module["tail_chars"] = None
+        elif module["id"] == "characters":
+            module["selection"] = "all"
+        elif module["id"] in {"worldview", "foreshadow"}:
+            module["selection"] = "all"
+    return modules
+
+
 def default_workflow_graph(purpose: str, provider_id: str, model_id: str) -> dict:
     """Return the editable starter graph for one stable workflow purpose."""
     review = purpose == "review"
-    policy = {"version": 1, "budget": 60000, "modules": _DEFAULT_CONTEXT_MODULES}
+    policy = {
+        "version": 1,
+        "budget": 60000,
+        "modules": _review_context_modules() if review else _DEFAULT_CONTEXT_MODULES,
+    }
     nodes = [
         {"id": "start", "type": "start", "position": {"x": 20, "y": 180}, "label": "开始", "config": {"inputs": ["chapter_number", "request"]}},
-        {"id": "context", "type": "context", "position": {"x": 220, "y": 180}, "label": "动态上下文", "config": {"task_type": "review" if review else "generate", "token_budget": 8000, "policy": policy}},
-        {"id": "prompt", "type": "prompt", "position": {"x": 440, "y": 180}, "label": "自检提示词" if review else "章节提示词", "config": {"template": "请检查正文并输出结构化问题：\n{{input}}" if review else "请根据上下文与用户要求续写正文：\n{{input}}"}},
+        {"id": "context", "type": "context", "position": {"x": 220, "y": 180}, "label": "动态上下文", "config": {"task_type": "review" if review else "generate", "token_budget": 16000 if review else 8000, "policy": policy}},
+        {"id": "prompt", "type": "prompt", "position": {"x": 440, "y": 180}, "label": "自检提示词" if review else "章节提示词", "config": {"template": (
+            "只审本章，不改写正文。逐条核对设定库、人物关系、既定事实与上下文是否冲突，"
+            "并检查本章目标是否完成；发现问题输出 issues，新人物/世界观/伏笔输出 setting_updates：\n{{input}}"
+            if review else
+            "先读全 A/B/C/D 上下文，保持人物、设定与既定事实一致；按要求写完整一章，"
+            "不要只写提纲或片段：\n{{input}}"
+        )}},
         {"id": "model", "type": "model", "position": {"x": 660, "y": 180}, "label": "调用模型", "config": {"provider_id": provider_id, "model_id": model_id, "temperature": 0.2 if review else 0.7, "max_output_tokens": 2048 if review else 4096, "output_schema": "review_issues" if review else "text"}},
-        {"id": "output", "type": "output", "position": {"x": 860, "y": 180}, "label": "输出", "config": {"format": "review_issues" if review else "text"}},
+        {"id": "output", "type": "output", "position": {"x": 860, "y": 180}, "label": "输出", "config": {"format": "review_issues" if review else "text", "min_chars": 0, "max_chars": 0}},
     ]
     return {"version": 1, "nodes": nodes, "edges": [
         {"source": "start", "target": "context", "source_handle": "", "target_handle": ""},
@@ -50,8 +85,8 @@ def seed_default_workflows(
     """Create the two current workflow drafts as part of the novel transaction."""
     rows: list[ContextWorkflow] = []
     for purpose, name, provider_id, model_id in (
-        ("generation", "默认正文生成", generation_provider_id, generation_model_id),
-        ("review", "默认 AI 自检", review_provider_id, review_model_id),
+        ("generation", "系统 · 正文生成", generation_provider_id, generation_model_id),
+        ("review", "系统 · AI 自检", review_provider_id, review_model_id),
     ):
         graph = default_workflow_graph(purpose, provider_id, model_id)
         row = ContextWorkflow(

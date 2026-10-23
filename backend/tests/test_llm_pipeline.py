@@ -61,7 +61,22 @@ def review_workflow_payload(novel_id: int, quote: str) -> dict:
             "quote": quote,
             "suggestion": "主角谨慎地推开石门。",
             "reason": "动作缺少铺垫",
-        }]
+        }],
+        "setting_updates": [
+            {
+                "kind": "character",
+                "name": "石门守门人",
+                "content": "守在石门前的老人，知道石门的代价。",
+                "conflict": False,
+            },
+            {
+                "kind": "worldview",
+                "name": "石门的代价",
+                "content": "每次开启石门会失去一段记忆。",
+                "conflict": True,
+                "conflict_with": "既有设定：石门没有代价",
+            },
+        ],
     }
     return {
         "novel_id": novel_id,
@@ -134,6 +149,48 @@ def test_auto_ai_review_runs_the_published_workflow_and_creates_actionable_issue
     assert suggestion["quote"] == content
     assert suggestion["replacement"] == "主角谨慎地推开石门。"
     assert review["evidence"]["workflow_run_id"]
+    created = review["evidence"]["created_knowledge"]
+    assert created[0]["name"] == "石门守门人" and created[0]["status"] == "draft"
+    conflicts = review["evidence"]["setting_conflicts"]
+    assert conflicts[0]["name"] == "石门的代价"
+    report = client.get(
+        f"/api/novels/{novel_id}/chapters/{chapter['id']}/reviews/{review['id']}/remediation-report"
+    )
+    assert report.status_code == 200
+    markdown = report.json()["markdown"]
+    assert "设定补充建议" in markdown
+    assert "石门守门人" in markdown and "待主人确认" in markdown
+    assert "石门的代价" in markdown and "需人工处理" in markdown
+    drafts = client.get(f"/api/novels/{novel_id}/knowledge?status=draft").json()
+    assert any(item["name"] == "石门守门人" and item["kind"] == "character" for item in drafts)
+    entry = next(item for item in drafts if item["name"] == "石门守门人")
+    approved = client.post("/api/commands/knowledge.approve/execute", json={
+        "payload": {"knowledge_id": entry["id"], "base_revision": entry["revision"]},
+        "idempotency_key": "approve-doorman",
+    })
+    assert approved.status_code == 200, approved.text
+    approved_entry = approved.json()["result"]["knowledge_entry"]
+    assert approved_entry["status"] == "merged"
+    merged_into = approved.json()["result"]["merged_into"]
+    assert merged_into.startswith("settings/characters/")
+    merged_file = client.get(f"/api/novels/{novel_id}/files/{merged_into}")
+    assert merged_file.status_code == 200
+    assert "石门守门人" in merged_file.json()["text"]
+    assert not any(
+        item["id"] == entry["id"]
+        for item in client.get(f"/api/novels/{novel_id}/knowledge?status=draft").json()
+    )
+    retired = client.post("/api/commands/asset.delete/execute", json={
+        "payload": {
+            "asset_type": "knowledge",
+            "asset_id": entry["id"],
+            "base_revision": approved_entry["revision"],
+        },
+        "idempotency_key": "retire-doorman",
+        "approved": True,
+    })
+    assert retired.status_code == 200, retired.text
+    assert retired.json()["result"]["asset"]["status"] == "retired"
 
 
 def test_auto_summary_extracts_final_chapter_facts(client: TestClient) -> None:
@@ -162,3 +219,38 @@ def test_auto_summary_extracts_final_chapter_facts(client: TestClient) -> None:
     assert response.json()["summary"] == "主角推开了石门。"
     assert response.json()["events"][0]["detail"] == "石门开启"
     app.dependency_overrides.clear()
+
+
+def test_review_replacement_keeps_prose_and_drops_the_model_instruction() -> None:
+    from app.services.reviews import clean_replacement
+
+    assert clean_replacement("视网膜边缘悄然烙下一枚暗红几何印记。") == "视网膜边缘悄然烙下一枚暗红几何印记。"
+    assert (
+        clean_replacement("建议改为更符合整体文学质感的表述，例如‘视网膜边缘悄然烙下一枚暗红几何印记。’")
+        == "视网膜边缘悄然烙下一枚暗红几何印记。"
+    )
+    assert clean_replacement("在该句后追加一句体现角色决断的描写，例如：‘林澈缓缓握拳。’") == "林澈缓缓握拳。"
+    assert (
+        clean_replacement("简报目标包含“被迫做出选择”，建议改为更具体的描写，例如‘林澈缓缓握拳，指节发响。’")
+        == "林澈缓缓握拳，指节发响。"
+    )
+    assert clean_replacement("建议扩展这一句，增强氛围") == ""
+
+
+def test_setting_search_matches_body_text_not_only_file_names(client: TestClient) -> None:
+    novel_id = client.post("/api/novels", json={"title": "设定搜索"}).json()["id"]
+    created = client.post("/api/commands/knowledge.create/execute", json={
+        "payload": {
+            "novel_id": novel_id,
+            "kind": "world",
+            "name": "规则区",
+            "content": "重力方向可以局部改写。",
+        },
+        "idempotency_key": "search-knowledge",
+    })
+    assert created.status_code == 200, created.text
+
+    response = client.get(f"/api/novels/{novel_id}/settings-search?q=重力方向")
+    assert response.status_code == 200
+    results = response.json()
+    assert any(item["label"] == "世界观 · 规则区" and "重力方向" in item["snippet"] for item in results)

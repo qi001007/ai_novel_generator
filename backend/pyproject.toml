@@ -10,6 +10,8 @@ dependencies = [
   "alembic==1.14.0",
   "uvicorn[standard]==0.30.6",
   "python-dotenv==1.2.3",
+  # M-01：遮罩外逐像素贴回，不能用缩放或羽化替代。
+  "pillow==11.3.0",
   # D-28：循环交给框架，只自研网关适配、产品工具与边界；直接依赖在此固定版本。
   "pydantic-ai-slim[openai]==2.40.0",
 ]

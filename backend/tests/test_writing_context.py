@@ -17,6 +17,7 @@ from app.models import (
     Character,
     ContextWorkflow,
     Foreshadow,
+    KnowledgeEntry,
     Novel,
     PlanningBlueprint,
     Setting,
@@ -385,7 +386,10 @@ def test_generation_run_persists_the_manifest(client: TestClient):
     assert manifest is not None, "input_summary 必须落可解析的注入清单"
     kinds = {block["kind"] for block in manifest["blocks"]}
     assert {"novel", "blueprint", "brief", "chapter"} <= kinds
-    assert any("上一章正文" in block["label"] for block in manifest["blocks"])
+    assert any(
+        block["kind"] == "chapter" and "第 1 章" in block["label"]
+        for block in manifest["blocks"]
+    )
 
 def test_chat_write_mode_prints_the_same_manifest(session, monkeypatch, capsys):
     """主人要的回路：写作模式发续写指令，终端立刻列出注入了什么。
@@ -498,3 +502,21 @@ def test_no_default_workflow_keeps_existing_window(session):
     labels = [block.item.label for block in ctx.selected]
     assert any(label.startswith("上一章正文") for label in labels)
     assert any(label.startswith("人物 · 路人甲") for label in labels)
+
+
+def test_approved_knowledge_entries_enter_context_but_drafts_do_not(session):
+    novel, _ = _book(session)
+    session.add(KnowledgeEntry(
+        novel_id=novel.id, kind="world", name="规则区",
+        content="重力可以局部改写。", status="approved",
+    ))
+    session.add(KnowledgeEntry(
+        novel_id=novel.id, kind="character", name="守门人",
+        content="知道石门的代价。", status="draft",
+    ))
+    session.commit()
+
+    items = collect_items(session, novel.id)
+
+    assert any(item.label == "设定库 · 规则区" and "重力可以局部改写" in item.text for item in items)
+    assert not any("守门人" in item.label for item in items)

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Copy, FileText, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Copy, FileText } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import { api } from "../api";
@@ -249,21 +249,6 @@ export default function GenerationRunDetailPage() {
     );
   }, [groups, selectedKey]);
 
-  async function retryRun() {
-    if (!brief || !run) return;
-    try {
-      const result = await api.post<{
-        chapter: Chapter;
-        generation_run: GenerationRun;
-      }>(`/api/novels/${novelId}/chapters/from-brief/${brief.id}`);
-      navigate(`/novels/${novelId}/chapters/${result.chapter.id}/runs/${result.generation_run.id}`, {
-        replace: true,
-      });
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "重试失败");
-    }
-  }
-
   if (loading) {
     return (
       <main className="run-detail-page" aria-label="调用详情">
@@ -288,6 +273,9 @@ export default function GenerationRunDetailPage() {
   }
 
   const cost = run.cost_estimate > 0 ? `¥ ${run.cost_estimate.toFixed(2)}` : "¥ —";
+  const costBasis = run.cost_estimate > 0
+    ? "按已配置单价估算"
+    : "未配置单价：Token Plan 套餐内或网关未返回";
   const runIndex = runs.findIndex((item) => item.id === run.id);
 
   return (
@@ -331,7 +319,7 @@ export default function GenerationRunDetailPage() {
           <small>{manifest ? `${manifest.blocks.filter((item) => item.injected).length} 块` : "旧格式清单"}</small>
         </article>
         <article><span>正文长度</span><strong className="tabular">{chapter.word_count} 字</strong><small>当前章节内容</small></article>
-        <article><span>成本估算</span><strong>{cost}</strong><small>网关未返回时显示 —</small></article>
+        <article><span>成本估算</span><strong>{cost}</strong><small>{costBasis}</small></article>
       </section>
 
       <div className="run-detail-body">
@@ -507,6 +495,7 @@ export default function GenerationRunDetailPage() {
               <div><dt>耗时</dt><dd>未记录</dd></div>
               <div><dt>上下文预算</dt><dd>{manifest ? `${manifest.budget} 字` : "—"}</dd></div>
               <div><dt>执行状态</dt><dd>{run.status === "completed" ? "成功" : run.status}</dd></div>
+              <div><dt>计价方式</dt><dd>{costBasis}</dd></div>
             </dl>
           </section>
 
@@ -529,23 +518,7 @@ export default function GenerationRunDetailPage() {
             </dl>
           </section>
 
-          <section className="run-side-card">
-            <h2>下一步</h2>
-            <button
-              type="button"
-              className="run-button ghost full"
-              disabled={Boolean(chapter.content.trim())}
-              title={
-                chapter.content.trim()
-                  ? "已有正文，先打回才能重写，避免直接覆盖"
-                  : "按同一份简报再生成一次"
-              }
-              onClick={() => void retryRun()}
-            >
-              <RefreshCcw size={13} /> 重新生成本章
-            </button>
-          </section>
-        </aside>
+                  </aside>
       </div>
     </main>
   );

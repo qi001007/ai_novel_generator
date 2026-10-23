@@ -8,6 +8,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Globe,
+  Info,
   Plus,
   Search,
   StickyNote,
@@ -17,6 +18,7 @@ import {
 import type { RailPage } from "./ActivityRail";
 
 import { api } from "../api";
+import { Button, FloatingWindow, IconButton } from "./ui";
 import StatusBadge from "./StatusBadge";
 import type { ChatConversation, Chapter, ContextWorkflow, FileMeta } from "../types";
 import {
@@ -44,6 +46,33 @@ type MenuTarget =
 
 type MenuState = { x: number; y: number; target: MenuTarget } | null;
 
+type KnowledgeDraft = {
+  id: number;
+  kind: string;
+  name: string;
+  content: string;
+  status: string;
+  revision: number;
+};
+
+type SettingSearchResult = {
+  source: string;
+  label: string;
+  path: string;
+  snippet: string;
+  status: string;
+};
+
+const KNOWLEDGE_LABELS: Record<string, string> = {
+  character: "人物",
+  world: "世界观",
+  worldview: "世界观",
+  foreshadow: "伏笔",
+  location: "地点",
+  organisation: "组织",
+  research: "研究",
+};
+
 type TreePaneProps = {
   /** 帧 27: the sidebar holds three pages; only one is on screen at a time. */
   page: RailPage;
@@ -68,6 +97,7 @@ type TreePaneProps = {
   /** 中栏现在看的那条线程；null 表示「后端意义上的当前线程」。 */
   activeConversation: number | null;
   onSelectConversation: (conversationId: number) => void;
+  onOpenConversationDetail: (conversationId: number) => void;
   /** 改章名（序号不动，第二十八批批注 6）：弹窗在工作台那边，这里只报章号。 */
   onRenameChapter: (chapterNumber: number) => void;
   /** 在其后插入一章：后面的序号自动 +1，章名跟着章走。 */
@@ -143,6 +173,7 @@ export default function TreePane({
   conversations,
   activeConversation,
   onSelectConversation,
+  onOpenConversationDetail,
   onRenameChapter,
   onInsertChapterAfter,
   onExport,
@@ -159,6 +190,13 @@ export default function TreePane({
   foreshadowOpen,
 }: TreePaneProps) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [collapsedWorkflowGroups, setCollapsedWorkflowGroups] = useState<Record<string, boolean>>({});
+  const [knowledgeEntries, setKnowledgeEntries] = useState<KnowledgeDraft[]>([]);
+  const [knowledgeEpoch, setKnowledgeEpoch] = useState(0);
+  const [selectedDraft, setSelectedDraft] = useState<KnowledgeDraft | null>(null);
+  const [settingResults, setSettingResults] = useState<SettingSearchResult[]>([]);
+  const [searchWindowOpen, setSearchWindowOpen] = useState(false);
+  const [selectedSearch, setSelectedSearch] = useState<SettingSearchResult | null>(null);
   // 第十四批批注 6: the tree has to say what the tab says. Subscribe to the buffers
   // themselves - `isChapterDirty` is a stable function and would never re-render.
   // 批注 3.3: the buffer is the draft.md file entry, so the tree, the chapter tab
@@ -200,8 +238,85 @@ export default function TreePane({
     return () => { active = false; };
   }, [novelId, page, selectWorkflow, selectedWorkflowId, workflowRefreshEpoch]);
 
+  useEffect(() => {
+    if (page !== "library" || !novelId) {
+      setKnowledgeEntries([]);
+      return;
+    }
+    let active = true;
+    api.get<KnowledgeDraft[]>(`/api/novels/${novelId}/knowledge`)
+      .then((items) => {
+        if (active) setKnowledgeEntries(items.filter((item) => item.status !== "retired"));
+      })
+      .catch(() => { if (active) setKnowledgeEntries([]); });
+    return () => { active = false; };
+  }, [novelId, page, knowledgeEpoch]);
+
+  useEffect(() => {
+    const query = chapterQuery.trim();
+    if (page !== "library" || !novelId || !query) {
+      setSettingResults([]);
+      setSearchWindowOpen(false);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      api.get<SettingSearchResult[]>(`/api/novels/${novelId}/settings-search?q=${encodeURIComponent(query)}`)
+        .then((rows) => {
+          if (!active) return;
+          setSettingResults(rows);
+          setSearchWindowOpen(true);
+        })
+        .catch(() => {
+          if (!active) return;
+          setSettingResults([]);
+          setSearchWindowOpen(true);
+        });
+    }, 180);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [novelId, page, chapterQuery]);
+
   const toggle = (key: string) => setCollapsed((prev) => ({ ...prev, [key]: !prev[key] }));
   const fileSelected = (path: string) => activeFile === path;
+  const knowledgeDrafts = knowledgeEntries.filter((item) => item.status === "draft");
+
+  async function approveDraft(entry: KnowledgeDraft) {
+    try {
+      const operation = await api.post<{ result?: { merged_into?: string } }>("/api/commands/knowledge.approve/execute", {
+        payload: { knowledge_id: entry.id, base_revision: entry.revision },
+        idempotency_key: `approve-knowledge-${entry.id}-${Date.now()}`,
+      });
+      void useFiles.getState().refreshMetas();
+      useWorkbench.setState({
+        notice: operation.result?.merged_into
+          ? `已合并进 ${operation.result.merged_into}`
+          : "设定已批准",
+      });
+      setSelectedDraft(null);
+      setKnowledgeEpoch((value) => value + 1);
+    } catch (cause) {
+      useWorkbench.setState({ error: cause instanceof Error ? cause.message : "批准设定失败" });
+    }
+  }
+
+  async function retireDraft(entry: KnowledgeDraft) {
+    if (!window.confirm(`删除这条设定草稿？\n${entry.name}`)) return;
+    try {
+      await api.post("/api/commands/asset.delete/execute", {
+        payload: {
+          asset_type: "knowledge",
+          asset_id: entry.id,
+          base_revision: entry.revision,
+        },
+        idempotency_key: `retire-knowledge-${entry.id}-${Date.now()}`,
+        approved: true,
+      });
+      setSelectedDraft(null);
+      setKnowledgeEpoch((value) => value + 1);
+    } catch (cause) {
+      useWorkbench.setState({ error: cause instanceof Error ? cause.message : "删除设定失败" });
+    }
+  }
 
   // The menu is a fixed-position overlay, so it escapes the sidebar's overflow.
   useEffect(() => {
@@ -400,23 +515,42 @@ export default function TreePane({
       {MODULE_HINTS[page] ? <p className="tree-module-hint">{MODULE_HINTS[page]}</p> : null}
       {page === "workflow" ? (
         <div className="tree-children tree-section-workflows" aria-label="工作流列表">
-          {(["generation", "review"] as const).map((purpose) => <section className="workflow-tree-group" key={purpose}>
-            <h3>{purpose === "generation" ? "正文生成" : "AI 自检"}</h3>
-            {workflows.filter((workflow) => workflow.purpose === purpose).map((workflow) => (
+          {(["generation", "review"] as const).map((purpose) => {
+            const groupCollapsed = Boolean(collapsedWorkflowGroups[purpose]);
+            return <section className="workflow-tree-group" key={purpose}>
               <button
                 type="button"
-                key={workflow.id}
-                className={`tree-row workflow-resource ${workflow.id === selectedWorkflowId ? "selected" : ""}`}
-                title={workflow.name}
-                onClick={() => selectWorkflow(workflow.id)}
-                onContextMenu={(event) => openMenu(event, { kind: "workflow", id: workflow.id, isDefault: workflow.is_default, purpose })}
+                className="tree-root"
+                aria-expanded={!groupCollapsed}
+                onClick={() => setCollapsedWorkflowGroups((current) => ({ ...current, [purpose]: !groupCollapsed }))}
               >
-                <span className="tree-label">{workflow.name}</span>
-                {workflow.is_default ? <span className="tree-hint">当前</span> : null}
+                {groupCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                {purpose === "generation" ? "正文生成" : "AI 自检"}
               </button>
-            ))}
-            {workflows.every((workflow) => workflow.purpose !== purpose) ? <p className="tree-empty">暂无</p> : null}
-          </section>)}
+              {groupCollapsed ? null : <div className="tree-children">
+                {workflows.filter((workflow) => workflow.purpose === purpose).map((workflow) => (
+                  <button
+                    type="button"
+                    key={workflow.id}
+                    className={`tree-row workflow-resource ${workflow.id === selectedWorkflowId ? "selected" : ""}`}
+                    title={workflow.name}
+                    onClick={() => selectWorkflow(workflow.id)}
+                    onContextMenu={(event) => openMenu(event, { kind: "workflow", id: workflow.id, isDefault: workflow.is_default, purpose })}
+                  >
+                    <span className="tree-label">{workflow.name}</span>
+                    {workflow.is_default ? (
+                      <span className="tree-hint">
+                        {workflow.published_version
+                          ? `当前 · v${workflow.published_version}`
+                          : "当前 · 未发布"}
+                      </span>
+                    ) : null}
+                  </button>
+                ))}
+                {workflows.every((workflow) => workflow.purpose !== purpose) ? <p className="tree-empty">暂无</p> : null}
+              </div>}
+            </section>;
+          })}
           {workflows.length === 0 ? <p className="tree-empty">暂无工作流</p> : null}
         </div>
       ) : null}
@@ -577,6 +711,35 @@ export default function TreePane({
       </button>
       {!collapsed.library && (
         <div className="tree-children tree-section-library">
+                    {knowledgeDrafts.length ? (
+            <div className="tree-group">
+              <div className="tree-row">
+                <button
+                  type="button"
+                  className="tree-prefix"
+                  aria-label="待确认设定的列表"
+                  aria-expanded={!collapsed["knowledge-drafts"]}
+                  onClick={() => toggle("knowledge-drafts")}
+                >
+                  {collapsed["knowledge-drafts"] ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                </button>
+                <StickyNote size={13} aria-hidden="true" className="tree-glyph" />
+                <span className="tree-label">待确认设定</span>
+                <span className="tree-hint">{knowledgeDrafts.length}</span>
+              </div>
+              {!collapsed["knowledge-drafts"] && knowledgeDrafts.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="tree-row file"
+                  title={item.content}
+                  onClick={() => setSelectedDraft(item)}
+                >
+                  {KNOWLEDGE_LABELS[item.kind] ?? item.kind} · {item.name}
+                </button>
+              ))}
+            </div>
+          ) : null}
           {LIBRARY_GROUPS.map((group) => {
             const files = settingFiles.filter(
               (meta) =>
@@ -608,19 +771,22 @@ export default function TreePane({
                 {/* 帧 26 A 区：面板入口保留，文档路径嵌在下面，与「人物 → 一人一个 md」同一规则。
                     路径只用 id，改名不换路径，同「章号是主键」。列表可折叠：几百个人物时
                     不能把整个设定库顶出屏幕。 */}
-                {!collapsed[`lib-${group.kind}`] &&
-                  files.map((meta) => (
-                    <button
-                      key={meta.path}
-                      type="button"
-                      className={`tree-row file ${fileSelected(meta.path) ? "selected" : ""}`}
-                      title={meta.path}
-                      onClick={() => onOpenFile(meta.path)}
-                      onContextMenu={(event) => openMenu(event, { kind: "file", path: meta.path })}
-                    >
-                      {group.fileName(meta)}
-                    </button>
-                  ))}
+                {!collapsed[`lib-${group.kind}`] && (
+                  <>
+                    {files.map((meta) => (
+                      <button
+                        key={meta.path}
+                        type="button"
+                        className={`tree-row file ${fileSelected(meta.path) ? "selected" : ""}`}
+                        title={meta.path}
+                        onClick={() => onOpenFile(meta.path)}
+                        onContextMenu={(event) => openMenu(event, { kind: "file", path: meta.path })}
+                      >
+                        {group.fileName(meta)}
+                      </button>
+                    ))}
+                    </>
+                )}
               </div>
             );
           })}
@@ -639,16 +805,19 @@ export default function TreePane({
             const active =
               activeConversation === null ? item.is_current : activeConversation === item.conversation_id;
             return (
-              <button
-                type="button"
+              <div
                 key={item.conversation_id}
                 className={`tree-row conversation ${active ? "selected" : ""}`}
                 title={`${item.first_question} · ${item.message_count} 条`}
-                onClick={() => onSelectConversation(item.conversation_id)}
               >
-                <span className="tree-label">{item.first_question}</span>
+                <button type="button" className="tree-label" onClick={() => onSelectConversation(item.conversation_id)}>
+                  {item.first_question}
+                </button>
                 <span className="tree-hint">{item.message_count}</span>
-              </button>
+                <IconButton type="button" aria-label="对话详情" title="对话详情" onClick={() => onOpenConversationDetail(item.conversation_id)}>
+                  <Info size={12} />
+                </IconButton>
+              </div>
             );
           })}
         </div>
@@ -805,6 +974,82 @@ export default function TreePane({
           </>}
         </div>
       )}
+      {searchWindowOpen && filtering ? (
+        <FloatingWindow
+          title={`搜索设定 · ${chapterQuery.trim()}`}
+          onClose={() => setSearchWindowOpen(false)}
+          width={460}
+          height={420}
+          minWidth={320}
+          minHeight={220}
+        >
+          <div className="setting-search-list">
+            {settingResults.length ? settingResults.map((result, index) => (
+              <button
+                key={`${result.source}:${result.label}:${index}`}
+                type="button"
+                className="setting-search-row"
+                onClick={() => {
+                  setSearchWindowOpen(false);
+                  if (result.path) onOpenFile(result.path);
+                  else setSelectedSearch(result);
+                }}
+              >
+                <strong>{result.label}</strong>
+                <span>{result.snippet}</span>
+              </button>
+            )) : <p className="review-save-note">没有匹配的设定</p>}
+          </div>
+        </FloatingWindow>
+      ) : null}
+      {selectedSearch ? (
+        <FloatingWindow
+          title="设定搜索"
+          onClose={() => setSelectedSearch(null)}
+          width={420}
+          height={320}
+          minWidth={300}
+          minHeight={200}
+        >
+          <div className="review-suggestion-panel">
+            <span className="review-drawer-kicker">
+              {selectedSearch.source}
+              {selectedSearch.status ? ` · ${selectedSearch.status}` : ""}
+            </span>
+            <strong>{selectedSearch.label}</strong>
+            <p>{selectedSearch.snippet}</p>
+          </div>
+        </FloatingWindow>
+      ) : null}
+      {selectedDraft ? (
+        <FloatingWindow
+          title="待确认设定"
+          onClose={() => setSelectedDraft(null)}
+          width={420}
+          height={360}
+          minWidth={300}
+          minHeight={220}
+        >
+          <div className="review-suggestion-panel">
+            <span className="review-drawer-kicker">
+              {KNOWLEDGE_LABELS[selectedDraft.kind] ?? selectedDraft.kind}
+            </span>
+            <strong>{selectedDraft.name}</strong>
+            <p>{selectedDraft.content}</p>
+            <p className="review-save-note">
+              {selectedDraft.status === "draft"
+                ? "AI 质检生成的草稿，尚未批准进入稳定上下文"
+                : "已确认，可进入稳定上下文"}
+            </p>
+            <div className="review-drawer-actions">
+              {selectedDraft.status === "draft" ? (
+                <Button compact tone="primary" onClick={() => void approveDraft(selectedDraft)}>批准</Button>
+              ) : null}
+              <Button compact tone="danger" onClick={() => void retireDraft(selectedDraft)}>删除</Button>
+            </div>
+          </div>
+        </FloatingWindow>
+      ) : null}
     </nav>
   );
 }

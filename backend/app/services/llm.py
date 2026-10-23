@@ -412,6 +412,8 @@ MODEL_KEYS = {
     # 第十九批批注 2: the image slot is reserved with the same shape as the rest, so
     # wiring a real gateway later is a route + a model name, not a new code path.
     "image": "llm.model.image",
+    # M-01: masked editing is its own task and model name; it is not the t2i model.
+    "image_edit": "llm.model.image_edit",
 }
 
 # 第十九批批注 2: 「我现在可能会同时保存不同的供应商」. A task used to be able to name a
@@ -420,7 +422,7 @@ MODEL_KEYS = {
 PROVIDERS_KEY = "llm.providers"
 ROUTE_PREFIX = "llm.route."
 DEFAULT_PROVIDER_ID = "default"
-TASKS = ("draft", "review", "summary", "chat", "image")
+TASKS = ("draft", "review", "summary", "chat", "image", "image_edit")
 
 
 @dataclass(frozen=True)
@@ -470,6 +472,24 @@ class LLMRouting:
             timeout=item.timeout,
             models=dict(self.models),
         )
+
+    def task_is_configured(self, task: str) -> bool:
+        item = self.provider_for(task)
+        return bool(
+            self.models.get(task, "").strip()
+            and item.api_base_url.strip()
+            and (item.api_key or "").strip()
+        )
+
+    @property
+    def is_configured(self) -> bool:
+        """Every named task must be runnable on its own routed provider.
+
+        The default provider's key never stands in for another gateway, and a task with
+        a model name but no key is a broken promise, not an available capability.
+        """
+        named = [task for task in TASKS if self.models.get(task, "").strip()]
+        return bool(named) and all(self.task_is_configured(task) for task in named)
 
     def global_settings(self) -> LLMSettings:
         """The pre-multi-provider view: the default provider plus every model name.
@@ -545,6 +565,9 @@ def resolve_routing(session: Session) -> LLMRouting:
         if key in rows:
             models[task] = rows[key]
     routes = {task: rows.get(ROUTE_PREFIX + task, DEFAULT_PROVIDER_ID) for task in TASKS}
+    # Older installations only ever chose the text-to-image provider; masked editing
+    # must follow it, otherwise adding one task would silently route to the default.
+    routes["image_edit"] = rows.get(ROUTE_PREFIX + "image_edit") or routes["image"]
     return LLMRouting(
         providers=_providers_from_rows(rows, fallback),
         routes=routes,

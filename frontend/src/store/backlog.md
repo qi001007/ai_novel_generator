@@ -1,5 +1,12 @@
 # frontend/src/store/ 更改账（最新在上）
 
+- 2026-10-23 · G-01/V-19：`workbench` 新增 `workflowRuns`，随章节记录一起拉取并在切书/空态/失败时清空；`workbench.test.ts` 覆盖加载与空态。
+- 2026-10-23 · V-19 阻塞：`createNovel` 改走 `api.executeCommand("novel.create", …)`，不再调用旧 `POST /api/novels`；新增 `workflowSelectionNonce`，每次 `selectWorkflow` 自增，供画布区分「用户换了选择」与「草稿 id 变化」。`workbench.test.ts` 断言命令名、幂等键前缀与作品列表回读。
+
+- 2026-10-21 · B-02：正文生成改走当前发布 Workflow 候选接口；刷新恢复候选、切书/切章隔离，接受经文件 PUT 原始 revision，并阻止覆盖本地未保存编辑；状态回归覆盖生成不改稿和接受参数。
+
+- 2026-10-21 · F-02：提取 refreshLlmStatus 单一状态刷新动作，初次加载、保存配置与页面恢复共用；请求失败保留已知状态，不把未知状态误判为已解决。
+
 - 2026-10-19：工作台状态增加工作流资源命令信号，使左侧资源树的重命名/设默认调用右侧同一工作流处理器；切换作品时清空命令，避免跨书串联。
 
 - 2026-10-19：正文字号默认提高到 18px；只迁移旧默认 17px，保留用户自行选择的其他字号。

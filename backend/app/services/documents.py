@@ -20,7 +20,11 @@ from app.models import (
     Chapter,
     ChapterBrief,
     Character,
+    Document,
     Foreshadow,
+    GenerationJob,
+    KnowledgeEntry,
+    Operation,
     PlanningBlueprint,
     Setting,
     TocEntry,
@@ -625,6 +629,78 @@ def list_files(session: Session, novel_id: int) -> list[FileMeta]:
     return files
 
 
+def search_settings(session: Session, novel_id: int, query: str, limit: int = 40) -> list[dict[str, Any]]:
+    """Search every setting source by name and body, not just the file path."""
+    needle = query.strip()
+    if not needle:
+        return []
+    lowered = needle.lower()
+
+    def snippet(text: str) -> str:
+        index = text.lower().find(lowered)
+        if index < 0:
+            return ""
+        start = max(0, index - 48)
+        end = min(len(text), index + len(needle) + 48)
+        body = " ".join(text[start:end].split())
+        return ("…" if start else "") + body + ("…" if end < len(text) else "")
+
+    results: list[dict[str, Any]] = []
+
+    def add(source: str, label: str, path: str, text: str, status: str = "") -> None:
+        body = " ".join(str(text or "").split())
+        if lowered not in label.lower() and lowered not in body.lower():
+            return
+        results.append({
+            "source": source,
+            "label": label,
+            "path": path,
+            "snippet": snippet(body) or body[:120],
+            "status": status,
+        })
+
+    for row in session.exec(select(Character).where(Character.novel_id == novel_id)).all():
+        text = " ".join([
+            row.identity, row.goals, row.behavior_constraints, row.current_status,
+            "；".join(f"{k}→{v}" for k, v in row.relationships.items()),
+            " ".join(section.get("content", "") for section in (row.custom_sections or [])),
+        ])
+        add("character", f"人物 · {row.name}", character_path(row.id), text)
+
+    for row in session.exec(select(Setting).where(Setting.novel_id == novel_id)).all():
+        text = " ".join([
+            row.category, row.current_state, row.content,
+            " ".join(section.get("content", "") for section in (row.custom_sections or [])),
+        ])
+        add("setting", f"世界观 · {row.name}", WORLDVIEW_PATH, text)
+
+    for row in session.exec(select(Foreshadow).where(Foreshadow.novel_id == novel_id)).all():
+        text = " ".join([
+            row.content,
+            " ".join(section.get("content", "") for section in (row.custom_sections or [])),
+        ])
+        add("foreshadow", f"伏笔 · {row.title}", FORESHADOW_PATH, text)
+
+    for row in session.exec(
+        select(KnowledgeEntry).where(
+            KnowledgeEntry.novel_id == novel_id,
+            KnowledgeEntry.status != "merged",
+        )
+    ).all():
+        label = {"character": "人物", "world": "世界观", "foreshadow": "伏笔"}.get(row.kind, row.kind)
+        add("knowledge", f"{label} · {row.name}", "", row.content, row.status)
+
+    for row in session.exec(
+        select(Document).where(
+            Document.novel_id == novel_id,
+            Document.path.startswith("settings/"),
+        )
+    ).all():
+        add("document", row.title or row.path, row.path, row.content, row.status)
+
+    return results[:limit]
+
+
 def read_file(session: Session, novel_id: int, path: str) -> FileDoc:
     kind, number = resolve_path(path)
     if kind == "blueprint":
@@ -852,11 +928,29 @@ def write_file(
     *,
     actor: str = ACTOR_HUMAN,
     base_revision: str | None = None,
+    generation_job_id: int | None = None,
 ) -> WriteResult:
     if actor not in ACTORS:
         raise DocumentError(f"未知的写入者：{actor}")
 
     kind, number = resolve_path(path)
+    job = None
+    if generation_job_id is not None:
+        job = session.get(GenerationJob, generation_job_id)
+        if job is None or job.novel_id != novel_id or job.kind != "draft":
+            raise DocumentError("生成候选不存在", status_code=404)
+        if kind != "draft" or job.payload.get("path") != path:
+            raise DocumentError("生成候选不属于此正文文件", status_code=409)
+        target = session.get(Chapter, job.payload.get("chapter_id"))
+        if target is None or target.novel_id != novel_id or target.chapter_number != number:
+            raise DocumentError("候选对应章节已删除或调整序号，请重新生成", status_code=409)
+        parsed_candidate = load_document(kind, text, chapter=number)
+        if parsed_candidate.get("content") != job.result.get("content"):
+            raise DocumentError("提交内容与生成候选不一致", status_code=409)
+        if job.status == "accepted":
+            return WriteResult(**job.result["write_result"])
+        if job.status != "completed" or base_revision != job.payload.get("base_revision"):
+            raise DocumentError("候选尚未完成或基础版本不匹配，请重新生成", status_code=409)
     current = read_file(session, novel_id, path)
     if base_revision is not None and base_revision != current.revision:
         raise DocumentError(
@@ -879,6 +973,23 @@ def write_file(
         "worldview": _write_worldview,
     }[kind]
     changed = writer(session, novel_id, parsed, actor=actor, number=number)
+    if job is not None:
+        session.flush()
+        after = read_file(session, novel_id, path)
+        write_result = {"path": path, "changed": changed, "revision": after.revision}
+        operation = Operation(
+            novel_id=novel_id, command="generation.accept", actor=actor, risk="low",
+            idempotency_key=f"generation-accept:{job.id}", target_type="generation_job", target_id=job.id,
+            before={"path": path, "text": current.text, "revision": current.revision},
+            after={"path": path, "text": after.text, "revision": after.revision},
+            result={"generation_job_id": job.id, "workflow_run_id": job.result["workflow_run_id"], "write_result": write_result},
+        )
+        session.add(operation)
+        session.flush()
+        job.status = "accepted"
+        job.updated_at = utc_now()
+        job.result = {**job.result, "write_result": write_result, "operation_id": operation.id}
+        session.add(job)
     session.commit()
     if kind == "character" and number is None:
         # A create lands on a numeric path, so report that path rather than new.md.

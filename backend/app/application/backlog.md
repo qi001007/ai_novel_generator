@@ -1,5 +1,7 @@
 # Backlog
 
+- 2026-10-23 · V-19 阻塞：`_create_workflow` 的种子占位判定由「`系统 · ` 名称前缀」收窄为「`系统 · ` 前缀且无 `WorkflowVersion`」，已发布默认流程不再被普通新建改绑或递增 revision；未发布的自建流程也不会被下一条新建顶掉。判定理由见 D-21。
+
 - 2026-10-20：新建作品在同一命令事务中创建 generation/review 两类默认 Workflow 与唯一当前绑定，回执返回对应 workflow id。
 
 - 2026-10-19：`workflow.delete` 进入统一命令目录：高风险确认、revision、真实影响预览、默认流程接替、历史版本/运行阻塞与完整撤销均由同一事务处理。

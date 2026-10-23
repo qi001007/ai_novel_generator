@@ -101,7 +101,7 @@ def _tool_specs(model_request_parameters: ModelRequestParameters) -> list[dict[s
 
 def _response_parts(content: str, raw_message: dict[str, Any]) -> tuple[list[TextPart | ToolCallPart], list[ToolCall]]:
     visible, calls = parse_call_blocks(content)
-    calls.extend(parse_native_calls({"tool_calls": raw_message}))
+    calls.extend(parse_native_calls(raw_message))
     parts: list[TextPart | ToolCallPart] = []
     visible = visible.strip()
     if visible:

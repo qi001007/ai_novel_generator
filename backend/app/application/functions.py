@@ -12,14 +12,17 @@ from sqlmodel import Session, select
 
 from app.core.commands import CommandSpec, Mutation, registry
 from app.models import (
+    Character,
     Document,
     Fact,
     ContextWorkflow,
+    Foreshadow,
     KnowledgeEntry,
     Novel,
     Operation,
     OutlineNode,
     Revision,
+    Setting,
     WorkflowRun,
     WorkflowBinding,
     WorkflowVersion,
@@ -92,6 +95,11 @@ class FactApproveInput(StrictModel):
 class AssetDeleteInput(StrictModel):
     asset_type: Literal["document", "knowledge", "fact", "outline"]
     asset_id: int = Field(ge=1)
+    base_revision: int = Field(ge=1)
+
+
+class KnowledgeApproveInput(StrictModel):
+    knowledge_id: int = Field(ge=1)
     base_revision: int = Field(ge=1)
 
 
@@ -199,9 +207,31 @@ def _create_novel(session: Session, payload: BaseModel, actor: str) -> Mutation:
         review_model_id=routing.models.get("review", ""),
     )
     session.flush()
+    # A configured model is what makes the seeded graph publishable; without one the
+    # drafts still exist for the writer to pick a model, exactly as before.
+    versions = []
+    for workflow in workflows:
+        model_node = next(
+            (node for node in workflow.graph["nodes"] if node["type"] == "model"),
+            None,
+        )
+        if model_node is None or not model_node["config"].get("model_id"):
+            continue
+        versions.append(
+            _publish_workflow(
+                session,
+                WorkflowPublishInput(workflow_id=workflow.id, base_revision=workflow.revision),
+                actor,
+            ).result["workflow_version"]
+        )
     after = _snapshot(row)
     return Mutation(
-        result={"novel": after, "mainline_document_id": mainline.id, "workflow_ids": [workflow.id for workflow in workflows]},
+        result={
+            "novel": after,
+            "mainline_document_id": mainline.id,
+            "workflow_ids": [workflow.id for workflow in workflows],
+            "workflow_version_ids": [version["id"] for version in versions],
+        },
         novel_id=row.id,
         target_type="novel",
         target_id=row.id,
@@ -371,6 +401,119 @@ def _create_knowledge(session: Session, payload: BaseModel, actor: str) -> Mutat
 def _preview_knowledge(session: Session, payload: BaseModel) -> dict[str, Any]:
     value = KnowledgeCreateInput.model_validate(payload)
     return {"action": "create", "type": value.kind, "name": value.name, "status": "draft"}
+
+
+def _merge_knowledge(session: Session, row: KnowledgeEntry) -> str:
+    """A confirmed QA draft becomes a row in its natural setting document."""
+    if row.kind == "world":
+        existing = session.exec(
+            select(Setting).where(
+                Setting.novel_id == row.novel_id,
+                Setting.name == row.name,
+            )
+        ).first()
+        if existing is not None:
+            existing.content = "\n".join(part for part in (existing.content, row.content) if part)
+            existing.is_confirmed = True
+            session.add(existing)
+        else:
+            session.add(Setting(
+                novel_id=row.novel_id,
+                category="其他",
+                name=row.name,
+                content=row.content,
+                current_state="来自 AI 质检",
+                is_confirmed=True,
+            ))
+        return "settings/worldview.md"
+    if row.kind == "foreshadow":
+        existing = session.exec(
+            select(Foreshadow).where(
+                Foreshadow.novel_id == row.novel_id,
+                Foreshadow.title == row.name,
+            )
+        ).first()
+        if existing is not None:
+            existing.content = "\n".join(part for part in (existing.content, row.content) if part)
+            session.add(existing)
+        else:
+            session.add(Foreshadow(
+                novel_id=row.novel_id,
+                title=row.name,
+                content=row.content,
+                planted_chapter=0,
+                status="open",
+            ))
+        return "settings/foreshadow.md"
+    if row.kind == "character":
+        existing = session.exec(
+            select(Character).where(
+                Character.novel_id == row.novel_id,
+                Character.name == row.name,
+            )
+        ).first()
+        if existing is not None:
+            existing.custom_sections = [
+                *(existing.custom_sections or []),
+                {"label": f"质检补充 #{row.id}", "content": row.content},
+            ]
+            session.add(existing)
+            return f"settings/characters/{existing.id}.md"
+        person = Character(
+            novel_id=row.novel_id,
+            name=row.name,
+            level="supporting",
+            custom_sections=[{"label": "质检补充", "content": row.content}],
+        )
+        session.add(person)
+        session.flush()
+        return f"settings/characters/{person.id}.md"
+    return ""
+
+
+def _approve_knowledge(session: Session, payload: BaseModel, actor: str) -> Mutation:
+    value = KnowledgeApproveInput.model_validate(payload)
+    row = session.get(KnowledgeEntry, value.knowledge_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Knowledge entry not found")
+    if row.revision != value.base_revision:
+        raise HTTPException(status_code=409, detail="Knowledge revision conflict")
+    if row.status != "draft":
+        raise HTTPException(status_code=409, detail="Only a draft can be approved")
+    before = _snapshot(row)
+    _record_revision(session, row, "knowledge", actor)
+    merged_into = _merge_knowledge(session, row)
+    row.status = "merged" if merged_into else "approved"
+    row.data = {**(row.data or {}), "merged_into": merged_into}
+    row.revision += 1
+    row.updated_at = utc_now()
+    session.add(row)
+    session.flush()
+    after = _snapshot(row)
+    return Mutation(
+        result={"knowledge_entry": after, "merged_into": merged_into},
+        novel_id=row.novel_id,
+        target_type="knowledge",
+        target_id=row.id,
+        before=before,
+        after=after,
+        undo_kind="restore",
+        event="knowledge.approved",
+    )
+
+
+def _preview_approve_knowledge(session: Session, payload: BaseModel) -> dict[str, Any]:
+    value = KnowledgeApproveInput.model_validate(payload)
+    row = session.get(KnowledgeEntry, value.knowledge_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Knowledge entry not found")
+    return {
+        "action": "approve",
+        "type": row.kind,
+        "name": row.name,
+        "status_before": row.status,
+        "status_after": "approved",
+    }
 
 
 def _create_fact(session: Session, payload: BaseModel, actor: str) -> Mutation:
@@ -581,7 +724,21 @@ def _create_workflow(session: Session, payload: BaseModel, actor: str) -> Mutati
     )
     session.add(row)
     session.flush()
-    if value.is_default:
+    # A seeded draft is only a placeholder until it is published: the first real
+    # workflow for a purpose must take over the binding, otherwise generation and
+    # review keep pointing at a graph that cannot run.
+    current = session.get(ContextWorkflow, existing_binding.workflow_id) if existing_binding else None
+    current_is_placeholder = (
+        current is not None
+        and current.name.startswith("系统 · ")
+        and session.exec(
+            select(WorkflowVersion.id).where(WorkflowVersion.workflow_id == current.id)
+        ).first()
+        is None
+    )
+    if value.is_default or (
+        value.novel_id is not None and (current is None or current_is_placeholder)
+    ):
         set_default(session, row)
     session.flush()
     after = _snapshot(row)
@@ -921,6 +1078,7 @@ def _register() -> None:
         CommandSpec("outline.create", "Create a volume, chapter or section", OutlineCreateInput, "low", _create_outline, _preview_outline),
         CommandSpec("document.update", "Create or update canonical Markdown", DocumentUpdateInput, "low", _update_document, _preview_document),
         CommandSpec("knowledge.create", "Create a character, world or research entry", KnowledgeCreateInput, "low", _create_knowledge, _preview_knowledge),
+        CommandSpec("knowledge.approve", "Approve a draft knowledge entry for stable context", KnowledgeApproveInput, "low", _approve_knowledge, _preview_approve_knowledge),
         CommandSpec("fact.create", "Create an unapproved fact", FactCreateInput, "low", _create_fact, _preview_fact),
         CommandSpec("fact.approve", "Approve a fact for stable context", FactApproveInput, "high", _approve_fact, _preview_approve_fact),
         CommandSpec("asset.delete", "Retire an editable asset", AssetDeleteInput, "high", _retire_asset, _preview_retire),

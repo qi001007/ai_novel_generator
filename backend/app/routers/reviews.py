@@ -1,20 +1,21 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import Session, SQLModel, select
+from sqlmodel import Session, SQLModel
 
 from app.db import get_session
-from app.models import ContextWorkflow, Review, WorkflowBinding, WorkflowRun, WorkflowVersion
+from app.models import Review
 from app.routers.planning import get_novel_or_404
 from app.services.chapters import ChapterDomainError, get_chapter_or_error
 from app.services.reviews import (
+    build_remediation_report,
     list_reviews,
     record_ai_review,
     record_final_review,
+    run_review_workflow,
     update_review_suggestion,
     validate_ai_review_payload,
 )
-from app.services.workflow_engine import execute_workflow
 
 
 router = APIRouter(prefix="/novels", tags=["reviews"])
@@ -36,6 +37,10 @@ class ReviewSuggestionUpdate(SQLModel):
     replacement: str | None = None
     comment: str | None = None
     status: str | None = None
+
+
+class RemediationReportUpdate(SQLModel):
+    markdown: str
 
 
 def _to_http(cause: ChapterDomainError) -> HTTPException:
@@ -89,63 +94,51 @@ def auto_ai_review(
 ) -> Review:
     get_novel_or_404(novel_id, session)
     chapter = _load_chapter(session, novel_id, chapter_id)
-    binding = session.exec(select(WorkflowBinding).where(
-        WorkflowBinding.novel_id == novel_id,
-        WorkflowBinding.purpose == "review",
-    )).first()
-    if binding is None:
-        raise HTTPException(status_code=409, detail="请先在 Workflow 中设置当前 AI 自检流程")
-    workflow = session.get(ContextWorkflow, binding.workflow_id)
-    if workflow is None or workflow.purpose != "review":
-        raise HTTPException(status_code=409, detail="当前 AI 自检流程绑定已失效")
-    version = session.exec(select(WorkflowVersion).where(
-        WorkflowVersion.workflow_id == workflow.id,
-        WorkflowVersion.purpose == "review",
-    ).order_by(WorkflowVersion.version.desc())).first()
-    if version is None:
-        raise HTTPException(status_code=409, detail="当前 AI 自检流程尚未发布")
-    run = WorkflowRun(
-        novel_id=novel_id,
-        workflow_id=workflow.id,
-        workflow_version_id=version.id,
-        input={
-            "workflow_purpose": "review",
-            "chapter_id": chapter.id,
-            "chapter_number": chapter.chapter_number,
-            "query": f"检查第 {chapter.chapter_number} 章正文",
-        },
-    )
-    session.add(run)
+    try:
+        return run_review_workflow(session, novel_id, chapter)
+    except ChapterDomainError as cause:
+        raise _to_http(cause) from cause
+
+
+@router.get("/{novel_id}/chapters/{chapter_id}/reviews/{review_id}/remediation-report")
+def remediation_report(
+    novel_id: int,
+    chapter_id: int,
+    review_id: int,
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    get_novel_or_404(novel_id, session)
+    chapter = _load_chapter(session, novel_id, chapter_id)
+    review = session.get(Review, review_id)
+    if review is None or review.novel_id != novel_id or review.chapter_id != chapter_id:
+        raise HTTPException(status_code=404, detail="Review not found")
+    _, filename = build_remediation_report(review, chapter)
+    edited = review.evidence.get("remediation_markdown") if isinstance(review.evidence, dict) else None
+    if isinstance(edited, str) and edited.strip():
+        return {"filename": filename, "markdown": edited}
+    markdown, filename = build_remediation_report(review, chapter)
+    return {"filename": filename, "markdown": markdown}
+
+
+@router.put("/{novel_id}/chapters/{chapter_id}/reviews/{review_id}/remediation-report")
+def save_remediation_report(
+    novel_id: int,
+    chapter_id: int,
+    review_id: int,
+    payload: RemediationReportUpdate,
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    get_novel_or_404(novel_id, session)
+    chapter = _load_chapter(session, novel_id, chapter_id)
+    review = session.get(Review, review_id)
+    if review is None or review.novel_id != novel_id or review.chapter_id != chapter_id:
+        raise HTTPException(status_code=404, detail="Review not found")
+    review.evidence = {**review.evidence, "remediation_markdown": payload.markdown}
+    session.add(review)
     session.commit()
-    session.refresh(run)
-    execute_workflow(session, run)
-    run = session.get(WorkflowRun, run.id)
-    if run is None or run.status != "completed":
-        raise HTTPException(status_code=422, detail=(run.error if run else "AI 自检运行丢失"))
-    issues: list[dict[str, Any]] = []
-    for value in run.output.values():
-        if isinstance(value, dict) and isinstance(value.get("issues"), list):
-            issues = value["issues"]
-            break
-    suggestions = [{
-        "category": item["category"],
-        "severity": item["severity"],
-        "location": item["location"],
-        "quote": item["quote"],
-        "replacement": item["suggestion"],
-        "comment": item["reason"],
-        "status": "open",
-    } for item in issues]
-    return record_ai_review(
-        session,
-        novel_id,
-        chapter,
-        decision="issues" if suggestions else "pass",
-        comments=f"Workflow {workflow.name} v{version.version}",
-        scores={},
-        evidence={"suggestions": suggestions, "workflow_run_id": run.id},
-        generation_run_id=None,
-    )
+    session.refresh(review)
+    _, filename = build_remediation_report(review, chapter)
+    return {"filename": filename, "markdown": payload.markdown}
 
 
 @router.get(

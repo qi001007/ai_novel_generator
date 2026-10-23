@@ -13,7 +13,7 @@ import {
   thumbGeometry as sharedThumbGeometry,
 } from "./minimap";
 import { toCssPx, tokenValue } from "../store/appearance";
-import { TASK_LABELS } from "../labels";
+import { TASK_LABELS, PURPOSE_LABELS } from "../labels";
 import { formatTime } from "../utils/time";
 import { api } from "../api";
 import type { Review } from "../types";
@@ -63,18 +63,30 @@ import {
 } from "./proseReview";
 import { chapterNumberLabel, draftBody, draftPath, useFiles } from "../store/files";
 import { chapterDraftPath, useWorkbench } from "../store/workbench";
-import { Button, Dialog, IconButton, TextField } from "./ui";
+import { Button, Dialog, FloatingWindow, IconButton, TextField } from "./ui";
 
 export default function EditorPane() {
   const navigate = useNavigate();
   const state = useWorkbench();
-  const { selectedChapterId, chapters, generationRuns, reviews, busy, notice } = state;
+  const { selectedChapterId, chapters, generationRuns, workflowRuns, reviews, busy, notice } = state;
 
   const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
   // Keep the ownership boundary here too: a stale/in-flight response must never
   // make a different chapter's calls appear under the current draft.
   const chapterRuns = chapter
     ? generationRuns.filter((run) => run.chapter_id === chapter.id)
+    : [];
+  const chapterWorkflowRuns = chapter
+    ? workflowRuns.filter((run) => Number(run.input.chapter_id) === chapter.id)
+    : [];
+  const chapterRejections = chapter
+    ? reviews.filter(
+        (review) =>
+          review.chapter_id === chapter.id &&
+          review.reviewer === "human" &&
+          review.decision === "reject" &&
+          review.comments.trim() !== "",
+      )
     : [];
   /* 批注 3.3: the prose used to live in its own `chapterDrafts` map while the file
      page held `entries["chapters/NNNN/draft.md"]`, and both wrote that one file -
@@ -119,6 +131,14 @@ export default function EditorPane() {
   const [checkOpen, setCheckOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawReason, setWithdrawReason] = useState("");
+  const [candidateId, setCandidateId] = useState<number | null>(null);
+  const [remediation, setRemediation] = useState<{ filename: string; markdown: string; reviewId: number } | null>(null);
+  const [remediationDraft, setRemediationDraft] = useState("");
+  const [reportSaving, setReportSaving] = useState(false);
+  const [reviewing, setReviewing] = useState(false);
+  const candidates = state.generationCandidates.filter((item) => item.payload.chapter_id === chapter?.id && item.novel_id === state.selectedNovelId);
+  const pendingCandidates = candidates.filter((item) => item.status === "completed");
+  const candidate = candidates.find((item) => item.id === candidateId);
   const [ignoredSuggestions, setIgnoredSuggestions] = useState<Set<string>>(() => new Set());
   const reviewSuggestions = useMemo(() => suggestionsFromReviews(reviews), [reviews]);
   const visibleSuggestions = useMemo(
@@ -545,8 +565,41 @@ export default function EditorPane() {
         {notice ? <span className="notice">{notice}</span> : null}
         {state.error ? <span className="status-error">{state.error}</span> : null}
         <div className="editor-actions">
+          {pendingCandidates.length ? <Button compact onClick={() => setCandidateId(pendingCandidates[0].id)}>查看候选（{pendingCandidates.length}）</Button> : null}
           <Button compact disabled={busy} onClick={async () => { await state.runMachineCheck(); setCheckOpen(true); }}>错别字检查</Button>
-          <Button compact disabled={busy} onClick={() => void state.runAiReview()}>AI 自检</Button>
+          <Button
+            compact
+            loading={reviewing}
+            disabled={busy}
+            onClick={async () => {
+              setReviewing(true);
+              try {
+                await state.runAiReview();
+              } finally {
+                setReviewing(false);
+              }
+            }}
+          >
+            AI 自检
+          </Button>
+          <Button
+            compact
+            disabled={busy || !reviews.length}
+            onClick={async () => {
+              const latest = reviews[reviews.length - 1];
+              try {
+                const report = await api.get<{ filename: string; markdown: string }>(
+                  `/api/novels/${state.selectedNovelId}/chapters/${selectedChapterId}/reviews/${latest.id}/remediation-report`,
+                );
+                setRemediation({ ...report, reviewId: latest.id });
+                setRemediationDraft(report.markdown);
+              } catch (cause) {
+                useWorkbench.setState({ error: cause instanceof Error ? cause.message : "整改报告生成失败" });
+              }
+            }}
+          >
+            整改报告
+          </Button>
           <Button compact disabled={busy} onClick={() => void state.reviewChapter("accept")}>通过终审</Button>
           <Button compact disabled={busy || chapter.status !== "final"} onClick={() => setWithdrawOpen(true)}>撤回终审</Button>
           {/* 批注 18: the entry point was a full-width bar sitting under the text
@@ -590,6 +643,52 @@ export default function EditorPane() {
           <i className="minimap-viewport" />
         </div>
       </div>
+      {candidate ? <Dialog title="候选正文" onClose={() => setCandidateId(null)}>
+        <p>接受后替换当前工作稿；关闭可保留候选，稍后继续查看</p>
+        <div className="generation-candidate-preview">{candidate.result.content}</div>
+        <p>{candidate.result.token_input} / {candidate.result.token_output} token · Workflow #{candidate.result.workflow_run_id}</p>
+        {state.error ? <p role="alert">{state.error}<Button compact onClick={() => useWorkbench.setState({ error: null })}>清除提示</Button></p> : null}
+        <footer>
+          <Button compact onClick={() => setCandidateId(null)}>稍后处理</Button>
+          <Button compact tone="primary" disabled={busy || candidate.status !== "completed"} onClick={async () => {
+            await state.acceptGenerationCandidate(candidate.id);
+            if (useWorkbench.getState().generationCandidates.find((item) => item.id === candidate.id)?.status === "accepted") setCandidateId(null);
+          }}>接受候选</Button>
+        </footer>
+      </Dialog> : null}
+      {remediation ? <FloatingWindow title="整改报告" onClose={() => setRemediation(null)} width={720} height={620} minWidth={360} minHeight={240}>
+        <div className="remediation-panel">
+          <textarea
+            className="remediation-report"
+            aria-label="整改报告内容"
+            value={remediationDraft}
+            onChange={(event) => setRemediationDraft(event.target.value)}
+          />
+          <footer>
+            <Button compact onClick={() => setRemediation(null)}>关闭</Button>
+            <Button compact loading={reportSaving} onClick={async () => {
+              setReportSaving(true);
+              try {
+                await api.put(`/api/novels/${state.selectedNovelId}/chapters/${selectedChapterId}/reviews/${remediation.reviewId}/remediation-report`, { markdown: remediationDraft });
+                useWorkbench.setState({ notice: "整改报告已保存" });
+                setRemediation({ ...remediation, markdown: remediationDraft });
+              } catch (cause) {
+                useWorkbench.setState({ error: cause instanceof Error ? cause.message : "整改报告保存失败" });
+              } finally {
+                setReportSaving(false);
+              }
+            }}>保存</Button>
+            <Button compact tone="primary" onClick={() => {
+              const url = URL.createObjectURL(new Blob([remediationDraft], { type: "text/markdown;charset=utf-8" }));
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = remediation.filename;
+              link.click();
+              URL.revokeObjectURL(url);
+            }}>下载 .md</Button>
+          </footer>
+        </div>
+      </FloatingWindow> : null}
       {withdrawOpen ? <Dialog title="撤回终审" onClose={() => setWithdrawOpen(false)}>
         <p>终审快照会失效，工作稿保留为 draft</p>
         <TextField autoFocus aria-label="撤回原因" placeholder="填写原因" value={withdrawReason} onChange={(event) => setWithdrawReason(event.target.value)} />
@@ -599,13 +698,10 @@ export default function EditorPane() {
         </footer>
       </Dialog> : null}
       {checkOpen && state.machineCheck ? (
-        <aside className="review-drawer spelling-drawer" role="complementary" aria-label="错别字检查结果">
-          <div className="review-drawer-head">
-            <div>
-              <span className="review-drawer-kicker">错别字检查</span>
-              <strong>{state.machineCheck.issues.length ? `${state.machineCheck.issues.length} 个问题` : "未发现问题"}</strong>
-            </div>
-            <IconButton aria-label="关闭错别字检查" onClick={() => setCheckOpen(false)}><X size={14} /></IconButton>
+        <FloatingWindow title="错别字检查结果" onClose={() => setCheckOpen(false)} width={440} height={360}>
+          <div className="spelling-summary">
+            <span className="review-drawer-kicker">错别字检查</span>
+            <strong>{state.machineCheck.issues.length ? `${state.machineCheck.issues.length} 个问题` : "未发现问题"}</strong>
           </div>
           <div className="spelling-issues">
             {state.machineCheck.issues.map((issue, index) => (
@@ -616,68 +712,67 @@ export default function EditorPane() {
               </article>
             ))}
           </div>
-          <p>应用后只修改当前缓冲，保存前仍可撤销</p>
-        </aside>
+          <p className="review-save-note">应用后只修改当前缓冲，保存前仍可撤销</p>
+        </FloatingWindow>
       ) : null}
       {selectedSuggestion ? (
-        <aside className="review-drawer" role="complementary" aria-label="审稿批注">
-          <div className="review-drawer-head">
-            <div>
-              <span className="review-drawer-kicker">AI 审稿建议</span>
-              <q>{selectedSuggestion.quote}</q>
+        <FloatingWindow title="AI 审稿建议" onClose={() => setSelectedSuggestionId(null)} width={420} minWidth={320} fitContent>
+          <div className="review-suggestion-panel">
+            <span className="review-drawer-kicker">AI 审稿建议</span>
+            <q>{selectedSuggestion.quote}</q>
+            {selectedSuggestion.comment ? <p>{selectedSuggestion.comment}</p> : null}
+            <label>
+              建议改为
+              <textarea
+                value={selectedSuggestion.replacement}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  replaceReviewSuggestion(selectedSuggestion.id, { replacement: next });
+                }}
+                aria-label="建议替换文本"
+                rows={4}
+              />
+            </label>
+            {selectedSuggestionRange ? null : (
+              <p className="review-stale">原文已变化，不能强行应用这条建议</p>
+            )}
+            <div className="review-drawer-actions">
+              <Button
+                compact
+                tone="primary"
+                disabled={!selectedSuggestionRange || !selectedSuggestion.replacement}
+                onClick={() => {
+                  if (!selectedSuggestionRange) return;
+                  state.setDraftContent(
+                    `${draftContent.slice(0, selectedSuggestionRange.from)}${selectedSuggestion.replacement}${draftContent.slice(selectedSuggestionRange.to)}`,
+                  );
+                  replaceReviewSuggestion(selectedSuggestion.id, { status: "applied" });
+                  void persistReviewSuggestion(selectedSuggestion, {
+                    replacement: selectedSuggestion.replacement,
+                    status: "applied",
+                  });
+                  setSelectedSuggestionId(null);
+                  useWorkbench.setState({ notice: "已应用这条建议" });
+                }}
+              >
+                应用这条建议
+              </Button>
+              <Button
+                compact
+                onClick={() => {
+                  setIgnoredSuggestions((previous) => new Set(previous).add(selectedSuggestion.id));
+                  replaceReviewSuggestion(selectedSuggestion.id, { status: "ignored" });
+                  void persistReviewSuggestion(selectedSuggestion, { status: "ignored" });
+                  setSelectedSuggestionId(null);
+                  useWorkbench.setState({ notice: "已忽略这条建议" });
+                }}
+              >
+                忽略
+              </Button>
             </div>
-            <button type="button" aria-label="关闭审稿批注" onClick={() => setSelectedSuggestionId(null)}>
-              <X size={14} />
-            </button>
+            <p className="review-save-note">应用只改当前草稿；请按 Ctrl+S 保存</p>
           </div>
-          {selectedSuggestion.comment ? <p>{selectedSuggestion.comment}</p> : null}
-          <label>
-            建议改为
-            <textarea
-              value={selectedSuggestion.replacement}
-              onChange={(event) => {
-                const next = event.target.value;
-                replaceReviewSuggestion(selectedSuggestion.id, { replacement: next });
-              }}
-              aria-label="建议替换文本"
-              rows={3}
-            />
-          </label>
-          {selectedSuggestionRange ? null : (
-            <p className="review-stale">原文已变化，不能强行应用这条建议</p>
-          )}
-          <div className="review-drawer-actions">
-            <button
-              type="button"
-              disabled={!selectedSuggestionRange || !selectedSuggestion.replacement}
-              onClick={() => {
-                if (!selectedSuggestionRange) return;
-                state.setDraftContent(
-                  `${draftContent.slice(0, selectedSuggestionRange.from)}${selectedSuggestion.replacement}${draftContent.slice(selectedSuggestionRange.to)}`,
-                );
-                replaceReviewSuggestion(selectedSuggestion.id, { status: "applied" });
-                void persistReviewSuggestion(selectedSuggestion, {
-                  replacement: selectedSuggestion.replacement,
-                  status: "applied",
-                });
-              }}
-            >
-              应用这条建议
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIgnoredSuggestions((previous) => new Set(previous).add(selectedSuggestion.id));
-                replaceReviewSuggestion(selectedSuggestion.id, { status: "ignored" });
-                void persistReviewSuggestion(selectedSuggestion, { status: "ignored" });
-                setSelectedSuggestionId(null);
-              }}
-            >
-              忽略
-            </button>
-          </div>
-          <p className="review-save-note">应用只改当前草稿；请按 Ctrl+S 保存</p>
-        </aside>
+        </FloatingWindow>
       ) : null}
       <div
         className="editor-bottom"
@@ -700,10 +795,41 @@ export default function EditorPane() {
         {/* The heading only exists while the panel is open, and the single door
             stays the History icon in the action row. A second "收起" button here
             was a duplicate control with a duplicate accessible name. */}
-        {bottom.collapsed ? null : <h3 className="records-title">调用记录</h3>}
+        {bottom.collapsed ? null : <h3 className="records-title" title="Workflow 生成与自检调用记录">调用记录</h3>}
         {!bottom.collapsed && (
         <ul id="editor-records" className="record-list" aria-label="生成与审稿记录">
-            {chapterRuns.length > 0 ? chapterRuns.map((run) => (
+            {chapterRejections.map((review) => (
+              <li key={`rejection-${review.id}`} className="record-reject">
+                <div>
+                  <strong>终审打回</strong>
+                  <span>{formatTime(review.created_at)}</span>
+                  <p className="record-reject-reason">{review.comments}</p>
+                </div>
+              </li>
+            ))}
+            {chapterWorkflowRuns.map((run) => (
+              <li key={`workflow-run-${run.id}`}>
+                <div>
+                  <strong>{run.workflow_name || "Workflow"}</strong>
+                  <span>
+                    {PURPOSE_LABELS[run.purpose] ?? (run.purpose || "运行")} ·{" "}
+                    {formatTime(run.created_at)}
+                  </span>
+                  <span className="tabular">
+                    {run.model || "未调用模型"} · {run.token_input} / {run.token_output} token
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    navigate(`/novels/${chapter.novel_id}/chapters/${chapter.id}/workflow-runs/${run.id}`)
+                  }
+                >
+                  详情
+                </button>
+              </li>
+            ))}
+            {chapterRuns.map((run) => (
               <li key={`run-${run.id}`}>
                 <div>
                   <strong>{run.model}</strong>
@@ -722,7 +848,10 @@ export default function EditorPane() {
                   详情
                 </button>
               </li>
-          )) : <li className="empty-records">这一章还没有调用记录</li>}
+            ))}
+            {chapterWorkflowRuns.length === 0 && chapterRuns.length === 0 && chapterRejections.length === 0
+              ? <li className="empty-records">这一章还没有调用记录</li>
+              : null}
         </ul>
       )}
       </div>

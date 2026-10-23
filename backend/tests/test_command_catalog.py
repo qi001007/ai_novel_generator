@@ -1,6 +1,6 @@
 from sqlmodel import Session, select
 
-from app.models import ContextWorkflow, Document, Fact, Operation, OutlineNode, WorkflowBinding, WorkflowVersion
+from app.models import AppConfig, ContextWorkflow, Document, Fact, Operation, OutlineNode, WorkflowBinding, WorkflowVersion
 
 
 def execute(client, name: str, payload: dict, key: str, *, approved: bool = False):
@@ -85,6 +85,38 @@ def test_create_novel_seeds_one_current_workflow_per_purpose(client, db_engine) 
         (workflow.purpose, workflow.id) for workflow in workflows
     }
     assert all(next(node for node in workflow.graph["nodes"] if node["type"] == "model")["config"]["provider_id"] for workflow in workflows)
+
+
+def test_new_workflow_does_not_replace_a_published_system_default(client, db_engine) -> None:
+    with Session(db_engine) as session:
+        session.add(AppConfig(key="llm.model.draft", value="draft-model"))
+        session.add(AppConfig(key="llm.model.review", value="review-model"))
+        session.commit()
+    novel_id, _ = create_novel(client, "novel-published")
+    seeded = client.get(f"/api/workflows?novel_id={novel_id}").json()
+    current = next(item for item in seeded if item["purpose"] == "review")
+    assert current["is_default"] is True
+    with Session(db_engine) as session:
+        assert session.exec(select(WorkflowVersion).where(WorkflowVersion.workflow_id == current["id"])).first() is not None
+
+    payload = workflow_payload("作者自检流程", novel_id)
+    payload["purpose"] = "review"
+    created = execute(client, "workflow.create", payload, "wf-new-review")
+    assert created.status_code == 200, created.text
+    new = created.json()["result"]["workflow"]
+    after = client.get(f"/api/workflows/{current['id']}").json()
+
+    assert new["is_default"] is False
+    assert after["is_default"] is True
+    assert after["revision"] == current["revision"]
+    with Session(db_engine) as session:
+        binding = session.exec(
+            select(WorkflowBinding).where(
+                WorkflowBinding.novel_id == novel_id,
+                WorkflowBinding.purpose == "review",
+            )
+        ).one()
+    assert binding.workflow_id == current["id"]
 
 
 def test_workflow_commands_are_versioned_idempotent_and_undoable(client, db_engine) -> None:

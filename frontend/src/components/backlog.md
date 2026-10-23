@@ -1,5 +1,16 @@
 # frontend/src/components/ 更改账（最新在上）
 
+- 2026-10-23 · G-01/V-19：`EditorPane` 的「调用记录」先列该章真实 Workflow 运行行（用途/时间/模型/token/详情），并与旧 `chapterRuns` 并列；无记录时才显示空态。`EditorPane.test.tsx` 覆盖跨章过滤与详情跳转。
+- 2026-10-22 · M-01：新增 `MapCanvas`（适配/缩放/拖拽、格子选择、四向扩图、非对齐说明、4×4 禁用）；`PaintingDetailPanel` 接入网格、单格重绘、扩图/重绘费用弹窗与历史操作标签；定向测试 9 条通过。修 `ContextWorkflowPanel.test.tsx` 的 React Flow 替身缺 `fitView` 导致 25 条未捕获异常，全量恢复退出码 0。
+- 2026-10-22 · M-02：`WorldMapPanel` 接真实列表/空态/入口；新增 `MapGenerateDialog`（StrictMode 下只以落地的提示词回填为已加载）；`PaintingDetailPanel` 生成新版本后选中新草稿而非旧确认版；三组定向测试 9 条。
+- 2026-10-21 · B-02：EditorPane 以共享弹窗审核持久候选，关闭保留/接受才写稿；ChatPane 回执指向候选而不再声称已覆盖正文，回归保持生成结算与交接行为；桌面与 620px 实测截图。
+
+- 2026-10-21 · F-06：稳定 React Flow 选中回调，同一选择不再持续重渲染阻塞路由；StrictMode 复现测试从 13 次回调失败变为稳定通过，真实画布返回书架通过。
+- 2026-10-21 · F-02：ChatPane 配置提示可关闭，确认配置解决后自动移除，后续再次缺项可重新提示；提示文案覆盖连接与任务模型。
+- 2026-10-21 · F-03：文件编辑 Minimap 跟随源码字体；源码及行号字号/行高在共享样式令牌统一。
+- 2026-10-21 · F-04：节点创建收进工具栏单个菜单并复用画布右键清单；加入菜单边界定位、键盘导航、Escape、唯一节点与撤销回归。
+- 2026-10-21 · F-05：画布缩放与适配使用共享 IconButton 控件组，单个背景、裁切边界与中文可访问标签；移除默认控件外层阴影和重复适配入口。
+
 - 2026-10-20：Workflow 删除缩略图与整图 JSON，只显示六类已实现节点；补齐初始节点尺寸、点击选中属性面板、节点右键操作、全屏与模型组合框，并用真实画布边界计算适配视口，修复节点被推到底边。世界观改为结构化资料库，反馈收口为整书备注，编辑器接通错别字、自检和终审状态。
 
 - 2026-10-19：V-18 候选修复：Workflow 缩略图增加实时视口框，移除整图 JSON 入口但保留节点源码；上下文模块支持多个可拖动非模态窗并记住会话内位置；文件标签改为“章节号 · 类型”且保留完整路径提示。
@@ -78,3 +89,6 @@
 - 2026-09-15：U-01：ChatPane 消费 `draft` SSE，将章节预览写入既有 draft buffer；作者在流中手改时停止自动落盘并保留提案卡。
 - 2026-09-16：新增 `ContextWorkflowPanel`：React Flow 仅作画布，保存的 policy/graph 严格镜像后端 workflow schema。
 - 2026-09-16：补齐 `author_instructions` 来源：默认画布与模块策略新增「作者指令 / 文风约束」，保持后端 kind 原值并默认启用；`uiInvariants` 固定来源节点、模块和 graph source 的对应关系。
+- 2026-10-22 · V-19：`ContextWorkflowPanel.tsx` 连线落下即拒绝环路、输出节点作起点、开始节点作终点、条件出口缺失，理由气泡挂在目标节点下 4px（`role="alert"`、4 秒消失、不进撤销栈）；补齐 Delete、框选多选、Ctrl+C/V、Ctrl+Z / Ctrl+Shift+Z，键位守卫在焦点落到 `<body>` 时仍生效。`ContextWorkflowPanel.test.tsx` 6 项覆盖删除后撤销、复制粘贴与重做；真机 Edge CDP 20/20 项、保存 revision 7/8 与基线图结构 API 回读一致，截图 `v19-cycle-reason.png`、`v19-multi-select.png`、`v19-after-delete.png`。
+- 2026-10-23 · V-19 阻塞：`ContextWorkflowPanel.tsx` 草稿同步改为只对资源树显式选择（store 的 `workflowSelectionNonce`）起反应，不再因 `draft.id` 变化回选旧流程；`ContextWorkflowPanel.test.tsx` 新增第 7 项「新建 review 草稿等待后仍保持并保存为 review」。真机新建 review 草稿等待 1.2s 与保存后标题/类型不变，API 回读 id 8 `purpose=review`、`is_default=false`。
+- 2026-10-23 · 审查收口：`TreePane.tsx` 流程徽标显示 `当前 · vN` / `当前 · 未发布`，新增 `TreePane.test.tsx` 覆盖设定搜索浮层打开、结果点击、空态与 Escape；`ContextWorkflowPanel.tsx` 标题带 `vN`/未发布并在发布后重读版本；`EditorPane.tsx` 调用记录新增 `终审打回` 行（时间 + 引用原因），`EditorPane.test.tsx` 补回读用例。

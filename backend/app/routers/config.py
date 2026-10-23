@@ -20,6 +20,7 @@ from app.services.agent import (
 )
 from app.services.llm import (
     DEFAULT_PROVIDER_ID,
+    LLMProvider,
     MODEL_KEYS,
     PROVIDERS_KEY,
     ROUTE_PREFIX,
@@ -119,6 +120,9 @@ class LlmConfigIn(SQLModel):
 
 class LlmTestIn(SQLModel):
     provider_id: str | None = None
+    api_base_url: str | None = None
+    api_key: str | None = None
+    timeout: float | None = None
 
 
 class LlmTestResult(SQLModel):
@@ -166,7 +170,7 @@ def _models_response(item) -> httpx.Response:
     proxy = os.environ.get("HTTPS_PROXY" if scheme == "https" else "HTTP_PROXY")
     if proxy and urlparse(proxy).scheme not in {"http", "https"}:
         proxy = None
-    with httpx.Client(proxy=proxy, trust_env=False, timeout=15.0) as client:
+    with httpx.Client(proxy=proxy, trust_env=False, timeout=item.timeout) as client:
         return client.get(
             item.api_base_url.rstrip("/") + "/models",
             headers={"Authorization": "Bearer " + item.api_key},
@@ -178,12 +182,41 @@ def _model_ids(response: httpx.Response) -> list[str]:
         rows = response.json().get("data", [])
     except (ValueError, AttributeError):
         return []
+    if not isinstance(rows, list):
+        return []
     return sorted(
         {
-            str(row.get("id", "")).strip()
+            row["id"].strip()
             for row in rows
-            if isinstance(row, dict) and str(row.get("id", "")).strip()
+            if isinstance(row, dict) and isinstance(row.get("id"), str) and row["id"].strip()
         }
+    )
+
+
+def _connection_preview(session: Session, payload: LlmTestIn) -> LLMProvider:
+    """Merge a form draft with stored credentials without saving the draft."""
+    pid = (payload.provider_id or DEFAULT_PROVIDER_ID).strip()
+    saved = next((row for row in resolve_routing(session).providers if row.id == pid), None)
+    if saved is None and payload.api_base_url is None:
+        raise HTTPException(status_code=404, detail=f"没有这个供应商：{pid}")
+    url = payload.api_base_url.strip().rstrip("/") if payload.api_base_url is not None else saved.api_base_url
+    try:
+        parsed = urlparse(url)
+        valid_url = parsed.scheme in {"http", "https"} and bool(parsed.hostname)
+        parsed.port  # Reject malformed port numbers before constructing the HTTP client.
+    except ValueError:
+        valid_url = False
+    if not valid_url:
+        raise HTTPException(status_code=422, detail="Base URL 必须是完整的 http:// 或 https:// 地址")
+    timeout = payload.timeout if payload.timeout is not None else (saved.timeout if saved else 120.0)
+    if not 1 <= timeout <= 600:
+        raise HTTPException(status_code=422, detail="超时需在 1 到 600 秒之间")
+    incoming = (payload.api_key or "").strip()
+    key = incoming if incoming and not incoming.startswith(MASK) else (saved.api_key if saved else None)
+    return LLMProvider(
+        id=pid, name=saved.name if saved else pid,
+        provider=saved.provider if saved else "openai_compatible",
+        api_base_url=url, api_key=key, timeout=timeout,
     )
 
 
@@ -199,7 +232,7 @@ def read_llm_config(session: Session = Depends(get_session)) -> LlmConfigOut:
         models=dict(settings.models),
         api_key_masked=_mask(settings.api_key),
         api_key_set=bool(settings.api_key),
-        configured=settings.is_configured,
+        configured=routing.is_configured,
         providers=[_provider_out(item, routing.providers) for item in routing.providers],
         routes=dict(routing.routes),
         tasks=list(TASKS),
@@ -218,6 +251,7 @@ def write_llm_config(
     payload: LlmConfigIn,
     session: Session = Depends(get_session),
 ) -> LlmConfigOut:
+    before = {item.id: (item.api_base_url, item.api_key) for item in resolve_routing(session).providers}
     if payload.api_base_url is not None:
         url = payload.api_base_url.strip()
         if url and not url.startswith(("http://", "https://")):
@@ -244,6 +278,15 @@ def write_llm_config(
         _write_routes(session, payload.routes)
     if payload.agent is not None:
         _write_agent_budget(session, payload.agent)
+    session.flush()
+    after = {item.id: (item.api_base_url, item.api_key) for item in resolve_routing(session).providers}
+    catalogs = _catalogs(session)
+    retained = {
+        pid: catalog.model_dump(mode="json") for pid, catalog in catalogs.items()
+        if pid in after and before.get(pid) == after[pid]
+    }
+    if set(retained) != set(catalogs):
+        _store(session, MODEL_CATALOGS_KEY, json.dumps(retained, ensure_ascii=False))
     session.commit()
     return read_llm_config(session)
 
@@ -333,18 +376,17 @@ def test_llm_config(
 ) -> LlmTestResult:
     """Check one gateway answers without spending a single token.
 
-    Hits GET /models, which every OpenAI-compatible gateway serves, instead of running a
-    completion: a connection test that bills the owner is not a connection test.
+    Uses GET /models when supported instead of running a billable completion.
+    A successful catalog check does not guarantee that generation is available.
 
     With several providers saved, "is it working" is a question about a specific one, so
     the body may name it; no body still means the default provider, which is what the
     page did before providers became a list.
     """
-    routing = resolve_routing(session)
-    provider_id = (payload.provider_id if payload else None) or DEFAULT_PROVIDER_ID
-    item = next((row for row in routing.providers if row.id == provider_id), None)
-    if item is None:
-        return LlmTestResult(ok=False, detail=f"没有这个供应商：{provider_id}")
+    try:
+        item = _connection_preview(session, payload or LlmTestIn())
+    except HTTPException as cause:
+        return LlmTestResult(ok=False, detail=str(cause.detail))
     if not item.api_base_url or not item.api_key:
         return LlmTestResult(ok=False, detail=f"供应商「{item.name}」缺少 Base URL 或 API Key，无法测试")
     try:
@@ -353,7 +395,28 @@ def test_llm_config(
         return LlmTestResult(ok=False, detail=f"「{item.name}」连不上：" + type(cause).__name__)
     if response.status_code >= 400:
         return LlmTestResult(ok=False, detail=f"「{item.name}」网关返回 HTTP {response.status_code}")
+    data = _catalog_data(response)
+    if data is None or not isinstance(data.get("data"), list):
+        return LlmTestResult(ok=False, detail=f"「{item.name}」返回的不是模型接口 JSON，请检查 Base URL")
     return LlmTestResult(ok=True, detail=f"「{item.name}」连接正常（HTTP {response.status_code}）")
+
+
+def _catalog_data(response: httpx.Response) -> dict | None:
+    try:
+        data = response.json()
+    except ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+@router.post("/llm/models", response_model=LlmModelsOut)
+def preview_llm_models(payload: LlmTestIn, session: Session = Depends(get_session)) -> LlmModelsOut:
+    item = _connection_preview(session, payload)
+    result = _list_models(item)
+    saved = next((row for row in resolve_routing(session).providers if row.id == item.id), None)
+    if saved and (saved.api_base_url, saved.api_key) == (item.api_base_url, item.api_key):
+        _cache_models(session, result)
+    return result
 
 
 @router.get("/llm/models", response_model=LlmModelsOut)
@@ -365,6 +428,19 @@ def list_llm_models(
     item = next((row for row in resolve_routing(session).providers if row.id == provider_id), None)
     if item is None:
         raise HTTPException(status_code=404, detail=f"没有这个供应商：{provider_id}")
+    result = _list_models(item)
+    _cache_models(session, result)
+    return result
+
+
+def _cache_models(session: Session, result: LlmModelsOut) -> None:
+    catalogs = {key: value.model_dump(mode="json") for key, value in _catalogs(session).items()}
+    catalogs[result.provider_id] = {"models": result.models, "fetched_at": result.fetched_at}
+    _store(session, MODEL_CATALOGS_KEY, json.dumps(catalogs, ensure_ascii=False))
+    session.commit()
+
+
+def _list_models(item: LLMProvider) -> LlmModelsOut:
     if not item.api_base_url or not item.api_key:
         raise HTTPException(status_code=422, detail=f"供应商「{item.name}」缺少 Base URL 或 API Key")
     try:
@@ -383,12 +459,8 @@ def list_llm_models(
     if not models:
         raise HTTPException(status_code=502, detail=f"「{item.name}」没有返回可选模型")
     fetched_at = utc_now().isoformat()
-    catalogs = {key: value.model_dump(mode="json") for key, value in _catalogs(session).items()}
-    catalogs[provider_id] = {"models": models, "fetched_at": fetched_at}
-    _store(session, MODEL_CATALOGS_KEY, json.dumps(catalogs, ensure_ascii=False))
-    session.commit()
     return LlmModelsOut(
-        provider_id=provider_id,
+        provider_id=item.id,
         models=models,
         detail=f"已获取 {len(models)} 个模型，未发起生成请求",
         fetched_at=fetched_at,

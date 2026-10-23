@@ -7,11 +7,13 @@ import type {
   ChapterBrief,
   ChatConversation,
   GenerationRun,
+  GenerationCandidate,
   LLMStatus,
   MachineCheckResult,
   Novel,
   NovelUpdatePayload,
   Review,
+  WorkflowRunSummary,
 } from "../types";
 
 /** The one buffer a chapter's prose lives in: the draft.md file entry. Both the
@@ -80,6 +82,9 @@ type WorkbenchState = {
   chapterTabs: number[];
   machineCheck: MachineCheckResult | null;
   generationRuns: GenerationRun[];
+  /** 章节真正走过的 Workflow 运行（生成 / 自检），详情页读的是同一份行。 */
+  workflowRuns: WorkflowRunSummary[];
+  generationCandidates: GenerationCandidate[];
   reviews: Review[];
   lastGenerationRunId: number | null;
   recordVersion: number;
@@ -96,6 +101,8 @@ type WorkbenchState = {
   chatConversation: number | null;
   /** Workflow 资源树与右侧画布共享的唯一 UI 选择；工作流数据仍由后端读取。 */
   selectedWorkflowId: number | null;
+  /** 每次在资源树里显式选择都自增；画布只对“用户换了选择”同步，不对草稿 id 变化同步。 */
+  workflowSelectionNonce: number;
   workflowRefreshEpoch: number;
   workflowCreateEpoch: number;
   workflowCommand: { action: WorkflowResourceAction; workflowId: number; nonce: number } | null;
@@ -108,6 +115,7 @@ type WorkbenchState = {
   openConversation: (conversationId: number) => void;
   refreshConversations: () => Promise<void>;
   init: () => Promise<void>;
+  refreshLlmStatus: () => Promise<void>;
   createNovel: (payload: { title: string; description: string; target_chapters: number; style_constraints: string }) => Promise<Novel>;
   updateNovel: (novelId: number, payload: NovelUpdatePayload) => Promise<Novel>;
   /** 重新读一遍书架（第二十六批批注 2：恢复之后本地那份数组必须跟上）。 */
@@ -125,7 +133,8 @@ type WorkbenchState = {
   isChapterDirty: (chapterId: number) => boolean;
   openChapterTab: (chapterId: number) => void;
   closeChapterTab: (chapterId: number) => void;
-  generateDraft: () => Promise<void>;
+  generateDraft: (request?: string) => Promise<void>;
+  acceptGenerationCandidate: (candidateId: number) => Promise<void>;
   saveChapter: () => Promise<void>;
   runMachineCheck: () => Promise<void>;
   reviewChapter: (decision: "accept" | "reject", comments?: string) => Promise<void>;
@@ -154,6 +163,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   chapterTabs: [],
   machineCheck: null,
   generationRuns: [],
+  workflowRuns: [],
+  generationCandidates: [],
   reviews: [],
   lastGenerationRunId: null,
   recordVersion: 0,
@@ -165,13 +176,14 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   chatEpoch: 0,
   chatConversation: null,
   selectedWorkflowId: null,
+  workflowSelectionNonce: 0,
   workflowRefreshEpoch: 0,
   workflowCreateEpoch: 0,
   workflowCommand: null,
   conversations: [],
 
   selectWorkflow(workflowId) {
-    set({ selectedWorkflowId: workflowId });
+    set({ selectedWorkflowId: workflowId, workflowSelectionNonce: get().workflowSelectionNonce + 1 });
   },
 
   requestNewWorkflow() {
@@ -275,7 +287,12 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   },
 
   async createNovel(payload) {
-    const novel = await api.post<Novel>("/api/novels", payload);
+    const operation = await api.executeCommand<{ novel: Novel }>(
+      "novel.create",
+      payload,
+      `novel-create:${crypto.randomUUID()}`,
+    );
+    const novel = operation.result.novel;
     set({ novels: [...get().novels, novel] });
     return novel;
   },
@@ -289,9 +306,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     } catch {
       set({ health: "error" });
     }
-    api.get<LLMStatus>("/api/llm/status").then((data) => {
-      set({ llmStatus: data });
-    }).catch(() => set({ llmStatus: null }));
+    void get().refreshLlmStatus();
     try {
       const novels = await api.get<Novel[]>("/api/novels");
       // Re-read the store: `state` was captured before the awaits above, and a route
@@ -310,6 +325,15 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
   setTab(tab) {
     set({ tab });
+  },
+
+  async refreshLlmStatus() {
+    try {
+      const llmStatus = await api.get<LLMStatus>("/api/llm/status");
+      set({ llmStatus });
+    } catch {
+      // A failed refresh cannot prove that a previously reported problem is resolved.
+    }
   },
 
   async deleteNovel(novelId) {
@@ -358,6 +382,8 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       selectedChapterId: null,
       selectedBriefId: null,
       generationRuns: [],
+      workflowRuns: [],
+      generationCandidates: [],
       reviews: [],
       chapterTabs: [],
       // 线程号是**每本书各自**的号，带着上一本的选中过去会把中栏指到不存在的线程上
@@ -488,7 +514,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     get().selectChapter(next);
   },
 
-  async generateDraft() {
+  async generateDraft(request = "") {
     const { selectedNovelId, selectedChapterId, selectedBriefId, briefs, chapters, busy } = get();
     if (!selectedNovelId || busy) return;
     const chapter = chapters.find((item) => item.id === selectedChapterId) ?? null;
@@ -512,53 +538,46 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
 
     set({ busy: true, error: null });
     try {
-      let streamed = "";
-      await api.streamGeneration(
-        selectedNovelId,
-        brief.id,
-        (event) => {
-          if (event.event === "delta") {
-            streamed += event.data.text;
-            // One write, into the buffer the file editor reads too (批注 3.3).
-            useFiles.getState().setDraft(
-              chapterDraftPath(chapter),
-              draftDocument(chapter.chapter_number, streamed),
-            );
-            return;
-          }
-          if (event.event === "done") {
-            const result = {
-              chapter: event.data.chapter,
-              generation_run: event.data.generation_run,
-              machine_check: event.data.machine_check,
-            };
-            set({
-              chapters: get().chapters.some((item) => item.id === result.chapter.id)
-                ? get().chapters.map((item) => (item.id === result.chapter.id ? result.chapter : item))
-                : [...get().chapters, result.chapter],
-              selectedChapterId: result.chapter.id,
-              selectedBriefId: result.chapter.brief_id ?? get().selectedBriefId,
-              machineCheck: result.machine_check,
-              lastGenerationRunId: result.generation_run.id,
-              recordVersion: get().recordVersion + 1,
-              error: null,
-            });
-            void useFiles.getState().refreshMetas();
-          }
-          if (event.event === "error") {
-            throw new Error(event.data.message || "生成失败");
-          }
-        },
+      const candidate = await api.post<GenerationCandidate>(
+        `/api/novels/${selectedNovelId}/chapters/${chapter.id}/generation-candidates`, { request },
       );
+      if (get().selectedNovelId !== selectedNovelId || get().selectedChapterId !== chapter.id) return;
+      if (candidate.status !== "completed") throw new Error(candidate.error || "Workflow 生成失败");
+      set({ generationCandidates: [candidate, ...get().generationCandidates], error: null });
     } catch (cause) {
       set({ error: cause instanceof Error ? cause.message : "生成失败" });
     } finally {
       set({ busy: false });
     }
-    // The run wrote the file server-side, so the baseline this buffer was read
-    // against is gone: re-read here, where it can be awaited, and the prose page
-    // and the file page both pick up the same saved text.
-    if (chapter) await useFiles.getState().reload(chapterDraftPath(chapter));
+  },
+
+  async acceptGenerationCandidate(candidateId) {
+    const { selectedNovelId, selectedChapterId, generationCandidates, chapters, busy } = get();
+    const chapter = chapters.find((item) => item.id === selectedChapterId);
+    const candidate = generationCandidates.find((item) => item.id === candidateId);
+    if (!selectedNovelId || !chapter || !candidate || busy || candidate.status !== "completed") return;
+    if (candidate.novel_id !== selectedNovelId || candidate.payload.chapter_id !== chapter.id) return;
+    if (dirtyOf(chapter)) {
+      set({ error: "当前正文有未保存修改，请先保存或撤销修改，再接受候选" });
+      return;
+    }
+    set({ busy: true, error: null });
+    try {
+      await api.writeFile(selectedNovelId, candidate.payload.path,
+        draftDocument(chapter.chapter_number, candidate.result.content), {
+          actor: "human", baseRevision: candidate.payload.base_revision, generationJobId: candidate.id,
+        });
+      if (get().selectedNovelId !== selectedNovelId || get().selectedChapterId !== chapter.id) return;
+      set({ generationCandidates: get().generationCandidates.map((item) => item.id === candidateId ? { ...item, status: "accepted" } : item) });
+      await useFiles.getState().reload(candidate.payload.path);
+      const updated = await api.get<Chapter>(`/api/novels/${selectedNovelId}/chapters/${chapter.id}`);
+      if (get().selectedNovelId !== selectedNovelId || get().selectedChapterId !== chapter.id) return;
+      set({ chapters: get().chapters.map((item) => item.id === chapter.id ? updated : item), recordVersion: get().recordVersion + 1 });
+    } catch (cause) {
+      if (get().selectedNovelId === selectedNovelId) set({ error: cause instanceof Error ? cause.message : "接受候选失败" });
+    } finally {
+      set({ busy: false });
+    }
   },
 
   /* The prose page and the file page share one buffer, so saving is the file
@@ -689,7 +708,7 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
   async loadChapterRecords() {
     const { selectedNovelId, selectedChapterId, chapters } = get();
     if (!selectedNovelId || !selectedChapterId) {
-      set({ generationRuns: [], reviews: [] });
+      set({ generationRuns: [], workflowRuns: [], reviews: [], generationCandidates: [] });
       return;
     }
     // A chapter belongs to exactly one novel, and chapter ids are global. While a
@@ -697,21 +716,28 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
     // then names a pair that never existed - the server 404s it, which is the good
     // outcome; reading another book's records would be the bad one.
     if (!chapters.some((item) => item.id === selectedChapterId)) {
-      set({ generationRuns: [], reviews: [] });
+      set({ generationRuns: [], workflowRuns: [], reviews: [], generationCandidates: [] });
       return;
     }
     try {
-      const [runs, reviews] = await Promise.all([
+      const [runs, workflowRuns, reviews, candidates] = await Promise.all([
         api.get<GenerationRun[]>(
           `/api/novels/${selectedNovelId}/chapters/${selectedChapterId}/generation-runs`,
+        ),
+        api.get<WorkflowRunSummary[]>(
+          `/api/novels/${selectedNovelId}/chapters/${selectedChapterId}/workflow-runs`,
         ),
         api.get<Review[]>(
           `/api/novels/${selectedNovelId}/chapters/${selectedChapterId}/reviews`,
         ),
+        api.get<GenerationCandidate[]>(`/api/novels/${selectedNovelId}/chapters/${selectedChapterId}/generation-candidates`),
       ]);
-      set({ generationRuns: runs, reviews });
+      if (get().selectedNovelId !== selectedNovelId || get().selectedChapterId !== selectedChapterId) return;
+      set({ generationRuns: runs, workflowRuns, reviews, generationCandidates: candidates });
     } catch {
-      set({ generationRuns: [], reviews: [] });
+      if (get().selectedNovelId === selectedNovelId && get().selectedChapterId === selectedChapterId) {
+        set({ generationRuns: [], workflowRuns: [], reviews: [], generationCandidates: [] });
+      }
     }
   },
 }));

@@ -179,6 +179,13 @@ describe("workbench layout", () => {
     localStorage.clear();
     useFiles.getState().reset();
     vi.unstubAllGlobals();
+    // The drag tests describe the 1440 design width. Narrow-window fitting is a
+    // viewport event with its own case below; jsdom's default 1024 is neither.
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1440,
+    });
   });
 
   it("uses a themed project menu and switches through the existing store action", async () => {
@@ -578,7 +585,7 @@ describe("workbench layout", () => {
     await openWorkbench();
 
     screen.getAllByRole("separator")[1].focus();
-    await user.keyboard("{ArrowLeft}".repeat(20));
+    await user.keyboard("{ArrowLeft}".repeat(32));
 
     await waitFor(() => expect(hiddenAttr()).toContain("chat"));
     expect(pressed("显示或隐藏对话栏")).toBe("false");
@@ -593,7 +600,7 @@ describe("workbench layout", () => {
     await openWorkbench();
 
     screen.getAllByRole("separator")[1].focus();
-    await user.keyboard("{ArrowRight}".repeat(20));
+    await user.keyboard("{ArrowRight}".repeat(32));
 
     await waitFor(() => expect(hiddenAttr()).toContain("editor"));
     expect(pressed("显示或隐藏编辑栏")).toBe("false");
@@ -603,6 +610,48 @@ describe("workbench layout", () => {
     await waitFor(() =>
       expect(columns().split(" ").filter((t) => t === "1px")).toHaveLength(1),
     );
+  });
+
+  /* U-06: the viewport, not a drag, decides which column yields. 821px cannot hold
+     300 + 315 + a 320px prose column, so the chat goes away and the prose keeps 476;
+     620px cannot even hold the tree beside it, so the tree goes too. */
+  it("narrowing the window puts the chat, then the tree, away instead of crushing the prose", async () => {
+    await openWorkbench();
+    expect(hiddenAttr()).not.toContain("chat");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 821,
+    });
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(hiddenAttr()).toContain("chat"));
+    expect(hiddenAttr()).not.toContain("sidebar");
+    expect(pressed("显示或隐藏对话栏")).toBe("false");
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 620,
+    });
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(hiddenAttr()).toContain("sidebar"));
+    // Rail + prose only: no orphan chat track and no squeezed 160px column.
+    await waitFor(() => expect(columns()).toBe("44px minmax(0, 1fr)"));
+    expect(pressed("显示或隐藏结构栏")).toBe("false");
+    // A pane the viewport closed is not saved as the reader's choice.
+    expect(JSON.parse(localStorage.getItem("workbench.hidden") ?? "{}").chat).not.toBe(true);
+
+    // And it comes back by itself once the window has room again.
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1266,
+    });
+    fireEvent(window, new Event("resize"));
+    await waitFor(() => expect(hiddenAttr()).toBe(""));
+    expect(pressed("显示或隐藏对话栏")).toBe("true");
+    expect(pressed("显示或隐藏结构栏")).toBe("true");
   });
 
   /* 第十六批批注 9: the pointer used to be dropped the moment a column vanished, so
@@ -659,7 +708,7 @@ describe("workbench layout", () => {
     await openWorkbench();
 
     screen.getAllByRole("separator")[1].focus();
-    await user.keyboard("{ArrowRight}".repeat(20));
+    await user.keyboard("{ArrowRight}".repeat(32));
     await waitFor(() => expect(hiddenAttr()).toContain("editor"));
 
     await user.keyboard("{ArrowLeft}".repeat(2));

@@ -4,7 +4,7 @@ import { ArrowLeft, Check, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
-import { Button, Combobox, useToast } from "../components/ui";
+import { Combobox, useToast } from "../components/ui";
 import { PROVIDER_TASKS } from "../labels";
 import { useFiles } from "../store/files";
 import { useWorkbench } from "../store/workbench";
@@ -83,7 +83,7 @@ type GroupKey = "llm" | "appearance" | "storage";
 /** A new row gets an id the owner never sees or types; it is only the join key between
  *  a provider and the tasks that point at it. */
 function nextProviderId(existing: ProviderDraft[]): string {
-  let n = existing.length + 1;
+  let n = existing.filter((item) => !item.isDefault).length + 1;
   while (existing.some((item) => item.id === `p${n}`)) n += 1;
   return `p${n}`;
 }
@@ -663,9 +663,6 @@ export default function PreferencesPage() {
   const { theme, accent, code, uiFont, proseFont, codeFont, uiSize, proseSize, pick } =
     useAppearance();
   const [config, setConfig] = useState<LlmConfig | null>(null);
-  const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
-  const [timeout, setTimeout_] = useState("120");
   const [agentSteps, setAgentSteps] = useState("");
   const [agentTokens, setAgentTokens] = useState("");
   const [models, setModels] = useState<Record<string, string>>({});
@@ -673,48 +670,85 @@ export default function PreferencesPage() {
   const [busy, setBusy] = useState(false);
   const [group, setGroup] = useState<GroupKey>("llm");
   const [providers, setProviders] = useState<ProviderDraft[]>([]);
+  const [editingProviders, setEditingProviders] = useState<Record<string, boolean>>({});
+  const [dirtyProviders, setDirtyProviders] = useState<Record<string, boolean>>({});
+  const [dirtySettings, setDirtySettings] = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [routes, setRoutes] = useState<Record<string, string>>({});
   const [modelOptions, setModelOptions] = useState<Record<string, string[]>>({});
   const [modelNotices, setModelNotices] = useState<Record<string, string>>({});
   const [modelBusy, setModelBusy] = useState<string | null>(null);
   const [catalogOpen, setCatalogOpen] = useState<Record<string, boolean>>({});
+  const catalogRevision = useRef<Record<string, number>>({});
   const { pushToast } = useToast();
 
   /* One place that puts a freshly read config into the form, used by the first load and
      by every save - the two used to drift (a save left a removed provider on screen). */
-  function applyConfig(data: LlmConfig) {
+  function applyConfig(data: LlmConfig, keepPreview = false) {
     setConfig(data);
-    setBaseUrl(data.api_base_url);
-    setTimeout_(String(data.timeout));
     setAgentSteps(String(data.agent.max_steps));
     setAgentTokens(String(data.agent.max_tokens));
     setModels(data.models);
     setRoutes(data.routes);
-    setModelOptions(Object.fromEntries(Object.entries(data.catalogs ?? {}).map(([id, value]) => [id, value.models])));
-    setModelNotices(Object.fromEntries(Object.entries(data.catalogs ?? {}).map(([id, value]) => [id, `已缓存 ${value.models.length} 个模型 · ${new Date(value.fetched_at).toLocaleString()}`])));
+    const options = Object.fromEntries(Object.entries(data.catalogs ?? {}).map(([id, value]) => [id, value.models]));
+    const notices = Object.fromEntries(Object.entries(data.catalogs ?? {}).map(([id, value]) => [id, `已缓存 ${value.models.length} 个模型 · ${new Date(value.fetched_at).toLocaleString()}`]));
+    setModelOptions((prev) => keepPreview ? { ...options, ...prev } : options);
+    setModelNotices((prev) => keepPreview ? { ...notices, ...prev } : notices);
     setProviders(
-      data.providers
-        .filter((item) => !item.is_default)
-        .map((item) => ({
-          id: item.id,
-          name: item.name,
-          provider: item.provider,
-          api_base_url: item.api_base_url,
-          // never echoed back; blank means keep the stored one
-          api_key: "",
-          timeout: "",
-          keyMask: item.api_key_masked,
-          isDefault: false,
-        })),
+      data.providers.map((item) => ({
+        id: item.id,
+        name: item.name,
+        provider: item.provider,
+        api_base_url: item.api_base_url,
+        // never echoed back; blank means keep the stored one
+        api_key: "",
+        timeout: item.is_default ? String(data.timeout) : "",
+        keyMask: item.api_key_masked,
+        isDefault: item.is_default,
+      })),
     );
+    setEditingProviders({});
+    setDirtyProviders({});
+    setDirtySettings(false);
+  }
+
+  function providerLabel(item: ProviderDraft, index: number) {
+    if (item.isDefault) return "默认供应商";
+    return item.name.trim() || `供应商 ${index + 1}`;
+  }
+
+  function updateProvider(id: string, patch: Partial<ProviderDraft>) {
+    setProviders((prev) => prev.map((row) => row.id === id ? { ...row, ...patch } : row));
+    setDirtyProviders((prev) => ({ ...prev, [id]: true }));
+    setDirtySettings(true);
+  }
+
+  function connectionDraft(providerId: string) {
+    const item = providers.find((row) => row.id === providerId);
+    return {
+      provider_id: providerId,
+      api_base_url: item ? item.api_base_url : "",
+      api_key: item ? item.api_key : "",
+      timeout: item && item.timeout.trim() !== "" ? Number(item.timeout) : null,
+    };
+  }
+
+  function invalidateCatalog(providerId: string) {
+    catalogRevision.current[providerId] = (catalogRevision.current[providerId] ?? 0) + 1;
+    setModelOptions((prev) => ({ ...prev, [providerId]: [] }));
+    setModelNotices((prev) => ({ ...prev, [providerId]: "连接配置已更改，请重新获取模型目录" }));
+    setCatalogOpen((prev) => ({ ...prev, [providerId]: false }));
   }
 
   function loadModels(providerId: string, name: string) {
+    const revision = (catalogRevision.current[providerId] ?? 0) + 1;
+    catalogRevision.current[providerId] = revision;
     setModelBusy(providerId);
     setModelNotices((prev) => ({ ...prev, [providerId]: "正在读取模型列表…" }));
     return api
-      .get<ModelCatalog>(`/api/config/llm/models?provider_id=${encodeURIComponent(providerId)}`)
+      .post<ModelCatalog>("/api/config/llm/models", connectionDraft(providerId))
       .then((data) => {
+        if (catalogRevision.current[providerId] !== revision) return;
         if (!Array.isArray(data.models)) throw new Error("模型网关返回格式不正确");
         setModelOptions((prev) => ({ ...prev, [providerId]: data.models }));
         setModelNotices((prev) => ({ ...prev, [providerId]: data.detail }));
@@ -722,6 +756,7 @@ export default function PreferencesPage() {
         pushToast(data.detail, "success");
       })
       .catch((cause: Error) => {
+        if (catalogRevision.current[providerId] !== revision) return;
         setModelNotices((prev) => ({
           ...prev,
           [providerId]: `「${name || providerId}」${cause.message}，仍可手工输入模型 ID`,
@@ -746,19 +781,23 @@ export default function PreferencesPage() {
 
   function save() {
     if (!config) return;
+    const fallback = providers.find((item) => item.isDefault) ?? providers[0];
     setBusy(true);
     setError(null);
     api
       .put<LlmConfig>("/api/config/llm", {
-        // these four still describe the 默认 provider
-        api_base_url: baseUrl,
+        // the default provider keeps the legacy flat quartet on the wire
+        api_base_url: fallback?.api_base_url ?? "",
         // Blank means "leave the stored key alone"; the server also ignores a mask echo.
-        api_key: apiKey,
-        timeout: Number(timeout),
+        api_key: fallback?.api_key ?? "",
+        timeout: fallback && fallback.timeout.trim() !== "" ? Number(fallback.timeout) : null,
         // 清空一个框 = 不改动那一项：NaN 经 JSON 出去就是 null，服务端把 null 当作「没填」
-        agent: { max_steps: Number(agentSteps), max_tokens: Number(agentTokens) },
+        agent: {
+          max_steps: agentSteps.trim() === "" ? null : Number(agentSteps),
+          max_tokens: agentTokens.trim() === "" ? null : Number(agentTokens),
+        },
         models,
-        providers: providers.map((item) => ({
+        providers: providers.filter((item) => !item.isDefault).map((item) => ({
           id: item.id,
           name: item.name,
           provider: item.provider,
@@ -769,9 +808,11 @@ export default function PreferencesPage() {
         routes,
       })
       .then((data) => {
-        applyConfig(data);
-        setApiKey("");
-        pushToast("设置已保存", "success");
+        applyConfig(data, true);
+        const at = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+        setLastSavedAt(at);
+        pushToast(`设置已保存 · ${at}`, "success");
+        void useWorkbench.getState().refreshLlmStatus();
       })
       .catch((cause: unknown) => pushToast(cause instanceof Error ? cause.message : "保存失败", "error"))
       .finally(() => setBusy(false));
@@ -779,24 +820,69 @@ export default function PreferencesPage() {
 
   function testProvider(providerId: string, name: string) {
     return api
-      .post<TestResult>("/api/config/llm/test", { provider_id: providerId })
+      .post<TestResult>("/api/config/llm/test", connectionDraft(providerId))
       .then((data) => {
         pushToast(data.detail, data.ok ? "success" : "error");
       })
       .catch((cause: Error) => pushToast(`「${name || providerId}」${cause.message}`, "error"));
   }
 
-  function test() {
-    setBusy(true);
-    setError(null);
-    api
-      .post<TestResult>("/api/config/llm/test", {})
-      .then((result) => {
-        pushToast(result.detail, result.ok ? "success" : "error");
-      })
-      .catch((cause: unknown) => pushToast(cause instanceof Error ? cause.message : "测试失败", "error"))
-      .finally(() => setBusy(false));
+  function addProvider() {
+    const id = nextProviderId(providers);
+    setProviders((prev) => [
+      ...prev,
+      {
+        id,
+        name: "",
+        provider: "openai_compatible",
+        api_base_url: "",
+        api_key: "",
+        timeout: "",
+        keyMask: "",
+        isDefault: false,
+      },
+    ]);
+    setEditingProviders((prev) => ({ ...prev, [id]: true }));
+    setDirtyProviders((prev) => ({ ...prev, [id]: true }));
+    setDirtySettings(true);
   }
+
+  function removeProvider(item: ProviderDraft) {
+    invalidateCatalog(item.id);
+    setProviders((prev) => prev.filter((row) => row.id !== item.id));
+    // a task still pointing here would be refused on save; send it home now
+    setRoutes((prev) => {
+      const next: Record<string, string> = {};
+      for (const [task, pid] of Object.entries(prev)) {
+        next[task] = pid === item.id ? "default" : pid;
+      }
+      return next;
+    });
+    setEditingProviders((prev) => {
+      const next = { ...prev };
+      delete next[item.id];
+      return next;
+    });
+    setDirtySettings(true);
+  }
+
+  const hasUnsaved = dirtySettings || Object.values(dirtyProviders).some(Boolean);
+  const missingTaskKey = config
+    ? Object.entries(config.models).some(([task, model]) => {
+        if (!model.trim()) return false;
+        const routed = config.providers.find(
+          (item) => item.id === (config.routes[task] ?? "default"),
+        );
+        return !routed?.api_key_set;
+      })
+    : false;
+  const configuredStatus = config?.configured
+    ? "已配置"
+    : missingTaskKey
+      ? "有任务缺少密钥"
+      : providers.some((item) => item.keyMask || item.api_key.trim())
+        ? "已保存连接，待选择模型"
+        : "未配置";
 
   /* 设置页结构（主人点了三次的那条）：一个设置项 = 左边列表的一条 + 右边一块面板。
      以后加「色系 / 代码配色 / 字体」就是往这张表里添一项，不用动布局。 */
@@ -809,161 +895,151 @@ export default function PreferencesPage() {
           {!config && !error ? <p className="prefs-muted">正在读取后端配置……</p> : null}
         {config ? (
           <>
-            {/* These three fields are the 默认供应商 - the same quartet the legacy
-                single-provider keys always described. The rows below are the extras. */}
-            <p className="prefs-group-title">默认供应商</p>
-            <label className="prefs-field">
-              Base URL
-              <input
-                value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
-                placeholder="https://api.example.com/v1"
-                aria-label="Base URL"
-              />
-            </label>
-            <label className="prefs-field">
-              API Key
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(event) => setApiKey(event.target.value)}
-                placeholder={
-                  config.api_key_set
-                    ? "已保存 " + config.api_key_masked + "，留空则不修改"
-                    : "尚未配置"
-                }
-                aria-label="API Key"
-                autoComplete="off"
-              />
-            </label>
-            <label className="prefs-field prefs-field-narrow">
-              超时（秒）
-              <input
-                type="number"
-                min={1}
-                max={600}
-                value={timeout}
-                onChange={(event) => setTimeout_(event.target.value)}
-                aria-label="超时秒数"
-              />
-            </label>
-            <div className="prefs-model-catalog">
-              <Button compact
-                type="button"
-                onClick={() => void loadModels("default", "默认")}
-                disabled={modelBusy === "default"}
-              >
-                {modelBusy === "default" ? "获取中…" : "获取模型列表"}
-              </Button>
-              <button type="button" className="prefs-catalog-summary" aria-expanded={catalogOpen.default ?? false} onClick={() => setCatalogOpen((current) => ({ ...current, default: !current.default }))}>
-                {modelNotices.default ?? "尚未获取模型目录"}
-              </button>
-            </div>
-            {catalogOpen.default ? <div className="prefs-model-list" aria-label="默认供应商模型列表">
-              {(modelOptions.default ?? []).map((model) => <code key={model}>{model}</code>)}
-              {(modelOptions.default ?? []).length === 0 ? <p>目录为空</p> : null}
-            </div> : null}
-            {/* 第十九批批注 2：「同时保存不同的供应商」+「正文/审稿/摘要用不同供应商的不同模型」。
-                供应商是一张列表，任务路由每一行选一个供应商再填模型名；
-                生图只是这张表里多一行任务，不是另一套代码。 */}
-            <div className="prefs-providers">
-              <p className="prefs-group-title">其他供应商</p>
-              {providers.length === 0 ? <p className="prefs-muted">还没有第二个供应商</p> : null}
-              {providers.map((item, index) => (
-                <div className="prefs-provider-row" key={item.id}>
-                  <input
-                    className="prefs-provider-name"
-                    value={item.name}
-                    placeholder="名称"
-                    aria-label={`供应商 ${index + 1} 名称`}
-                    onChange={(event) =>
-                      setProviders((prev) =>
-                        prev.map((row, at) => (at === index ? { ...row, name: event.target.value } : row)),
-                      )
-                    }
-                  />
-                  <input
-                    className="prefs-provider-url"
-                    value={item.api_base_url}
-                    placeholder="https://api.example.com/v1"
-                    aria-label={`供应商 ${index + 1} Base URL`}
-                    onChange={(event) =>
-                      setProviders((prev) =>
-                        prev.map((row, at) => (at === index ? { ...row, api_base_url: event.target.value } : row)),
-                      )
-                    }
-                  />
-                  <input
-                    type="password"
-                    className="prefs-provider-key"
-                    value={item.api_key}
-                    placeholder={item.keyMask ? `已保存 ${item.keyMask}，留空则不修改` : "API Key"}
-                    aria-label={`供应商 ${index + 1} API Key`}
-                    autoComplete="off"
-                    onChange={(event) =>
-                      setProviders((prev) =>
-                        prev.map((row, at) => (at === index ? { ...row, api_key: event.target.value } : row)),
-                      )
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="prefs-provider-models"
-                    onClick={() => void loadModels(item.id, item.name)}
-                    disabled={modelBusy === item.id}
-                  >
-                    {modelBusy === item.id ? "读取中" : "模型"}
-                  </button>
-                  <button
-                    type="button"
-                    className="prefs-provider-test"
-                    onClick={() => void testProvider(item.id, item.name)}
-                    disabled={busy}
-                  >
-                    测试
-                  </button>
-                  <button
-                    type="button"
-                    className="prefs-provider-drop"
-                    aria-label={`移除供应商 ${item.name || item.id}`}
-                    onClick={() => {
-                      setProviders((prev) => prev.filter((row) => row.id !== item.id));
-                      // a task still pointing here would be refused on save; send it home now
-                      setRoutes((prev) => {
-                        const next: Record<string, string> = {};
-                        for (const [task, pid] of Object.entries(prev)) {
-                          next[task] = pid === item.id ? "default" : pid;
-                        }
-                        return next;
-                      });
-                    }}
-                  >
-                    <X size={12} />
-                  </button>
-                  {modelNotices[item.id] ? <p className="prefs-provider-result">{modelNotices[item.id]}</p> : null}
-                </div>
-              ))}
-              <button
-                type="button"
-                className="prefs-provider-add"
-                onClick={() =>
-                  setProviders((prev) => [
-                    ...prev,
-                    {
-                      id: nextProviderId(prev),
-                      name: "",
-                      provider: "openai_compatible",
-                      api_base_url: "",
-                      api_key: "",
-                      timeout: "",
-                      keyMask: "",
-                      isDefault: false,
-                    },
-                  ])
-                }
-              >
+            {/* 2026-10-22 批注 V-20：默认供应商不再是顶部另一套表单，而是同一张列表的第一行。
+                列表只负责展示与编辑；任务路由仍然每一行挑一个供应商。 */}
+            <div className="prefs-provider-list-head">
+              <p className="prefs-group-title">模型供应商</p>
+              <button type="button" className="prefs-provider-add" onClick={addProvider}>
                 添加供应商
               </button>
+            </div>
+            <div className="prefs-provider-list" aria-label="供应商列表">
+              {providers.map((item, index) => {
+                const label = providerLabel(item, index);
+                const editing = editingProviders[item.id] ?? false;
+                const hasKey = Boolean(item.keyMask) || item.api_key.trim() !== "";
+                return (
+                  <section
+                    className={`prefs-provider-card${editing ? " is-editing" : ""}`}
+                    key={item.id}
+                    aria-label={label}
+                  >
+                    <div className="prefs-provider-head">
+                      <div className="prefs-provider-title">
+                        <strong>{label}</strong>
+                        {item.isDefault ? <span className="prefs-badge">默认</span> : null}
+                        <span className={hasKey ? "prefs-badge ok" : "prefs-badge warn"}>
+                          {hasKey ? "已保存密钥" : "未配置密钥"}
+                        </span>
+                        {dirtyProviders[item.id] ? <span className="prefs-badge warn">未保存</span> : null}
+                      </div>
+                      <div className="prefs-provider-actions">
+                        <button
+                          type="button"
+                          aria-label={`编辑供应商 ${index + 1}`}
+                          aria-expanded={editing}
+                          onClick={() => setEditingProviders((prev) => ({ ...prev, [item.id]: !prev[item.id] }))}
+                        >
+                          {editing ? "收起" : "编辑"}
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`测试供应商 ${index + 1} 连接`}
+                          onClick={() => void testProvider(item.id, label)}
+                          disabled={busy}
+                        >
+                          测试连接
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`获取供应商 ${index + 1} 模型列表`}
+                          onClick={() => void loadModels(item.id, label)}
+                          disabled={modelBusy === item.id}
+                        >
+                          {modelBusy === item.id ? "读取中…" : "获取模型"}
+                        </button>
+                        {!item.isDefault ? (
+                          <button
+                            type="button"
+                            className="prefs-provider-drop"
+                            aria-label={`删除供应商 ${index + 1}`}
+                            title="删除供应商"
+                            onClick={() => removeProvider(item)}
+                          >
+                            <X size={12} />
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+                    {editing ? (
+                      <div className="prefs-provider-form">
+                        {!item.isDefault ? (
+                          <label className="prefs-field">
+                            名称
+                            <input
+                              className="prefs-provider-name"
+                              value={item.name}
+                              placeholder="例如：百炼 · 标准"
+                              aria-label={`供应商 ${index + 1} 名称`}
+                              onChange={(event) => updateProvider(item.id, { name: event.target.value })}
+                            />
+                          </label>
+                        ) : null}
+                        <label className="prefs-field prefs-provider-url-field">
+                          Base URL
+                          <input
+                            className="prefs-provider-url"
+                            value={item.api_base_url}
+                            placeholder="https://api.example.com/v1"
+                            aria-label={`供应商 ${index + 1} Base URL`}
+                            onChange={(event) => {
+                              invalidateCatalog(item.id);
+                              updateProvider(item.id, { api_base_url: event.target.value });
+                            }}
+                          />
+                        </label>
+                        <label className="prefs-field">
+                          API Key
+                          <input
+                            type="password"
+                            className="prefs-provider-key"
+                            value={item.api_key}
+                            placeholder={item.keyMask ? `已保存 ${item.keyMask}，留空则不修改` : "尚未配置"}
+                            aria-label={`供应商 ${index + 1} API Key`}
+                            autoComplete="off"
+                            onChange={(event) => {
+                              invalidateCatalog(item.id);
+                              updateProvider(item.id, { api_key: event.target.value });
+                            }}
+                          />
+                        </label>
+                        <label className="prefs-field prefs-field-narrow">
+                          超时（秒）
+                          <input
+                            type="number"
+                            min={1}
+                            max={600}
+                            value={item.timeout}
+                            onChange={(event) => updateProvider(item.id, { timeout: event.target.value })}
+                            aria-label={`供应商 ${index + 1} 超时秒数`}
+                          />
+                        </label>
+                      </div>
+                    ) : (
+                      <p className="prefs-provider-summary">
+                        <span>{item.api_base_url || "尚未填写 Base URL"}</span>
+                        <span>{item.keyMask ? `密钥 ${item.keyMask}` : hasKey ? "新密钥未保存" : "未配置密钥"}</span>
+                      </p>
+                    )}
+                    {modelNotices[item.id] ? (
+                      <button
+                        type="button"
+                        className="prefs-provider-result prefs-catalog-summary"
+                        aria-expanded={catalogOpen[item.id] ?? false}
+                        onClick={() => setCatalogOpen((current) => ({ ...current, [item.id]: !current[item.id] }))}
+                      >
+                        {modelNotices[item.id]}
+                      </button>
+                    ) : null}
+                    {catalogOpen[item.id] ? (
+                      <div className="prefs-model-list" aria-label={`${label}模型列表`}>
+                        {(modelOptions[item.id] ?? []).map((model) => <span key={model}>{model}</span>)}
+                        {(modelOptions[item.id] ?? []).length === 0 ? <p>目录为空</p> : null}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })}
             </div>
 
             <p className="prefs-group-title">任务路由</p>
@@ -976,15 +1052,15 @@ export default function PreferencesPage() {
                   <Combobox
                     value={routes[key] ?? "default"}
                     ariaLabel={`${label}使用的供应商`}
-                    options={[{ value: "default", label: "默认" }, ...providers.map((item) => ({ value: item.id, label: item.name || item.id }))]}
-                    onChange={(value) => setRoutes({ ...routes, [key]: value })}
+                    options={providers.map((item, index) => ({ value: item.id, label: providerLabel(item, index) }))}
+                    onChange={(value) => { setRoutes({ ...routes, [key]: value }); setDirtySettings(true); }}
                   />
                   <Combobox
                     value={models[key] ?? ""}
-                    placeholder={key === "image" ? "需独立生图 Provider / 模型 ID" : "模型 ID"}
+                    placeholder={key === "image" ? "需独立生图 Provider / 模型 ID" : key === "image_edit" ? "wanx2.1-imageedit（默认遮罩编辑模型）" : "模型 ID"}
                     ariaLabel={label + "模型"}
                     options={(modelOptions[routes[key] ?? "default"] ?? []).map((model) => ({ value: model, label: model, detail: routes[key] ?? "default" }))}
-                    onChange={(value) => setModels({ ...models, [key]: value })}
+                    onChange={(value) => { setModels({ ...models, [key]: value }); setDirtySettings(true); }}
                   />
                 </div>
               ))}
@@ -999,7 +1075,7 @@ export default function PreferencesPage() {
                 min={1}
                 max={64}
                 value={agentSteps}
-                onChange={(event) => setAgentSteps(event.target.value)}
+                onChange={(event) => { setAgentSteps(event.target.value); setDirtySettings(true); }}
                 aria-label="对话 Agent 内部步骤上限"
               />
             </label>
@@ -1011,7 +1087,7 @@ export default function PreferencesPage() {
                 max={1000000}
                 step={1000}
                 value={agentTokens}
-                onChange={(event) => setAgentTokens(event.target.value)}
+                onChange={(event) => { setAgentTokens(event.target.value); setDirtySettings(true); }}
                 aria-label="对话 Agent token 上限"
               />
             </label>
@@ -1020,20 +1096,18 @@ export default function PreferencesPage() {
               这个数限制一条消息里的“调模型→读工具→继续处理”，不限制您能继续问多少个问题。
               到了上限会明确停止，不会把截断内容当成完整回答。
             </p>
-            <p className="prefs-state">
-              <span className={config.configured ? "prefs-badge ok" : "prefs-badge warn"}>
-                {config.configured ? "已配置" : "未配置"}
-              </span>
-              <span>服务商 {config.provider}</span>
-            </p>
             {error ? <p className="prefs-error">{error}</p> : null}
-            <div className="prefs-actions">
-              <button type="button" onClick={test} disabled={busy}>
-                测试连接
-              </button>
-              <button type="button" className="primary" onClick={save} disabled={busy}>
-                保存
-              </button>
+            {/* V-20：保存不再埋在长表单末尾——它跟着面板底部停住，旁边写清当前是
+                「有未保存的修改」还是「已保存 hh:mm:ss」。 */}
+            <div className={`prefs-savebar${hasUnsaved ? " is-dirty" : ""}`}>
+              <p className={`prefs-save-state${hasUnsaved ? " dirty" : ""}`} role="status">
+                {hasUnsaved ? "有未保存的修改" : lastSavedAt ? `已保存 ${lastSavedAt}` : configuredStatus}
+              </p>
+              <div className="prefs-actions">
+                <button type="button" className="primary" onClick={save} disabled={busy}>
+                  保存设置
+                </button>
+              </div>
             </div>
           </>
         ) : null}
