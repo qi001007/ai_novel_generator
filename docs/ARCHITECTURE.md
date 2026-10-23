@@ -58,7 +58,7 @@ FastAPI、SQLModel、Alembic 与 SQLite 继续组成单体应用。新模型避�
 
 开发侧 `novel_platform` MCP 只通过本地 HTTP API 操作平台，不直连数据库。统一命令已经覆盖的动作优先走命令；尚未迁移的旧能力通过受限的 `/api/*` 读写工具临时覆盖。页面验收只允许 click/input/scroll/drag 白名单与 DOM 测量，不开放任意脚本。MCP 不属于产品 UI，也不等同于产品内对话 Agent；它验证并驱动产品 Agent 将来要复用的同一函数能力。
 
-模型网关当前默认接入百炼 Token Plan，任务模型以设置接口与发布版本中的实际配置为准；原文固定的 `qwen3.7-plus` / `qwen3.8-flash` 与当前实现不符，已移除。无计费 `/models` 鉴权已返回 HTTP 200。生图走同一供应商路由和 `/api/images/generations` 传输边界，但 `sk-sp-` Token Plan 密钥经文本 Base URL 直调图片会按官方规则返回 400；正式启用必须新增百炼标准 `sk-` 生图供应商及对应地域/Workspace URL，不能把文本密钥复用成假可用状态。
+模型网关当前默认接入百炼 Token Plan，任务模型以设置接口与发布版本中的实际配置为准；原文固定的 `qwen3.7-plus` / `qwen3.8-flash` 与当前实现不符，已移除。无计费 `/models` 鉴权已返回 HTTP 200。产品网站的 `/api/images/generations` 仍使用既有 OpenAI-compatible image 协议，尚未接入官方 Token Plan 多模态生成专用 endpoint，因此网站真实生图仍需集成允许该服务端用途的标准 `sk-` 凭证及对应地域/Workspace URL；开发侧对专用 endpoint 的一次性工具验收只证明该临时通路可用，入口与凭证边界见 `HANDOFF.md`。
 
 ### 0.6 文档职责
 

@@ -8,7 +8,7 @@
 
 先运行本地假模型，不需要新密钥。真实模型测试需要可用于本应用后端的凭证，由主人在设置页输入，不发聊天、不写 Git；新增供应商后还要检查正文/自检/对话/摘要的任务路由，以及已发布 Workflow 模型节点引用的供应商。仅替换默认供应商不会自动改掉其他路由或不可变历史版本。
 
-百炼官方 [Base URL 总览](https://help.aliyun.com/zh/model-studio/base-url)（2026-10-23 核对）：Token Plan 的 OpenAI 兼容地址是 `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`，且明确不支持后端服务。网站及本应用后端的真实测试应使用允许该用途的标准 API；北京兼容地址可用 `https://dashscope.aliyuncs.com/compatible-mode/v1`，生产可按同页选择实际 Workspace 专属域名。标准 Key 与套餐 Key 不混用，不静默改换供应商或产生费用。
+百炼官方 [Base URL 总览](https://help.aliyun.com/zh/model-studio/base-url)（2026-10-23 核对）：Token Plan 的 OpenAI 兼容地址是 `https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1`，且明确不支持后端服务。网站及本应用后端的真实测试应使用允许该用途的标准 API；北京兼容地址可用 `https://dashscope.aliyuncs.com/compatible-mode/v1`，生产可按同页选择实际 Workspace 专属域名。标准 Key 与套餐 Key 不混用，不静默改换供应商或产生费用。官方另有[Token Plan 多模态生成专用 API](https://help.aliyun.com/zh/model-studio/token-plan-multimodal-gen)；本批只由开发侧工具使用已配置的 Token Plan 凭证调用该专用 endpoint 单次验收，不能据此视为网站后端凭证或 `/api/images/generations` 已接通，产品后端仍按标准 API 边界处理。
 
 ### 主人只做一轮约 20 分钟真实试用
 

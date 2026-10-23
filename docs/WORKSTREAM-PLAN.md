@@ -5,7 +5,8 @@
 
 ## 已完成
 
-- 2026-10-23 · B-01（责任基线 `158dfad`）：IAB 5174 真机完成 10 轮书 5→6→5 切换；每轮在书 6 打开 AI 自检、在书 5 打开正文生成、`try001` 与 AI 自检，共 40/40 次画布核验通过。1693×1244 视口下画布 689×921、DOM 5 个节点；截图 `C:/Users/Administrator/.codex/visualizations/2026/10/23/01a16674-6b57-7851-b201-8c6b5ccbe547/B01-workflow-after.png`。前端全量 425 passed / 36 files，`tsc -b --force` 与生产构建通过；后端项目 `.venv` 510 passed（排除 `test_platform_mcp.py`）；该文件另在装有 `fastmcp` 的 Anaconda 环境 11 passed，不能替代项目开发环境依赖门禁。首次后端运行 509 passed / 1 failed，因 `.env` 重载启用已配置种子、自动审查触发供应商并返回 502；显式在导入前置空 key/model 且指定不存在的 DOTENV 路径后重跑 510 passed。平台 MCP 不计入本项 UI 验收。539px 初始截图仍显拥挤，归既有 V-03，B-01 未改窄屏布局。
+- 2026-10-23 · B-07（开发工具单次生图）：开发侧工具经已配置 Token Plan 凭证直调官方多模态生成专用 endpoint，仅 1 次 POST、无重试，HTTP 200，模型 `wan2.7-image`，request ID `3f65e33c-e35b-4dcb-93e3-0098fec9bd22`，usage 为 image_count 1 / input 1942 / output 2 / total 1944；Credits 未报告。原始 PNG 保存于 `.scratch/b07-single-image-20261023/world-map.png`，报告 `.scratch/b07-single-image-20261023/report.json`；1024×1024、2,329,721 bytes、SHA-256 `17c5b2d0a05875c182b70c61a717198b784acb5b35e314ca4b04a3884220a777`。人工查看发现重复「港湾镇」、图例小字及提示词要求无边框但图中仍有边框，中文标签质量未验收。此证据仅证明开发工具临时 endpoint 出图 1 张；产品网站 `/api/images/generations` 及扩图协议未用此通路或实测。
+- 2026-10-23 · B-01（责任基线 `158dfad`）：IAB 5174 真机完成 10 轮书 5→6→5 切换；每轮在书 6 打开 AI 自检、在书 5 打开正文生成、`try001` 与 AI 自检，共 40/40 次画布核验通过。1693×1244 视口下画布 689×921、DOM 5 个节点；截图 `C:/Users/Administrator/.codex/visualizations/2026/10/23/01a16674-6b57-7851-b201-8c6b5ccbe547/B01-workflow-after.png`。前端全量 425 passed / 36 files，`tsc -b --force` 与生产构建通过；后端项目 `.venv` 510 passed（排除 `test_platform_mcp.py`）；该文件另在装有 `fastmcp` 的 Anaconda 环境 11 passed，不能替代项目开发环境依赖门禁。首次后端运行 509 passed / 1 failed：`.env` 重载重新填入 model/key，自动审查请求命中本机禁用端点 `http://127.0.0.1:9/v1`，经本机代理返回 502；只读回查 `resolve_routing` 确认 endpoint 未变，非百炼外部请求。显式在导入前置空 key/model 且指定不存在的 DOTENV 路径后重跑 510 passed。平台 MCP 不计入本项 UI 验收。539px 初始截图仍显拥挤，归既有 V-03，B-01 未改窄屏布局。
 - 2026-10-23 · B-02（责任基线 `158dfad`）：旧书 6 在 IAB 5174 点击「补齐系统工作流」，统一命令只新增 `generation` Workflow 5（当前、v1、revision 1）及书 6 的 generation 绑定；原 Workflow 1–4 的字段与书 5 绑定未变，书 6 未发布的 review Workflow 3 保持原样。刷新后补齐按钮消失，点击新流程显示 5 节点画布；已配置 `qwen3.6-flash`，未试运行模型。截图 `C:/Users/Administrator/.codex/visualizations/2026/10/23/01a16674-6b57-7851-b201-8c6b5ccbe547/B02-system-default-after.png`。`test_command_catalog.py` 16 passed，前端定向 89 passed / 2 files；全量后端 515 passed（排除 `test_platform_mcp.py`）、前端 429 passed / 36 files、`tsc -b --force` 通过；平台 MCP `run_platform_checks` build exit 0（main 1181.99 kB，2.29 s）。未运行真实模型。
 - 2026-10-23 · R-03 Agent HTTP 适配与审批证据：隔离库 18083/18084 的 7 项检查通过，覆盖读文件/假搜索的 SSE done 与轨迹回读、差异目标与请求资产一致、待审批零写、拒绝零写、pending 重启恢复、同一批准重复提交但 Operation 仅 1 条、完成状态再次重启回读。证据 `.scratch/release-agent-20261023/report.json` 与 `report.md`；验收脚本替换了整个 `run_agent_turn`/`stream_agent_turn`，因此它只证明 HTTP/工具/审批/持久化，不证明 Pydantic 循环。另以现有 FunctionModel 跑 Pydantic「读→搜索→提案」及工具失败后继续处理两条定向测试，2 passed；这些仍是假模型机制证据。真实模型选择工具、剧情讨论与写作质量、网页正文研究、笔记栏目及浏览器端审批可用性仍待验收；没有执行任何真实模型或图片调用，临时服务已停止，正式库哈希与本轮开始一致。
 
@@ -97,7 +98,7 @@
 4. **阶段 4 Workflow**：连线即时校验（环路／端口方向／条件出口）与键盘删除、多选、复制粘贴、撤销重做已于 2026-10-22 补齐真机与 API 回读证据；剩余仅是 V-03 的整体信息架构与窄屏布局。
 5. **阶段 5 生成闭环**：2026-10-23 已在全新隔离库完成纯 UI 从零整链（新建作品 → 两类流程 → 生成候选 → 接受写入 → AI 自检 → 终审 → 重启回读）与统一运行详情；剩余旧写入口收口（`generation.accept` 仍未注册为统一命令）与真实供应商生成验收。
 6. **阶段 6 地图与平台**：M-02 基础地图库与 M-01 分块扩图/单格重绘已落地（1024 网格、四向扩展、遮罩外逐像素贴回、4×4 上限）；PostgreSQL/对象存储/账户/配额/Tauri 仍未实现。
-   当前额外阻塞：主人提供的 Token Plan `sk-sp-` 只能用于文本/工具协议，真实生图还需标准百炼 `sk-` 密钥、地域与 Workspace ID（V-08）。
+   当前产品网站生图阻塞（V-08）：`/api/images/generations` 尚未接入 Token Plan 多模态专用 endpoint，网站后端仍需适用于该服务端用途的百炼标准 `sk-` 凭证及地域/Workspace URL。开发侧单次 Token Plan 专用 endpoint 出图记录见本节 B-07，不代表网站协议、扩图或产品生图已验收。
 7. **界面验收**：2026-10-23 主人复核后，V-04/V-05/V-06/L-01 因已满足验收而移出、U-06/U-08 已修复；启动页与编辑器仍有主人最终观感取舍权，自动测试不能替代此项。
 
 ## 下一施工顺序
