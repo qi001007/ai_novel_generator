@@ -306,17 +306,22 @@ def execute_workflow(session: Session, run: WorkflowRun) -> WorkflowRun:
             session.commit()
             result = _execute_node(session, run, node, graph, outputs)
             record.output = result if isinstance(result, dict) else {"value": result}
-            record.status = "completed"
-            record.ended_at = utc_now()
             if node["type"] == "model":
                 record.token_input = int(record.output.get("token_input", 0))
                 record.token_output = int(record.output.get("token_output", 0))
+                minimum = int(node.get("config", {}).get("min_output_tokens", 0))
+                if minimum and record.token_output < minimum:
+                    session.add(record)
+                    session.commit()
+                    raise RuntimeError(f"模型节点仅返回 {record.token_output} Token，低于要求的 {minimum} Token")
             elif node["type"] == "context":
                 # Context tokens are an estimate of what this node selected. They
                 # are shown on the node but not added to the run total: the model's
                 # reported input already contains the same text.
                 record.token_input = int(record.output.get("token_input", 0))
                 record.token_output = 0
+            record.status = "completed"
+            record.ended_at = utc_now()
             session.add(record)
             session.commit()
             outputs[node_id] = record.output
@@ -345,6 +350,9 @@ def execute_workflow(session: Session, run: WorkflowRun) -> WorkflowRun:
             failed.ended_at = utc_now()
             session.add(failed)
         run = session.get(WorkflowRun, run.id)
+        node_runs = session.exec(select(NodeRun).where(NodeRun.workflow_run_id == run.id)).all()
+        run.token_input = sum(item.token_input for item in node_runs if item.node_type == "model")
+        run.token_output = sum(item.token_output for item in node_runs if item.node_type == "model")
         run.status = "failed"
         run.error = str(exc)
         run.ended_at = utc_now()

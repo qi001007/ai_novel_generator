@@ -1,5 +1,6 @@
 # Backlog
 
+- 2026-10-24 · B11：Workflow 模型节点校验 `min_output_tokens` 为非布尔整数 0..1000000 且不高于 `max_output_tokens`（默认 4096）；省略字段按 0 处理以兼容旧图。
 - 2026-10-23 · B-02：新增低风险 `workflow.ensure_defaults` 与只读 preview；新补流程按模型配置发布或留 draft，结果返回新建与缺模型用途。
 
 - 2026-10-23 · V-19 阻塞：`_create_workflow` 的种子占位判定由「`系统 · ` 名称前缀」收窄为「`系统 · ` 前缀且无 `WorkflowVersion`」，已发布默认流程不再被普通新建改绑或递增 revision；未发布的自建流程也不会被下一条新建顶掉。判定理由见 D-21。

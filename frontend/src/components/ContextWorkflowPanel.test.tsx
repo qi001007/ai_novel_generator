@@ -104,7 +104,8 @@ describe("Workflow browser comments", () => {
     expect(probe.flow.setViewport).toHaveBeenCalled();
   });
 
-  it("B-09 edits reachable text output limits from the model and saves the same output config", async () => {
+  // B11 supersedes the B09 model-panel placement only; output min_chars stays in its own node unchanged.
+  it("B11 edits minimum and maximum output tokens symmetrically on the model", async () => {
     const graph = { version: 1 as const, nodes: [
       { id: "start", type: "start" as const, label: "开始", position: { x: 0, y: 0 }, config: {} },
       { id: "context", type: "context" as const, label: "上下文", position: { x: 200, y: 0 }, config: {} },
@@ -132,23 +133,22 @@ describe("Workflow browser comments", () => {
     render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
     await screen.findByText("正文流程");
     act(() => probe.clickNode?.({ id: "model" }));
-    expect((await screen.findByLabelText("最少字数") as HTMLInputElement).value).toBe("2500");
-    expect(screen.getAllByLabelText("最少字数")).toHaveLength(1);
-    expect(screen.queryByText("分支正文（outputB）")).toBeNull();
-    fireEvent.change(screen.getByLabelText("最少字数"), { target: { value: "3000" } });
+    expect((await screen.findByLabelText("最小输出 Token") as HTMLInputElement).value).toBe("0");
+    expect((screen.getByLabelText("最大输出 Token") as HTMLInputElement).value).toBe("4096");
+    fireEvent.change(screen.getByLabelText("最小输出 Token"), { target: { value: "3000" } });
     act(() => probe.clickNode?.({ id: "output" }));
-    expect((screen.getByLabelText("最少字数") as HTMLInputElement).value).toBe("3000");
+    expect((screen.getByLabelText("最少字数") as HTMLInputElement).value).toBe("2500");
     act(() => probe.clickNode?.({ id: "model" }));
-    expect((screen.getByLabelText("最少字数") as HTMLInputElement).value).toBe("3000");
+    expect((screen.getByLabelText("最小输出 Token") as HTMLInputElement).value).toBe("3000");
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(commands).toHaveLength(1));
     const savedGraph = commands[0].payload.graph as typeof graph;
-    expect(savedGraph.nodes.find((node) => node.id === "output")?.config.min_chars).toBe(3000);
+    expect((savedGraph.nodes.find((node) => node.id === "model")?.config as Record<string, unknown>).min_output_tokens).toBe(3000);
+    expect(savedGraph.nodes.find((node) => node.id === "output")?.config.min_chars).toBe(2500);
     expect(savedGraph.nodes.find((node) => node.id === "outputB")?.config.min_chars).toBe(1400);
-    expect(savedGraph.nodes.find((node) => node.id === "model")?.config).not.toHaveProperty("min_chars");
   });
 
-  it("B-09 hides output limits for a model with no reachable text output", async () => {
+  it("B11 gives every model symmetric token fields without a separate explanation section", async () => {
     const graph = { version: 1 as const, nodes: [
       { id: "model", type: "model" as const, label: "模型调用", position: { x: 0, y: 0 }, config: {} },
       { id: "review", type: "output" as const, label: "自检问题", position: { x: 200, y: 0 }, config: { format: "review_issues", min_chars: 9999, max_chars: 1 } },
@@ -159,12 +159,15 @@ describe("Workflow browser comments", () => {
     render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
     await screen.findByText("自检流程");
     act(() => probe.clickNode?.({ id: "model" }));
-    expect(await screen.findByText("请连接正文输出节点后设置字数范围")).toBeTruthy();
-    expect(screen.queryByLabelText("最少字数")).toBeNull();
+    expect(await screen.findByLabelText("最小输出 Token")).toBeTruthy();
+    expect(screen.getByLabelText("最大输出 Token")).toBeTruthy();
+    expect(screen.queryByText("正文候选字数")).toBeNull();
+    expect(screen.queryByText(/字数不等于 Token/)).toBeNull();
     expect(screen.queryByLabelText("最多字数")).toBeNull();
   });
 
-  it("B-09 labels each text output when one model reaches several outputs", async () => {
+  // B11 supersedes B09's model-to-output traversal UI; only model token bounds belong in this inspector.
+  it("B11 keeps multi-output character bounds out of the model inspector", async () => {
     const graph = { version: 1 as const, nodes: [
       { id: "model", type: "model" as const, label: "模型调用", position: { x: 0, y: 0 }, config: {} },
       { id: "outA", type: "output" as const, label: "正文A", position: { x: 200, y: 0 }, config: { format: "text", min_chars: 1000 } },
@@ -176,9 +179,11 @@ describe("Workflow browser comments", () => {
     render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
     await screen.findByText("多出口正文");
     act(() => probe.clickNode?.({ id: "model" }));
-    expect(await screen.findByText("正文A（outA）")).toBeTruthy();
-    expect(screen.getByText("正文B（outB）")).toBeTruthy();
-    expect(screen.getAllByLabelText("最少字数")).toHaveLength(2);
+    expect(await screen.findByLabelText("最小输出 Token")).toBeTruthy();
+    expect(screen.getByLabelText("最大输出 Token")).toBeTruthy();
+    expect(screen.queryByText("正文A（outA）")).toBeNull();
+    expect(screen.queryByText("正文B（outB）")).toBeNull();
+    expect(screen.queryByLabelText("最少字数")).toBeNull();
   });
 
   it("V-19 rejects port-type, cycle and output connections with a reason beside the node", async () => {

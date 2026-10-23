@@ -731,12 +731,15 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(contextWorkflowPanel).toContain("function fitWorkflowView(duration = 0)");
     expect(contextWorkflowPanel).toContain("flow.setViewport({");
     expect(contextWorkflowPanel).toContain("onConnect={connect}");
-    expect(contextWorkflowPanel).toContain("function reachableTextOutputs(graph: WorkflowGraph, from: string)");
-    expect(contextWorkflowPanel).toContain("const visited = new Set<string>()");
-    expect(contextWorkflowPanel).toContain('aria-label="正文输出字数范围"');
-    expect(contextWorkflowPanel).toContain('onOutputConfig={updateNodeConfig}');
-    expect(contextWorkflowPanel).toContain("请连接正文输出节点后设置字数范围");
-    expect(contextWorkflowPanel).toContain("字数不足会判失败并保留候选，需手动调整后重新生成，不会自动续写");
+    expect(contextWorkflowPanel).toContain("function graphReaches(graph: WorkflowGraph, from: string, to: string)");
+    // B11 supersedes B09's reachable-output model section and long explanation.
+    expect(contextWorkflowPanel).not.toContain('aria-label="正文输出字数范围"');
+    expect(contextWorkflowPanel).toContain('最小输出 Token');
+    expect(contextWorkflowPanel).toContain('最大输出 Token');
+    expect(contextWorkflowPanel).not.toContain('reachableTextOutputs');
+    expect(contextWorkflowPanel).not.toContain('正文候选字数');
+    expect(contextWorkflowPanel).not.toContain("请连接正文输出节点后设置字数范围");
+    expect(contextWorkflowPanel).not.toContain("字数不足会判失败并保留候选，需手动调整后重新生成，不会自动续写");
     expect(contextWorkflowPanel).toContain("function connectionRejection(");
     expect(contextWorkflowPanel).toContain("开始节点没有输入端口");
     expect(contextWorkflowPanel).toContain("这条连线会形成环路");

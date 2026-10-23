@@ -1,5 +1,6 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-10-24 · B11：`test_workflows.py` 覆盖模型最小输出 Token 非布尔整数范围、不得超过最大值、2999/3000 usage 边界、失败节点与运行保留候选及 Token 消耗、下游不执行、0 下限兼容；定向 2 passed。
 - 2026-10-23 · B09：`test_generation_candidates.py` 覆盖输出节点最少 3000 字边界：2999 字失败并保留候选，3000 字通过，`max_chars=0` 接受更长内容。
 - 2026-10-23 · B-02：`test_command_catalog.py` 补无模型/配置模型发布、重复执行、自建用途保留及跨书隔离共 5 条命令回归。
 

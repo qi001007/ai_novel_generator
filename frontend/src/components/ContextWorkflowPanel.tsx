@@ -92,7 +92,7 @@ function nodeConfig(type: NodeType, purpose: WorkflowPurpose): Record<string, un
   if (type === "start") return { inputs: ["chapter_number", "request"] };
   if (type === "context") return { task_type: purpose === "generation" ? "generate" : "review", token_budget: purpose === "review" ? 16000 : 8000, policy: defaultPolicy(purpose) };
   if (type === "prompt") return { template: purpose === "generation" ? "先读全 A/B/C/D 上下文，保持人物、设定与既定事实一致；按要求写完整一章，不要只写提纲或片段：\n{{input}}" : "只审本章，不改写正文。逐条核对设定库、人物关系、既定事实与上下文是否冲突，并检查本章目标是否完成；只输出结构化问题：\n{{input}}" };
-  if (type === "model") return { provider_id: "", model_id: "", temperature: purpose === "generation" ? 0.7 : 0.2, max_output_tokens: purpose === "generation" ? 4096 : 2048, output_schema: purpose === "review" ? "review_issues" : "text" };
+  if (type === "model") return { provider_id: "", model_id: "", temperature: purpose === "generation" ? 0.7 : 0.2, min_output_tokens: 0, max_output_tokens: purpose === "generation" ? 4096 : 2048, output_schema: purpose === "review" ? "review_issues" : "text" };
   if (type === "condition") return { branches: [{ id: "match", value: "$input.status", operator: "equals", expected: "ok" }] };
   return { format: purpose === "generation" ? "text" : "review_issues", min_chars: 0, max_chars: 0 };
 }
@@ -132,18 +132,6 @@ function graphReaches(graph: WorkflowGraph, from: string, to: string): boolean {
     for (const edge of graph.edges) if (edge.source === current) pending.push(edge.target);
   }
   return false;
-}
-
-function reachableTextOutputs(graph: WorkflowGraph, from: string): ContextWorkflowNode[] {
-  const pending = [from];
-  const visited = new Set<string>();
-  while (pending.length) {
-    const current = pending.pop()!;
-    if (visited.has(current)) continue;
-    visited.add(current);
-    for (const edge of graph.edges) if (edge.source === current) pending.push(edge.target);
-  }
-  return graph.nodes.filter((node) => node.type === "output" && visited.has(node.id) && (node.config?.format ?? "text") === "text");
 }
 
 function connectionRejection(graph: WorkflowGraph, connection: Connection): ConnectionError | null {
@@ -251,7 +239,6 @@ export default function ContextWorkflowPanel() {
   const [policyHeight, setPolicyHeight] = useState(() => Number(localStorage.getItem("workflow.policyHeight")) || 210);
 
   const selectedNode = draft?.graph.nodes.find((node) => node.id === selectedNodeIds.at(-1)) ?? null;
-  const selectedModelOutputs = selectedNode?.type === "model" && draft ? reachableTextOutputs(draft.graph, selectedNode.id) : [];
   const contextNode = draft?.graph.nodes.find((node) => node.type === "context") ?? null;
   const contextPolicy = (contextNode?.config?.policy as ReturnType<typeof defaultPolicy> | undefined) ?? defaultPolicy(draft?.purpose ?? "generation");
   const workflowScopeReady = draft?.novel_id === novelId;
@@ -788,7 +775,7 @@ export default function ContextWorkflowPanel() {
         </ReactFlow>
       </div>
       <aside className="workflow-inspector" aria-label="节点属性">
-        {selectedNode ? <NodeInspector node={selectedNode} config={llmConfig} textOutputs={selectedNode.type === "model" ? selectedModelOutputs : undefined} onChange={(patch) => updateNode(selectedNode.id, patch)} onConfig={(patch) => updateNodeConfig(selectedNode.id, patch)} onOutputConfig={updateNodeConfig} onOpenPrompt={() => { setPromptNodeId(selectedNode.id); setPromptText(String(selectedNode.config?.template ?? "")); }} /> : <p>选择节点查看参数</p>}
+        {selectedNode ? <NodeInspector node={selectedNode} config={llmConfig} onChange={(patch) => updateNode(selectedNode.id, patch)} onConfig={(patch) => updateNodeConfig(selectedNode.id, patch)} onOpenPrompt={() => { setPromptNodeId(selectedNode.id); setPromptText(String(selectedNode.config?.template ?? "")); }} /> : <p>选择节点查看参数</p>}
       </aside>
     </div>
     {contextNode ? <>
@@ -838,13 +825,11 @@ export default function ContextWorkflowPanel() {
   </div>;
 }
 
-function NodeInspector({ node, config, textOutputs, onChange, onConfig, onOutputConfig, onOpenPrompt }: {
+function NodeInspector({ node, config, onChange, onConfig, onOpenPrompt }: {
   node: ContextWorkflowNode;
   config: LlmConfig;
-  textOutputs?: ContextWorkflowNode[];
   onChange: (patch: Partial<ContextWorkflowNode>) => void;
   onConfig: (patch: Record<string, unknown>) => void;
-  onOutputConfig: (nodeId: string, patch: Record<string, unknown>) => void;
   onOpenPrompt: () => void;
 }) {
   const providerId = String(node.config?.provider_id ?? "");
@@ -861,8 +846,8 @@ function NodeInspector({ node, config, textOutputs, onChange, onConfig, onOutput
       <label>供应商<Combobox ariaLabel="模型供应商" value={providerId} options={providers} onChange={(value) => onConfig({ provider_id: value, model_id: "" })} placeholder="先在设置中配置" /></label>
       <label>模型<Combobox ariaLabel="模型" value={String(node.config?.model_id ?? "")} options={models} onChange={(value) => onConfig({ model_id: value })} placeholder={providerId && !config.catalogs[providerId] ? "先在设置中获取模型列表" : "选择模型"} disabled={!providerId || models.length === 0} /></label>
       <label>温度<TextField type="number" min={0} max={2} step={0.1} value={Number(node.config?.temperature ?? .7)} onChange={(event) => onConfig({ temperature: Number(event.target.value) })} /></label>
+      <label title="0 表示不限">最小输出 Token<TextField type="number" min={0} max={1000000} value={Number(node.config?.min_output_tokens ?? 0)} onChange={(event) => onConfig({ min_output_tokens: Number(event.target.value) })} /></label>
       <label>最大输出 Token<TextField type="number" min={1} max={1000000} value={Number(node.config?.max_output_tokens ?? 4096)} onChange={(event) => onConfig({ max_output_tokens: Number(event.target.value) })} /></label>
-      {textOutputs?.length ? <section aria-label="正文输出字数范围"><strong>正文候选字数</strong>{textOutputs.map((output) => <div key={output.id} className="workflow-output-limits">{textOutputs.length > 1 ? <strong>{output.label || output.id}（{output.id}）</strong> : null}<label>最少字数<TextField type="number" min={0} max={1000000} value={Number(output.config?.min_chars ?? 0)} onChange={(event) => onOutputConfig(output.id, { min_chars: Number(event.target.value) })} /></label><label>最多字数<TextField type="number" min={0} max={1000000} value={Number(output.config?.max_chars ?? 0)} onChange={(event) => onOutputConfig(output.id, { max_chars: Number(event.target.value) })} /></label></div>)}<p>0 表示不限；字数不等于 Token。字数不足会判失败并保留候选，需手动调整后重新生成，不会自动续写</p></section> : <p>请连接正文输出节点后设置字数范围</p>}
     </> : null}
     {node.type === "condition" ? <>
       {conditionBranches.map((branch, index) => <div className="workflow-condition-branch" key={`${branch.id}-${index}`}>
@@ -880,7 +865,6 @@ function NodeInspector({ node, config, textOutputs, onChange, onConfig, onOutput
       {(node.config?.format ?? "text") === "text" ? <>
         <label>最少字数<TextField type="number" min={0} max={1000000} value={Number(node.config?.min_chars ?? 0)} onChange={(event) => onConfig({ min_chars: Number(event.target.value) })} /></label>
         <label>最多少字<TextField type="number" min={0} max={1000000} value={Number(node.config?.max_chars ?? 0)} onChange={(event) => onConfig({ max_chars: Number(event.target.value) })} /></label>
-        <p>0 表示不限；字数不等于 Token。字数不足会判失败并保留候选，需手动调整后重新生成，不会自动续写</p>
       </> : null}
     </> : null}
   </>;

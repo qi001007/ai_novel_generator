@@ -1,5 +1,6 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-10-24 · B11：模型节点按返回的 completion token usage 执行最小 Token 下限；不足时节点与运行失败，但保留模型输出及节点/运行 Token 消耗，停止下游执行。不透传供应商无通用支持的 min 参数。
 - 2026-10-23 · B-02：`seed_default_workflows` 对完全缺失的用途幂等补建，已有同用途流程和绑定不接管。
 
 - 2026-10-23 · 配置状态按路由：`LLMRouting` 新增 `task_is_configured` 与 `is_configured`——所有已命名任务必须在其实际路由供应商上同时具备 Base URL、密钥、模型名；默认密钥不跨供应商借用。D-22。

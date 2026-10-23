@@ -201,6 +201,80 @@ def test_model_node_uses_explicit_provider_and_records_usage(client: TestClient,
     assert calls == [("default", "draft", "qwen-test", 0.25, 2048)]
 
 
+def test_model_min_output_tokens_validation_and_failed_run_usage(client: TestClient, monkeypatch) -> None:
+    novel_id = _novel(client)
+    graph = _graph()
+    model = next(node for node in graph["nodes"] if node["type"] == "model")
+    model["config"].pop("mock_output")
+    model["config"].update({"min_output_tokens": 3000, "max_output_tokens": 4096})
+
+    invalid = _graph()
+    next(node for node in invalid["nodes"] if node["type"] == "model")["config"].update({"min_output_tokens": True})
+    assert client.post("/api/workflows", json=_payload(novel_id, "布尔下限", graph=invalid)).status_code == 422
+    invalid = _graph()
+    next(node for node in invalid["nodes"] if node["type"] == "model")["config"].update({"min_output_tokens": -1})
+    assert client.post("/api/workflows", json=_payload(novel_id, "负数下限", graph=invalid)).status_code == 422
+    invalid = _graph()
+    next(node for node in invalid["nodes"] if node["type"] == "model")["config"].update({"min_output_tokens": 1.5})
+    assert client.post("/api/workflows", json=_payload(novel_id, "小数下限", graph=invalid)).status_code == 422
+    invalid = _graph()
+    next(node for node in invalid["nodes"] if node["type"] == "model")["config"].update({"min_output_tokens": 4097, "max_output_tokens": 4096})
+    assert client.post("/api/workflows", json=_payload(novel_id, "超最大下限", graph=invalid)).status_code == 422
+
+    calls = []
+    class FakeRoutedClient:
+        def __init__(self, _routing):
+            pass
+        def complete_messages_on(self, *_args, **_kwargs):
+            calls.append(1)
+            return LLMResult("短候选", "qwen-test", 31, 2999, 0.0)
+
+    monkeypatch.setattr("app.services.workflow_engine.resolve_routing", lambda _session: object())
+    monkeypatch.setattr("app.services.workflow_engine.RoutedLLMClient", FakeRoutedClient)
+    workflow = client.post("/api/workflows", json=_payload(novel_id, "最少 Token", graph=graph)).json()
+    assert client.post(f"/api/workflows/{workflow['id']}/publish").status_code == 201
+    response = client.post("/api/workflow-runs", json={"workflow_id": workflow["id"], "novel_id": novel_id, "input": {"query": "测试"}})
+    assert response.status_code == 201
+    result = response.json()
+    assert result["status"] == "failed"
+    assert result["token_input"] == 31
+    assert result["token_output"] == 2999
+    model_run = next(node for node in result["nodes"] if node["node_id"] == "model")
+    assert model_run["status"] == "failed"
+    assert model_run["output"]["text"] == "短候选"
+    assert model_run["token_input"] == 31 and model_run["token_output"] == 2999
+    assert "2999" in model_run["error"] and "3000" in model_run["error"]
+    assert not any(node["node_id"] == "output" for node in result["nodes"])
+    assert calls == [1]
+
+    graph = _graph()
+    model = next(node for node in graph["nodes"] if node["type"] == "model")
+    model["config"].pop("mock_output")
+    model["config"].update({"min_output_tokens": 3000, "max_output_tokens": 4096})
+    class AtBoundaryClient:
+        def __init__(self, _routing):
+            pass
+        def complete_messages_on(self, *_args, **_kwargs):
+            return LLMResult("达标候选", "qwen-test", 31, 3000, 0.0)
+    monkeypatch.setattr("app.services.workflow_engine.RoutedLLMClient", AtBoundaryClient)
+    workflow = client.post("/api/workflows", json=_payload(novel_id, "恰好达标", graph=graph)).json()
+    assert client.post(f"/api/workflows/{workflow['id']}/publish").status_code == 201
+    response = client.post("/api/workflow-runs", json={"workflow_id": workflow["id"], "novel_id": novel_id, "input": {"query": "测试"}})
+    assert response.status_code == 201 and response.json()["status"] == "completed"
+    assert response.json()["token_output"] == 3000
+
+
+def test_zero_min_output_tokens_keeps_legacy_model_graph_valid(client: TestClient) -> None:
+    novel_id = _novel(client)
+    graph = _graph()
+    next(node for node in graph["nodes"] if node["type"] == "model")["config"]["min_output_tokens"] = 0
+    workflow = client.post("/api/workflows", json=_payload(novel_id, "零下限兼容", graph=graph))
+    assert workflow.status_code == 201, workflow.text
+    assert client.post(f"/api/workflows/{workflow.json()['id']}/publish").status_code == 201
+    response = client.post("/api/workflow-runs", json={"workflow_id": workflow.json()["id"], "novel_id": novel_id, "input": {"query": "旧流程"}})
+    assert response.status_code == 201 and response.json()["status"] == "completed"
+
+
 def test_context_node_receives_frozen_policy(client: TestClient, monkeypatch) -> None:
     novel_id = _novel(client)
     calls: list[dict] = []

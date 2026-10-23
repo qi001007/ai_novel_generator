@@ -89,6 +89,11 @@ class WorkflowNode(BaseModel):
                 value = self.config["max_output_tokens"]
                 if not isinstance(value, int) or isinstance(value, bool) or not 1 <= value <= 1_000_000:
                     raise ValueError("model max_output_tokens must be a positive integer")
+            minimum = self.config.get("min_output_tokens", 0)
+            if not isinstance(minimum, int) or isinstance(minimum, bool) or not 0 <= minimum <= 1_000_000:
+                raise ValueError("model min_output_tokens must be between 0 and 1000000")
+            if minimum > self.config.get("max_output_tokens", 4096):
+                raise ValueError("model min_output_tokens cannot exceed max_output_tokens")
         elif self.type == "output":
             minimum = self.config.get("min_chars", 0)
             maximum = self.config.get("max_chars", 0)
