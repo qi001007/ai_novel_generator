@@ -293,4 +293,96 @@ describe("Workflow browser comments", () => {
     expect(useWorkbench.getState().selectedWorkflowId).toBe(2);
     expect(fetchMock.mock.calls.some(([url]) => String(url).includes("workflow.set_default"))).toBe(false);
   });
+
+  it("B-08 ignores old-book workflow responses that resolve after switching books", async () => {
+    const graph = { version: 1 as const, nodes: [], edges: [] };
+    const workflow = (id: number, novel_id: number, name: string) => ({ id, revision: 1, name, novel_id, purpose: "generation" as const, is_default: true, published_version: 1, graph, created_at: "", updated_at: "" });
+    const oldBook = workflow(11, 1, "旧书流程");
+    const newBook = workflow(22, 2, "新书流程");
+    const pending = new Map<number, ((response: Response) => void)[]>();
+    const commands: { url: string; payload: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes("/api/workflows?novel_id=")) {
+        const id = Number(url.split("novel_id=")[1]);
+        if (commands.length && id === 2) return Promise.resolve(new Response(JSON.stringify([newBook]), { headers: { "Content-Type": "application/json" } }));
+        return new Promise<Response>((resolve) => pending.set(id, [...(pending.get(id) ?? []), resolve]));
+      }
+      if (url.startsWith("/api/commands/")) {
+        const body = JSON.parse(String(init?.body));
+        commands.push({ url, payload: body.payload });
+        return Promise.resolve(new Response(JSON.stringify({ id: 1, result: { workflow: { ...newBook, ...body.payload } } }), { headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } }));
+    }));
+    useWorkbench.setState({ selectedNovelId: 1, selectedWorkflowId: null, workflowRefreshEpoch: 0, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    await waitFor(() => expect(pending.get(1)?.length).toBe(2));
+    act(() => { useWorkbench.setState({ selectedNovelId: 2, selectedWorkflowId: null }); });
+    await waitFor(() => expect(pending.get(2)?.length).toBe(1));
+    await act(async () => { pending.get(2)!.forEach((resolve) => resolve(new Response(JSON.stringify([newBook]), { headers: { "Content-Type": "application/json" } }))); });
+    expect(await screen.findByText("新书流程")).toBeTruthy();
+    await act(async () => { pending.get(1)!.forEach((resolve) => resolve(new Response(JSON.stringify([oldBook]), { headers: { "Content-Type": "application/json" } }))); });
+    expect(screen.getByText("新书流程")).toBeTruthy();
+    expect(screen.queryByText("旧书流程")).toBeNull();
+    expect(useWorkbench.getState().selectedWorkflowId).toBe(22);
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(commands).toHaveLength(1));
+    expect(commands[0].url).toContain("workflow.save/execute");
+    expect(commands[0].payload).toMatchObject({ workflow_id: 22, novel_id: 2 });
+  });
+
+  it("B-08 suppresses an obsolete same-book reload error after a newer response succeeds", async () => {
+    const graph = { version: 1 as const, nodes: [], edges: [] };
+    const current = { id: 1, revision: 1, name: "当前流程", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 1, graph, created_at: "", updated_at: "" };
+    const pending: { resolve: (response: Response) => void; reject: (cause: Error) => void }[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("/api/workflows?")) return new Promise<Response>((resolve, reject) => pending.push({ resolve, reject }));
+      return Promise.resolve(new Response(JSON.stringify(url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } }));
+    }));
+    render(<ToastProvider><StrictMode><ContextWorkflowPanel /></StrictMode></ToastProvider>);
+    await waitFor(() => expect(pending).toHaveLength(2));
+    await act(async () => { pending[1].resolve(new Response(JSON.stringify([current]), { headers: { "Content-Type": "application/json" } })); });
+    expect(await screen.findByText("当前流程")).toBeTruthy();
+    await act(async () => { pending[0].reject(new Error("旧请求失败")); });
+    expect(screen.queryByText("旧请求失败")).toBeNull();
+    expect(screen.getByText("当前流程")).toBeTruthy();
+  });
+
+  it("B-08 does not notify a reselected book when an old save completes after an A-to-B-to-A switch", async () => {
+    const graph = { version: 1 as const, nodes: [], edges: [] };
+    const oldBook = { id: 1, revision: 1, name: "旧书流程", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 1, graph, created_at: "", updated_at: "" };
+    const newBook = { ...oldBook, id: 22, name: "新书流程", novel_id: 2 };
+    const returnedBook = { ...oldBook, id: 12, name: "重新选择的甲流程" };
+    let finishSave: ((response: Response) => void) | undefined;
+    const commands: string[] = [];
+    let oldBookReads = 0;
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.startsWith("/api/commands/")) {
+        commands.push(url);
+        return new Promise<Response>((resolve) => { finishSave = resolve; });
+      }
+      if (url.includes("/api/workflows?novel_id=1")) {
+        oldBookReads += 1;
+        return Promise.resolve(new Response(JSON.stringify([oldBookReads <= 2 ? oldBook : returnedBook]), { headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(url.includes("/api/workflows") ? [newBook] : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } }));
+    }));
+    useWorkbench.setState({ selectedNovelId: 1, selectedWorkflowId: null, workflowRefreshEpoch: 0, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    await screen.findByText("旧书流程");
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(commands).toHaveLength(1));
+    act(() => { useWorkbench.setState({ selectedNovelId: 2, selectedWorkflowId: null }); });
+    await screen.findByText("新书流程");
+    expect((screen.getByRole("button", { name: "保存" }) as HTMLButtonElement).disabled).toBe(false);
+    act(() => { useWorkbench.setState({ selectedNovelId: 1, selectedWorkflowId: null }); });
+    await screen.findByText("重新选择的甲流程");
+    await act(async () => {
+      finishSave!(new Response(JSON.stringify({ id: 1, result: { workflow: oldBook } }), { headers: { "Content-Type": "application/json" } }));
+    });
+    expect(useWorkbench.getState().selectedNovelId).toBe(1);
+    expect(useWorkbench.getState().selectedWorkflowId).toBe(12);
+    expect(useWorkbench.getState().workflowRefreshEpoch).toBe(0);
+    expect(screen.getByText("重新选择的甲流程")).toBeTruthy();
+  });
 });

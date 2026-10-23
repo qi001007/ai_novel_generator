@@ -198,6 +198,11 @@ export default function ContextWorkflowPanel() {
   const commandNonce = useRef(0);
   const selectedWorkflowIdRef = useRef(selectedWorkflowId);
   selectedWorkflowIdRef.current = selectedWorkflowId;
+  const mountedRef = useRef(false);
+  const reloadEpoch = useRef(0);
+  const novelScopeRef = useRef({ novelId });
+  if (novelScopeRef.current.novelId !== novelId) novelScopeRef.current = { novelId };
+  const novelScope = novelScopeRef.current;
   const createEpoch = useRef(workflowCreateEpoch);
   const moduleZ = useRef(20);
 
@@ -236,6 +241,7 @@ export default function ContextWorkflowPanel() {
   const selectedNode = draft?.graph.nodes.find((node) => node.id === selectedNodeIds.at(-1)) ?? null;
   const contextNode = draft?.graph.nodes.find((node) => node.type === "context") ?? null;
   const contextPolicy = (contextNode?.config?.policy as ReturnType<typeof defaultPolicy> | undefined) ?? defaultPolicy(draft?.purpose ?? "generation");
+  const workflowScopeReady = draft?.novel_id === novelId;
 
   function fitWorkflowView(duration = 0) {
     const canvas = rootRef.current?.querySelector<HTMLElement>(".context-workflow-canvas");
@@ -274,20 +280,40 @@ export default function ContextWorkflowPanel() {
     setModuleWindows({});
   }, []);
 
+  function isCurrentNovel(scopeNovelId: number | null): scopeNovelId is number {
+    return mountedRef.current && novelScopeRef.current === novelScope && scopeNovelId !== null && useWorkbench.getState().selectedNovelId === scopeNovelId;
+  }
+
   const reload = useCallback(async (preferredId?: number) => {
-    if (novelId === null) return;
-    const items = (await api.listWorkflows(novelId)).map(asWorkflow).filter((item): item is ContextWorkflow => item !== null);
+    if (!isCurrentNovel(novelId)) return false;
+    const scopeNovelId = novelId;
+    const requestEpoch = ++reloadEpoch.current;
+    let response: unknown[];
+    try {
+      response = await api.listWorkflows(scopeNovelId);
+    } catch (cause) {
+      if (isCurrentNovel(scopeNovelId) && reloadEpoch.current === requestEpoch) throw cause;
+      return false;
+    }
+    const items = response.map(asWorkflow).filter((item): item is ContextWorkflow => item !== null);
+    if (!isCurrentNovel(scopeNovelId) || reloadEpoch.current !== requestEpoch) return false;
     setWorkflows(items);
     const target = items.find((item) => item.id === (preferredId ?? selectedWorkflowIdRef.current)) ?? items.find((item) => item.is_default) ?? items[0];
     if (target) {
       pick(target);
       selectWorkflowInTree(target.id);
     } else {
-      pick({ id: -1, revision: 0, created_at: "", updated_at: "", ...defaultPayload(novelId, "generation", "正文生成") });
+      pick({ id: -1, revision: 0, created_at: "", updated_at: "", ...defaultPayload(scopeNovelId, "generation", "正文生成") });
     }
-  }, [novelId, pick, selectWorkflowInTree]);
+    return true;
+  }, [novelId, novelScope, pick, selectWorkflowInTree]);
 
-  useEffect(() => { void reload().catch((cause: Error) => pushToast(cause.message, "error")); }, [reload, pushToast]);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; reloadEpoch.current += 1; };
+  }, []);
+  useEffect(() => { setBusy(false); setLastRun(null); }, [novelId]);
+  useEffect(() => { void reload().catch((cause: Error) => { if (isCurrentNovel(novelId)) pushToast(cause.message, "error"); }); }, [reload, novelId, pushToast]);
   useEffect(() => {
     api.get<LlmConfig>("/api/config/llm").then(setLlmConfig).catch(() => setLlmConfig({ providers: [], catalogs: {} }));
   }, []);
@@ -514,87 +540,102 @@ export default function ContextWorkflowPanel() {
   }
 
   async function save() {
-    if (!draft || novelId === null) return;
+    if (!draft || !isCurrentNovel(novelId) || draft.novel_id !== novelId) return;
+    const scopeNovelId = novelId;
     setBusy(true);
     try {
-      const payload: ContextWorkflowPayload = { name: draft.name.trim(), novel_id: novelId, purpose: draft.purpose, is_default: draft.is_default, graph: draft.graph };
+      const payload: ContextWorkflowPayload = { name: draft.name.trim(), novel_id: scopeNovelId, purpose: draft.purpose, is_default: draft.is_default, graph: draft.graph };
       const operation = draft.id < 0
         ? await api.executeCommand<{ workflow: ContextWorkflow }>("workflow.create", payload, `workflow-create:${crypto.randomUUID()}`)
         : await api.executeCommand<{ workflow: ContextWorkflow }>("workflow.save", { ...payload, workflow_id: draft.id, base_revision: draft.revision }, `workflow-save:${draft.id}:${draft.revision}:${crypto.randomUUID()}`);
       const saved = operation.result.workflow;
-      await reload(saved.id);
+      if (!isCurrentNovel(scopeNovelId) || !await reload(saved.id)) return;
       notifyWorkflowChanged(saved.id);
       pushToast("工作流已保存", "success");
-    } catch (cause) { pushToast(cause instanceof Error ? cause.message : "保存失败", "error"); }
-    finally { setBusy(false); }
+    } catch (cause) { if (isCurrentNovel(scopeNovelId)) pushToast(cause instanceof Error ? cause.message : "保存失败", "error"); }
+    finally { if (isCurrentNovel(scopeNovelId)) setBusy(false); }
   }
 
   async function publish() {
     if (!draft || draft.id < 0) return pushToast("请先保存工作流", "error");
+    if (!isCurrentNovel(novelId) || draft.novel_id !== novelId) return;
+    const scopeNovelId = novelId;
     setBusy(true);
     try {
       await api.validateWorkflow(draft.id);
+      if (!isCurrentNovel(scopeNovelId)) return;
       const operation = await api.executeCommand<{ workflow_version: WorkflowVersion }>("workflow.publish", { workflow_id: draft.id, base_revision: draft.revision }, `workflow-publish:${draft.id}:${draft.revision}:${crypto.randomUUID()}`);
+      if (!isCurrentNovel(scopeNovelId)) return;
       pushToast(`已发布 v${operation.result.workflow_version.version}`, "success");
-      await reload(draft.id);
+      if (!await reload(draft.id)) return;
       notifyWorkflowChanged(draft.id);
-    } catch (cause) { pushToast(cause instanceof Error ? cause.message : "发布失败", "error"); }
-    finally { setBusy(false); }
+    } catch (cause) { if (isCurrentNovel(scopeNovelId)) pushToast(cause instanceof Error ? cause.message : "发布失败", "error"); }
+    finally { if (isCurrentNovel(scopeNovelId)) setBusy(false); }
   }
 
   async function run() {
-    if (!draft || draft.id < 0 || novelId === null) return pushToast("请先保存并发布工作流", "error");
+    if (!draft || draft.id < 0 || !isCurrentNovel(novelId) || draft.novel_id !== novelId) return pushToast("请先保存并发布工作流", "error");
+    const scopeNovelId = novelId;
     setBusy(true);
     try {
-      const result = await api.runWorkflow(draft.id, novelId, { query: "工作流试运行", chapter_number: 1 });
+      const result = await api.runWorkflow(draft.id, scopeNovelId, { query: "工作流试运行", chapter_number: 1 });
+      if (!isCurrentNovel(scopeNovelId)) return;
       setLastRun(result);
       pushToast(`运行${result.status === "completed" ? "完成" : "失败"}`, result.status === "completed" ? "success" : "error");
-    } catch (cause) { pushToast(cause instanceof Error ? cause.message : "运行失败", "error"); }
-    finally { setBusy(false); }
+    } catch (cause) { if (isCurrentNovel(scopeNovelId)) pushToast(cause instanceof Error ? cause.message : "运行失败", "error"); }
+    finally { if (isCurrentNovel(scopeNovelId)) setBusy(false); }
   }
 
   async function makeDefault(target: ContextWorkflow) {
+    if (!isCurrentNovel(novelId)) return;
     if (target.novel_id !== novelId) return pushToast("只能为当前作品切换当前工作流", "error");
     if (hasUnsavedGraph()) return pushToast("请先保存当前画布，再切换当前流程", "error");
     const saved = workflows.find((workflow) => workflow.id === target.id);
     if (!saved?.published_version) return pushToast("请先发布工作流，再设为当前流程", "error");
     setBusy(true);
+    const scopeNovelId = novelId;
     try {
       const operation = await api.executeCommand<{ workflow: ContextWorkflow }>("workflow.set_default", { workflow_id: saved.id, base_revision: saved.revision }, `workflow-default:${saved.id}:${saved.revision}:${crypto.randomUUID()}`);
-      await reload(operation.result.workflow.id);
+      if (!isCurrentNovel(scopeNovelId) || !await reload(operation.result.workflow.id)) return;
       notifyWorkflowChanged(operation.result.workflow.id);
       pushToast(`已设为当前${PURPOSE_LABELS[target.purpose]}流程`, "success");
-    } catch (cause) { pushToast(cause instanceof Error ? cause.message : "绑定失败", "error"); }
-    finally { setBusy(false); }
+    } catch (cause) { if (isCurrentNovel(scopeNovelId)) pushToast(cause instanceof Error ? cause.message : "绑定失败", "error"); }
+    finally { if (isCurrentNovel(scopeNovelId)) setBusy(false); }
   }
 
   async function duplicateWorkflow(target: ContextWorkflow) {
+    if (!isCurrentNovel(novelId) || target.novel_id !== novelId) return;
+    const scopeNovelId = novelId;
     setBusy(true);
     try {
       const operation = await api.executeCommand<{ workflow: ContextWorkflow }>("workflow.create", { name: `${target.name} 副本`, novel_id: target.novel_id, purpose: target.purpose, is_default: false, graph: target.graph }, `workflow-copy:${target.id}:${crypto.randomUUID()}`);
-      await reload(operation.result.workflow.id);
+      if (!isCurrentNovel(scopeNovelId) || !await reload(operation.result.workflow.id)) return;
       notifyWorkflowChanged(operation.result.workflow.id);
       pushToast("副本已创建", "success");
-    } catch (cause) { pushToast(cause instanceof Error ? cause.message : "复制失败", "error"); }
-    finally { setBusy(false); }
+    } catch (cause) { if (isCurrentNovel(scopeNovelId)) pushToast(cause instanceof Error ? cause.message : "复制失败", "error"); }
+    finally { if (isCurrentNovel(scopeNovelId)) setBusy(false); }
   }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
+    if (!isCurrentNovel(novelId) || deleteTarget.novel_id !== novelId) return;
+    const scopeNovelId = novelId;
     setBusy(true);
     try {
       await api.executeCommand<{ deleted: boolean }>("workflow.delete", { workflow_id: deleteTarget.id, base_revision: deleteTarget.revision }, `workflow-delete:${deleteTarget.id}:${crypto.randomUUID()}`, true);
+      if (!isCurrentNovel(scopeNovelId)) return;
       setDeleteTarget(null);
-      await reload();
+      if (!await reload()) return;
       notifyWorkflowChanged(draft?.id ?? -1);
       pushToast("工作流已删除", "success");
-    } catch (cause) { pushToast(cause instanceof Error ? cause.message : "删除失败", "error"); }
-    finally { setBusy(false); }
+    } catch (cause) { if (isCurrentNovel(scopeNovelId)) pushToast(cause instanceof Error ? cause.message : "删除失败", "error"); }
+    finally { if (isCurrentNovel(scopeNovelId)) setBusy(false); }
   }
 
   async function confirmName() {
     const name = nameDraft.trim();
-    if (!name || novelId === null) return pushToast("名称不能为空", "error");
+    if (!name || !isCurrentNovel(novelId)) return pushToast("名称不能为空", "error");
+    const scopeNovelId = novelId;
     if (nameDialog === "new") {
       pick({ id: -1, revision: 0, created_at: "", updated_at: "", ...defaultPayload(novelId, purposeDraft, name) });
     } else if (draft) {
@@ -603,10 +644,10 @@ export default function ContextWorkflowPanel() {
         setBusy(true);
         try {
           const operation = await api.executeCommand<{ workflow: ContextWorkflow }>("workflow.rename", { workflow_id: draft.id, name, base_revision: draft.revision }, `workflow-rename:${draft.id}:${crypto.randomUUID()}`);
-          await reload(operation.result.workflow.id);
+          if (!isCurrentNovel(scopeNovelId) || !await reload(operation.result.workflow.id)) return;
           notifyWorkflowChanged(operation.result.workflow.id);
-        } catch (cause) { pushToast(cause instanceof Error ? cause.message : "重命名失败", "error"); }
-        finally { setBusy(false); }
+        } catch (cause) { if (isCurrentNovel(scopeNovelId)) pushToast(cause instanceof Error ? cause.message : "重命名失败", "error"); }
+        finally { if (isCurrentNovel(scopeNovelId)) setBusy(false); }
       }
     }
     setNameDialog(null);
@@ -664,8 +705,8 @@ export default function ContextWorkflowPanel() {
       <div className="workflow-current-title"><strong>{draft?.name ?? "未选择工作流"}</strong>{draft ? <i>{PURPOSE_LABELS[draft.purpose]}</i> : null}{draft?.is_default ? <i>当前</i> : null}{draft ? <i>{draft.published_version ? `v${draft.published_version}` : "未发布"}</i> : null}</div>
       {draft && draft.id >= 0 && !draft.is_default ? <Button
         compact
-        disabled={busy || !draft.published_version}
-        title={draft.published_version ? `设为当前${PURPOSE_LABELS[draft.purpose]}流程（已发布 v${draft.published_version}）` : `${PURPOSE_LABELS[draft.purpose]}流程尚未发布，发布后才能设为当前`}
+        disabled={busy || !workflowScopeReady || !draft.published_version}
+        title={!workflowScopeReady ? "正在读取本书工作流" : draft.published_version ? `设为当前${PURPOSE_LABELS[draft.purpose]}流程（已发布 v${draft.published_version}）` : `${PURPOSE_LABELS[draft.purpose]}流程尚未发布，发布后才能设为当前`}
         aria-label={draft.published_version ? `设为当前${PURPOSE_LABELS[draft.purpose]}流程（已发布 v${draft.published_version}）` : `先发布再使用${PURPOSE_LABELS[draft.purpose]}流程`}
         onClick={() => void makeDefault(draft)}
       >{draft.published_version ? "设为当前" : "先发布再使用"}</Button> : null}
@@ -673,9 +714,9 @@ export default function ContextWorkflowPanel() {
         const box = event.currentTarget.getBoundingClientRect();
         setMenu(menu?.source === "toolbar" ? null : { x: box.left, y: box.bottom, source: "toolbar" });
       }}><Plus size={14} /></IconButton>
-      <Button compact tone="primary" disabled={busy} onClick={() => void save()}>保存</Button>
-      <Button compact disabled={busy || !draft || draft.id < 0} onClick={() => void publish()}>发布</Button>
-      <Button compact disabled={busy || !draft || draft.id < 0} onClick={() => void run()}>试运行</Button>
+      <Button compact tone="primary" disabled={busy || !workflowScopeReady} title={!workflowScopeReady ? "正在读取本书工作流" : undefined} onClick={() => void save()}>保存</Button>
+      <Button compact disabled={busy || !draft || !workflowScopeReady || draft.id < 0} title={!workflowScopeReady ? "正在读取本书工作流" : undefined} onClick={() => void publish()}>发布</Button>
+      <Button compact disabled={busy || !draft || !workflowScopeReady || draft.id < 0} title={!workflowScopeReady ? "正在读取本书工作流" : undefined} onClick={() => void run()}>试运行</Button>
       <IconButton type="button" title="撤销" aria-label="撤销" disabled={!undoStack.length} onClick={undo}><Undo2 size={14} /></IconButton>
       <IconButton type="button" title="重做" aria-label="重做" disabled={!redoStack.length} onClick={redo}><Redo2 size={14} /></IconButton>
       <IconButton type="button" title={fullscreen ? "退出全屏" : "全屏"} aria-label={fullscreen ? "退出全屏" : "全屏"} onClick={() => setFullscreen((value) => !value)}>{fullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}</IconButton>

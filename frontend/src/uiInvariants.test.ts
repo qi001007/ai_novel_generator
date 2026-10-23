@@ -760,11 +760,11 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(contextWorkflowPanel).toContain('"workflow.rename"');
     expect(contextWorkflowPanel).toContain('"workflow.set_default"');
     expect(contextWorkflowPanel).toContain('&& !draft.is_default ? <Button');
-    expect(contextWorkflowPanel).toContain('disabled={busy || !draft.published_version}');
+    expect(contextWorkflowPanel).toContain('disabled={busy || !workflowScopeReady || !draft.published_version}');
     expect(contextWorkflowPanel).toContain('published_version ? `设为当前');
     expect(contextWorkflowPanel).toContain('function hasUnsavedGraph()');
     expect(contextWorkflowPanel).toContain('请先保存当前画布，再切换当前流程');
-    expect(contextWorkflowPanel).toContain("api.runWorkflow(draft.id, novelId");
+    expect(contextWorkflowPanel).toContain("api.runWorkflow(draft.id, scopeNovelId");
     expect(apiSource).toContain("/api/commands/${name}/execute");
     expect(activityRail).not.toContain('label: "人物库"');
     expect(activityRail).not.toContain('label: "世界库"');
@@ -1600,6 +1600,19 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(treePane).toContain("missing_model_purposes");
     expect(treePane).toContain("workflow.novel_id !== novelId");
     expect(workbenchStore).toContain("refreshWorkflowList()");
+  });
+
+  it("B-08 workflow reloads reject responses outside the active book and component lifetime", () => {
+    expect(contextWorkflowPanel).toContain("const mountedRef = useRef(false)");
+    expect(contextWorkflowPanel).toContain("const reloadEpoch = useRef(0)");
+    expect(contextWorkflowPanel).toContain("const novelScopeRef = useRef({ novelId })");
+    expect(contextWorkflowPanel).toContain("novelScopeRef.current === novelScope");
+    expect(contextWorkflowPanel).toContain("useWorkbench.getState().selectedNovelId === scopeNovelId");
+    expect(contextWorkflowPanel).toContain("reloadEpoch.current !== requestEpoch");
+    expect(contextWorkflowPanel).toContain("mountedRef.current = false; reloadEpoch.current += 1");
+    expect(contextWorkflowPanel).toContain("draft.novel_id !== novelId");
+    expect(contextWorkflowPanel).toContain("const workflowScopeReady = draft?.novel_id === novelId");
+    expect(contextWorkflowPanel).toContain("disabled={busy || !workflowScopeReady}");
   });
 
   it("B-02 生成只展示可恢复的候选，接受仍走有版本保护的唯一文件写口", () => {
