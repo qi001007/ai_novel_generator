@@ -1,5 +1,7 @@
 # frontend/src/store/ 更改账（最新在上）
 
+- 2026-10-23 · B-02：`workbench` 新增仅递增 `workflowRefreshEpoch` 的列表刷新动作，不改选择及选择 nonce。
+
 - 2026-10-23 · G-01/V-19：`workbench` 新增 `workflowRuns`，随章节记录一起拉取并在切书/空态/失败时清空；`workbench.test.ts` 覆盖加载与空态。
 - 2026-10-23 · V-19 阻塞：`createNovel` 改走 `api.executeCommand("novel.create", …)`，不再调用旧 `POST /api/novels`；新增 `workflowSelectionNonce`，每次 `selectWorkflow` 自增，供画布区分「用户换了选择」与「草稿 id 变化」。`workbench.test.ts` 断言命令名、幂等键前缀与作品列表回读。
 

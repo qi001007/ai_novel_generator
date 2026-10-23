@@ -1,5 +1,7 @@
 # Backlog
 
+- 2026-10-23 · B-02：新增低风险 `workflow.ensure_defaults` 与只读 preview；新补流程按模型配置发布或留 draft，结果返回新建与缺模型用途。
+
 - 2026-10-23 · V-19 阻塞：`_create_workflow` 的种子占位判定由「`系统 · ` 名称前缀」收窄为「`系统 · ` 前缀且无 `WorkflowVersion`」，已发布默认流程不再被普通新建改绑或递增 revision；未发布的自建流程也不会被下一条新建顶掉。判定理由见 D-21。
 
 - 2026-10-20：新建作品在同一命令事务中创建 generation/review 两类默认 Workflow 与唯一当前绑定，回执返回对应 workflow id。

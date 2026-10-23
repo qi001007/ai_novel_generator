@@ -525,7 +525,7 @@ export type ContextWorkflow = {
   id: number;
   revision: number;
   name: string;
-  novel_id: number;
+  novel_id: number | null;
   purpose: "generation" | "review";
   is_default: boolean;
   published_version?: number | null;

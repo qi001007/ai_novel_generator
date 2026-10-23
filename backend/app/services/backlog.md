@@ -1,5 +1,7 @@
 # backend/app/services/ 更改账（最新在上）
 
+- 2026-10-23 · B-02：`seed_default_workflows` 对完全缺失的用途幂等补建，已有同用途流程和绑定不接管。
+
 - 2026-10-23 · 配置状态按路由：`LLMRouting` 新增 `task_is_configured` 与 `is_configured`——所有已命名任务必须在其实际路由供应商上同时具备 Base URL、密钥、模型名；默认密钥不跨供应商借用。D-22。
 - 2026-10-22 · M-01：新增 `map_canvas.py`（1024 网格、四向偏移、白遮罩、遮罩外逐像素贴回，尺寸不符 502）与 `image_edit.py`（DashScope 异步遮罩编辑，提交一次、轮询/下载可重试、密钥脱敏）；`maps.py` 加扩图/重绘提示词与整幅 draft 版本落库；`llm.py` 增加 `image_edit` 任务槽并默认跟随生图路由。
 - 2026-10-22 · M-02：新增 `maps.py`：提示词按 A 主线 + C 弧 + D 简报拼装；图片下载到数据库同级 `map_assets`，`trust_env=False` + 显式代理绕开本机 `NO_PROXY="[::1]"` 使 httpx 0.27 崩溃；确认版本会取代旧确认版，历史版本仍可读。

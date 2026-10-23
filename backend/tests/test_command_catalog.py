@@ -65,6 +65,7 @@ def test_function_catalog_is_the_public_contract(client) -> None:
         "workflow.save",
         "workflow.publish",
         "workflow.delete",
+        "workflow.ensure_defaults",
     } <= functions.keys()
     assert functions["fact.approve"]["risk"] == "high"
     assert functions["workflow.delete"]["risk"] == "high"
@@ -86,6 +87,145 @@ def test_create_novel_seeds_one_current_workflow_per_purpose(client, db_engine) 
     }
     assert all(next(node for node in workflow.graph["nodes"] if node["type"] == "model")["config"]["provider_id"] for workflow in workflows)
 
+
+def _remove_purpose_workflows(db_engine, novel_id: int, purpose: str) -> None:
+    with Session(db_engine) as session:
+        rows = session.exec(select(ContextWorkflow).where(
+            ContextWorkflow.novel_id == novel_id,
+            ContextWorkflow.purpose == purpose,
+        )).all()
+        for row in rows:
+            session.delete(row)
+        bindings = session.exec(select(WorkflowBinding).where(
+            WorkflowBinding.novel_id == novel_id,
+            WorkflowBinding.purpose == purpose,
+        )).all()
+        for binding in bindings:
+            session.delete(binding)
+        session.commit()
+
+
+def test_ensure_defaults_adds_missing_workflows_as_unpublished_without_models(client, db_engine) -> None:
+    novel_id, _ = create_novel(client, "ensure-no-model")
+    _remove_purpose_workflows(db_engine, novel_id, "review")
+
+    preview = client.post("/api/commands/workflow.ensure_defaults/preview", json={"payload": {"novel_id": novel_id}})
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["diff"]["missing_purposes"] == ["review"]
+    with Session(db_engine) as session:
+        assert session.exec(select(ContextWorkflow).where(
+            ContextWorkflow.novel_id == novel_id,
+            ContextWorkflow.purpose == "review",
+        )).first() is None
+
+    response = execute(client, "workflow.ensure_defaults", {"novel_id": novel_id}, "ensure-no-model-command")
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert len(result["created_workflow_ids"]) == 1
+    assert result["version_ids"] == []
+    assert result["missing_model_purposes"] == ["review"]
+    with Session(db_engine) as session:
+        workflow = session.get(ContextWorkflow, result["created_workflow_ids"][0])
+        binding = session.exec(select(WorkflowBinding).where(
+            WorkflowBinding.novel_id == novel_id,
+            WorkflowBinding.purpose == "review",
+        )).one()
+        versions = session.exec(select(WorkflowVersion).where(WorkflowVersion.workflow_id == workflow.id)).all()
+    assert workflow is not None
+    assert next(node for node in workflow.graph["nodes"] if node["type"] == "model")["config"]["model_id"] == ""
+    assert workflow.is_default is True
+    assert binding.workflow_id == workflow.id
+    assert versions == []
+
+
+def test_ensure_defaults_publishes_only_new_workflows_with_configured_models(client, db_engine) -> None:
+    with Session(db_engine) as session:
+        session.add(AppConfig(key="llm.model.draft", value="draft-model"))
+        session.add(AppConfig(key="llm.model.review", value="review-model"))
+        session.commit()
+    novel_id, _ = create_novel(client, "ensure-configured")
+    _remove_purpose_workflows(db_engine, novel_id, "review")
+
+    response = execute(client, "workflow.ensure_defaults", {"novel_id": novel_id}, "ensure-configured-command")
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert len(result["created_workflow_ids"]) == 1
+    assert len(result["version_ids"]) == 1
+    assert result["missing_model_purposes"] == []
+    with Session(db_engine) as session:
+        version = session.get(WorkflowVersion, result["version_ids"][0])
+        workflow = session.get(ContextWorkflow, result["created_workflow_ids"][0])
+    assert version is not None and version.workflow_id == workflow.id
+    assert next(node for node in version.graph["nodes"] if node["type"] == "model")["config"]["model_id"] == "review-model"
+
+
+def test_ensure_defaults_replay_and_repeat_do_not_duplicate(client, db_engine) -> None:
+    novel_id, _ = create_novel(client, "ensure-repeat")
+    _remove_purpose_workflows(db_engine, novel_id, "generation")
+
+    first = execute(client, "workflow.ensure_defaults", {"novel_id": novel_id}, "ensure-repeat-1")
+    repeated_key = execute(client, "workflow.ensure_defaults", {"novel_id": novel_id}, "ensure-repeat-1")
+    second_key = execute(client, "workflow.ensure_defaults", {"novel_id": novel_id}, "ensure-repeat-2")
+    assert first.status_code == repeated_key.status_code == second_key.status_code == 200
+    assert first.json()["id"] == repeated_key.json()["id"]
+    assert second_key.json()["result"]["created_workflow_ids"] == []
+    with Session(db_engine) as session:
+        workflows = session.exec(select(ContextWorkflow).where(
+            ContextWorkflow.novel_id == novel_id,
+            ContextWorkflow.purpose == "generation",
+        )).all()
+        bindings = session.exec(select(WorkflowBinding).where(
+            WorkflowBinding.novel_id == novel_id,
+            WorkflowBinding.purpose == "generation",
+        )).all()
+    assert len(workflows) == len(bindings) == 1
+
+
+def test_ensure_defaults_leaves_existing_custom_workflow_unbound_and_unchanged(client, db_engine) -> None:
+    novel_id, _ = create_novel(client, "ensure-custom")
+    _remove_purpose_workflows(db_engine, novel_id, "generation")
+    payload = workflow_payload("custom-generation", novel_id)
+    custom = client.post("/api/workflows", json=payload).json()
+    before = client.get(f"/api/workflows/{custom['id']}").json()
+    with Session(db_engine) as session:
+        binding_before = session.exec(select(WorkflowBinding).where(
+            WorkflowBinding.novel_id == novel_id,
+            WorkflowBinding.purpose == "generation",
+        )).first()
+
+    response = execute(client, "workflow.ensure_defaults", {"novel_id": novel_id}, "ensure-custom-command")
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["created_workflow_ids"] == []
+    assert "generation" in result["existing_purposes"]
+    assert client.get(f"/api/workflows/{custom['id']}").json() == before
+    with Session(db_engine) as session:
+        binding_after = session.exec(select(WorkflowBinding).where(
+            WorkflowBinding.novel_id == novel_id,
+            WorkflowBinding.purpose == "generation",
+        )).first()
+    assert binding_after == binding_before
+
+
+def test_ensure_defaults_only_changes_the_requested_novel(client, db_engine) -> None:
+    first_id, _ = create_novel(client, "ensure-scope-one")
+    second_response = execute(client, "novel.create", {"title": "ensure-scope-book-two"}, "ensure-scope-two")
+    assert second_response.status_code == 200, second_response.text
+    second_id = second_response.json()["result"]["novel"]["id"]
+    _remove_purpose_workflows(db_engine, first_id, "review")
+    with Session(db_engine) as session:
+        before = session.exec(select(ContextWorkflow).where(ContextWorkflow.novel_id == second_id)).all()
+        second_ids = {row.id for row in before}
+
+    response = execute(client, "workflow.ensure_defaults", {"novel_id": first_id}, "ensure-scope")
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert all(workflow_id not in second_ids for workflow_id in result["created_workflow_ids"])
+    with Session(db_engine) as session:
+        after = session.exec(select(ContextWorkflow).where(ContextWorkflow.novel_id == second_id)).all()
+    assert {(row.id, row.revision, row.is_default) for row in after} == {
+        (row.id, row.revision, row.is_default) for row in before
+    }
 
 def test_new_workflow_does_not_replace_a_published_system_default(client, db_engine) -> None:
     with Session(db_engine) as session:

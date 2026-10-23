@@ -109,6 +109,7 @@ type WorkbenchState = {
   selectWorkflow: (workflowId: number) => void;
   requestNewWorkflow: () => void;
   requestWorkflowCommand: (action: WorkflowResourceAction, workflowId: number) => void;
+  refreshWorkflowList: () => void;
   notifyWorkflowChanged: (workflowId: number) => void;
   /** 左栏「对话」那一页的列表（第二十九批批注 6）。 */
   conversations: ChatConversation[];
@@ -195,6 +196,10 @@ export const useWorkbench = create<WorkbenchState>((set, get) => ({
       selectedWorkflowId: workflowId,
       workflowCommand: { action, workflowId, nonce: (get().workflowCommand?.nonce ?? 0) + 1 },
     });
+  },
+
+  refreshWorkflowList() {
+    set({ workflowRefreshEpoch: get().workflowRefreshEpoch + 1 });
   },
 
   notifyWorkflowChanged(workflowId) {

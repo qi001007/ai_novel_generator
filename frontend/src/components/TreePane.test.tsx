@@ -7,13 +7,16 @@ vi.mock("../api", () => ({
   api: {
     get: vi.fn(async () => []),
     listWorkflows: vi.fn(async () => []),
+    executeCommand: vi.fn(async () => ({ id: 1, result: { created_workflow_ids: [], missing_model_purposes: [] } })),
   },
 }));
 
 import { api } from "../api";
 import TreePane from "./TreePane";
 import { useFiles } from "../store/files";
+import { useWorkbench } from "../store/workbench";
 import type { ContextWorkflow } from "../types";
+import { ToastProvider } from "./ui";
 
 type TreePaneProps = ComponentProps<typeof TreePane>;
 
@@ -67,6 +70,9 @@ beforeEach(() => {
   vi.mocked(api.get).mockImplementation(async (url: string) => (
     url.includes("/settings-search") ? [result] : []
   ));
+  vi.mocked(api.listWorkflows).mockResolvedValue([]);
+  vi.mocked(api.executeCommand).mockResolvedValue({ id: 1, result: { created_workflow_ids: [], missing_model_purposes: [] } });
+  useWorkbench.setState({ selectedWorkflowId: null, workflowSelectionNonce: 0, workflowRefreshEpoch: 0 });
   useFiles.setState({ novelId: 1, entries: {} });
 });
 
@@ -132,5 +138,72 @@ describe("TreePane workflow navigation", () => {
     await act(async () => resolveOld([oldBook]));
     await waitFor(() => expect(screen.queryByTitle("旧书流程")).toBeNull());
     expect(screen.getByTitle("当前书流程")).toBeTruthy();
+  });
+
+  it("offers to fill a missing purpose and reloads without changing the selected workflow", async () => {
+    const generation = {
+      id: 501, novel_id: 1, revision: 1, name: "正文流程", purpose: "generation" as const,
+      is_default: true, graph: { version: 1 as const, nodes: [], edges: [] }, created_at: "", updated_at: "",
+    };
+    const review = {
+      ...generation, id: 502, name: "系统自检", purpose: "review" as const, is_default: false,
+    };
+    let listCalls = 0;
+    vi.mocked(api.listWorkflows).mockImplementation(async () => {
+      listCalls += 1;
+      return listCalls <= 2 ? [generation] : [generation, review];
+    });
+    vi.mocked(api.executeCommand).mockResolvedValue({
+      id: 77,
+      result: { created_workflow_ids: [502], missing_model_purposes: ["review"] },
+    });
+    useWorkbench.setState({ selectedWorkflowId: 501, workflowSelectionNonce: 4 });
+    const props = baseProps({ page: "workflow", novelId: 1 });
+    render(<ToastProvider><StrictMode><TreePane {...props} /></StrictMode></ToastProvider>);
+
+    const fillButton = await screen.findByRole("button", { name: "补齐系统工作流" });
+    fireEvent.click(fillButton);
+
+    await waitFor(() => expect(screen.getByTitle("系统自检")).toBeTruthy());
+    expect(api.executeCommand).toHaveBeenCalledWith(
+      "workflow.ensure_defaults",
+      { novel_id: 1 },
+      expect.stringMatching(/^workflow-ensure-defaults:1:/),
+    );
+    expect(listCalls).toBeGreaterThanOrEqual(3);
+    expect(useWorkbench.getState().selectedWorkflowId).toBe(501);
+    expect(useWorkbench.getState().workflowSelectionNonce).toBe(4);
+    expect(props.onOpenWorkflow).not.toHaveBeenCalled();
+    expect(screen.getByRole("status").textContent).toContain("未配置模型");
+  });
+
+  it("does not count a global workflow as a purpose filled for this book", async () => {
+    vi.mocked(api.listWorkflows).mockResolvedValue([
+      {
+        id: 701, novel_id: 1, revision: 1, name: "正文流程", purpose: "generation",
+        is_default: true, graph: { version: 1, nodes: [], edges: [] }, created_at: "", updated_at: "",
+      },
+      {
+        id: 702, novel_id: null, revision: 1, name: "全局自检", purpose: "review",
+        is_default: true, graph: { version: 1, nodes: [], edges: [] }, created_at: "", updated_at: "",
+      },
+    ]);
+    render(<StrictMode><TreePane {...baseProps({ page: "workflow", novelId: 1 })} /></StrictMode>);
+
+    expect(await screen.findByRole("button", { name: "补齐系统工作流" })).toBeTruthy();
+  });
+
+  it("reports a failed fill through a toast and keeps the action available", async () => {
+    vi.mocked(api.listWorkflows).mockResolvedValue([{
+      id: 601, novel_id: 1, revision: 1, name: "正文流程", purpose: "generation",
+      is_default: true, graph: { version: 1, nodes: [], edges: [] }, created_at: "", updated_at: "",
+    }]);
+    vi.mocked(api.executeCommand).mockRejectedValue(new Error("command failed"));
+    render(<ToastProvider><StrictMode><TreePane {...baseProps({ page: "workflow", novelId: 1 })} /></StrictMode></ToastProvider>);
+
+    fireEvent.click(await screen.findByRole("button", { name: "补齐系统工作流" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("command failed");
+    expect(screen.getByRole("button", { name: "补齐系统工作流" })).toBeTruthy();
   });
 });

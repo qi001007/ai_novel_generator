@@ -1,5 +1,7 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-10-23 · B-02：`test_command_catalog.py` 补无模型/配置模型发布、重复执行、自建用途保留及跨书隔离共 5 条命令回归。
+
 - 2026-10-23 · G-01/V-19：新增 `test_chapter_workflow_runs.py` 2 条：列表含 generation/review 与 job/review/accept 关联；详情 5 节点、模型 token 合计等于总计、excluded 含「路人甲」原因、accept actor=human、章名取 TOC「雪夜」。全量业务 504 passed。
 - 2026-10-23 · 配置状态：`test_llm_providers.py` 新增「已命名任务路由到无密钥供应商时 configured=false，补上该供应商自己的密钥后翻 true」；定向 42 passed，全量 501 passed。
 - 2026-10-23 · V-19 阻塞：`test_command_catalog.py` 新增「新建流程不替换已发布系统默认」回归（绑定仍指向旧流程、旧 revision 不变、新记录 `is_default=false`）；定向 11 passed，全量业务 500 passed。

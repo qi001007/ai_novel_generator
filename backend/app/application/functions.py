@@ -137,6 +137,10 @@ class WorkflowDeleteInput(StrictModel):
     base_revision: int = Field(ge=1)
 
 
+class WorkflowEnsureDefaultsInput(StrictModel):
+    novel_id: int = Field(ge=1)
+
+
 def _context_policy(graph: WorkflowGraph) -> dict[str, Any]:
     node = next(item for item in graph.nodes if item.type == "context")
     return dict(node.config["policy"])
@@ -246,6 +250,77 @@ def _preview_create_novel(session: Session, payload: BaseModel) -> dict[str, Any
     exists = session.exec(select(Novel).where(Novel.title == value.title)).first() is not None
     return {"action": "create", "type": "novel", "title": value.title, "conflict": exists}
 
+
+def _workflow_default_inputs(session: Session, novel_id: int) -> tuple[Any, list[str], list[str]]:
+    _novel(session, novel_id)
+    routing = resolve_routing(session)
+    rows = session.exec(select(ContextWorkflow).where(ContextWorkflow.novel_id == novel_id)).all()
+    existing = {row.purpose for row in rows}
+    missing = [purpose for purpose in ("generation", "review") if purpose not in existing]
+    unconfigured = [
+        purpose for purpose, model in (
+            ("generation", routing.models.get("draft", "")),
+            ("review", routing.models.get("review", "")),
+        ) if purpose in missing and not model.strip()
+    ]
+    return routing, missing, unconfigured
+
+
+def _ensure_default_workflows(session: Session, payload: BaseModel, actor: str) -> Mutation:
+    value = WorkflowEnsureDefaultsInput.model_validate(payload)
+    routing, missing, _ = _workflow_default_inputs(session, value.novel_id)
+    created = seed_default_workflows(
+        session,
+        value.novel_id,
+        generation_provider_id=routing.provider_id_for("draft"),
+        generation_model_id=routing.models.get("draft", ""),
+        review_provider_id=routing.provider_id_for("review"),
+        review_model_id=routing.models.get("review", ""),
+    )
+    session.flush()
+    versions = []
+    unpublished_purposes = []
+    for workflow in created:
+        model_node = next((node for node in workflow.graph["nodes"] if node["type"] == "model"), None)
+        if model_node is None or not model_node["config"].get("model_id"):
+            unpublished_purposes.append(workflow.purpose)
+            continue
+        versions.append(
+            _publish_workflow(
+                session,
+                WorkflowPublishInput(workflow_id=workflow.id, base_revision=workflow.revision),
+                actor,
+            ).result["workflow_version"]["id"]
+        )
+    result = {
+        "created_workflow_ids": [workflow.id for workflow in created],
+        "version_ids": versions,
+        "existing_purposes": [purpose for purpose in ("generation", "review") if purpose not in missing],
+        "missing_model_purposes": unpublished_purposes,
+        "unpublished_purposes": unpublished_purposes,
+    }
+    return Mutation(
+        result=result,
+        novel_id=value.novel_id,
+        target_type="workflow_defaults",
+        target_id=value.novel_id,
+        undo_kind="none",
+        event="workflow.changed",
+    )
+
+
+def _preview_ensure_default_workflows(session: Session, payload: BaseModel) -> dict[str, Any]:
+    value = WorkflowEnsureDefaultsInput.model_validate(payload)
+    routing, missing, unconfigured = _workflow_default_inputs(session, value.novel_id)
+    configured = {"generation": routing.models.get("draft", ""), "review": routing.models.get("review", "")}
+    return {
+        "action": "ensure_defaults",
+        "novel_id": value.novel_id,
+        "missing_purposes": missing,
+        "existing_purposes": [purpose for purpose in ("generation", "review") if purpose not in missing],
+        "will_publish_purposes": [purpose for purpose in missing if configured[purpose].strip()],
+        "missing_model_purposes": unconfigured,
+    }
 
 def _create_outline(session: Session, payload: BaseModel, actor: str) -> Mutation:
     value = OutlineCreateInput.model_validate(payload)
@@ -1082,6 +1157,7 @@ def _register() -> None:
         CommandSpec("fact.create", "Create an unapproved fact", FactCreateInput, "low", _create_fact, _preview_fact),
         CommandSpec("fact.approve", "Approve a fact for stable context", FactApproveInput, "high", _approve_fact, _preview_approve_fact),
         CommandSpec("asset.delete", "Retire an editable asset", AssetDeleteInput, "high", _retire_asset, _preview_retire),
+        CommandSpec("workflow.ensure_defaults", "Add missing default workflow purposes to a novel", WorkflowEnsureDefaultsInput, "low", _ensure_default_workflows, _preview_ensure_default_workflows),
         CommandSpec("workflow.rename", "Rename a saved workflow", WorkflowRenameInput, "low", _rename_workflow, _preview_rename_workflow),
         CommandSpec("workflow.set_default", "Set the default workflow in its scope", WorkflowSetDefaultInput, "low", _set_default_workflow, _preview_set_default_workflow),
         CommandSpec("workflow.create", "Create a validated workflow draft", WorkflowPayload, "low", _create_workflow, _preview_create_workflow),

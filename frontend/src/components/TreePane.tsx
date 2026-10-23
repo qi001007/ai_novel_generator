@@ -18,7 +18,7 @@ import {
 import type { RailPage } from "./ActivityRail";
 
 import { api } from "../api";
-import { Button, FloatingWindow, IconButton } from "./ui";
+import { Button, FloatingWindow, IconButton, useToast } from "./ui";
 import StatusBadge from "./StatusBadge";
 import type { ChatConversation, Chapter, ContextWorkflow, FileMeta } from "../types";
 import {
@@ -217,19 +217,25 @@ export default function TreePane({
   const [chapterQuery, setChapterQuery] = useState("");
   const [menu, setMenu] = useState<MenuState>(null);
   const [workflows, setWorkflows] = useState<ContextWorkflow[]>([]);
+  const [workflowsLoaded, setWorkflowsLoaded] = useState(false);
+  const [ensuringWorkflowDefaults, setEnsuringWorkflowDefaults] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const selectedWorkflowId = useWorkbench((state) => state.selectedWorkflowId);
   const workflowRefreshEpoch = useWorkbench((state) => state.workflowRefreshEpoch);
   const selectWorkflow = useWorkbench((state) => state.selectWorkflow);
   const requestNewWorkflow = useWorkbench((state) => state.requestNewWorkflow);
   const requestWorkflowCommand = useWorkbench((state) => state.requestWorkflowCommand);
+  const refreshWorkflowList = useWorkbench((state) => state.refreshWorkflowList);
+  const { pushToast } = useToast();
 
   useEffect(() => {
     if (page !== "workflow") return;
     let active = true;
+    setWorkflowsLoaded(false);
     api.listWorkflows(novelId).then((items) => {
       if (!active) return;
       setWorkflows(items);
+      setWorkflowsLoaded(true);
       const current = items.some((item) => item.id === selectedWorkflowId)
         ? selectedWorkflowId
         : (items.find((item) => item.is_default) ?? items[0])?.id ?? null;
@@ -239,6 +245,33 @@ export default function TreePane({
     });
     return () => { active = false; };
   }, [novelId, page, selectWorkflow, selectedWorkflowId, workflowRefreshEpoch]);
+
+  async function ensureDefaultWorkflows() {
+    if (novelId === null || ensuringWorkflowDefaults) return;
+    setEnsuringWorkflowDefaults(true);
+    try {
+      const operation = await api.executeCommand<{
+        created_workflow_ids: number[];
+        missing_model_purposes: string[];
+      }>(
+        "workflow.ensure_defaults",
+        { novel_id: novelId },
+        `workflow-ensure-defaults:${novelId}:${crypto.randomUUID()}`,
+      );
+      refreshWorkflowList();
+      if (operation.result.missing_model_purposes.length > 0) {
+        pushToast("已补齐系统工作流草稿；未配置模型的用途暂不可发布", "info");
+      } else if (operation.result.created_workflow_ids.length > 0) {
+        pushToast("系统工作流已补齐", "success");
+      } else {
+        pushToast("工作流列表已更新", "success");
+      }
+    } catch (cause) {
+      pushToast(cause instanceof Error ? cause.message : "补齐系统工作流失败", "error");
+    } finally {
+      setEnsuringWorkflowDefaults(false);
+    }
+  }
 
   useEffect(() => {
     if (page !== "library" || !novelId) {
@@ -557,6 +590,13 @@ export default function TreePane({
             </section>;
           })}
           {workflows.length === 0 ? <p className="tree-empty">暂无工作流</p> : null}
+          {workflowsLoaded && novelId !== null && (["generation", "review"] as const).some(
+            (purpose) => workflows.every((workflow) => workflow.novel_id !== novelId || workflow.purpose !== purpose),
+          ) ? (
+            <Button compact loading={ensuringWorkflowDefaults} onClick={ensureDefaultWorkflows}>
+              补齐系统工作流
+            </Button>
+          ) : null}
         </div>
       ) : null}
       <button

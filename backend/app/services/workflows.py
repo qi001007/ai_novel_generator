@@ -82,12 +82,20 @@ def seed_default_workflows(
     review_provider_id: str,
     review_model_id: str,
 ) -> list[ContextWorkflow]:
-    """Create the two current workflow drafts as part of the novel transaction."""
+    """Create defaults only for purposes that have no workflow in this novel."""
     rows: list[ContextWorkflow] = []
     for purpose, name, provider_id, model_id in (
         ("generation", "系统 · 正文生成", generation_provider_id, generation_model_id),
         ("review", "系统 · AI 自检", review_provider_id, review_model_id),
     ):
+        existing = session.exec(
+            select(ContextWorkflow).where(
+                ContextWorkflow.novel_id == novel_id,
+                ContextWorkflow.purpose == purpose,
+            )
+        ).first()
+        if existing is not None:
+            continue
         graph = default_workflow_graph(purpose, provider_id, model_id)
         row = ContextWorkflow(
             name=name,
@@ -100,7 +108,18 @@ def seed_default_workflows(
         )
         session.add(row)
         session.flush()
-        session.add(WorkflowBinding(novel_id=novel_id, purpose=purpose, workflow_id=row.id))
+        binding = session.exec(
+            select(WorkflowBinding).where(
+                WorkflowBinding.novel_id == novel_id,
+                WorkflowBinding.purpose == purpose,
+            )
+        ).first()
+        if binding is None:
+            binding = WorkflowBinding(novel_id=novel_id, purpose=purpose, workflow_id=row.id)
+        else:
+            binding.workflow_id = row.id
+            binding.updated_at = utc_now()
+        session.add(binding)
         rows.append(row)
     return rows
 

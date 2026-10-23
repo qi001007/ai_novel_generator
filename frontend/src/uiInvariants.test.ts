@@ -1587,6 +1587,14 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(bookshelf).not.toContain('"archived"');
   });
 
+  it("B-02 missing workflow purposes are filled through a command and refresh without selecting a workflow", () => {
+    expect(treePane).toContain('"workflow.ensure_defaults"');
+    expect(treePane).toContain("refreshWorkflowList()");
+    expect(treePane).toContain("missing_model_purposes");
+    expect(treePane).toContain("workflow.novel_id !== novelId");
+    expect(workbenchStore).toContain("refreshWorkflowList()");
+  });
+
   it("B-02 生成只展示可恢复的候选，接受仍走有版本保护的唯一文件写口", () => {
     expect(editorPane).toContain('title="候选正文"');
     expect(editorPane).toContain("接受候选");
