@@ -1,5 +1,10 @@
 # docs/ 更改账（最新在上）
 
+- 2026-10-23 · 登记真机批注 B-01～B-07：切书画布断联、每书系统默认、当前流程选择、供应商目录随折叠、地图分辨率与扩图、五章动态剧情弧和单张真实生图；按严重度单项闭环，旧/新 Token Plan 不混同。
+
+- 2026-10-23 · 接手新批次：登记 R-01～R-06（快速收尾、Workflow/Agent 实证、独立创作笔记、少量受邀内测与运维、新 Token Plan 用途及额度边界）；本批先核查和设计，不宣称已完成上线或真实模型验收。
+- 2026-10-23 · 收尾方案：PRD §3.4 定义创作笔记；HANDOFF 增加短时真实试用、Workflow 搭建和受邀部署步骤；WORKSTREAM 记录 Workflow/Agent 隔离 HTTP 机制证据、假模型边界及匿名读作品的上线阻塞，完成的 R-02 从反馈待办移除。
+
 - 2026-10-23 · 配置状态按任务路由：结论写入 `WORKSTREAM-PLAN.md`（真机 9/9、两接口 false→true）；`DECISIONS.md` 新增 D-22；`UI-DESIGN.md` §0.9 同步状态文案；`UI-BACKLOG.md` 删除已修复的误报条目。
 - 2026-10-23 · V-19 阻塞：新建作品改走 `novel.create`、新建不同用途不回退并保存为 review 的结论写入 `WORKSTREAM-PLAN.md`（真机 16/16 项、novel 3 绑定 `(generation,6)`/`(review,7)`、种子 revision 仍 1）；`DECISIONS.md` 新增 D-21（种子占位只在未发布时成立）；`UI-BACKLOG.md` 删除两条阻塞，仅留纯 UI 整链。
 - 2026-10-22 · M-01：新增 D-18（逐像素无缝、复用不可变版本、4×4 上限、尺寸不符 502、`image_edit` 独立槽）；同步 UI-DESIGN §0.9/§4、UI-BACKLOG 勾项、WORKSTREAM-PLAN 证据行与目录更改账；证据在 `.scratch/e2e-m01/`（截图 7 张、`seam-report.json`、假供应商与烟测脚本）。
