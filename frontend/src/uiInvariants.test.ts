@@ -731,6 +731,12 @@ const componentSources = import.meta.glob("./**/*.tsx", {
     expect(contextWorkflowPanel).toContain("function fitWorkflowView(duration = 0)");
     expect(contextWorkflowPanel).toContain("flow.setViewport({");
     expect(contextWorkflowPanel).toContain("onConnect={connect}");
+    expect(contextWorkflowPanel).toContain("function reachableTextOutputs(graph: WorkflowGraph, from: string)");
+    expect(contextWorkflowPanel).toContain("const visited = new Set<string>()");
+    expect(contextWorkflowPanel).toContain('aria-label="正文输出字数范围"');
+    expect(contextWorkflowPanel).toContain('onOutputConfig={updateNodeConfig}');
+    expect(contextWorkflowPanel).toContain("请连接正文输出节点后设置字数范围");
+    expect(contextWorkflowPanel).toContain("字数不足会判失败并保留候选，需手动调整后重新生成，不会自动续写");
     expect(contextWorkflowPanel).toContain("function connectionRejection(");
     expect(contextWorkflowPanel).toContain("开始节点没有输入端口");
     expect(contextWorkflowPanel).toContain("这条连线会形成环路");

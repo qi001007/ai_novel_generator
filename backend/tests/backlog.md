@@ -1,5 +1,6 @@
 # backend/tests/ 更改账（最新在上）
 
+- 2026-10-23 · B09：`test_generation_candidates.py` 覆盖输出节点最少 3000 字边界：2999 字失败并保留候选，3000 字通过，`max_chars=0` 接受更长内容。
 - 2026-10-23 · B-02：`test_command_catalog.py` 补无模型/配置模型发布、重复执行、自建用途保留及跨书隔离共 5 条命令回归。
 
 - 2026-10-23 · G-01/V-19：新增 `test_chapter_workflow_runs.py` 2 条：列表含 generation/review 与 job/review/accept 关联；详情 5 节点、模型 token 合计等于总计、excluded 含「路人甲」原因、accept actor=human、章名取 TOC「雪夜」。全量业务 504 passed。

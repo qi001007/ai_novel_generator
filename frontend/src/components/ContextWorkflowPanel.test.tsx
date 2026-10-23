@@ -9,6 +9,7 @@ import { useWorkbench } from "../store/workbench";
 type ProbeNode = { id: string; data: { error: string | null } };
 const probe = vi.hoisted(() => ({
   notifications: 0,
+  clickNode: null as ((node: { id: string }) => void) | null,
   connect: null as ((connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => void) | null,
   select: null as ((selection: { nodes: { id: string }[]; edges: { id: string }[] }) => void) | null,
   flow: {
@@ -19,9 +20,10 @@ const probe = vi.hoisted(() => ({
 // Match React Flow's SelectionListener effect dependency on the callback.
 // Bound the old loop so a regression fails promptly rather than hanging CI.
 vi.mock("@xyflow/react", () => ({
-  ReactFlow: ({ onSelectionChange, onInit, onConnect, children, nodes, edges }: { onSelectionChange: (selection: { nodes: { id: string }[]; edges: { id: string }[] }) => void; onInit: (flow: unknown) => void; onConnect: (connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => void; children: ReactNode; nodes: ProbeNode[]; edges: unknown[] }) => {
+  ReactFlow: ({ onSelectionChange, onInit, onConnect, onNodeClick, children, nodes, edges }: { onSelectionChange: (selection: { nodes: { id: string }[]; edges: { id: string }[] }) => void; onInit: (flow: unknown) => void; onConnect: (connection: { source: string; target: string; sourceHandle?: string | null; targetHandle?: string | null }) => void; onNodeClick: (_event: unknown, node: { id: string }) => void; children: ReactNode; nodes: ProbeNode[]; edges: unknown[] }) => {
     useEffect(() => { onInit(probe.flow); }, [onInit]);
     useEffect(() => { probe.connect = onConnect; }, [onConnect]);
+    useEffect(() => { probe.clickNode = (node) => onNodeClick({}, node as never); }, [onNodeClick]);
     useEffect(() => { probe.select = onSelectionChange; }, [onSelectionChange]);
     useEffect(() => {
       probe.notifications++;
@@ -46,6 +48,7 @@ function Harness() {
 describe("Workflow browser comments", () => {
   beforeEach(() => {
     probe.notifications = 0;
+    probe.clickNode = null;
     vi.clearAllMocks();
     useWorkbench.setState({ selectedNovelId: 1, selectedWorkflowId: null, workflowRefreshEpoch: 0, workflowCommand: null });
     vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(new Response(
@@ -99,6 +102,83 @@ describe("Workflow browser comments", () => {
     expect(probe.flow.zoomIn).toHaveBeenCalledTimes(1);
     expect(probe.flow.zoomOut).toHaveBeenCalledTimes(1);
     expect(probe.flow.setViewport).toHaveBeenCalled();
+  });
+
+  it("B-09 edits reachable text output limits from the model and saves the same output config", async () => {
+    const graph = { version: 1 as const, nodes: [
+      { id: "start", type: "start" as const, label: "开始", position: { x: 0, y: 0 }, config: {} },
+      { id: "context", type: "context" as const, label: "上下文", position: { x: 200, y: 0 }, config: {} },
+      { id: "prompt", type: "prompt" as const, label: "提示词", position: { x: 400, y: 0 }, config: {} },
+      { id: "model", type: "model" as const, label: "模型调用", position: { x: 600, y: 0 }, config: { max_output_tokens: 4096 } },
+      { id: "output", type: "output" as const, label: "章节正文", position: { x: 800, y: 0 }, config: { format: "text", min_chars: 2500, max_chars: 0 } },
+      { id: "modelB", type: "model" as const, label: "分支模型", position: { x: 600, y: 200 }, config: {} },
+      { id: "outputB", type: "output" as const, label: "分支正文", position: { x: 800, y: 200 }, config: { format: "text", min_chars: 1400, max_chars: 0 } },
+    ], edges: [
+      { source: "start", target: "context" }, { source: "context", target: "prompt" },
+      { source: "prompt", target: "model" }, { source: "model", target: "output" },
+      { source: "prompt", target: "modelB" }, { source: "modelB", target: "outputB" },
+    ] };
+    const workflow = { id: 12, revision: 4, name: "正文流程", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 2, graph, created_at: "", updated_at: "" };
+    const commands: { url: string; payload: Record<string, unknown> }[] = [];
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
+      if (url.startsWith("/api/commands/")) {
+        const body = JSON.parse(String(init?.body));
+        commands.push({ url, payload: body.payload });
+        return Promise.resolve(new Response(JSON.stringify({ id: 5, result: { workflow: { ...workflow, revision: 5, graph: body.payload.graph } } }), { headers: { "Content-Type": "application/json" } }));
+      }
+      return Promise.resolve(new Response(JSON.stringify(url.includes("/api/workflows") ? [workflow] : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } }));
+    }));
+    useWorkbench.setState({ selectedWorkflowId: 12, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    await screen.findByText("正文流程");
+    act(() => probe.clickNode?.({ id: "model" }));
+    expect((await screen.findByLabelText("最少字数") as HTMLInputElement).value).toBe("2500");
+    expect(screen.getAllByLabelText("最少字数")).toHaveLength(1);
+    expect(screen.queryByText("分支正文（outputB）")).toBeNull();
+    fireEvent.change(screen.getByLabelText("最少字数"), { target: { value: "3000" } });
+    act(() => probe.clickNode?.({ id: "output" }));
+    expect((screen.getByLabelText("最少字数") as HTMLInputElement).value).toBe("3000");
+    act(() => probe.clickNode?.({ id: "model" }));
+    expect((screen.getByLabelText("最少字数") as HTMLInputElement).value).toBe("3000");
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(commands).toHaveLength(1));
+    const savedGraph = commands[0].payload.graph as typeof graph;
+    expect(savedGraph.nodes.find((node) => node.id === "output")?.config.min_chars).toBe(3000);
+    expect(savedGraph.nodes.find((node) => node.id === "outputB")?.config.min_chars).toBe(1400);
+    expect(savedGraph.nodes.find((node) => node.id === "model")?.config).not.toHaveProperty("min_chars");
+  });
+
+  it("B-09 hides output limits for a model with no reachable text output", async () => {
+    const graph = { version: 1 as const, nodes: [
+      { id: "model", type: "model" as const, label: "模型调用", position: { x: 0, y: 0 }, config: {} },
+      { id: "review", type: "output" as const, label: "自检问题", position: { x: 200, y: 0 }, config: { format: "review_issues", min_chars: 9999, max_chars: 1 } },
+    ], edges: [{ source: "model", target: "review" }] };
+    const workflow = { id: 13, revision: 1, name: "自检流程", novel_id: 1, purpose: "review" as const, is_default: true, published_version: 1, graph, created_at: "", updated_at: "" };
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(url.includes("/api/workflows") ? [workflow] : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } }))));
+    useWorkbench.setState({ selectedWorkflowId: 13, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    await screen.findByText("自检流程");
+    act(() => probe.clickNode?.({ id: "model" }));
+    expect(await screen.findByText("请连接正文输出节点后设置字数范围")).toBeTruthy();
+    expect(screen.queryByLabelText("最少字数")).toBeNull();
+    expect(screen.queryByLabelText("最多字数")).toBeNull();
+  });
+
+  it("B-09 labels each text output when one model reaches several outputs", async () => {
+    const graph = { version: 1 as const, nodes: [
+      { id: "model", type: "model" as const, label: "模型调用", position: { x: 0, y: 0 }, config: {} },
+      { id: "outA", type: "output" as const, label: "正文A", position: { x: 200, y: 0 }, config: { format: "text", min_chars: 1000 } },
+      { id: "outB", type: "output" as const, label: "正文B", position: { x: 200, y: 160 }, config: { format: "text", min_chars: 2000 } },
+    ], edges: [{ source: "model", target: "outA" }, { source: "model", target: "outB" }] };
+    const workflow = { id: 14, revision: 1, name: "多出口正文", novel_id: 1, purpose: "generation" as const, is_default: true, published_version: 1, graph, created_at: "", updated_at: "" };
+    vi.stubGlobal("fetch", vi.fn((url: string) => Promise.resolve(new Response(JSON.stringify(url.includes("/api/workflows") ? [workflow] : url.includes("/api/config/llm") ? { providers: [], catalogs: {} } : []), { headers: { "Content-Type": "application/json" } }))));
+    useWorkbench.setState({ selectedWorkflowId: 14, workflowCommand: null });
+    render(<StrictMode><ContextWorkflowPanel /></StrictMode>);
+    await screen.findByText("多出口正文");
+    act(() => probe.clickNode?.({ id: "model" }));
+    expect(await screen.findByText("正文A（outA）")).toBeTruthy();
+    expect(screen.getByText("正文B（outB）")).toBeTruthy();
+    expect(screen.getAllByLabelText("最少字数")).toHaveLength(2);
   });
 
   it("V-19 rejects port-type, cycle and output connections with a reason beside the node", async () => {

@@ -4,7 +4,7 @@ from app.services.markdown_doc import render
 from tests.planning_helpers import create_arc, create_chapter, create_toc, write_document
 
 
-def setup_generation(client, monkeypatch, text="雪落在铜铃上。"):
+def setup_generation(client, monkeypatch, text="雪落在铜铃上。", title="候选接线"):
     calls = []
 
     class FakeClient:
@@ -16,7 +16,7 @@ def setup_generation(client, monkeypatch, text="雪落在铜铃上。"):
             return LLMResult(text, "test-model", 37, 12, 0)
 
     monkeypatch.setattr("app.services.workflow_engine.RoutedLLMClient", FakeClient)
-    novel_id = client.post("/api/novels", json={"title": "候选接线"}).json()["id"]
+    novel_id = client.post("/api/novels", json={"title": title}).json()["id"]
     chapter = create_chapter(client, novel_id, content="已有工作稿。")
     write_document(client, novel_id, "blueprint.md", "blueprint", {
         "main_line": "雪夜铜铃", "ending": "", "core_conflicts": "",
@@ -130,3 +130,28 @@ def test_candidate_refuses_to_spend_a_model_call_without_abc_context(client, mon
     detail = response.json()["detail"]
     assert "A 层" in detail and "B 层" in detail and "C 层" in detail and "D 层" in detail
     assert calls == []
+
+
+def test_candidate_enforces_output_minimum_and_zero_maximum(client, monkeypatch):
+    for length, expected_status in ((2999, "failed"), (3000, "completed"), (3200, "completed")):
+        novel_id, chapter, workflow, calls = setup_generation(client, monkeypatch, "字" * length, title=f"字数边界{length}")
+        graph = workflow["graph"]
+        output = next(node for node in graph["nodes"] if node["type"] == "output")
+        output["config"].update({"format": "text", "min_chars": 3000, "max_chars": 0})
+        updated = client.put(f"/api/workflows/{workflow['id']}", json={"graph": graph})
+        assert updated.status_code == 200, updated.text
+        assert client.post(f"/api/workflows/{workflow['id']}/publish").status_code == 201
+
+        response = client.post(
+            f"/api/novels/{novel_id}/chapters/{chapter['id']}/generation-candidates",
+            json={},
+        )
+
+        assert response.status_code == 201, response.text
+        job = response.json()
+        assert len(calls) == 1
+        assert job["status"] == expected_status
+        assert job["result"]["content"] == "字" * length
+        assert client.get(f"/api/novels/{novel_id}/chapters/{chapter['id']}").json()["content"] == "已有工作稿。"
+        if length == 2999:
+            assert "低于输出节点要求的至少 3000 字" in job["error"]
